@@ -13,12 +13,10 @@ objc2 = "0.6"
 objc2-foundation = { version = "0.3" }
 objc2-metal = { version = "0.3" }
 
-# The Vulkan executor (src/vulkan.rs, round 7 platform lane): the vendored wgpu-hal's Vulkan backend; ash for the
-# host-memory import of the window's buffer (VK_EXT_external_memory_host), the version wgpu-hal uses.
-[target.'cfg(target_os = "linux")'.dependencies]
-wgpu-hal = { version = "29.0.4", default-features = false, features = ["vulkan"] }
-wgpu-types = { version = "29.0.4", default-features = false, features = ["std"] }
-ash = "0.38"
+# The Vulkan executor (src/vulkan.rs): bough-vk's device layer, shared with bough-fused's presenter (ash; the loader is
+# opened at run time). Linux, and macOS through MoltenVK for comparisons with Metal on the same GPU.
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+bough-vk = { path = "../bough-vk" }
 
 [build-dependencies]
 wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false }

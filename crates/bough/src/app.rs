@@ -221,6 +221,8 @@ pub struct App<V: View> {
     pub repair: Repair,
     /// `Repair::Kernel`: the integer kernel's executors (kernel_backend.rs), made at the first frame.
     pub kernel: Option<Box<crate::kernel_backend::KernelBackend>>,
+    /// `Config::executor`: which GPU the mixed model may use (backend/gpu.rs).
+    executor: Option<&'static str>,
     /// Surfaces the CPU executor draws every frame into, where there is no GPU presenter (`backend::Surfaces`: a
     /// window host's buffers, or memory offscreen). `None` with a GPU presenter or headless.
     pub target: Option<Box<dyn crate::backend::Surfaces>>,
@@ -260,12 +262,17 @@ pub struct Startup {
 /// (`strikes`: pixel size and text, in the order the mount meets them) on `raster_threads` more. The next
 /// [`App::new`] mounts while they run and takes their results.
 pub fn prepare(cfg: &Config, strikes: &[(f32, &str, u8)], svgs: &[(&'static str, f32, f32)], raster_threads: usize) {
+    // macOS: the Metal presenter, unless the fused Vulkan one is asked for; the mixed model's Vulkan executor when asked
     #[cfg(target_os = "macos")]
-    if crate::backend::gpu::want_of(cfg.executor) == crate::backend::gpu::Want::Vulkan {
-        crate::backend::gpu::prepare(cfg.executor);
-    } else {
-        let (w, h) = ((cfg.width_pt * cfg.scale).round() as usize, (cfg.height_pt * cfg.scale).round() as usize);
-        bough_metal::fused::prepare_in_background(Some((w, h, cfg.surfaces(), BIN_CAP)));
+    {
+        let w = crate::backend::gpu::want_of(cfg.executor);
+        if w != crate::backend::gpu::Want::FusedVulkan {
+            let (w, h) = ((cfg.width_pt * cfg.scale).round() as usize, (cfg.height_pt * cfg.scale).round() as usize);
+            bough_metal::fused::prepare_in_background(Some((w, h, cfg.surfaces(), BIN_CAP)));
+        }
+        if w != crate::backend::gpu::Want::Auto {
+            crate::backend::gpu::prepare(cfg.executor);
+        }
     }
     #[cfg(target_os = "linux")]
     crate::backend::gpu::prepare(cfg.executor);
@@ -309,9 +316,9 @@ impl<V: View> App<V> {
         let ring = cfg.surfaces();
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         let executor = cfg.executor;
-        // macOS: the Metal presenter, unless the Vulkan executor is asked for (MoltenVK, headless: backend/gpu.rs)
+        // macOS: the Metal presenter, unless the fused Vulkan one is asked for (MoltenVK, headless: backend/gpu.rs)
         #[cfg(target_os = "macos")]
-        let metal_gpu = gpu && crate::backend::gpu::want_of(cfg.executor) != crate::backend::gpu::Want::Vulkan;
+        let metal_gpu = gpu && crate::backend::gpu::want_of(cfg.executor) != crate::backend::gpu::Want::FusedVulkan;
         // direct Metal: the GPU sees each column through a view of its used prefix (bough-metal
         // `Fused::new_views`), so the region reserves the record format's limits as address space; the wgpu-hal
         // presenter wraps the whole region in one buffer and keeps the configured capacities
@@ -324,9 +331,9 @@ impl<V: View> App<V> {
         // reserves the record format's limits as address space too (only what is written becomes resident)
         // the GL executor owns the region: one mapped buffer of the configured capacities (GL cannot import memory)
         #[cfg(target_os = "linux")]
-        let gl_prep = (gpu && crate::backend::gpu::want_of(cfg.executor) == crate::backend::gpu::Want::Gl)
+        let gl_prep = (gpu && crate::backend::gpu::want_of(cfg.executor) == crate::backend::gpu::Want::FusedGl)
             .then(bough_fused::gl::take_prep)
-            .and_then(|r| r.map_err(|e| crate::backend::gpu::refused("gl", &e)).ok());
+            .and_then(|r| r.map_err(|e| crate::backend::gpu::refused("fused-gl", &e)).ok());
         #[cfg(target_os = "linux")]
         let caps = if gl_prep.is_some() { cfg.caps } else { cfg.caps.reserve() };
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -455,26 +462,26 @@ impl<V: View> App<V> {
             startup.gpu_wait_ns = t.elapsed().as_nanos() as u64;
             metal = Some(f);
         }
-        // Linux: the GPU executor over the mounted region (Vulkan: views of its columns, made now while the device
-        // was built from process entry; GL: made with the region above), or none (the CPU executor)
+        // the fused presenter when asked for (`fused-vulkan`: views of the region's columns, made now while the device was
+        // built from process entry; `fused-gl`: made with the region above); otherwise none: the mixed model draws
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         let lgpu = {
-            use crate::backend::gpu::{refused, want_of, Gpu, Want};
+            use crate::backend::gpu::{Gpu, Want, refused, want_of};
             let w = want_of(executor);
             #[cfg(target_os = "linux")]
             let from_gl = gl_exec.take().map(Gpu::Gl);
             #[cfg(target_os = "macos")]
             let from_gl: Option<Gpu> = None;
             #[cfg(target_os = "linux")]
-            let vk_ok = gpu && matches!(w, Want::Auto | Want::Vulkan);
+            let vk_ok = gpu && w == Want::FusedVulkan;
             #[cfg(target_os = "macos")]
-            let vk_ok = gpu && !metal_gpu;
+            let vk_ok = gpu && !metal_gpu && w == Want::FusedVulkan;
             let mut g = if from_gl.is_some() {
                 from_gl
             } else if vk_ok {
-                match bough_fused::vk::take_prep(w == Want::Vulkan) {
-                    // a software device runs the GPU kernels slower than the CPU executor runs its own: only on request
-                    Ok(p) if w == Want::Vulkan || !p.software => {
+                // asked for by name: a software device will do
+                match bough_fused::vk::take_prep(true) {
+                    Ok(p) => {
                         let (p0, len, keep) = rt.region_mem();
                         let base = rt.layout.slot[2] as usize + bough_frame::Layout::slot_bytes(rt.layout.w, rt.layout.h.max(MAX_WINDOW));
                         // SAFETY: the runtime's region: page-aligned (mmap), `len` bytes, alive while `keep` (a share of
@@ -482,18 +489,13 @@ impl<V: View> App<V> {
                         match unsafe { bough_fused::vk::Fused::new_views(p, p0, len, keep, base, win_w as usize, win_h as usize, BIN_CAP) } {
                             Ok(f) => Some(Gpu::Vk(f)),
                             Err(e) => {
-                                if w == Want::Vulkan {
-                                    refused("vulkan", &e);
-                                }
+                                refused("fused-vulkan", &e);
                                 None
                             }
                         }
                     }
-                    Ok(_) => None,
                     Err(e) => {
-                        if w == Want::Vulkan {
-                            refused("vulkan", &e);
-                        }
+                        refused("fused-vulkan", &e);
                         None
                     }
                 }
@@ -541,6 +543,10 @@ impl<V: View> App<V> {
             once,
             repair: Repair::from_env(),
             kernel: None,
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            executor,
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            executor: cfg.executor,
             target,
             shown_rows: vec![0; ty],
             #[cfg(target_os = "linux")]
@@ -610,17 +616,39 @@ impl<V: View> App<V> {
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     fn sync(&mut self) {}
 
-    /// What draws this app's frames: the GPU executor and its device, or the CPU executor (Linux), or Metal.
+    /// What draws this app's frames: a fused presenter and its device (`fused-vulkan`, `fused-gl`), Metal's presenter,
+    /// or the mixed model (`mixed`: the CPU executors, and the GPU it may use and, once built, its device and costs).
     pub fn executor(&self) -> String {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         if let Some(g) = self.lgpu.as_ref() {
             return g.info();
         }
         #[cfg(target_os = "macos")]
-        if self.gpu.is_some() {
+        if self.gpu.is_some() && self.repair != Repair::Kernel {
             return "metal".into();
         }
-        if self.target.is_some() { "cpu".into() } else { "headless".into() }
+        if !self.has_surfaces() {
+            return "headless".into();
+        }
+        let want = crate::backend::gpu::kernel_want(self.executor);
+        match self.kernel.as_ref().and_then(|k| k.gpu_info()) {
+            Some(g) => format!("mixed: {g}"),
+            None => format!("mixed: gpu {want:?}"),
+        }
+    }
+
+    /// The mixed model's backend, made at its first use with the GPU `executor` allows.
+    fn kb<'a>(k: &'a mut Option<Box<crate::kernel_backend::KernelBackend>>, executor: Option<&'static str>) -> &'a mut crate::kernel_backend::KernelBackend {
+        k.get_or_insert_with(|| {
+            let mut b = Box::<crate::kernel_backend::KernelBackend>::default();
+            b.want = crate::backend::gpu::kernel_want(executor);
+            b
+        })
+    }
+
+    /// Pin the mixed model's executor (`"cpu1"`, `"cpun"`, `"gpu"`; gates): `BOUGH_KERNEL_EXEC` for this app.
+    pub fn pin_executor(&mut self, e: &str) {
+        Self::kb(&mut self.kernel, self.executor).pin(e);
     }
 
     /// `sync` for the input module (an input turn writes the region, so the GPU must be done with it).
@@ -641,10 +669,12 @@ impl<V: View> App<V> {
             g.resize(w as usize, h as usize);
             g.set_layout(self.rt.layout);
         }
+        // the kernel backend's GPU executor lets go of the memory it imported (a target's buffers, or the Metal
+        // presenter's IOSurfaces, whose replacements may come back at the same addresses) before it is replaced
+        if let Some(k) = self.kernel.as_mut() {
+            k.forget_targets();
+        }
         if let Some(t) = self.target.as_mut() {
-            if let Some(k) = self.kernel.as_mut() {
-                k.forget_targets();
-            }
             t.resize(w as u32, h as u32);
         }
         #[cfg(target_os = "macos")]
@@ -1099,7 +1129,7 @@ impl<V: View> App<V> {
         #[cfg(all(target_os = "macos", not(feature = "wgpu")))]
         if self.repair == Repair::Kernel {
             if let Some(g) = self.gpu.as_mut() {
-                let kb = self.kernel.get_or_insert_with(Default::default);
+                let kb = Self::kb(&mut self.kernel, self.executor);
                 crate::kernel_backend::kprof::lap(1);
                 // staging never refuses: a record that indexes outside its columns is skipped
                 kb.stage(&self.rt, &self.rows, full);
@@ -1190,7 +1220,7 @@ impl<V: View> App<V> {
             self.draw_target_gpu(i, epoch, full, copy);
             return;
         }
-        let kb = self.kernel.get_or_insert_with(Default::default);
+        let kb = Self::kb(&mut self.kernel, self.executor);
         kb.stage(&self.rt, &self.rows, full);
         let t = self.target.as_mut().expect("draw_target without a target");
         if !full && !copy.is_none() {
@@ -1359,7 +1389,7 @@ impl<V: View> App<V> {
         }
         // the kernel backend's frames are judged by the kernel's own definition (`cpu::reference`)
         if self.target.is_some() || self.repair == Repair::Kernel {
-            return self.kernel.get_or_insert_with(Default::default).reference(&self.rt);
+            return Self::kb(&mut self.kernel, self.executor).reference(&self.rt);
         }
         #[cfg(target_os = "macos")]
         return self.reference_pixels_gpu();
@@ -1371,7 +1401,7 @@ impl<V: View> App<V> {
     fn reference_pixels_gpu(&mut self) -> Vec<u8> {
         #[cfg(not(feature = "wgpu"))]
         if self.repair == Repair::Kernel {
-            return self.kernel.get_or_insert_with(Default::default).reference(&self.rt);
+            return Self::kb(&mut self.kernel, self.executor).reference(&self.rt);
         }
         let n_dir = self.rt.bough.dir_len() as u32;
         let g = self.gpu.as_mut().unwrap();

@@ -9,9 +9,9 @@ description = "The fused presenter on Vulkan and OpenGL: bough-metal's kernels (
 bough-frame = { path = "../bough-frame" }
 wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false }
 
-# Vulkan: Linux, and macOS through MoltenVK (the loader is opened at run time; nothing links libvulkan).
+# Vulkan: Linux, and macOS through MoltenVK (bough-vk: the loader is opened at run time; nothing links libvulkan).
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
-ash = "0.38"
+bough-vk = { path = "../bough-vk" }
 libc = "0.2"
 
 [build-dependencies]

@@ -41,6 +41,133 @@ enum Force {
     Gpu,
 }
 
+/// The GPU executor the choice may use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpuWant {
+    /// None: the CPU executors only (`BOUGH_GPU=cpu`; the fused presenters draw instead).
+    Off,
+    /// Apple's (macOS: the Metal executor, made at its first frame).
+    Metal,
+    /// A hardware Vulkan device, built from process entry where a render node exists (Linux's default).
+    Hardware,
+    /// A Vulkan device, a software one (lavapipe) included (`BOUGH_GPU=vulkan`; on macOS through MoltenVK).
+    Vulkan,
+}
+
+impl GpuWant {
+    /// `BOUGH_GPU`'s (backend/gpu.rs).
+    pub fn from_env() -> GpuWant {
+        crate::backend::gpu::kernel_want(None)
+    }
+}
+
+/// The GPU executor of the choice: Apple's (Metal) or a Vulkan device's.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+enum KGpu {
+    #[cfg(target_os = "macos")]
+    Metal(bough_kernel::metal::Gpu),
+    Vk(bough_kernel::vulkan::Gpu),
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+enum KTarget {
+    #[cfg(target_os = "macos")]
+    Metal(bough_kernel::metal::Target),
+    Vk(bough_kernel::vulkan::Target),
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+impl KGpu {
+    fn metal() -> Option<KGpu> {
+        #[cfg(target_os = "macos")]
+        return bough_kernel::metal::Gpu::new(bough_kernel::KERNEL_MSL).map(KGpu::Metal);
+        #[cfg(not(target_os = "macos"))]
+        None
+    }
+    fn info(&self) -> String {
+        match self {
+            #[cfg(target_os = "macos")]
+            KGpu::Metal(_) => "metal".into(),
+            KGpu::Vk(g) => format!("vulkan: {}; {:?}", g.info, g.costs()),
+        }
+    }
+    fn costs(&self) -> cpu::Costs {
+        match self {
+            #[cfg(target_os = "macos")]
+            KGpu::Metal(_) => cpu::COSTS,
+            KGpu::Vk(g) => *g.costs(),
+        }
+    }
+    /// A frame of `tiles` tiles and `entries` entries took `wall`: move the Vulkan device's costs a quarter of the
+    /// way toward explaining it (the round trip and the per-tile terms scaled together; within 1/4x..4x per frame).
+    fn observe(&mut self, tiles: u64, entries: u64, warm: bool, wall: f64) {
+        let KGpu::Vk(g) = self else { return };
+        let c = g.costs_mut();
+        let fixed = if warm { c.gpu_fixed_warm } else { c.gpu_fixed_cold };
+        let pred = (fixed + c.gpu_tile * tiles + c.gpu_entry * entries).max(1) as f64;
+        let r = ((wall * 1e9) / pred).clamp(0.25, 4.0);
+        let k = 1.0 + (r - 1.0) / 4.0;
+        let s = |v: u64| ((v as f64 * k) as u64).max(1);
+        if warm {
+            c.gpu_fixed_warm = s(c.gpu_fixed_warm);
+        } else {
+            c.gpu_fixed_cold = s(c.gpu_fixed_cold);
+        }
+        c.gpu_tile = s(c.gpu_tile);
+        c.gpu_entry = s(c.gpu_entry);
+    }
+    /// # Safety
+    /// As the executors' `wrap`.
+    unsafe fn wrap(&mut self, p: *mut u8, len: usize) -> Option<KTarget> {
+        // SAFETY: the caller's contract.
+        unsafe {
+            match self {
+                #[cfg(target_os = "macos")]
+                KGpu::Metal(g) => g.wrap(p, len).map(KTarget::Metal),
+                KGpu::Vk(g) => g.wrap(p, len).map(KTarget::Vk),
+            }
+        }
+    }
+    fn upload_atlas(&mut self, px: &[u8]) {
+        match self {
+            #[cfg(target_os = "macos")]
+            KGpu::Metal(g) => g.upload_atlas(px),
+            KGpu::Vk(g) => g.upload_atlas(px),
+        }
+    }
+    fn upload_images(&mut self, px: &[u8]) {
+        match self {
+            #[cfg(target_os = "macos")]
+            KGpu::Metal(g) => g.upload_images(px),
+            KGpu::Vk(g) => g.upload_images(px),
+        }
+    }
+    fn upload_frame(&mut self, scene: &stage::Scene, prog: &Prog) {
+        match self {
+            #[cfg(target_os = "macos")]
+            KGpu::Metal(g) => g.upload_frame(scene, prog),
+            KGpu::Vk(g) => g.upload_frame(scene, prog),
+        }
+    }
+    /// Draw the uploaded frame into `t`; the frame's wall time in seconds.
+    fn render_to(&mut self, tiles: usize, t: &KTarget) -> f64 {
+        match (self, t) {
+            #[cfg(target_os = "macos")]
+            (KGpu::Metal(g), KTarget::Metal(t)) => g.render_to(tiles, t).wall,
+            (KGpu::Vk(g), KTarget::Vk(t)) => g.render_to(tiles, t).wall,
+            #[cfg(target_os = "macos")]
+            _ => unreachable!("a target of another executor"),
+        }
+    }
+    fn forget_targets(&mut self) {
+        match self {
+            #[cfg(target_os = "macos")]
+            KGpu::Metal(_) => {}
+            KGpu::Vk(g) => g.forget_targets(),
+        }
+    }
+}
+
 pub struct KernelBackend {
     scene: Scene,
     prog: Prog,
@@ -54,10 +181,15 @@ pub struct KernelBackend {
     pub trace: bool,
     dry: bool,
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    gpu: Option<bough_kernel::gpu::Gpu>,
+    gpu: Option<KGpu>,
+    /// Which GPU executor the choice may use (`BOUGH_GPU`, `Config::executor`).
+    pub want: GpuWant,
+    /// The GPU executor could not be built (no device): the choice is the CPU's from now on.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    gpu_gone: bool,
     /// Per surface: the address its target buffer wraps, and the buffer.
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    targets: Vec<Option<(usize, bough_kernel::gpu::Target)>>,
+    targets: Vec<Option<(usize, KTarget)>>,
     /// The atlases' stamps at their last upload to the GPU executor.
     uploaded: Option<(u64, usize, u64)>,
     /// When the GPU executor last ran (its fixed cost depends on whether it has clocked down).
@@ -96,6 +228,9 @@ impl KernelBackend {
             dry: std::env::var_os("BOUGH_KERNEL_DRY").is_some(),
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             gpu: None,
+            want: GpuWant::from_env(),
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            gpu_gone: false,
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             targets: Vec::new(),
             uploaded: None,
@@ -262,20 +397,31 @@ impl KernelBackend {
         #[cfg(target_os = "macos")]
         let i1 = if self.trace { instrs() } else { 0 };
         let (tiles, entries) = (self.prog.tiles() as u64, self.prog.entries() as u64);
-        // the cost model's GPU is Apple's; on Linux the GPU executor (Vulkan) runs only when pinned
-        // (`BOUGH_KERNEL_EXEC=gpu`): the device there may be a CPU rasteriser (lavapipe)
-        let gpu_able = cfg!(target_os = "macos");
+        // the GPU the choice may use: Apple's (its costs are COSTS), or a Vulkan device built from process entry with its
+        // own measured costs (`bough_kernel::vulkan::calibrate`) and corrected by the frames it runs; a device still
+        // being built is not waited for (the CPU draws meanwhile)
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        self.poll_gpu(self.force == Force::Gpu);
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        let (gpu_able, costs) = match &self.gpu {
+            Some(g) => (true, g.costs()),
+            None => (cfg!(target_os = "macos") && self.want == GpuWant::Metal && !self.gpu_gone, cpu::COSTS),
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        let (gpu_able, costs) = (false, cpu::COSTS);
         let warm = self.last_gpu.is_some_and(|t| t.elapsed().as_millis() < 50);
         let mut exec = match self.force {
-            Force::Auto => cpu::choose(self.bin.est_cpu_ns, tiles, entries, self.pool.workers(), gpu_able, warm, &cpu::COSTS),
+            Force::Auto => cpu::choose(self.bin.est_cpu_ns, tiles, entries, self.pool.workers(), gpu_able, warm, &costs),
             Force::Cpu1 => Exec::Cpu1,
             Force::CpuN => Exec::CpuN(self.pool.workers()),
             Force::Gpu => Exec::Gpu,
         };
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         if exec == Exec::Gpu && tiles > 0 {
-            if self.gpu.is_none() {
-                self.gpu = bough_kernel::gpu_executor();
+            if self.gpu.is_none() && !self.gpu_gone {
+                // Apple's executor is made at its first frame (a Vulkan one was polled above)
+                self.gpu = KGpu::metal();
+                self.gpu_gone = self.gpu.is_none();
             }
             let ok = match self.gpu.as_mut() {
                 Some(g) => {
@@ -297,7 +443,9 @@ impl KernelBackend {
                             }
                             kprof::lap(7);
                             g.upload_frame(&self.scene, &self.prog);
-                            g.render_to(tiles as usize, t);
+                            let wall = g.render_to(tiles as usize, t);
+                            // the frame's cost as predicted, corrected toward what it took (a Vulkan device's costs)
+                            g.observe(tiles, entries, warm, wall);
                             kprof::lap(8);
                             true
                         }
@@ -310,7 +458,7 @@ impl KernelBackend {
                 self.last_gpu = Some(std::time::Instant::now());
                 self.stats.gpu += 1;
             } else {
-                // no Metal device, or it refused the surface's memory: the CPU draws the same pixels
+                // no GPU device, or it refused the surface's memory: the CPU draws the same pixels
                 exec = Exec::CpuN(self.pool.workers());
             }
         }
@@ -355,7 +503,69 @@ impl KernelBackend {
     /// must not outlive the pages it names, and a new allocation may reuse an address).
     pub fn forget_targets(&mut self) {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
-        self.targets.clear();
+        {
+            self.targets.clear();
+            if let Some(g) = self.gpu.as_mut() {
+                g.forget_targets();
+            }
+        }
+    }
+
+    /// Take the Vulkan executor once its build (started from process entry, or here) is done; `wait`: wait for it
+    /// (a pinned GPU executor). After a failed build the choice is the CPU's.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn poll_gpu(&mut self, wait: bool) {
+        if self.gpu.is_some() || self.gpu_gone {
+            return;
+        }
+        let software = match self.want {
+            GpuWant::Vulkan => true,
+            GpuWant::Hardware => false,
+            GpuWant::Off | GpuWant::Metal => return,
+        };
+        use bough_kernel::vulkan as kv;
+        let r = if wait {
+            Some(kv::take_prepared(software))
+        } else {
+            if !kv::preparing() {
+                kv::prepare_in_background(software);
+                if !kv::preparing() {
+                    // nothing to build here (no render node)
+                    self.gpu_gone = true;
+                    return;
+                }
+            }
+            kv::poll_prepared()
+        };
+        match r {
+            Some(Ok(g)) => self.gpu = Some(KGpu::Vk(g)),
+            Some(Err(e)) => {
+                if self.want == GpuWant::Vulkan {
+                    eprintln!("bough: no Vulkan executor ({e}); the CPU draws every frame");
+                }
+                self.gpu_gone = true;
+            }
+            None => {}
+        }
+    }
+
+    /// Pin the executor (`"cpu1"`, `"cpun"`, `"gpu"`; anything else: the costs choose), as `BOUGH_KERNEL_EXEC`.
+    pub fn pin(&mut self, e: &str) {
+        self.force = match e {
+            "cpu1" => Force::Cpu1,
+            "cpun" => Force::CpuN,
+            "gpu" => Force::Gpu,
+            _ => Force::Auto,
+        };
+    }
+
+    /// What draws GPU frames, if one has: the device and its measured costs.
+    pub fn gpu_info(&self) -> Option<String> {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if let Some(g) = &self.gpu {
+            return Some(g.info());
+        }
+        None
     }
 
     /// The scroll copy on the CPU: every pixel p of `rect` (x0, y0, x1, y1) of the target takes the source

@@ -1,17 +1,18 @@
-//! The GPU executors on Linux (crates/bough-fused): bough-metal's fused presenter on Vulkan or OpenGL, drawing the
-//! window's surfaces ([`super::Surfaces`]) in place of the CPU executor. On macOS `BOUGH_GPU=vulkan` runs the Vulkan
-//! one headless (MoltenVK, `BOUGH_VK_LIB`) in place of the Metal presenter: the same kernels on a real GPU, for gates.
-//!
-//! Which one runs is decided once, when the app is made (never per frame), by `BOUGH_GPU`:
-//! * `vulkan`: the Vulkan presenter on the best device (`BOUGH_VK_DEVICE` names one), software ones included;
-//! * `gl`: the OpenGL 4.3 presenter (EGL, no window of its own), software renderers included;
-//! * `cpu`: the CPU executor;
-//! * unset: Vulkan on a hardware device, otherwise the CPU executor (bough's own SIMD executor beats a software
-//!   rasteriser running the GPU kernels).
-//!
-//! The Vulkan presenter reads the region in place (views of the columns' used prefixes) and writes the window's
-//! buffers in place; the GL presenter owns the region (one mapped buffer of the configured capacities) and copies
-//! each frame's changed tiles into the window's buffer.
+//! Which executors draw the app's frames, decided once when the app is made (never per frame), by `BOUGH_GPU` (or
+//! `Config::executor`):
+//! * unset: **the mixed model** (`kernel_backend.rs`): every frame is drawn by whichever of this thread, the pool and
+//!   the GPU its measured cost favours, all running bough-kernel's integer kernel, so they write the same bytes and the
+//!   choice changes per frame with no seam. The GPU is Apple's on macOS (with `BOUGH_REPAIR=kernel`; the Metal
+//!   presenter is macOS's default) and, on Linux, a hardware Vulkan device where one exists (built from process entry
+//!   where a render node exists; no Vulkan library is loaded otherwise);
+//! * `vulkan`: the mixed model with a Vulkan device, software ones (lavapipe) included; on macOS through MoltenVK
+//!   (`BOUGH_VK_LIB`), for comparisons with Metal on the same GPU;
+//! * `cpu`: the mixed model without a GPU;
+//! * `fused-vulkan`, `fused-gl` (crates/bough-fused): bough-metal's fused presenter ported, drawing every frame on the
+//!   GPU in place of the mixed model (`fused-vulkan` on macOS: headless through MoltenVK, in place of the Metal
+//!   presenter). The Vulkan one reads the region in place (views of the columns' used prefixes) and writes the
+//!   window's buffers in place; the GL one owns the region (one mapped buffer of the configured capacities) and copies
+//!   each frame's changed tiles into the window's buffer.
 #[cfg(target_os = "linux")]
 use bough_fused::gl;
 use bough_fused::vk;
@@ -20,8 +21,9 @@ use bough_fused::vk;
 pub enum Want {
     Auto,
     Vulkan,
-    Gl,
     Cpu,
+    FusedVulkan,
+    FusedGl,
 }
 
 /// The executor `name` asks for (`Config::executor`), else `BOUGH_GPU`'s.
@@ -29,20 +31,36 @@ pub fn want_of(name: Option<&str>) -> Want {
     let env = std::env::var("BOUGH_GPU").ok();
     match name.or(env.as_deref()) {
         Some("vulkan") | Some("vk") => Want::Vulkan,
-        Some("gl") | Some("opengl") => Want::Gl,
+        Some("fused-vulkan") => Want::FusedVulkan,
+        Some("fused-gl") | Some("gl") | Some("opengl") => Want::FusedGl,
         Some("cpu") => Want::Cpu,
         _ => Want::Auto,
+    }
+}
+
+/// The mixed model's GPU for `name` (`kernel_backend::GpuWant`).
+pub fn kernel_want(name: Option<&str>) -> crate::kernel_backend::GpuWant {
+    use crate::kernel_backend::GpuWant;
+    match want_of(name) {
+        Want::Auto if cfg!(target_os = "macos") => GpuWant::Metal,
+        Want::Auto => GpuWant::Hardware,
+        Want::Vulkan => GpuWant::Vulkan,
+        Want::Cpu | Want::FusedVulkan | Want::FusedGl => GpuWant::Off,
     }
 }
 
 /// At process entry: start building the device the app will use on another thread (`app::prepare`).
 pub fn prepare(name: Option<&str>) {
     match want_of(name) {
-        w @ (Want::Auto | Want::Vulkan) => vk::prepare_in_background(w == Want::Vulkan),
+        // the mixed model's Vulkan executor: device, pipeline and measured costs (nothing without a render node)
+        Want::Auto if cfg!(target_os = "linux") => bough_kernel::vulkan::prepare_in_background(false),
+        Want::Auto => {}
+        Want::Vulkan => bough_kernel::vulkan::prepare_in_background(true),
+        Want::FusedVulkan => vk::prepare_in_background(true),
         #[cfg(target_os = "linux")]
-        Want::Gl => gl::prepare_in_background(),
+        Want::FusedGl => gl::prepare_in_background(),
         #[cfg(not(target_os = "linux"))]
-        Want::Gl => {}
+        Want::FusedGl => {}
         Want::Cpu => {}
     }
 }
@@ -63,9 +81,9 @@ impl Gpu {
     /// The executor, its device and driver.
     pub fn info(&self) -> String {
         match self {
-            Gpu::Vk(f) => format!("vulkan: {}", f.info()),
+            Gpu::Vk(f) => format!("fused-vulkan: {}", f.info()),
             #[cfg(target_os = "linux")]
-            Gpu::Gl(f) => format!("gl: {}", f.info()),
+            Gpu::Gl(f) => format!("fused-gl: {}", f.info()),
         }
     }
 

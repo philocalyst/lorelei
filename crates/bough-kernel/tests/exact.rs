@@ -35,7 +35,7 @@ fn executors_agree() {
     let mut gpu = bough_kernel::vulkan::Gpu::new(bough_kernel::KERNEL_SPIRV);
     #[cfg(target_os = "linux")]
     if let Some(g) = gpu.as_ref() {
-        eprintln!("exact: the GPU executor is Vulkan on {} ({:?})", g.info.name, g.info.device_type);
+        eprintln!("exact: the GPU executor is Vulkan on {}", g.info);
     }
     let (mut bin, mut prog) = (Binner::default(), Prog::default());
     let (mut tiles, mut gpu_tiles) = (0u64, 0u64);
@@ -250,7 +250,7 @@ fn translation_invariance() {
 
 /// The Vulkan executor's negative control: the same rounding constant changed in the SPIR-V (an `OpConstant`
 /// of 16384, shared by every use, changed to 16383) must make the gate fail.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn vulkan_rounding_mutant_is_caught() {
     let mut words = bough_kernel::vulkan::spirv_words(bough_kernel::KERNEL_SPIRV);
@@ -290,7 +290,7 @@ fn vulkan_rounding_mutant_is_caught() {
 
 /// `wrap` (the window's pages as the output buffer): the kernel's words land in the caller's memory, equal to the
 /// definition's; and a target may outlive the executor that made it (an owner drops them in any order).
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn vulkan_writes_wrapped_memory() {
     let Some(mut gpu) = bough_kernel::vulkan::Gpu::new(bough_kernel::KERNEL_SPIRV) else { return };
@@ -298,14 +298,15 @@ fn vulkan_writes_wrapped_memory() {
     let img_px = scenes::images();
     let atlas = Atlas::new(&atlas_px, scenes::ATLAS_W).with_images(&img_px, scenes::IMG_W);
     let words = STRIDE * FH as usize;
-    let bytes = (words * 4).next_multiple_of(4096);
-    let layout = std::alloc::Layout::from_size_align(bytes, 4096).unwrap();
+    // 16 KiB: every driver's host-import alignment (MoltenVK's is Apple's page)
+    let bytes = (words * 4).next_multiple_of(16384);
+    let layout = std::alloc::Layout::from_size_align(bytes, 16384).unwrap();
     // SAFETY: a non-zero layout; freed below after the target is gone.
     let mem = unsafe { std::alloc::alloc_zeroed(layout) };
     assert!(!mem.is_null());
     // SAFETY: page aligned, `bytes` long, alive until after the target drops.
     let Some(target) = (unsafe { gpu.wrap(mem, bytes) }) else {
-        eprintln!("vulkan: no host-pointer import on {}; wrap untested", gpu.info.name);
+        eprintln!("vulkan: no host-pointer import on {}; wrap untested", gpu.info);
         unsafe { std::alloc::dealloc(mem, layout) };
         return;
     };

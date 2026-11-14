@@ -137,3 +137,27 @@ validation layer) and 34–59 ms on MoltenVK (5.3 s cold); lavapipe also compile
   through naga as well (bough-gpu's path) and could replace them once they are as fast.
 * **Calm trims** (Metal marks idle surfaces purgeable): the window's buffers belong to the host on Linux; bins and
   certificates are not trimmed.
+
+## 5. Round 2: Vulkan inside the mixed model (predictions frozen 2026-11-14, before measuring)
+
+The owner's direction after §1-4: Metal's speed, every benchmark number held, tested on ilo-prod, and the mixed
+CPU/GPU model kept. Measured first (M3 Pro, gallery gate, p50): the mixed model (`BOUGH_REPAIR=kernel`, the costs
+choosing among one core, the pool and Metal) 0.54 ms; the pool alone 0.57; the Metal presenter 1.32; the mixed model
+with Metal forced 1.79; the fused Vulkan port through MoltenVK 2.33. So the fused port as Linux's default (§1) replaced
+the fastest path with a 4x slower one on this workload. The change: Linux keeps the mixed model by default, and a
+hardware Vulkan device joins it as its GPU executor, running bough-kernel's integer kernel (the CPU executors' bytes,
+so a switch leaves no seam) on bough-vk, the device layer now shared with the fused port; the fused presenters are
+opt-in (`BOUGH_GPU=fused-vulkan|fused-gl`).
+
+Predictions and kill lines:
+
+* **P1** (M3 Pro, gallery, the mixed model's GPU forced): Vulkan through MoltenVK p50 within 1.10x of Metal's. Kill:
+  above 1.25x.
+* **P2** (same, the costs choosing): the mixed model with Vulkan within 1.10x of the mixed model with Metal. Kill:
+  above 1.25x.
+* **P3**: every gate step exact with the GPU forced and with the executors switched frame by frame (the CPU
+  definition's bytes), on MoltenVK and on lavapipe.
+* **P4** (ilo-prod, no render node): the gui-bench `bough` row from this branch equals main's within the spread of two
+  runs of main's binary, in fixed and unthrottled timing; no Vulkan library is loaded.
+* **P5** (ilo-prod, lavapipe allowed in the costs' choice): the gallery sends no frame to it (its measured costs lose
+  to the pool's), so its frame times equal the CPU executors'.

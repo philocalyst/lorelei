@@ -1,200 +1,206 @@
-//! The GPU executor on Vulkan (Linux; round 7, platform lane): naga's SPIR-V of `kernel.rs` (build.rs), one
-//! workgroup per scheduled tile, through the vendored wgpu-hal's Vulkan backend. The same API as `metal.rs`, so
-//! the exactness gate and the app's backend drive either. Headless: no swapchain.
+//! The GPU executor on Vulkan (Linux; macOS through MoltenVK, for comparisons with Metal on the same GPU): naga's
+//! SPIR-V of `kernel.rs` (build.rs), one workgroup per scheduled tile, on bough-vk's device layer (the one bough-fused's
+//! presenter runs on). The same API as `metal.rs`, so the exactness gate and the app's backend drive either; the bytes
+//! are the CPU executors' by construction, so the backend switches executors per frame with no seam.
 //!
-//! * **Buffers**: the five storage buffers of `kernel.rs` (commands, programs, atlas, output, images) are
-//!   host-visible, coherent and persistently mapped: the CPU writes them in place and reads the output in place
-//!   (lavapipe and integrated GPUs give such memory; a discrete GPU without resizable BAR would read system memory
-//!   over the bus, not measured). naga's SPIR-V reads array lengths itself, so there is no sizes buffer.
-//! * **The window's words** (`wrap`): with `VK_EXT_external_memory_host` the output buffer is the caller's memory
-//!   imported as device memory: the kernel writes the pixels of a `wl_shm` buffer the compositor reads, with no
-//!   copy, as the Metal executor writes an IOSurface's base address. Without the extension `wrap` returns `None`
-//!   and the caller copies from `out`.
-//! * **Ordering**: one command buffer per frame: the dispatch, then a barrier making the shader's writes visible
-//!   to the host; the frame is waited for on a fence before `render` returns.
-use crate::cpu::Prog;
+//! * **Buffers**: commands, programs, the atlas and the image atlas are host-visible, coherent and persistently mapped
+//!   (device-local too where the device has such memory: unified memory, resizable BAR): the CPU writes them in place.
+//! * **The window's words** (`wrap`): the output is the caller's memory imported as device memory
+//!   (`VK_EXT_external_memory_host`): the kernel writes the pixels of the `wl_shm` buffer the compositor reads, with no
+//!   copy, as the Metal executor writes an IOSurface's base address.
+//! * **One pre-armed frame**: the frame's command buffer is recorded once per set of targets: an indirect dispatch for
+//!   every target (and the executor's own output), each reading its workgroup count from a mapped arguments buffer. The
+//!   next frame is submitted while the GPU draws this one, waiting on a timeline semaphore (bough-vk's `Stream`); a
+//!   frame is: write the commands and the program, set the chosen target's count (the others' are zero), one host
+//!   signal, one wait. No recording, no descriptor update and no queue submission on the frame's path.
+//! * **Measured costs**: the device's round trip and its time per tile are measured when it is built (`calibrate`:
+//!   empty frames, then a probe scene of list rows), for the backend's choice between this executor and the CPU's; the
+//!   backend corrects them from the frames it runs. A software device (lavapipe) measures as slow as it is.
+//! * **Built on another thread** from process entry (`prepare_in_background`), never waited for by a frame the CPU
+//!   can draw (`poll_prepared`).
+use crate::cpu::{Costs, Prog};
 use crate::stage::Scene;
-use ash::vk;
-use std::ptr::NonNull;
-use wgpu_hal as hal;
-use wgpu_hal::{CommandEncoder as _, Device as _, Instance as _, Queue as _};
-use wgpu_types as wgt;
+use bough_vk::{Buf, Device, Import, Needs, Pending, Stream, err, vk};
 
-type Api = hal::api::Vulkan;
-type HBuf = <Api as hal::Api>::Buffer;
+pub use bough_vk::spirv_words;
 
-/// SPIR-V bytes as words (the hal takes `&[u32]`; `include_bytes!` is only byte aligned).
-pub fn spirv_words(bytes: &[u8]) -> Vec<u32> {
-    assert!(bytes.len() % 4 == 0, "SPIR-V is a whole number of words");
-    bytes.chunks_exact(4).map(|w| u32::from_le_bytes([w[0], w[1], w[2], w[3]])).collect()
-}
+/// Targets bound at once (a window's ring is at most 4; a resize forgets them).
+const MAX_TARGETS: usize = 8;
+/// The own output's descriptor set and dispatch (after the targets').
+const OWN: usize = MAX_TARGETS;
+/// Bytes per indirect dispatch's arguments (x, y, z, padding).
+const ARGS: u64 = 16;
 
-/// A mapped storage buffer of this device.
-struct Buf {
-    b: HBuf,
-    ptr: NonNull<u8>,
-    cap: usize,
-}
-
-struct Objs {
-    bgl: <Api as hal::Api>::BindGroupLayout,
-    layout: <Api as hal::Api>::PipelineLayout,
-    module: <Api as hal::Api>::ShaderModule,
-    pso: <Api as hal::Api>::ComputePipeline,
-    fence: <Api as hal::Api>::Fence,
-}
-
-pub struct Gpu {
-    pub info: wgt::AdapterInfo,
-    /// Shared with every `Target` made here: a target keeps its device alive (whatever order the owner drops
-    /// them in).
-    device: std::sync::Arc<<Api as hal::Api>::Device>,
-    queue: <Api as hal::Api>::Queue,
-    /// `VK_EXT_external_memory_host` is enabled: `wrap` imports caller memory.
-    host_import: Option<(ash::ext::external_memory_host::Device, u64)>,
-    o: std::mem::ManuallyDrop<Objs>,
-    /// 0 commands, 1 programs, 2 atlas, 3 output, 4 image atlas.
-    bufs: [Option<Buf>; 5],
-    encoder: Option<<Api as hal::Api>::CommandEncoder>,
-    fence_value: u64,
-}
-
-/// An output buffer over caller-owned memory (`Gpu::wrap`): device memory imported from the host pointer.
-pub struct Target {
-    buf: Option<HBuf>,
-    mem: vk::DeviceMemory,
-    raw: vk::Buffer,
-    device: std::sync::Arc<<Api as hal::Api>::Device>,
-}
-
-impl Drop for Target {
-    fn drop(&mut self) {
-        // SAFETY: the buffer and memory this target created, unused by any pending work (`render_to` waits);
-        // the hal wrapper owns no memory (`Buffer::from_raw`) and is dropped without destroying the raw buffer.
-        unsafe {
-            drop(self.buf.take());
-            let d = self.device.raw_device();
-            d.destroy_buffer(self.raw, None);
-            d.free_memory(self.mem, None);
-        }
-    }
-}
-
-/// Times of one GPU frame, in seconds (wall only: lavapipe's timestamps would be CPU time anyway).
+/// Times of one GPU frame, in seconds (wall only: release to completion as the calling thread sees it).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GpuTime {
     pub wall: f64,
     pub gpu: f64,
 }
 
-const STORAGE: wgt::BufferUses = wgt::BufferUses::STORAGE_READ_WRITE;
+/// A target this executor wrapped (`Gpu::wrap`): which of its bound targets, and the memory, so a target evicted for
+/// another is imported again when it is drawn.
+pub struct Target {
+    slot: usize,
+    epoch: u64,
+    ptr: *mut u8,
+    len: usize,
+}
+
+struct Bound {
+    imp: Import,
+    epoch: u64,
+    used: u64,
+}
+
+pub struct Gpu {
+    /// The device, its driver and API version.
+    pub info: String,
+    /// A software device (lavapipe).
+    pub software: bool,
+    costs: Costs,
+    dsl: vk::DescriptorSetLayout,
+    layout: vk::PipelineLayout,
+    pipe: vk::Pipeline,
+    /// 0 commands, 1 programs, 2 atlas, 3 the own output, 4 image atlas.
+    bufs: [Option<Buf>; 5],
+    /// Indirect arguments, one per target and one for the own output.
+    args: Buf,
+    targets: [Option<Bound>; MAX_TARGETS],
+    epoch: u64,
+    dpool: vk::DescriptorPool,
+    sets: Vec<vk::DescriptorSet>,
+    cpool: vk::CommandPool,
+    cb: vk::CommandBuffer,
+    s: Stream,
+    /// The bindings changed since the frame was recorded.
+    stale: bool,
+    frames: u64,
+    d: Device,
+}
+
+// SAFETY: every Vulkan object here belongs to `d`, which moves with it; the mapped pointers are this executor's own
+// memory. A `Gpu` is built on one thread and then used by one thread at a time (`&mut self` for all GPU work).
+unsafe impl Send for Gpu {}
 
 impl Gpu {
-    /// The first Vulkan adapter (lavapipe where it is the only ICD) and the kernel's pipeline from `spirv`
-    /// (normally `crate::KERNEL_SPIRV`). `None` without a Vulkan adapter.
+    /// The kernel's pipeline from `spirv` (normally `crate::KERNEL_SPIRV`; the gates pass mutated words) on the best
+    /// Vulkan device, a software one included; `None` without one.
     pub fn new(spirv: &[u8]) -> Option<Gpu> {
-        // SAFETY (this function): every hal call gets descriptors referencing live objects of this device; the
-        // pipeline layout matches the bindings the SPIR-V declares (group 0, bindings 0..5, as kernel.rs).
-        unsafe {
-            let desc = hal::InstanceDescriptor {
-                name: "bough-kernel",
-                flags: wgt::InstanceFlags::from_build_config().with_env(),
-                memory_budget_thresholds: Default::default(),
-                backend_options: Default::default(),
-                telemetry: None,
-                display: None,
-            };
-            let instance = <Api as hal::Api>::Instance::init(&desc).ok()?;
-            let mut adapters = instance.enumerate_adapters(None);
-            if adapters.is_empty() {
-                return None;
-            }
-            let exposed = adapters.swap_remove(0);
-            let limits = exposed.capabilities.limits.clone();
-            // VK_EXT_external_memory_host when the device has it (lavapipe does)
-            let raw_instance = exposed.adapter.shared_instance().raw_instance().clone();
-            let phys = exposed.adapter.raw_physical_device();
-            let ext = ash::ext::external_memory_host::NAME;
-            let has_import = raw_instance.enumerate_device_extension_properties(phys).map(|v| v.iter().any(|e| e.extension_name_as_c_str() == Ok(ext))).unwrap_or(false);
-            let cb: Option<Box<hal::vulkan::CreateDeviceCallback<'_>>> = if has_import {
-                Some(Box::new(move |args: hal::vulkan::CreateDeviceCallbackArgs<'_, '_, '_>| args.extensions.push(ext)))
-            } else {
-                None
-            };
-            let hal::OpenDevice { device, queue } = exposed.adapter.open_with_callback(wgt::Features::empty(), &limits, &wgt::MemoryHints::Performance, cb).ok()?;
-            let host_import = if has_import {
-                let mut p = vk::PhysicalDeviceExternalMemoryHostPropertiesEXT::default();
-                let mut p2 = vk::PhysicalDeviceProperties2::default().push_next(&mut p);
-                raw_instance.get_physical_device_properties2(phys, &mut p2);
-                let align = p.min_imported_host_pointer_alignment;
-                Some((ash::ext::external_memory_host::Device::new(&raw_instance, device.raw_device()), align))
-            } else {
-                None
-            };
-            let entries: Vec<wgt::BindGroupLayoutEntry> = (0..5)
-                .map(|b| wgt::BindGroupLayoutEntry {
-                    binding: b,
-                    visibility: wgt::ShaderStages::COMPUTE,
-                    ty: wgt::BindingType::Buffer { ty: wgt::BufferBindingType::Storage { read_only: b != 3 }, has_dynamic_offset: false, min_binding_size: None },
-                    count: None,
-                })
-                .collect();
-            let bgl = device.create_bind_group_layout(&hal::BindGroupLayoutDescriptor { label: None, flags: hal::BindGroupLayoutFlags::empty(), entries: &entries }).ok()?;
-            let layout = device.create_pipeline_layout(&hal::PipelineLayoutDescriptor { label: None, flags: hal::PipelineLayoutFlags::empty(), bind_group_layouts: &[Some(&bgl)], immediate_size: 0 }).ok()?;
-            let words = spirv_words(spirv);
-            let module = device.create_shader_module(&hal::ShaderModuleDescriptor { label: None, runtime_checks: wgt::ShaderRuntimeChecks::unchecked() }, hal::ShaderInput::SpirV(&words)).unwrap_or_else(|e| panic!("kernel SPIR-V: {e:?}"));
-            let consts = Default::default();
-            let pso = device
-                .create_compute_pipeline(&hal::ComputePipelineDescriptor {
-                    label: None,
-                    layout: &layout,
-                    stage: hal::ProgrammableStage { module: &module, entry_point: "fs_ktile", constants: &consts, zero_initialize_workgroup_memory: false },
-                    cache: None,
-                })
-                .unwrap_or_else(|e| panic!("kernel pipeline: {e:?}"));
-            let fence = device.create_fence().ok()?;
-            let encoder = Some(device.create_command_encoder(&hal::CommandEncoderDescriptor { label: None, queue: &queue }).ok()?);
-            Some(Gpu {
-                info: exposed.info,
-                device: std::sync::Arc::new(device),
-                queue,
-                host_import,
-                o: std::mem::ManuallyDrop::new(Objs { bgl, layout, module, pso, fence }),
-                bufs: [None, None, None, None, None],
-                encoder,
-                fence_value: 0,
-            })
-        }
+        Gpu::build(spirv, true).ok()
     }
 
-    /// Buffer `i`, at least `bytes` long (grown to the next power of two; contents not kept).
+    /// As `new`; a software device only when `software` allows it.
+    pub fn build(spirv: &[u8], software: bool) -> Result<Gpu, String> {
+        let d = Device::new(software, Needs::default(), "kernel")?;
+        let dev = &d.device;
+        let b: Vec<vk::DescriptorSetLayoutBinding> = (0..5)
+            .map(|b| vk::DescriptorSetLayoutBinding::default().binding(b).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).descriptor_count(1).stage_flags(vk::ShaderStageFlags::COMPUTE))
+            .collect();
+        // SAFETY (this block): well-formed create infos on the live device; each object is destroyed by `Drop`, before
+        // the device.
+        let (dsl, layout, dpool, sets, cpool, cb) = unsafe {
+            let dsl = dev.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&b), None).map_err(|e| err("set layout", e))?;
+            let layout = dev.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(std::slice::from_ref(&dsl)), None).map_err(|e| err("pipeline layout", e))?;
+            let n = (MAX_TARGETS + 1) as u32;
+            let sizes = [vk::DescriptorPoolSize { ty: vk::DescriptorType::STORAGE_BUFFER, descriptor_count: 5 * n }];
+            let dpool = dev.create_descriptor_pool(&vk::DescriptorPoolCreateInfo::default().max_sets(n).pool_sizes(&sizes), None).map_err(|e| err("descriptor pool", e))?;
+            let layouts = vec![dsl; n as usize];
+            let sets = dev.allocate_descriptor_sets(&vk::DescriptorSetAllocateInfo::default().descriptor_pool(dpool).set_layouts(&layouts)).map_err(|e| err("descriptor sets", e))?;
+            let cpool = dev
+                .create_command_pool(&vk::CommandPoolCreateInfo::default().queue_family_index(d.qfam).flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER), None)
+                .map_err(|e| err("command pool", e))?;
+            let cb = dev
+                .allocate_command_buffers(&vk::CommandBufferAllocateInfo::default().command_pool(cpool).level(vk::CommandBufferLevel::PRIMARY).command_buffer_count(1))
+                .map_err(|e| err("command buffer", e))?[0];
+            (dsl, layout, dpool, sets, cpool, cb)
+        };
+        let pipe = d.pipelines(layout, &[(spirv, c"fs_ktile")], false)?[0];
+        let args = d.buffer((MAX_TARGETS as u64 + 1) * ARGS, vk::BufferUsageFlags::INDIRECT_BUFFER | vk::BufferUsageFlags::STORAGE_BUFFER, true)?;
+        let s = Stream::new(&d)?;
+        let mut g = Gpu {
+            info: d.info.clone(),
+            software: d.software,
+            costs: crate::cpu::COSTS,
+            dsl,
+            layout,
+            pipe,
+            bufs: [None, None, None, None, None],
+            args,
+            targets: Default::default(),
+            epoch: 0,
+            dpool,
+            sets,
+            cpool,
+            cb,
+            s,
+            stale: true,
+            frames: 0,
+            d,
+        };
+        for i in [0, 1, 2, 4] {
+            g.buf(i, 16);
+        }
+        g.zero_args();
+        Ok(g)
+    }
+
+    /// The measured constants of the backend's choice (`calibrate`; Apple's until then).
+    pub fn costs(&self) -> &Costs {
+        &self.costs
+    }
+    pub fn costs_mut(&mut self) -> &mut Costs {
+        &mut self.costs
+    }
+
+    /// Measure this device: its round trip (the median of eight empty frames) and its time per unit of work, from a
+    /// probe of list rows with text (`scenes::list`, 512 x 512: 256 tiles), held to the CPU-calibrated ratio of time
+    /// per tile to time per entry. A frame after the GPU idled is taken as four round trips until the backend has
+    /// seen one.
+    pub fn calibrate(&mut self) {
+        let mut v: Vec<f64> = (0..8).map(|_| self.frame(OWN, 0).wall).collect();
+        v.sort_by(f64::total_cmp);
+        let fixed = (v[3] * 1e9) as u64;
+        let (fw, fh) = (512u32, 512u32);
+        let scene = crate::scenes::list(fw, fh, 48, true, None);
+        let (apx, ipx) = (crate::scenes::atlas(), crate::scenes::images());
+        let atlas = crate::cpu::Atlas::new(&apx, crate::scenes::ATLAS_W).with_images(&ipx, crate::scenes::IMG_W);
+        let mut prog = Prog::default();
+        crate::cpu::Binner::default().bin(&scene, fw, fh, fw, &atlas, 0, &crate::cpu::Damage::All, true, &mut prog);
+        self.upload(&scene, &atlas, &prog);
+        let (tiles, entries) = (prog.tiles() as u64, prog.entries() as u64);
+        let mut w: Vec<f64> = (0..3).map(|_| self.render(tiles as usize, (fw * fh) as usize).wall).collect();
+        w.sort_by(f64::total_cmp);
+        let wall = (w[1] * 1e9) as u64;
+        let c = crate::cpu::COSTS;
+        let unit = c.gpu_tile * tiles + c.gpu_entry * entries;
+        let work = wall.saturating_sub(fixed).max(1);
+        self.costs = Costs { gpu_fixed_warm: fixed, gpu_fixed_cold: fixed * 4, gpu_tile: (c.gpu_tile * work).div_ceil(unit), gpu_entry: (c.gpu_entry * work).div_ceil(unit), wake: c.wake };
+        // the probe's buffers go back to the frame's sizes as frames need them; its output is dropped
+        self.drop_own_out();
+    }
+
+    /// Buffer `i`, at least `bytes` long (grown to the next power of two; contents not kept). A growth runs the armed
+    /// frame out first (it binds the old buffer).
     fn buf(&mut self, i: usize, bytes: usize) -> &Buf {
-        let need = bytes.max(16);
-        if self.bufs[i].as_ref().is_none_or(|b| b.cap < need) {
+        let need = (bytes.max(16) as u64).next_multiple_of(4);
+        if self.bufs[i].as_ref().is_none_or(|b| b.size < need) {
+            self.run_out();
             let cap = need.next_power_of_two();
-            if let Some(old) = self.bufs[i].take() {
-                // SAFETY: no work is in flight (every frame is waited for).
-                unsafe { self.device.destroy_buffer(old.b) };
+            let b = self.d.buffer(cap, vk::BufferUsageFlags::STORAGE_BUFFER, true).expect("bough-kernel: a Vulkan buffer");
+            if let Some(old) = self.bufs[i].replace(b) {
+                self.d.free(old);
             }
-            // SAFETY: a plain mapped storage buffer of this device.
-            let (b, ptr) = unsafe {
-                let b = self
-                    .device
-                    .create_buffer(&hal::BufferDescriptor { label: None, size: cap as u64, usage: STORAGE | wgt::BufferUses::MAP_READ | wgt::BufferUses::MAP_WRITE, memory_flags: hal::MemoryFlags::PREFER_COHERENT })
-                    .expect("kernel buffer");
-                let m = self.device.map_buffer(&b, 0..cap as u64).expect("map");
-                assert!(m.is_coherent, "kernel buffers must be coherent (the CPU writes and reads them in place)");
-                (b, m.ptr)
-            };
-            self.bufs[i] = Some(Buf { b, ptr, cap });
+            self.stale = true;
         }
         self.bufs[i].as_ref().unwrap()
     }
     fn put<T: Copy>(&mut self, i: usize, data: &[T]) {
         let n = std::mem::size_of_val(data);
-        let p = self.buf(i, n).ptr;
-        // SAFETY: a coherent mapping of at least `n` bytes; no work is in flight.
-        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr() as *const u8, p.as_ptr(), n) };
+        let p = self.buf(i, n).host();
+        // SAFETY: a coherent mapping of at least `n` bytes; the GPU is idle (every frame is waited for) and the armed
+        // frame reads nothing before its release.
+        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr() as *const u8, p, n) };
     }
 
     /// Upload the scene, both atlases and the program.
@@ -214,152 +220,262 @@ impl Gpu {
         self.put(1, &prog.words);
     }
     pub fn upload_atlas(&mut self, atlas: &[u8]) {
-        let p = self.buf(2, atlas.len() + 4).ptr;
+        let p = self.buf(2, atlas.len() + 4).host();
         // SAFETY: as `put`.
-        unsafe { std::ptr::copy_nonoverlapping(atlas.as_ptr(), p.as_ptr(), atlas.len()) };
+        unsafe { std::ptr::copy_nonoverlapping(atlas.as_ptr(), p, atlas.len()) };
     }
     /// The image atlas (premultiplied RGBA8 bytes).
     pub fn upload_images(&mut self, img: &[u8]) {
         self.put(4, img);
     }
 
-    /// The caller's memory as the output buffer (the window's `wl_shm` pages), imported as device memory: the
-    /// kernel writes the words the compositor reads. `None` without `VK_EXT_external_memory_host`, or when `ptr`
-    /// or `len` is not a multiple of the device's import alignment.
+    /// The caller's memory as an output (the window's `wl_shm` pages), imported as device memory: the kernel writes
+    /// the words the compositor reads. `None` when `ptr` or `len` is not a multiple of the device's import alignment
+    /// or the device refuses the import.
     ///
     /// # Safety
-    /// `ptr..ptr + len` must stay mapped and writable for as long as the `Target` lives, and nothing else may
-    /// write it while a frame rendered to it is in flight (`render_to` waits for completion).
-    pub unsafe fn wrap(&self, ptr: *mut u8, len: usize) -> Option<Target> {
-        let (ext, align) = self.host_import.as_ref()?;
-        if ptr as u64 % align != 0 || len as u64 % align != 0 || len == 0 {
+    /// `ptr..ptr + len` stays mapped and writable until `forget_targets` or the executor's drop (an evicted target is
+    /// imported again from the same memory when it is drawn), and nothing else writes it while a frame drawing it is
+    /// in flight (`render_to` waits for completion).
+    pub unsafe fn wrap(&mut self, ptr: *mut u8, len: usize) -> Option<Target> {
+        let a = self.d.host_align as usize;
+        if !(ptr as usize).is_multiple_of(a) || !len.is_multiple_of(a) || len == 0 {
             return None;
         }
-        let raw = self.device.raw_device().clone();
-        let ht = vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT;
-        // SAFETY: the caller's contract; every object created here is owned by the `Target` (or destroyed on
-        // the failure paths).
-        unsafe {
-            let mut ext_info = vk::ExternalMemoryBufferCreateInfo::default().handle_types(ht);
-            let bci = vk::BufferCreateInfo::default().size(len as u64).usage(vk::BufferUsageFlags::STORAGE_BUFFER).sharing_mode(vk::SharingMode::EXCLUSIVE).push_next(&mut ext_info);
-            let buffer = raw.create_buffer(&bci, None).ok()?;
-            let mut hp = vk::MemoryHostPointerPropertiesEXT::default();
-            // (ash 0.38 has no wrapper for this one: the raw entry point)
-            if (ext.fp().get_memory_host_pointer_properties_ext)(ext.device(), ht, ptr as *const std::ffi::c_void, &mut hp) != vk::Result::SUCCESS {
-                raw.destroy_buffer(buffer, None);
-                return None;
-            }
-            let req = raw.get_buffer_memory_requirements(buffer);
-            let bits = req.memory_type_bits & hp.memory_type_bits;
-            if bits == 0 {
-                raw.destroy_buffer(buffer, None);
-                return None;
-            }
-            let mut import = vk::ImportMemoryHostPointerInfoEXT::default().handle_type(ht).host_pointer(ptr as *mut std::ffi::c_void);
-            let ai = vk::MemoryAllocateInfo::default().allocation_size(len as u64).memory_type_index(bits.trailing_zeros()).push_next(&mut import);
-            let Ok(mem) = raw.allocate_memory(&ai, None) else {
-                raw.destroy_buffer(buffer, None);
-                return None;
-            };
-            if raw.bind_buffer_memory(buffer, mem, 0).is_err() {
-                raw.destroy_buffer(buffer, None);
-                raw.free_memory(mem, None);
-                return None;
-            }
-            let buf = hal::vulkan::Buffer::from_raw(buffer);
-            Some(Target { buf: Some(buf), mem, raw: buffer, device: self.device.clone() })
+        if let Some(slot) = (0..MAX_TARGETS).find(|&j| self.targets[j].as_ref().is_some_and(|b| b.imp.ptr == ptr && b.imp.size as usize == len)) {
+            let epoch = self.targets[slot].as_ref().unwrap().epoch;
+            return Some(Target { slot, epoch, ptr, len });
         }
+        // SAFETY: the caller's contract.
+        unsafe { self.bind(ptr, len) }.map(|(slot, epoch)| Target { slot, epoch, ptr, len })
+    }
+
+    /// Import `ptr` into a free slot, or the least recently drawn one's (runs the armed frame out first).
+    unsafe fn bind(&mut self, ptr: *mut u8, len: usize) -> Option<(usize, u64)> {
+        let slot = (0..MAX_TARGETS).find(|&j| self.targets[j].is_none()).unwrap_or_else(|| (0..MAX_TARGETS).min_by_key(|&j| self.targets[j].as_ref().map_or(0, |b| b.used)).unwrap());
+        // SAFETY: the caller's contract.
+        let imp = unsafe { self.d.import(ptr, len, vk::BufferUsageFlags::STORAGE_BUFFER) }.ok()?;
+        self.run_out();
+        if let Some(old) = self.targets[slot].take() {
+            self.d.drop_import(old.imp);
+        }
+        self.epoch += 1;
+        self.targets[slot] = Some(Bound { imp, epoch: self.epoch, used: self.frames });
+        self.stale = true;
+        Some((slot, self.epoch))
+    }
+
+    /// Let go of every wrapped target (their memory is about to change hands: a resize).
+    pub fn forget_targets(&mut self) {
+        self.run_out();
+        for t in self.targets.iter_mut() {
+            if let Some(b) = t.take() {
+                self.d.drop_import(b.imp);
+            }
+        }
+        self.stale = true;
     }
 
     /// Run the uploaded program with `target` as the output (its stride is the program's).
     pub fn render_to(&mut self, tiles: usize, target: &Target) -> GpuTime {
-        self.buf(3, 16);
-        self.buf(4, 16);
-        self.run(tiles, target.buf.as_ref())
+        let live = self.targets[target.slot].as_ref().is_some_and(|b| b.epoch == target.epoch);
+        let slot = if live {
+            target.slot
+        } else {
+            // SAFETY: `wrap`'s contract: the memory stays valid until `forget_targets` (after which no target of
+            // before is drawn: the backend forgets its handles with them).
+            unsafe { self.bind(target.ptr, target.len) }.expect("bough-kernel: re-importing an evicted target").0
+        };
+        self.targets[slot].as_mut().unwrap().used = self.frames;
+        self.frame(slot, tiles as u32)
     }
 
-    /// Run the uploaded program: `tiles` workgroups into the output buffer of `out_words` words.
+    /// Run the uploaded program: `tiles` workgroups into the own output buffer of `out_words` words.
     pub fn render(&mut self, tiles: usize, out_words: usize) -> GpuTime {
         self.buf(3, out_words * 4);
-        self.buf(4, 16);
-        self.run(tiles, None)
+        self.frame(OWN, tiles as u32)
     }
 
-    fn run(&mut self, tiles: usize, target: Option<&HBuf>) -> GpuTime {
-        let t = std::time::Instant::now();
-        for i in [0, 1, 2] {
-            self.buf(i, 16);
-        }
-        // SAFETY: the bind group references this device's live buffers (or the caller's target, alive for the
-        // call); the encoder is idle (every frame waits); the group is destroyed after the wait.
+    fn zero_args(&mut self) {
+        // SAFETY: the host-visible arguments buffer holds MAX_TARGETS + 1 entries; the GPU reads it only after a
+        // release (the caller's frame is the only writer).
         unsafe {
-            let out = target.unwrap_or(&self.bufs[3].as_ref().unwrap().b);
-            let bufs: Vec<&HBuf> = (0..5).map(|i| if i == 3 { out } else { &self.bufs[i].as_ref().unwrap().b }).collect();
-            let bb: Vec<hal::BufferBinding<'_, HBuf>> = bufs.iter().map(|b| hal::BufferBinding::new_unchecked(*b, 0, None)).collect();
-            let entries: Vec<hal::BindGroupEntry> = (0..5).map(|i| hal::BindGroupEntry { binding: i, resource_index: i, count: 1 }).collect();
-            let bg = self
-                .device
-                .create_bind_group(&hal::BindGroupDescriptor { label: None, layout: &self.o.bgl, buffers: &bb, samplers: &[], textures: &[], entries: &entries, acceleration_structures: &[], external_textures: &[] })
-                .expect("bind group");
-            let mut enc = self.encoder.take().expect("encoder");
-            enc.begin_encoding(None).unwrap();
-            // the host's writes (coherent, before the submission) are visible to the shader by the submission;
-            // the shader's writes are made visible to the host after the dispatch
-            enc.begin_compute_pass(&hal::ComputePassDescriptor { label: None, timestamp_writes: None });
-            enc.set_compute_pipeline(&self.o.pso);
-            enc.set_bind_group(&self.o.layout, 0, &bg, &[]);
-            if tiles > 0 {
-                enc.dispatch([tiles as u32, 1, 1]);
+            let a = self.args.host() as *mut [u32; 4];
+            for j in 0..=MAX_TARGETS {
+                a.add(j).write([0, 1, 1, 0]);
             }
-            enc.end_compute_pass();
-            enc.transition_buffers(std::iter::once(hal::BufferBarrier { buffer: out, usage: hal::StateTransition { from: STORAGE, to: wgt::BufferUses::MAP_READ } }));
-            let cb = enc.end_encoding().unwrap();
-            self.fence_value += 1;
-            self.queue.submit(&[&cb], &[], (&mut self.o.fence, self.fence_value)).unwrap();
-            assert!(self.device.wait(&self.o.fence, self.fence_value, None).unwrap(), "GPU wait timed out");
-            enc.reset_all(std::iter::once(cb));
-            self.encoder = Some(enc);
-            self.device.destroy_bind_group(bg);
         }
+    }
+
+    /// Run the armed frame (if any) with every count zero: what the frame binds may then change.
+    fn run_out(&mut self) {
+        if self.s.armed_upto == self.s.released {
+            self.s.idle(&self.d);
+            return;
+        }
+        self.zero_args();
+        self.s.run_out(&self.d);
+    }
+
+    fn descriptors(&mut self) {
+        let whole = |b: vk::Buffer| vk::DescriptorBufferInfo { buffer: b, offset: 0, range: vk::WHOLE_SIZE };
+        let common: Vec<vk::DescriptorBufferInfo> = [0, 1, 2, 3, 4].iter().map(|&i| whole(self.bufs[i].as_ref().map_or(self.args.buf, |b| b.buf))).collect();
+        let mut infos: Vec<[vk::DescriptorBufferInfo; 5]> = Vec::new();
+        for j in 0..=MAX_TARGETS {
+            let out = if j == OWN { self.bufs[3].as_ref().map(|b| b.buf) } else { self.targets[j].as_ref().map(|b| b.imp.buf) };
+            let mut i = [common[0], common[1], common[2], common[3], common[4]];
+            // an unbound slot's set names the own output (or any buffer): its dispatch is never non-empty
+            i[3] = whole(out.unwrap_or(common[3].buffer));
+            infos.push(i);
+        }
+        let writes: Vec<vk::WriteDescriptorSet> = infos
+            .iter()
+            .enumerate()
+            .flat_map(|(j, i)| (0..5).map(move |b| (j, b, i)))
+            .map(|(j, b, i)| vk::WriteDescriptorSet::default().dst_set(self.sets[j]).dst_binding(b as u32).descriptor_type(vk::DescriptorType::STORAGE_BUFFER).buffer_info(std::slice::from_ref(&i[b])))
+            .collect();
+        // SAFETY: no pending work uses the sets (the caller ran the stream out).
+        unsafe { self.d.device.update_descriptor_sets(&writes, &[]) };
+    }
+
+    /// Record the frame: the host's writes made visible, one indirect dispatch per bound target and the own output,
+    /// the shader's writes made visible to the host.
+    fn record(&self) {
+        let dev = &self.d.device;
+        let cs = vk::PipelineStageFlags::COMPUTE_SHADER;
+        let host_in = vk::MemoryBarrier::default().src_access_mask(vk::AccessFlags::HOST_WRITE).dst_access_mask(vk::AccessFlags::SHADER_READ | vk::AccessFlags::INDIRECT_COMMAND_READ);
+        let host_out = vk::MemoryBarrier::default().src_access_mask(vk::AccessFlags::SHADER_WRITE).dst_access_mask(vk::AccessFlags::HOST_READ);
+        // SAFETY: the command buffer is not pending (the stream ran out); every object it names lives until the next
+        // re-record or the executor's drop, each preceded by a run-out.
+        unsafe {
+            dev.reset_command_buffer(self.cb, vk::CommandBufferResetFlags::empty()).unwrap();
+            dev.begin_command_buffer(self.cb, &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE)).unwrap();
+            dev.cmd_pipeline_barrier(self.cb, vk::PipelineStageFlags::HOST, cs | vk::PipelineStageFlags::DRAW_INDIRECT, vk::DependencyFlags::empty(), &[host_in], &[], &[]);
+            dev.cmd_bind_pipeline(self.cb, vk::PipelineBindPoint::COMPUTE, self.pipe);
+            for j in 0..=MAX_TARGETS {
+                let bound = if j == OWN { self.bufs[3].is_some() } else { self.targets[j].is_some() };
+                if !bound {
+                    continue;
+                }
+                dev.cmd_bind_descriptor_sets(self.cb, vk::PipelineBindPoint::COMPUTE, self.layout, 0, &[self.sets[j]], &[]);
+                dev.cmd_dispatch_indirect(self.cb, self.args.buf, j as u64 * ARGS);
+            }
+            dev.cmd_pipeline_barrier(self.cb, cs, vk::PipelineStageFlags::HOST, vk::DependencyFlags::empty(), &[host_out], &[], &[]);
+            dev.end_command_buffer(self.cb).unwrap();
+        }
+    }
+
+    /// One frame: `tiles` workgroups into output `slot`, released from the armed stream and waited for.
+    fn frame(&mut self, slot: usize, tiles: u32) -> GpuTime {
+        let t = std::time::Instant::now();
+        if self.stale {
+            self.run_out();
+            self.descriptors();
+            self.record();
+            self.stale = false;
+        }
+        self.zero_args();
+        // SAFETY: entry `slot` of the arguments buffer (as `zero_args`).
+        unsafe { (self.args.host() as *mut [u32; 4]).add(slot).write([tiles, 1, 1, 0]) };
+        let f = self.s.released + 1;
+        let cb = self.cb;
+        // normally armed by the previous frame; then the release, then the next frame's submission while this one draws
+        self.s.arm(&self.d, f, |_| cb);
+        self.s.release(&self.d);
+        self.s.arm(&self.d, f + 1, |_| cb);
+        self.s.idle(&self.d);
+        self.frames += 1;
         let wall = t.elapsed().as_secs_f64();
         GpuTime { wall, gpu: wall }
     }
 
-    /// The output buffer's first `words` words.
+    fn drop_own_out(&mut self) {
+        if let Some(b) = self.bufs[3].take() {
+            self.run_out();
+            self.d.free(b);
+            self.stale = true;
+        }
+    }
+
+    /// The own output buffer's first `words` words.
     pub fn out(&self, words: usize) -> &[u32] {
         let b = self.bufs[3].as_ref().expect("render first");
-        assert!(b.cap >= words * 4);
+        assert!(b.size as usize >= words * 4);
         // SAFETY: a coherent mapping of at least `words` words; the GPU is idle.
-        unsafe { std::slice::from_raw_parts(b.ptr.as_ptr() as *const u32, words) }
+        unsafe { std::slice::from_raw_parts(b.host() as *const u32, words) }
     }
-    /// Fill the output with `words` (tests: a sentinel that unscheduled tiles must keep).
+    /// Fill the own output with `words` (tests: a sentinel that unscheduled tiles must keep).
     pub fn set_out(&mut self, words: &[u32]) {
         self.put(3, words);
     }
-    /// Zero the output.
+    /// Zero the own output.
     pub fn clear_out(&mut self, words: usize) {
-        let p = self.buf(3, words * 4).ptr;
+        let p = self.buf(3, words * 4).host();
         // SAFETY: as `put`.
-        unsafe { std::ptr::write_bytes(p.as_ptr(), 0, words * 4) };
+        unsafe { std::ptr::write_bytes(p, 0, words * 4) };
     }
 }
 
 impl Drop for Gpu {
     fn drop(&mut self) {
-        // SAFETY: the GPU is idle (every frame waited); each object is destroyed once, users before what they use,
-        // all before the device (dropped after this). `o` is not touched again.
+        self.run_out();
+        // SAFETY: the stream ran out and the device is idle; each object was created by this executor, and is
+        // destroyed once, before the device (the last field).
         unsafe {
-            let o = std::mem::ManuallyDrop::take(&mut self.o);
-            let d = &self.device;
-            self.encoder = None; // (its Drop destroys the command pool)
-            for b in self.bufs.iter_mut().filter_map(|b| b.take()) {
-                d.destroy_buffer(b.b);
-            }
-            d.destroy_compute_pipeline(o.pso);
-            d.destroy_shader_module(o.module);
-            d.destroy_pipeline_layout(o.layout);
-            d.destroy_bind_group_layout(o.bgl);
-            d.destroy_fence(o.fence);
+            let _ = self.d.device.device_wait_idle();
+            self.s.destroy(&self.d);
+            self.d.device.destroy_command_pool(self.cpool, None);
+            self.d.device.destroy_descriptor_pool(self.dpool, None);
+            self.d.device.destroy_pipeline(self.pipe, None);
+            self.d.device.destroy_pipeline_layout(self.layout, None);
+            self.d.device.destroy_descriptor_set_layout(self.dsl, None);
+        }
+        for b in self.bufs.iter_mut().filter_map(|b| b.take()) {
+            self.d.free(b);
+        }
+        self.d.free(std::mem::replace(&mut self.args, Buf::NONE));
+        for t in self.targets.iter_mut().filter_map(|t| t.take()) {
+            self.d.drop_import(t.imp);
+        }
+    }
+}
+
+static PREP: Pending<Gpu> = Pending::new();
+
+/// Start building the executor (device, pipeline, measured costs) on another thread. `software`: a software device
+/// may be the one; without it, a machine with no render node (or where a search found no hardware device) starts
+/// nothing.
+pub fn prepare_in_background(software: bool) {
+    if !software && bough_vk::no_hardware() {
+        return;
+    }
+    PREP.start("bough-kernel-vk", move || {
+        let mut g = Gpu::build(crate::KERNEL_SPIRV, software)?;
+        g.calibrate();
+        Ok(g)
+    });
+}
+
+/// The executor `prepare_in_background` is building: `Some` once it is built (or failed), never waiting; `None` while
+/// it builds or when none was started.
+pub fn poll_prepared() -> Option<Result<Gpu, String>> {
+    if PREP.ready() { PREP.take() } else { None }
+}
+
+/// A build was started and not yet taken.
+pub fn preparing() -> bool {
+    PREP.started()
+}
+
+/// The executor, waiting for the build that was started, or built now (calibrated either way).
+pub fn take_prepared(software: bool) -> Result<Gpu, String> {
+    match PREP.take() {
+        Some(r) => r,
+        None if !software && bough_vk::no_hardware() => Err("no hardware Vulkan device (no render node, or none found before)".into()),
+        None => {
+            let mut g = Gpu::build(crate::KERNEL_SPIRV, software)?;
+            g.calibrate();
+            Ok(g)
         }
     }
 }

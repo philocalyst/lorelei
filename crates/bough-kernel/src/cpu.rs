@@ -129,6 +129,7 @@ pub enum Exec {
 /// Measured constants of the choice (ns). `gpu_fixed`: a GPU frame's round trip whatever it draws, when the
 /// GPU ran within the last few frames (`warm`) and when it has clocked down; `wake`: getting parked workers
 /// going; the GPU's kernel time per tile and per tile entry.
+#[derive(Clone, Copy, Debug)]
 pub struct Costs {
     pub gpu_fixed_warm: u64,
     pub gpu_fixed_cold: u64,

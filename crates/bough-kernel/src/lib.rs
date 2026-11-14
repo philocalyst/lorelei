@@ -24,7 +24,7 @@ pub mod cpu;
 pub mod simd;
 #[cfg(target_os = "macos")]
 pub mod metal;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod vulkan;
 /// The GPU executor of this platform: Metal on macOS, Vulkan on Linux (the same API).
 #[cfg(target_os = "macos")]

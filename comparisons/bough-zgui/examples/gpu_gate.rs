@@ -19,7 +19,10 @@ fn main() {
     let out = a.get(1).filter(|s| *s != "-").cloned();
     let steps: usize = a.get(2).and_then(|v| v.parse().ok()).unwrap_or(48);
     let t0 = Instant::now();
-    let mut app = App::new(GalleryL::fresh(), config(WIDTH, HEIGHT), true);
+    // process entry, as an application's: the GPU devices are built on other threads while the app mounts
+    let cfg = config(WIDTH, HEIGHT);
+    bough::app::prepare(&cfg, &GalleryL::strikes(), &GalleryL::svgs(), 0);
+    let mut app = App::new(GalleryL::fresh(), cfg, true);
     let made = t0.elapsed();
     let exec = app.executor();
     let tag = exec.split(':').next().unwrap_or("x").to_string();
@@ -93,5 +96,9 @@ fn main() {
     times.sort_by(f64::total_cmp);
     let p = |q: f64| times[((times.len() - 1) as f64 * q) as usize] * 1e3;
     eprintln!("{exec}: {} frames, p50 {:.2} ms, p90 {:.2} ms, max {:.2} ms; {bad_steps} steps differ", times.len(), p(0.5), p(0.9), p(1.0));
+    if let Some(k) = app.kernel.as_ref() {
+        let s = k.stats;
+        eprintln!("mixed model: {} frames: one core {}, the pool {}, the GPU {}; {}", s.frames, s.cpu1, s.cpun, s.gpu, k.gpu_info().unwrap_or_else(|| "no GPU".into()));
+    }
     std::process::exit(if bad_steps == 0 { 0 } else { 1 });
 }

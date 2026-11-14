@@ -1,0 +1,11 @@
+[package]
+name = "bough-vk"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+description = "The Vulkan device layer bough's GPU executors share (ash): the loader opened once, the device search and its render-node gate, host-memory imports, mapped buffers, compute pipelines through a pipeline cache on disk, the pre-armed stream released by a timeline semaphore, completion as an fd, and devices built on another thread"
+
+# Linux, and macOS through MoltenVK (the loader is opened at run time; nothing links libvulkan).
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+ash = "0.38"
+libc = "0.2"
