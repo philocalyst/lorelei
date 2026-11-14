@@ -8,7 +8,8 @@ that preserves the clean-room GPUI rework it continues. **Humans and AI-assisted
 lane** (`docs/LANES.md`). The aim is a framework that keeps bough's measured efficiency while reaching every platform
 and the design's whole surface.
 
-**Status (2026-11-13):** the façade runs on macOS (Metal, AppKit) and Linux (Wayland, CPU executor); a second,
+**Status (2026-11-14):** the façade runs on macOS (Metal, AppKit) and Linux (Wayland; the CPU executor, or on branch
+`lead/vk-gl` the Vulkan or OpenGL executor of `crates/bough-fused`, `BOUGH_GPU`); a second,
 typed-dataflow core (`bough-x` and its sibling crates) holds the order-of-magnitude numbers and is not yet what the
 façade runs on. What stands, what was refuted and every open avenue are in `docs/r8/final/REPORT.md`; the roadmap is
 in `AGENTS.md`. It is not yet a complete GUI framework: text editing and IME, accessibility, Windows and X11,
