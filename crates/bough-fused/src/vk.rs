@@ -449,9 +449,24 @@ fn entry() -> Result<&'static ash::Entry, String> {
 
 static PREP: std::sync::Mutex<Option<std::thread::JoinHandle<Result<Prep, String>>>> = std::sync::Mutex::new(None);
 
+/// Could a hardware Vulkan device exist here? On Linux every hardware driver has a DRM render node (or NVIDIA's own
+/// device files); without one the default search is skipped and no Vulkan library is loaded at all.
+pub fn hardware_possible() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let render = std::fs::read_dir("/dev/dri").is_ok_and(|d| d.flatten().any(|e| e.file_name().to_string_lossy().starts_with("renderD")));
+        render || std::path::Path::new("/dev/nvidia0").exists()
+    }
+    #[cfg(not(target_os = "linux"))]
+    true
+}
+
 /// Start building the device (instance, device, queue, pipelines) on another thread; the next presenter takes it.
 /// `software`: a software device may be the one.
 pub fn prepare_in_background(software: bool) {
+    if !software && !hardware_possible() {
+        return;
+    }
     let h = std::thread::Builder::new().name("bough-vk-prep".into()).spawn(move || Prep::new(software)).expect("vk prep thread");
     *PREP.lock().unwrap() = Some(h);
 }
@@ -466,6 +481,7 @@ pub fn take_prep(software: bool) -> Result<Prep, String> {
     let r = match PREP.lock().unwrap().take() {
         Some(h) => h.join().map_err(|_| "vk prep thread panicked".to_string())?,
         None if !software && NO_HARDWARE.load(Relaxed) => Err("no hardware Vulkan device (searched before)".into()),
+        None if !software && !hardware_possible() => Err("no GPU render node".into()),
         None => Prep::new(software),
     };
     if r.is_err() && !software {
