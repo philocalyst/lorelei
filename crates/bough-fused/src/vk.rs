@@ -445,12 +445,22 @@ pub fn prepare_in_background(software: bool) {
     *PREP.lock().unwrap() = Some(h);
 }
 
+/// Set once a search for a hardware device found none: later default searches in this process answer at once (a
+/// machine without a GPU pays the loader and the enumeration once, not at every app).
+static NO_HARDWARE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The prepared device (waiting for its thread), or a new one.
 pub fn take_prep(software: bool) -> Result<Prep, String> {
-    match PREP.lock().unwrap().take() {
+    use std::sync::atomic::Ordering::Relaxed;
+    let r = match PREP.lock().unwrap().take() {
         Some(h) => h.join().map_err(|_| "vk prep thread panicked".to_string())?,
+        None if !software && NO_HARDWARE.load(Relaxed) => Err("no hardware Vulkan device (searched before)".into()),
         None => Prep::new(software),
+    };
+    if r.is_err() && !software {
+        NO_HARDWARE.store(true, Relaxed);
     }
+    r
 }
 
 /// Counters.
