@@ -58,6 +58,11 @@ const GL_PROGRAM_BINARY_RETRIEVABLE_HINT: GLenum = 0x8257;
 const GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT: GLenum = 0x90DF;
 const GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS: GLenum = 0x90DB;
 const GL_SUBGROUP_SIZE_KHR: GLenum = 0x9532;
+const GL_SUBGROUP_SUPPORTED_STAGES_KHR: GLenum = 0x9533;
+const GL_SUBGROUP_SUPPORTED_FEATURES_KHR: GLenum = 0x9534;
+const GL_COMPUTE_SHADER_BIT: GLint = 0x20;
+const GL_SUBGROUP_FEATURE_BASIC_BIT_KHR: GLint = 0x1;
+const GL_SUBGROUP_FEATURE_ARITHMETIC_BIT_KHR: GLint = 0x4;
 
 const EGL_NONE: EGLint = 0x3038;
 const EGL_EXTENSIONS: EGLint = 0x3055;
@@ -266,13 +271,17 @@ impl Prep {
             let mut n = 0;
             (gl.glGetIntegerv)(GL_NUM_EXTENSIONS, &mut n);
             let ext: Vec<String> = (0..n as u32).map(|i| CStr::from_ptr((gl.glGetStringi)(GL_EXTENSIONS, i).cast()).to_string_lossy().into_owned()).collect();
-            let need = ["GL_ARB_buffer_storage", "GL_KHR_shader_subgroup"];
             let mut fail = None;
-            for x in need {
-                if !ext.iter().any(|e| e == x) {
-                    fail = Some(format!("{renderer}: no {x}"));
-                }
+            if !ext.iter().any(|e| e == "GL_ARB_buffer_storage") {
+                fail = Some(format!("{renderer}: no GL_ARB_buffer_storage"));
             }
+            // subgroup arithmetic in compute shaders, else the subgroup-free kernels
+            let subgroups = ext.iter().any(|e| e == "GL_KHR_shader_subgroup") && {
+                let (mut stages, mut feats) = (0, 0);
+                (gl.glGetIntegerv)(GL_SUBGROUP_SUPPORTED_STAGES_KHR, &mut stages);
+                (gl.glGetIntegerv)(GL_SUBGROUP_SUPPORTED_FEATURES_KHR, &mut feats);
+                stages & GL_COMPUTE_SHADER_BIT != 0 && feats & (GL_SUBGROUP_FEATURE_BASIC_BIT_KHR | GL_SUBGROUP_FEATURE_ARITHMETIC_BIT_KHR) == (GL_SUBGROUP_FEATURE_BASIC_BIT_KHR | GL_SUBGROUP_FEATURE_ARITHMETIC_BIT_KHR)
+            };
             let mut blocks = 0;
             (gl.glGetIntegerv)(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS, &mut blocks);
             if blocks < 10 {
@@ -288,10 +297,12 @@ impl Prep {
             p.ssbo_align = (al as usize).max(4);
             let mut sg = 0;
             (p.gl.glGetIntegerv)(GL_SUBGROUP_SIZE_KHR, &mut sg);
-            let (progs, cached) = p.programs(&format!("{vendor}|{renderer}|{version}"))?;
+            let srcs = if subgroups { [crate::glsl::FS_COPY, crate::glsl::FS_BIN, crate::glsl::FS_TILE] } else { [crate::glsl::wg::FS_COPY, crate::glsl::wg::FS_BIN, crate::glsl::wg::FS_TILE] };
+            let (progs, cached) = p.programs(&format!("{vendor}|{renderer}|{version}"), srcs)?;
             p.progs = progs;
             p.software = renderer.contains("llvmpipe") || renderer.contains("softpipe") || renderer.contains("SwiftShader");
-            p.info = format!("{renderer} ({vendor}; OpenGL {version}; subgroup {sg}; programs {})", if cached { "from the cache" } else { "compiled" });
+            let sgs = if subgroups { format!("subgroup {sg}") } else { "no subgroups: workgroup scans".to_string() };
+            p.info = format!("{renderer} ({vendor}; OpenGL {version}; {sgs}; programs {})", if cached { "from the cache" } else { "compiled" });
             // hand the context over: released here, made current by the presenter's thread
             (p.egl.eglMakeCurrent)(p.dpy, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
             p.ns = t0.elapsed().as_nanos() as u64;
@@ -301,9 +312,8 @@ impl Prep {
 
     /// The three programs: from the binary cache when it holds this renderer's build of these sources, else compiled
     /// and linked (and cached). Returns whether they came from the cache.
-    unsafe fn programs(&self, key: &str) -> Result<([GLuint; 3], bool), String> {
+    unsafe fn programs(&self, key: &str, srcs: [&str; 3]) -> Result<([GLuint; 3], bool), String> {
         let gl = &self.gl;
-        let srcs = [crate::glsl::FS_COPY, crate::glsl::FS_BIN, crate::glsl::FS_TILE];
         let hash = {
             // FNV-1a over the renderer and the sources: a different driver or kernel source is a different file
             let mut h: u64 = 0xcbf29ce484222325;

@@ -10,11 +10,17 @@ pub mod spirv {
     pub const FS_TILE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/fs_tile.spv"));
 }
 
-/// The kernels as GLSL 4.30 core (OpenGL), per entry point: the one-buffer form (build.rs).
+/// The kernels as GLSL 4.30 core (OpenGL), per entry point: the one-buffer form (build.rs), with subgroup arithmetic
+/// (`KHR_shader_subgroup`), and in `wg` the subgroup-free form (prefix sums as workgroup-memory scans).
 pub mod glsl {
     pub const FS_COPY: &str = include_str!(concat!(env!("OUT_DIR"), "/fs_copy.comp"));
     pub const FS_BIN: &str = include_str!(concat!(env!("OUT_DIR"), "/fs_bin.comp"));
     pub const FS_TILE: &str = include_str!(concat!(env!("OUT_DIR"), "/fs_tile.comp"));
+    pub mod wg {
+        pub const FS_COPY: &str = include_str!(concat!(env!("OUT_DIR"), "/fs_copy_wg.comp"));
+        pub const FS_BIN: &str = include_str!(concat!(env!("OUT_DIR"), "/fs_bin_wg.comp"));
+        pub const FS_TILE: &str = include_str!(concat!(env!("OUT_DIR"), "/fs_tile_wg.comp"));
+    }
 }
 
 /// The Vulkan presenter (Linux; macOS through MoltenVK).
