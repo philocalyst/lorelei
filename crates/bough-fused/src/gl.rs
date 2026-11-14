@@ -89,7 +89,6 @@ macro_rules! table {
 }
 
 table!(Egl {
-    eglGetProcAddress: fn(*const c_char) -> *const c_void;
     eglGetDisplay: fn(*mut c_void) -> EGLDisplay;
     eglInitialize: fn(EGLDisplay, *mut EGLint, *mut EGLint) -> u32;
     eglTerminate: fn(EGLDisplay) -> u32;
