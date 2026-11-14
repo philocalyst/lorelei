@@ -102,7 +102,11 @@ impl KGpu {
     /// A frame of `tiles` tiles and `entries` entries took `wall`: move the Vulkan device's costs a quarter of the
     /// way toward explaining it (the round trip and the per-tile terms scaled together; within 1/4x..4x per frame).
     fn observe(&mut self, tiles: u64, entries: u64, warm: bool, wall: f64) {
-        let KGpu::Vk(g) = self else { return };
+        let g = match self {
+            KGpu::Vk(g) => g,
+            #[cfg(target_os = "macos")]
+            KGpu::Metal(_) => return,
+        };
         let c = g.costs_mut();
         let fixed = if warm { c.gpu_fixed_warm } else { c.gpu_fixed_cold };
         let pred = (fixed + c.gpu_tile * tiles + c.gpu_entry * entries).max(1) as f64;
