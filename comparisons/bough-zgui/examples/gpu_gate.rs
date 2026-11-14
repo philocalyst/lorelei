@@ -71,8 +71,8 @@ fn main() {
             // a click (a swatch, wherever the scroll put them)
             6 => {
                 let (x, y) = (200.0 + 11.0 * step as f32, 300.0);
-                app.pointer_down(x, y, Button::Left);
-                app.pointer_up(x, y, Button::Left);
+                app.pointer_down(x, y, Button::Primary);
+                app.pointer_up(x, y, Button::Primary);
                 "click"
             }
             // typing (into the field when it has focus; a no-op otherwise)
