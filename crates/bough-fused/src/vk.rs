@@ -89,7 +89,8 @@ impl Prep {
         let t0 = std::time::Instant::now();
         // SAFETY: loading the Vulkan loader library (no other preconditions).
         let entry = unsafe { ash::Entry::load() }.map_err(|e| err("Vulkan loader", e))?;
-        let app = vk::ApplicationInfo::default().application_name(c"bough").engine_name(c"bough").api_version(vk::make_api_version(0, 1, 2, 0));
+        // 1.3: what the device then offers of 1.3 (full subgroups, subgroup size control) is core; a 1.2 device still works
+        let app = vk::ApplicationInfo::default().application_name(c"bough").engine_name(c"bough").api_version(vk::make_api_version(0, 1, 3, 0));
         // SAFETY: plain enumeration.
         let have_ext = unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap_or_default();
         let has = |n: &CStr| have_ext.iter().any(|e| e.extension_name_as_c_str() == Ok(n));
