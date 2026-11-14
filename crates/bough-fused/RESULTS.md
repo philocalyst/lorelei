@@ -53,7 +53,10 @@ What the port changes against the Metal kernels, and why:
 * *Start-up:* the device is built on another thread from process entry (`prepare_in_background`, as Metal's); the
   pipelines come from build-time SPIR-V through a pipeline cache kept on disk (`$XDG_CACHE_HOME/bough`); full
   subgroups are required where the device can (`REQUIRE_FULL_SUBGROUPS`); a compute-only queue family is preferred.
-  A process that found no hardware device does not search again.
+  A process that found no hardware device does not search again, and on Linux the default does not search at all
+  without a DRM render node (or NVIDIA's device files), so a machine without a GPU loads no Vulkan library. The
+  library, once opened, is never closed: a driver's threads (llvmpipe's rasterisers) outlive the instance that
+  started them, and closing it under them crashed `tests/capacity` after a probe found only lavapipe.
 * `BOUGH_VK_VALIDATE=1` runs under the Khronos validation layer; `BOUGH_VK_DEVICE` picks a device;
   `BOUGH_VK_LIB` opens a Vulkan library directly (MoltenVK's dylib without a loader).
 
@@ -89,6 +92,9 @@ Wayland compositor, pixman renderer).
   Vulkan on MoltenVK each differ from Metal in 1,482–1,909 of 1,600,000 pixels (about 0.1 %), **every one by one
   level in one channel** (f32 against half rounding). Vulkan and GL agree with each other on those frames. Against the
   CPU executor: 1,116–3,343 pixels, at most 2 levels.
+* **The whole `bough` suite on Linux** (19 test targets, 45 tests; `tests/startup.rs` imports bough-metal and
+  never built on Linux) passes with the executors in the default mode, `gpu_target` included; the Metal pixel gates
+  on macOS (`scroll_box`, `far`, `seals`, `cpu_target`, `capacity`, `counter`, `select_all`) pass unchanged.
 * **Windowed under fakeland** (1280 x 800 at 60 Hz, the zgx lab with streaming text and a scrolling list, 6 s): every
   executor commits and presents correctly (screenshots checked).
 
