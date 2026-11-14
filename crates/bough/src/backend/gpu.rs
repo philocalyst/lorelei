@@ -1,5 +1,6 @@
 //! The GPU executors on Linux (crates/bough-fused): bough-metal's fused presenter on Vulkan or OpenGL, drawing the
-//! window's surfaces ([`super::Surfaces`]) in place of the CPU executor.
+//! window's surfaces ([`super::Surfaces`]) in place of the CPU executor. On macOS `BOUGH_GPU=vulkan` runs the Vulkan
+//! one headless (MoltenVK, `BOUGH_VK_LIB`) in place of the Metal presenter: the same kernels on a real GPU, for gates.
 //!
 //! Which one runs is decided once, when the app is made (never per frame), by `BOUGH_GPU`:
 //! * `vulkan`: the Vulkan presenter on the best device (`BOUGH_VK_DEVICE` names one), software ones included;
@@ -11,7 +12,9 @@
 //! The Vulkan presenter reads the region in place (views of the columns' used prefixes) and writes the window's
 //! buffers in place; the GL presenter owns the region (one mapped buffer of the configured capacities) and copies
 //! each frame's changed tiles into the window's buffer.
-use bough_fused::{gl, vk};
+#[cfg(target_os = "linux")]
+use bough_fused::gl;
+use bough_fused::vk;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Want {
@@ -21,20 +24,25 @@ pub enum Want {
     Cpu,
 }
 
-pub fn want() -> Want {
-    match std::env::var("BOUGH_GPU").as_deref() {
-        Ok("vulkan") | Ok("vk") => Want::Vulkan,
-        Ok("gl") | Ok("opengl") => Want::Gl,
-        Ok("cpu") => Want::Cpu,
+/// The executor `name` asks for (`Config::executor`), else `BOUGH_GPU`'s.
+pub fn want_of(name: Option<&str>) -> Want {
+    let env = std::env::var("BOUGH_GPU").ok();
+    match name.or(env.as_deref()) {
+        Some("vulkan") | Some("vk") => Want::Vulkan,
+        Some("gl") | Some("opengl") => Want::Gl,
+        Some("cpu") => Want::Cpu,
         _ => Want::Auto,
     }
 }
 
 /// At process entry: start building the device the app will use on another thread (`app::prepare`).
-pub fn prepare() {
-    match want() {
+pub fn prepare(name: Option<&str>) {
+    match want_of(name) {
         w @ (Want::Auto | Want::Vulkan) => vk::prepare_in_background(w == Want::Vulkan),
+        #[cfg(target_os = "linux")]
         Want::Gl => gl::prepare_in_background(),
+        #[cfg(not(target_os = "linux"))]
+        Want::Gl => {}
         Want::Cpu => {}
     }
 }
@@ -42,6 +50,7 @@ pub fn prepare() {
 /// A GPU executor of the app's frames.
 pub enum Gpu {
     Vk(vk::Fused),
+    #[cfg(target_os = "linux")]
     Gl(gl::Fused),
 }
 
@@ -55,6 +64,7 @@ impl Gpu {
     pub fn info(&self) -> String {
         match self {
             Gpu::Vk(f) => format!("vulkan: {}", f.info()),
+            #[cfg(target_os = "linux")]
             Gpu::Gl(f) => format!("gl: {}", f.info()),
         }
     }
@@ -62,6 +72,7 @@ impl Gpu {
     pub(crate) fn set_layout(&mut self, l: bough_frame::Layout) {
         match self {
             Gpu::Vk(f) => f.set_layout(l),
+            #[cfg(target_os = "linux")]
             Gpu::Gl(f) => f.set_layout(l),
         }
     }
@@ -69,10 +80,12 @@ impl Gpu {
     pub(crate) fn sync(&mut self) {
         match self {
             Gpu::Vk(f) => f.sync(),
+            #[cfg(target_os = "linux")]
             Gpu::Gl(f) => f.sync(),
         }
     }
 
+    #[allow(irrefutable_let_patterns)]
     pub(crate) fn set_batch(&mut self, k: usize) {
         if let Gpu::Vk(f) = self {
             f.set_batch(k);
@@ -82,6 +95,7 @@ impl Gpu {
     pub(crate) fn resize(&mut self, w: usize, h: usize) {
         match self {
             Gpu::Vk(f) => f.resize(w, h),
+            #[cfg(target_os = "linux")]
             Gpu::Gl(f) => f.resize(w, h),
         }
     }
@@ -89,6 +103,7 @@ impl Gpu {
     pub(crate) fn sync_atlas(&mut self, width: u32, height: u32, pixels: &[u8], dirty: bool) -> bool {
         match self {
             Gpu::Vk(f) => f.sync_atlas(width, height, pixels, dirty),
+            #[cfg(target_os = "linux")]
             Gpu::Gl(f) => f.sync_atlas(width, height, pixels, dirty),
         }
     }
@@ -96,19 +111,30 @@ impl Gpu {
     pub(crate) fn sync_images(&mut self, pixels: &[u8], rows: std::ops::Range<u32>) {
         match self {
             Gpu::Vk(f) => f.sync_images(pixels, rows),
+            #[cfg(target_os = "linux")]
             Gpu::Gl(f) => f.sync_images(pixels, rows),
         }
     }
 
+    #[allow(irrefutable_let_patterns)]
     pub(crate) fn ensure_columns(&mut self, need: &[usize; bough_frame::NGROUPS]) {
         if let Gpu::Vk(f) = self {
             f.ensure_columns(need);
         }
     }
 
+    pub(crate) fn reset_bins(&mut self, cap: u32) {
+        match self {
+            Gpu::Vk(f) => f.reset_bins(cap),
+            #[cfg(target_os = "linux")]
+            Gpu::Gl(f) => f.reset_bins(cap),
+        }
+    }
+
     pub(crate) fn reference_pixels(&mut self, n_dir: u32) -> Vec<u8> {
         match self {
             Gpu::Vk(f) => f.reference_pixels(n_dir),
+            #[cfg(target_os = "linux")]
             Gpu::Gl(f) => f.reference_pixels(n_dir),
         }
     }
@@ -135,6 +161,7 @@ impl Gpu {
                 f.sync();
                 n
             }
+            #[cfg(target_os = "linux")]
             Gpu::Gl(f) => {
                 let n = f.draw(i, rows, full, n_dir, copy);
                 let (p, bpr) = t.pixels(i);

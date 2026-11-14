@@ -33,6 +33,8 @@ bough-fused = { path = "../bough-fused" }
 # macOS backend: the Metal presenter and the AppKit host.
 [target.'cfg(target_os = "macos")'.dependencies]
 bough-metal = { path = "../bough-metal" }
+# The Vulkan executor, headless through MoltenVK when asked (BOUGH_GPU=vulkan): the portable kernels on a real GPU.
+bough-fused = { path = "../bough-fused" }
 bough-gpu = { path = "../bough-gpu", optional = true }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["block2"] }

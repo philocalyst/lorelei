@@ -15,7 +15,7 @@
 #[cfg(target_os = "macos")]
 pub mod host;
 pub mod surfaces;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod gpu;
 #[cfg(target_os = "linux")]
 pub mod wayland;

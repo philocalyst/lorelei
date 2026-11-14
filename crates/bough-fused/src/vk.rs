@@ -1,4 +1,4 @@
-//! The fused presenter on Vulkan (`ash`; Linux, and macOS through MoltenVK): bough-metal's `fused.rs` with the Metal
+//! The fused presenter on Vulkan (`ash`; Linux, and macOS through MoltenVK: `BOUGH_VK_LIB=.../libMoltenVK.dylib`): bough-metal's `fused.rs` with the Metal
 //! objects replaced by their Vulkan counterparts, the frame contract (region, header, slots) unchanged.
 //!
 //! * **The region without a copy.** As `Fused::new_views`: the region's head (header and frame slots) and each
@@ -87,8 +87,13 @@ impl Prep {
     /// `BOUGH_VK_VALIDATE=1`: the Khronos validation layer, if installed.
     pub fn new(software: bool) -> Result<Prep, String> {
         let t0 = std::time::Instant::now();
-        // SAFETY: loading the Vulkan loader library (no other preconditions).
-        let entry = unsafe { ash::Entry::load() }.map_err(|e| err("Vulkan loader", e))?;
+        // SAFETY: loading the Vulkan loader library (no other preconditions). `BOUGH_VK_LIB`: a Vulkan library to open
+        // instead (an ICD that exports `vkGetInstanceProcAddr`, e.g. MoltenVK's dylib without a loader).
+        let entry = match std::env::var_os("BOUGH_VK_LIB") {
+            Some(p) => unsafe { ash::Entry::load_from(p) },
+            None => unsafe { ash::Entry::load() },
+        }
+        .map_err(|e| err("Vulkan loader", e))?;
         // 1.3: what the device then offers of 1.3 (full subgroups, subgroup size control) is core; a 1.2 device still works
         let app = vk::ApplicationInfo::default().application_name(c"bough").engine_name(c"bough").api_version(vk::make_api_version(0, 1, 3, 0));
         // SAFETY: plain enumeration.

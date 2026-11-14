@@ -50,11 +50,13 @@ pub struct Config {
     /// benchmarks set it to measure the wire path alone; `Application::run` never does, so every
     /// application view re-describes after its handlers (`designs/reactivity/final/01-state.md` §2).
     pub mount_once: bool,
+    /// The GPU executor (backend/gpu.rs): `"vulkan"`, `"gl"` or `"cpu"`; `None`: `BOUGH_GPU`, else the default.
+    pub executor: Option<&'static str>,
 }
 
 impl Config {
     pub fn new(width_pt: f32, height_pt: f32, scale: f32, font: Vec<u8>) -> Config {
-        Config { width_pt, height_pt, scale, font, ring: 0, caps: Caps::DEFAULT, faces: Vec::new(), mount_once: false }
+        Config { width_pt, height_pt, scale, font, ring: 0, caps: Caps::DEFAULT, faces: Vec::new(), mount_once: false, executor: None }
     }
     /// Surfaces of the ring.
     pub fn surfaces(&self) -> usize {
@@ -181,9 +183,10 @@ pub struct App<V: View> {
     pub rt: Rt,
     #[cfg(target_os = "macos")]
     pub gpu: Option<presenter::Fused>,
-    /// The GPU executor on Linux (backend/gpu.rs: Vulkan or OpenGL), drawing `target`'s surfaces; `None`: the CPU
-    /// executor draws them. Declared after the runtime: it outlives the region (whose memory the GL one owns).
-    #[cfg(target_os = "linux")]
+    /// The GPU executor on Linux (backend/gpu.rs: Vulkan or OpenGL; on macOS Vulkan through MoltenVK when asked),
+    /// drawing `target`'s surfaces; `None`: the CPU executor draws them (or, on macOS, the Metal presenter draws its
+    /// own). Declared after the runtime: it outlives the region (whose memory the GL one owns).
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     pub lgpu: Option<crate::backend::gpu::Gpu>,
     /// Per surface: the epoch whose state it holds (`None`: nothing valid).
     held: Vec<Option<u32>>,
@@ -255,12 +258,14 @@ pub struct Startup {
 /// [`App::new`] mounts while they run and takes their results.
 pub fn prepare(cfg: &Config, strikes: &[(f32, &str, u8)], svgs: &[(&'static str, f32, f32)], raster_threads: usize) {
     #[cfg(target_os = "macos")]
-    {
+    if crate::backend::gpu::want_of(cfg.executor) == crate::backend::gpu::Want::Vulkan {
+        crate::backend::gpu::prepare(cfg.executor);
+    } else {
         let (w, h) = ((cfg.width_pt * cfg.scale).round() as usize, (cfg.height_pt * cfg.scale).round() as usize);
         bough_metal::fused::prepare_in_background(Some((w, h, cfg.surfaces(), BIN_CAP)));
     }
     #[cfg(target_os = "linux")]
-    crate::backend::gpu::prepare();
+    crate::backend::gpu::prepare(cfg.executor);
     crate::text::prepare_faces(&cfg.faces);
     if !strikes.is_empty() && raster_threads > 0 {
         // faces by logical id: the configured font, or the regular one when the face is absent
@@ -299,6 +304,11 @@ impl<V: View> App<V> {
         let i_mount = bough_sys::perf::thread_instructions();
         let (win_w, win_h) = ((cfg.width_pt * cfg.scale).round() as i32, (cfg.height_pt * cfg.scale).round() as i32);
         let ring = cfg.surfaces();
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let executor = cfg.executor;
+        // macOS: the Metal presenter, unless the Vulkan executor is asked for (MoltenVK, headless: backend/gpu.rs)
+        #[cfg(target_os = "macos")]
+        let metal_gpu = gpu && crate::backend::gpu::want_of(cfg.executor) != crate::backend::gpu::Want::Vulkan;
         // direct Metal: the GPU sees each column through a view of its used prefix (bough-metal
         // `Fused::new_views`), so the region reserves the record format's limits as address space; the wgpu-hal
         // presenter wraps the whole region in one buffer and keeps the configured capacities
@@ -311,7 +321,7 @@ impl<V: View> App<V> {
         // reserves the record format's limits as address space too (only what is written becomes resident)
         // the GL executor owns the region: one mapped buffer of the configured capacities (GL cannot import memory)
         #[cfg(target_os = "linux")]
-        let gl_prep = (gpu && crate::backend::gpu::want() == crate::backend::gpu::Want::Gl)
+        let gl_prep = (gpu && crate::backend::gpu::want_of(cfg.executor) == crate::backend::gpu::Want::Gl)
             .then(bough_fused::gl::take_prep)
             .and_then(|r| r.map_err(|e| crate::backend::gpu::refused("gl", &e)).ok());
         #[cfg(target_os = "linux")]
@@ -334,7 +344,7 @@ impl<V: View> App<V> {
         // direct Metal: a GPU prepared from process entry (`prepare`): the main thread mounts, shapes and lays out
         // into heap memory first; the presenter is made afterwards, its shared buffer wrapping that memory (no copy)
         #[cfg(all(target_os = "macos", not(feature = "wgpu")))]
-        let overlapped = gpu && bough_metal::fused::prep_pending();
+        let overlapped = metal_gpu && bough_metal::fused::prep_pending();
         // the region is always this process's own lazily backed memory; the presenter is made over it below
         #[cfg(all(target_os = "macos", not(feature = "wgpu")))]
         let metal: Option<presenter::Fused> = None;
@@ -389,7 +399,7 @@ impl<V: View> App<V> {
         };
         #[cfg(all(target_os = "macos", not(feature = "wgpu")))]
         let metal = match metal {
-            None if gpu && !overlapped => Some(views(&rt).0),
+            None if metal_gpu && !overlapped => Some(views(&rt).0),
             m => m,
         };
         for (logical, font) in &cfg.faces {
@@ -444,13 +454,21 @@ impl<V: View> App<V> {
         }
         // Linux: the GPU executor over the mounted region (Vulkan: views of its columns, made now while the device
         // was built from process entry; GL: made with the region above), or none (the CPU executor)
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let lgpu = {
-            use crate::backend::gpu::{refused, want, Gpu, Want};
-            let w = want();
-            let mut g = if let Some(f) = gl_exec.take() {
-                Some(Gpu::Gl(f))
-            } else if gpu && matches!(w, Want::Auto | Want::Vulkan) {
+            use crate::backend::gpu::{refused, want_of, Gpu, Want};
+            let w = want_of(executor);
+            #[cfg(target_os = "linux")]
+            let from_gl = gl_exec.take().map(Gpu::Gl);
+            #[cfg(target_os = "macos")]
+            let from_gl: Option<Gpu> = None;
+            #[cfg(target_os = "linux")]
+            let vk_ok = gpu && matches!(w, Want::Auto | Want::Vulkan);
+            #[cfg(target_os = "macos")]
+            let vk_ok = gpu && !metal_gpu;
+            let mut g = if from_gl.is_some() {
+                from_gl
+            } else if vk_ok {
                 match bough_fused::vk::take_prep(w == Want::Vulkan) {
                     // a software device runs the GPU kernels slower than the CPU executor runs its own: only on request
                     Ok(p) if w == Want::Vulkan || !p.software => {
@@ -489,14 +507,15 @@ impl<V: View> App<V> {
         // app its window's surfaces
         #[cfg(not(target_os = "macos"))]
         let target = gpu.then(|| Box::new(crate::backend::MemSurfaces::new(win_w as u32, win_h as u32, ring)) as Box<dyn crate::backend::Surfaces>);
+        // macOS: the Vulkan executor draws offscreen surfaces (headless); the Metal presenter has its own
         #[cfg(target_os = "macos")]
-        let target = None;
+        let target = lgpu.is_some().then(|| Box::new(crate::backend::MemSurfaces::new(win_w as u32, win_h as u32, ring)) as Box<dyn crate::backend::Surfaces>);
         App {
             owner,
             rt,
             #[cfg(target_os = "macos")]
             gpu: metal,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             lgpu,
             held: vec![None; ring],
             shown: None,
@@ -531,7 +550,7 @@ impl<V: View> App<V> {
         if let Some(g) = self.gpu.as_mut() {
             g.set_batch(k);
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if let Some(g) = self.lgpu.as_mut() {
             g.set_batch(k);
         }
@@ -541,6 +560,9 @@ impl<V: View> App<V> {
     #[cfg(target_os = "macos")]
     fn sync(&mut self) {
         if let Some(g) = self.gpu.as_mut() {
+            g.sync();
+        }
+        if let Some(g) = self.lgpu.as_mut() {
             g.sync();
         }
     }
@@ -555,7 +577,7 @@ impl<V: View> App<V> {
 
     /// What draws this app's frames: the GPU executor and its device, or the CPU executor (Linux), or Metal.
     pub fn executor(&self) -> String {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if let Some(g) = self.lgpu.as_ref() {
             return g.info();
         }
@@ -579,7 +601,7 @@ impl<V: View> App<V> {
             *e = None;
         }
         // the GPU executor lets go of the surfaces it imported before the target replaces them
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if let Some(g) = self.lgpu.as_mut() {
             g.resize(w as usize, h as usize);
             g.set_layout(self.rt.layout);
@@ -1125,7 +1147,7 @@ impl<V: View> App<V> {
     /// the GPU where the platform has one), then `present` with the damage against what is on screen.
     fn draw_target(&mut self, i: usize, epoch: u32, full: bool, copy: &bough_frame::SlotCopy) {
         self.prof.mark(PH_CULL);
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if self.lgpu.is_some() {
             self.draw_target_gpu(i, epoch, full, copy);
             return;
@@ -1155,7 +1177,7 @@ impl<V: View> App<V> {
 
     /// `draw_target` by the GPU executor (backend/gpu.rs): the frame is drawn into the target's surface and waited for
     /// before it is presented.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn draw_target_gpu(&mut self, i: usize, epoch: u32, full: bool, copy: &bough_frame::SlotCopy) {
         self.lgpu_inputs();
         let n_dir = self.rt.bough.dir_len() as u32;
@@ -1169,7 +1191,7 @@ impl<V: View> App<V> {
     }
 
     /// What the GPU executor reads besides the region: the glyph atlas, the image atlas, the columns' views.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn lgpu_inputs(&mut self) {
         let g = self.lgpu.as_mut().unwrap();
         let a = &mut self.rt.text.cache.atlas;
@@ -1278,7 +1300,7 @@ impl<V: View> App<V> {
     /// A from-scratch full redraw of the current retained state (every tile, the same kernels).
     pub fn reference_pixels(&mut self) -> Vec<u8> {
         // the GPU executor's frames are judged by its own kernels' full redraw
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if self.lgpu.is_some() {
             self.sync();
             self.lgpu_inputs();
@@ -1329,6 +1351,11 @@ impl<V: View> App<V> {
     pub fn reset_bins(&mut self, cap: u32) {
         #[cfg(target_os = "macos")]
         if let Some(g) = self.gpu.as_mut() {
+            g.sync();
+            g.reset_bins(cap);
+        }
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        if let Some(g) = self.lgpu.as_mut() {
             g.sync();
             g.reset_bins(cap);
         }
