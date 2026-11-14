@@ -612,7 +612,8 @@ impl Fused {
 
     /// Write the kernels' header (offsets, window size, bin capacity, masks) and the port table.
     pub fn set_layout(&mut self, l: Layout) {
-        self.sync();
+        // the armed frames dispatch from the old slots' offsets: run them out with the old layout first
+        self.drain();
         self.lay = l;
         self.port = self.port_now();
         // SAFETY: the region starts with HDR_BYTES reserved for the header; the GPU is idle (synced).
@@ -858,7 +859,10 @@ impl Fused {
         if self.armed_upto >= upto {
             return;
         }
-        self.refresh();
+        if self.stale {
+            self.drain();
+            self.refresh();
+        }
         let from = self.armed_upto + 1;
         let n = (upto - self.armed_upto) as usize;
         let waits: Vec<u64> = (from..=upto).map(|f| 2 * f - 1).collect();
@@ -1006,6 +1010,12 @@ impl Fused {
     /// release the pre-armed frame. Returns the tiles repaired.
     pub fn draw(&mut self, target: usize, rows: &[u128], full: bool, n_dir: u32, copy: &SlotCopy) -> u32 {
         self.sync();
+        if self.stale {
+            // what the frames bind changed (a surface, a view, the bins): the armed frames run out empty, then the
+            // frames are recorded again, before this frame's slot is written
+            self.drain();
+            self.refresh();
+        }
         let f = self.released + 1;
         let k = (f % 2) as usize;
         // SAFETY: the region is laid out by `lay` (slots in the head view); the GPU is idle (synced).
