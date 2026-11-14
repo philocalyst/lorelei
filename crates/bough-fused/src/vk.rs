@@ -54,7 +54,6 @@ struct Import {
 /// The device state of a presenter: instance, device, queue, the pipelines, built on another thread from process
 /// entry while the main thread mounts (`prepare_in_background`).
 pub struct Prep {
-    _entry: ash::Entry,
     instance: ash::Instance,
     device: ash::Device,
     queue: vk::Queue,
@@ -87,13 +86,7 @@ impl Prep {
     /// `BOUGH_VK_VALIDATE=1`: the Khronos validation layer, if installed.
     pub fn new(software: bool) -> Result<Prep, String> {
         let t0 = std::time::Instant::now();
-        // SAFETY: loading the Vulkan loader library (no other preconditions). `BOUGH_VK_LIB`: a Vulkan library to open
-        // instead (an ICD that exports `vkGetInstanceProcAddr`, e.g. MoltenVK's dylib without a loader).
-        let entry = match std::env::var_os("BOUGH_VK_LIB") {
-            Some(p) => unsafe { ash::Entry::load_from(p) },
-            None => unsafe { ash::Entry::load() },
-        }
-        .map_err(|e| err("Vulkan loader", e))?;
+        let entry = entry()?;
         // 1.3: what the device then offers of 1.3 (full subgroups, subgroup size control) is core; a 1.2 device still works
         let app = vk::ApplicationInfo::default().application_name(c"bough").engine_name(c"bough").api_version(vk::make_api_version(0, 1, 3, 0));
         // SAFETY: plain enumeration.
@@ -120,7 +113,7 @@ impl Prep {
         let ici = vk::InstanceCreateInfo::default().application_info(&app).enabled_extension_names(&exts).enabled_layer_names(&layers).flags(flags);
         // SAFETY: a well-formed create info; the strings outlive the call.
         let instance = unsafe { entry.create_instance(&ici, None) }.map_err(|e| err("vkCreateInstance", e))?;
-        match Self::with_instance(entry, instance, t0, software) {
+        match Self::with_instance(instance, t0, software) {
             Ok(p) => Ok(p),
             Err((instance, e)) => {
                 // SAFETY: nothing was created from the instance that outlives it.
@@ -130,7 +123,7 @@ impl Prep {
         }
     }
 
-    fn with_instance(entry: ash::Entry, instance: ash::Instance, t0: std::time::Instant, software: bool) -> Result<Prep, (ash::Instance, String)> {
+    fn with_instance(instance: ash::Instance, t0: std::time::Instant, software: bool) -> Result<Prep, (ash::Instance, String)> {
         // SAFETY: plain enumeration on a live instance.
         let pdevs = match unsafe { instance.enumerate_physical_devices() } {
             Ok(p) if !p.is_empty() => p,
@@ -180,7 +173,7 @@ impl Prep {
         if dtype == vk::PhysicalDeviceType::CPU && !software {
             return Err((instance, format!("the only Vulkan device is a software one ({name})")));
         }
-        match Self::with_device(entry, &instance, pdev, name, dtype, t0) {
+        match Self::with_device(&instance, pdev, name, dtype, t0) {
             Ok(mut p) => {
                 p.instance = instance;
                 Ok(p)
@@ -189,7 +182,7 @@ impl Prep {
         }
     }
 
-    fn with_device(entry: ash::Entry, instance: &ash::Instance, pdev: vk::PhysicalDevice, name: String, dtype: vk::PhysicalDeviceType, t0: std::time::Instant) -> Result<Prep, String> {
+    fn with_device(instance: &ash::Instance, pdev: vk::PhysicalDevice, name: String, dtype: vk::PhysicalDeviceType, t0: std::time::Instant) -> Result<Prep, String> {
         // SAFETY: queries on a device of a live instance.
         let (props, qfams, mem) = unsafe { (instance.get_physical_device_properties(pdev), instance.get_physical_device_queue_family_properties(pdev), instance.get_physical_device_memory_properties(pdev)) };
         // a compute-only family (an async compute queue) if there is one, else any family with compute
@@ -301,7 +294,6 @@ impl Prep {
             if full_sg { ", full" } else { "" }
         );
         Ok(Prep {
-            _entry: entry,
             // replaced by the caller with the owning handle (this one is a copy of its function table)
             instance: instance.clone(),
             device,
@@ -434,6 +426,25 @@ impl Drop for Prep {
             self.instance.destroy_instance(None);
         }
     }
+}
+
+/// The Vulkan library, opened once and never closed: a driver's threads (llvmpipe's rasterisers, shader-cache
+/// queues) can outlive the instance that started them, and closing the library under them is a crash at exit or at the
+/// next probe. `BOUGH_VK_LIB`: a Vulkan library to open instead of the loader (an ICD that exports
+/// `vkGetInstanceProcAddr`, e.g. MoltenVK's dylib).
+fn entry() -> Result<&'static ash::Entry, String> {
+    static ENTRY: std::sync::OnceLock<Result<ash::Entry, String>> = std::sync::OnceLock::new();
+    ENTRY
+        .get_or_init(|| {
+            // SAFETY: loading a Vulkan library (no other preconditions); it is never unloaded.
+            match std::env::var_os("BOUGH_VK_LIB") {
+                Some(p) => unsafe { ash::Entry::load_from(p) },
+                None => unsafe { ash::Entry::load() },
+            }
+            .map_err(|e| err("Vulkan loader", e))
+        })
+        .as_ref()
+        .map_err(|e| e.clone())
 }
 
 static PREP: std::sync::Mutex<Option<std::thread::JoinHandle<Result<Prep, String>>>> = std::sync::Mutex::new(None);
