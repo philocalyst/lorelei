@@ -144,10 +144,13 @@ measurement under control; (5) every "flat" claim tested past its limit with a f
 6. **Raster and GPU.** Tile prefix caching for canvas hover (M, X14); per-damage executor choice (S-M); the new
    raster as the Linux benchmarked path (M); GPU start-up from a build-time shader plan (M); per-machine work
    estimation (M); incremental binning (M); occlusion mask cost (S); core-owned bands (M, X6); the Vulkan and OpenGL
-   executors (`crates/bough-fused`, branch `lead/vk-gl`, RESULTS.md there: Metal's three kernels ported to one wgsl-rs
-   source, SPIR-V and GLSL at build time; exact against full redraws on lavapipe, llvmpipe and MoltenVK, within one
-   level of Metal's pixels) still need a real Linux GPU run, dmabuf surfaces with explicit sync (M), an f16 variant
-   (S-M), Direct3D 12 for Windows (L), and the Metal presenter on the same source (M); author-written `wgsl-rs`
+   executors (branch `lead/vk-gl`, `crates/bough-fused/RESULTS.md`): on Linux a hardware Vulkan device is the mixed
+   model's GPU executor (bough-kernel's integer kernel on `crates/bough-vk`, the CPU executors' bytes, costs measured per
+   device, built from process entry only where a render node exists); Metal's fused presenter ported to Vulkan and
+   OpenGL (`crates/bough-fused`) is opt-in (`BOUGH_GPU=fused-vulkan|fused-gl`). Still open: a real Linux GPU run, the
+   atlas in device-local memory on discrete GPUs without resizable BAR (S), dmabuf surfaces with explicit sync (M),
+   OpenGL inside the mixed model (S-M), the fused port at the Metal presenter's speed (f16, subgroup certificates; S-M),
+   Direct3D 12 for Windows (L), and the Metal presenter on the same source (M); author-written `wgsl-rs`
    shaders as paints (M);
    batched draw lists and shader variant caches (M); late latching and speculation (M); animation endpoints (S);
    16-bit coordinate, 33rd archetype, empty atlas limits (S each); independent visual fixtures (M); images and YUV
@@ -249,7 +252,8 @@ start one in this repository.
 latency may be measured; accessibility order and the screen-reader window policy; the text questions (who owns
 editing state, where fonts come from, how text should look, selectable by default, rope-backed `text()`); the
 inspector's form; how far Bevy's vocabulary enters the API; live-edit pins and pointer transparency; GPU portability
-(direct Vulkan and OpenGL are built, in `bough-fused`; Direct3D 12 or vendored wgpu for Windows is open); typed modifiers only or a stylesheet layer, and whether grid exists (area 21);
+(direct Vulkan is built into the mixed model and Vulkan and OpenGL presenters in `bough-fused`; Direct3D 12 or vendored
+wgpu for Windows is open); typed modifiers only or a stylesheet layer, and whether grid exists (area 21);
 how offscreen layers for backdrop blur and filters are damaged and cached (area 20); and the rename from bough to lorelei across identifiers.
 
 **Latest measurements.** The full zortax gui-bench matrix was re-run on 2026-11-13 from `cc65ee215f`: 658 cells in each

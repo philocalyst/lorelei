@@ -1,10 +1,14 @@
 # bough-fused: the fused presenter on Vulkan and OpenGL (2026-11-14, branch `lead/vk-gl`)
 
-The façade's production GPU path is bough-metal's fused presenter: three Metal kernels (`fs_copy`, `fs_bin`, `fs_tile`
-in `crates/bough-metal/src/shader.metal`) that repair a frame's damaged 32 px tiles from the region the CPU writes in
-place. This crate runs the same kernels, ported, on Vulkan and on OpenGL, and the façade uses them on Linux
-(`crates/bough/src/backend/gpu.rs`). Nothing in the frame contract changed: region, header, slots, payload encodings,
-the bin layout and the certificates' decisions are bough-metal's (INTERFACE.md).
+The façade's production GPU path on macOS is bough-metal's fused presenter: three Metal kernels (`fs_copy`, `fs_bin`,
+`fs_tile` in `crates/bough-metal/src/shader.metal`) that repair a frame's damaged 32 px tiles from the region the CPU
+writes in place. This crate runs the same kernels, ported, on Vulkan and on OpenGL; the façade runs them when asked
+(`BOUGH_GPU=fused-vulkan|fused-gl`, `crates/bough/src/backend/gpu.rs`). Nothing in the frame contract changed: region,
+header, slots, payload encodings, the bin layout and the certificates' decisions are bough-metal's (INTERFACE.md).
+
+**Linux's default is not this crate** (§5, round 2): it is the mixed model, the CPU executors and, on a hardware device,
+bough-kernel's Vulkan executor, chosen per frame by measured costs. Its Vulkan device layer, `crates/bough-vk`, is the one
+this crate's presenter runs on.
 
 ## 1. What exists
 
@@ -67,10 +71,12 @@ surfaces are persistently mapped buffers whose changed tiles (the damage and the
 the window's buffer after the fence; the context is made surfaceless (`EGL_MESA_platform_surfaceless`) on another
 thread from process entry and handed over; program binaries are cached on disk per renderer and source.
 
-**The façade** (`crates/bough/src/backend/gpu.rs`, `app.rs`): on Linux `BOUGH_GPU` (or `Config::executor`) picks
-`vulkan`, `gl` or `cpu`; unset, it is Vulkan on a hardware device, otherwise the CPU executor (bough's SIMD executor
-beats a software rasteriser running these kernels, §3). On macOS `BOUGH_GPU=vulkan` runs the Vulkan executor headless
-through MoltenVK in place of the Metal presenter (for gates on a real GPU); the Metal presenter stays the default.
+**The façade** (`crates/bough/src/backend/gpu.rs`, `app.rs`, `kernel_backend.rs`), by `BOUGH_GPU` (or
+`Config::executor`): unset, the mixed model (on Linux its GPU is a hardware Vulkan device where one exists, §5);
+`vulkan`, the mixed model with a Vulkan device, software ones included; `cpu`, the mixed model without a GPU;
+`fused-vulkan`, `fused-gl`, this crate's presenters, every frame on the GPU. On macOS the Metal presenter stays the
+default; `fused-vulkan` runs this crate's Vulkan presenter headless through MoltenVK, and `vulkan` with
+`BOUGH_REPAIR=kernel` runs the mixed model with the Vulkan executor through MoltenVK (for comparisons on one GPU).
 
 ## 2. How it was checked
 
@@ -161,3 +167,53 @@ Predictions and kill lines:
   runs of main's binary, in fixed and unthrottled timing; no Vulkan library is loaded.
 * **P5** (ilo-prod, lavapipe allowed in the costs' choice): the gallery sends no frame to it (its measured costs lose
   to the pool's), so its frame times equal the CPU executors'.
+
+### 5.1 What was built
+
+* `crates/bough-vk`: the device layer both executors use. The loader is opened once, behind the render-node gate. It
+  also holds the device search, host-memory imports, mapped buffers, pipelines through a disk cache per executor
+  (`vk-kernel-*`, `vk-fused-*`), the pre-armed timeline-semaphore stream (`Stream`), the completion waiter and builds
+  on another thread (`Pending`). This crate's presenter now runs on it.
+* `crates/bough-kernel/src/vulkan.rs`, rewritten on bough-vk (wgpu-hal is gone from bough-kernel). One command buffer
+  is recorded per set of targets, with an indirect dispatch per target (up to 8 plus its own output), each reading its
+  workgroup count from a mapped arguments buffer. The next frame is submitted while the GPU draws this one. A frame is a
+  copy of its commands and program into mapped memory, the chosen target's count, one host signal and one wait. Costs
+  are measured when the executor is built (`calibrate`: eight empty round trips, then a probe of list rows, 512 x 512 px
+  in 256 tiles) and corrected a quarter of the way toward each GPU frame's wall time. It builds on macOS too, through
+  MoltenVK.
+* `crates/bough/src/kernel_backend.rs`: the GPU of the choice is Apple's (`COSTS`, unchanged) or a Vulkan device's
+  measured costs. A device still being built is never waited for (the CPU draws). Without a render node nothing is
+  built and every decision is main's.
+* Fixed on the way, each by a new test:
+  - The kernel backend forgets its GPU targets on every resize. On macOS the Metal presenter's new IOSurfaces came
+    back at old addresses, so the GPU kept writing the old pages.
+  - This crate's reference render grows overflowed bins and draws again. Bins overflowing on a frame after the first
+    had never been tested; the presenter's own redraw was already right, the oracle was not.
+
+### 5.2 Measured
+
+**M3 Pro, gallery gate** (96 steps, 36 drawn frames, p50; the Mac at load 35-70, so runs alternate). The gate now calls
+`app::prepare` at entry, as applications do.
+
+| | Metal | Vulkan (MoltenVK) | ratio |
+|---|---:|---:|---:|
+| mixed model, GPU forced | 2.16, 2.20, 2.42 ms | 1.64, 1.58, 1.54 ms | 0.71 (**P1 holds**) |
+| mixed model, the costs choosing | 0.79, 0.94, 0.91 ms | 0.84, 0.91, 0.95 ms | 1.03 (**P2 holds**) |
+| the CPU executors only | 0.84, 0.89, 0.96 ms | | |
+| Metal presenter (macOS default) / fused Vulkan port | 1.33 ms (48 steps, as in §3) | 2.51-2.55 ms | |
+
+With the costs choosing, both GPUs get none of the gallery's 50 frames (13 on one core, 37 on the pool). Its repairs
+are small enough that the pool wins. Before the gate called `prepare`, the Vulkan device was built during the timed
+frames and cost 0.2-0.4 ms per frame. The Vulkan device's calibrated costs on the M3 Pro: a 25-65 us round trip (Metal's
+written constant: 150 us) and 0.5-1.1 us per tile (Metal's: 0.18).
+
+**ilo-prod, functional** (commit `d8ee4a7ade`; every step exact, 0 validation errors):
+
+| | result |
+|---|---|
+| `bough` suite, default | 19 targets, 48 tests, all pass |
+| `tests/gpu_target.rs` under the validation layer | 9 of 9 (mixed model on lavapipe, GPU forced and switching per frame; fused Vulkan and GL) |
+| bough-kernel `exact.rs` on lavapipe | 0 differing words; rounding mutant caught in 4 of 4 scenes |
+| gallery, default (no render node) | 1.52 ms p50; GPU never built |
+| gallery, mixed model with lavapipe forced | 11.55 ms (the fused Vulkan port: 63.1; fused GL: 106.1) |
+| gallery, lavapipe allowed in the choice | 0 of 15 frames to it (**P5 holds** for the choice); 2.09 ms p50 under load 20, its build overlapping the timed frames |

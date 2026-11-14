@@ -3,10 +3,11 @@
 //! * unset: **the mixed model** (`kernel_backend.rs`): every frame is drawn by whichever of this thread, the pool and
 //!   the GPU its measured cost favours, all running bough-kernel's integer kernel, so they write the same bytes and the
 //!   choice changes per frame with no seam. The GPU is Apple's on macOS (with `BOUGH_REPAIR=kernel`; the Metal
-//!   presenter is macOS's default) and, on Linux, a hardware Vulkan device where one exists (built from process entry
-//!   where a render node exists; no Vulkan library is loaded otherwise);
-//! * `vulkan`: the mixed model with a Vulkan device, software ones (lavapipe) included; on macOS through MoltenVK
-//!   (`BOUGH_VK_LIB`), for comparisons with Metal on the same GPU;
+//!   presenter is macOS's default) and, on Linux, a hardware Vulkan device where one exists. Like Apple's it is lazy:
+//!   built on another thread the first time a frame would go to it (the CPU draws until it is ready), never where no
+//!   frame pays for it, and no Vulkan library is loaded at all without a render node;
+//! * `vulkan`: the mixed model with a Vulkan device, software ones (lavapipe) included (as lazy); on macOS through
+//!   MoltenVK (`BOUGH_VK_LIB`, with `BOUGH_REPAIR=kernel`), for comparisons with Metal on the same GPU;
 //! * `cpu`: the mixed model without a GPU;
 //! * `fused-vulkan`, `fused-gl` (crates/bough-fused): bough-metal's fused presenter ported, drawing every frame on the
 //!   GPU in place of the mixed model (`fused-vulkan` on macOS: headless through MoltenVK, in place of the Metal
@@ -52,10 +53,8 @@ pub fn kernel_want(name: Option<&str>) -> crate::kernel_backend::GpuWant {
 /// At process entry: start building the device the app will use on another thread (`app::prepare`).
 pub fn prepare(name: Option<&str>) {
     match want_of(name) {
-        // the mixed model's Vulkan executor: device, pipeline and measured costs (nothing without a render node)
-        Want::Auto if cfg!(target_os = "linux") => bough_kernel::vulkan::prepare_in_background(false),
-        Want::Auto => {}
-        Want::Vulkan => bough_kernel::vulkan::prepare_in_background(true),
+        // the mixed model's GPU is lazy: built the first time a frame would go to it (kernel_backend.rs), not here
+        Want::Auto | Want::Vulkan => {}
         Want::FusedVulkan => vk::prepare_in_background(true),
         #[cfg(target_os = "linux")]
         Want::FusedGl => gl::prepare_in_background(),

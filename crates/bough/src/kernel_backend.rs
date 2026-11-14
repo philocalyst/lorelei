@@ -48,7 +48,8 @@ pub enum GpuWant {
     Off,
     /// Apple's (macOS: the Metal executor, made at its first frame).
     Metal,
-    /// A hardware Vulkan device, built from process entry where a render node exists (Linux's default).
+    /// A hardware Vulkan device, built the first time a frame would go to it, where a render node exists (Linux's
+    /// default).
     Hardware,
     /// A Vulkan device, a software one (lavapipe) included (`BOUGH_GPU=vulkan`; on macOS through MoltenVK).
     Vulkan,
@@ -397,15 +398,16 @@ impl KernelBackend {
         #[cfg(target_os = "macos")]
         let i1 = if self.trace { instrs() } else { 0 };
         let (tiles, entries) = (self.prog.tiles() as u64, self.prog.entries() as u64);
-        // the GPU the choice may use: Apple's (its costs are COSTS), or a Vulkan device built from process entry with its
-        // own measured costs (`bough_kernel::vulkan::calibrate`) and corrected by the frames it runs; a device still
-        // being built is not waited for (the CPU draws meanwhile)
+        // the GPU the choice may use: Apple's (its costs are COSTS), or a Vulkan device's own measured costs
+        // (`bough_kernel::vulkan::calibrate`, corrected by the frames it runs). Either is lazy: none exists until a frame
+        // would go to it (by Apple's costs until a Vulkan device has measured its own); a Vulkan device is then built on
+        // another thread and the CPU draws until it is ready, so a window whose frames never pay for a GPU never has one
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         self.poll_gpu(self.force == Force::Gpu);
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         let (gpu_able, costs) = match &self.gpu {
             Some(g) => (true, g.costs()),
-            None => (cfg!(target_os = "macos") && self.want == GpuWant::Metal && !self.gpu_gone, cpu::COSTS),
+            None => (self.gpu_possible(), cpu::COSTS),
         };
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
         let (gpu_able, costs) = (false, cpu::COSTS);
@@ -419,9 +421,14 @@ impl KernelBackend {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         if exec == Exec::Gpu && tiles > 0 {
             if self.gpu.is_none() && !self.gpu_gone {
-                // Apple's executor is made at its first frame (a Vulkan one was polled above)
-                self.gpu = KGpu::metal();
-                self.gpu_gone = self.gpu.is_none();
+                if self.want == GpuWant::Metal {
+                    // Apple's executor is made at its first frame
+                    self.gpu = KGpu::metal();
+                    self.gpu_gone = self.gpu.is_none();
+                } else {
+                    // a Vulkan one is built on another thread; this frame is the CPU's
+                    self.start_gpu();
+                }
             }
             let ok = match self.gpu.as_mut() {
                 Some(g) => {
@@ -458,8 +465,12 @@ impl KernelBackend {
                 self.last_gpu = Some(std::time::Instant::now());
                 self.stats.gpu += 1;
             } else {
-                // no GPU device, or it refused the surface's memory: the CPU draws the same pixels
-                exec = Exec::CpuN(self.pool.workers());
+                // no GPU device (yet), or it refused the surface's memory: the CPU draws the same pixels, on one core or
+                // the pool as their costs choose (the pool when the GPU was pinned)
+                exec = match self.force {
+                    Force::Auto => cpu::choose(self.bin.est_cpu_ns, tiles, entries, self.pool.workers(), false, warm, &costs),
+                    _ => Exec::CpuN(self.pool.workers()),
+                };
             }
         }
         if exec != Exec::Gpu {
@@ -511,8 +522,39 @@ impl KernelBackend {
         }
     }
 
-    /// Take the Vulkan executor once its build (started from process entry, or here) is done; `wait`: wait for it
-    /// (a pinned GPU executor). After a failed build the choice is the CPU's.
+    /// Could the choice have a GPU? Apple's on macOS; a Vulkan device where one may exist (on Linux the default asks
+    /// for a hardware one, so a machine without a render node is answered once, without loading Vulkan).
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn gpu_possible(&mut self) -> bool {
+        if self.gpu_gone {
+            return false;
+        }
+        let possible = match self.want {
+            GpuWant::Off => false,
+            GpuWant::Metal => cfg!(target_os = "macos"),
+            GpuWant::Hardware => !bough_kernel::vulkan::no_hardware(),
+            GpuWant::Vulkan => true,
+        };
+        self.gpu_gone = !possible;
+        possible
+    }
+
+    /// Start building the Vulkan executor on another thread (device, pipeline, measured costs), unless a build is
+    /// running already.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn start_gpu(&mut self) {
+        use bough_kernel::vulkan as kv;
+        if !kv::preparing() {
+            kv::prepare_in_background(self.want == GpuWant::Vulkan);
+            if !kv::preparing() {
+                // nothing to build here (no render node, or no hardware device found before)
+                self.gpu_gone = true;
+            }
+        }
+    }
+
+    /// Take the Vulkan executor once its build is done (never waiting), or `wait` for it (a pinned GPU executor:
+    /// built now if no build was started). After a failed build the choice is the CPU's.
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     fn poll_gpu(&mut self, wait: bool) {
         if self.gpu.is_some() || self.gpu_gone {
@@ -526,16 +568,10 @@ impl KernelBackend {
         use bough_kernel::vulkan as kv;
         let r = if wait {
             Some(kv::take_prepared(software))
-        } else {
-            if !kv::preparing() {
-                kv::prepare_in_background(software);
-                if !kv::preparing() {
-                    // nothing to build here (no render node)
-                    self.gpu_gone = true;
-                    return;
-                }
-            }
+        } else if kv::preparing() {
             kv::poll_prepared()
+        } else {
+            None
         };
         match r {
             Some(Ok(g)) => self.gpu = Some(KGpu::Vk(g)),

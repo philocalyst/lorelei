@@ -22,7 +22,7 @@ use crate::cpu::{Costs, Prog};
 use crate::stage::Scene;
 use bough_vk::{Buf, Device, Import, Needs, Pending, Stream, err, vk};
 
-pub use bough_vk::spirv_words;
+pub use bough_vk::{no_hardware, spirv_words};
 
 /// Targets bound at once (a window's ring is at most 4; a resize forgets them).
 const MAX_TARGETS: usize = 8;
