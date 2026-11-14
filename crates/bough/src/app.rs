@@ -226,6 +226,9 @@ pub struct App<V: View> {
     pub target: Option<Box<dyn crate::backend::Surfaces>>,
     /// The tile rows a presented frame differs from the one on screen by (the target's damage).
     shown_rows: Vec<u128>,
+    /// A frame the GPU executor is drawing, to present once it is drawn (windowed Vulkan): (surface, whole).
+    #[cfg(target_os = "linux")]
+    pending_present: Option<(usize, bool)>,
 }
 
 /// Per raster worker started by [`prepare`]: (strikes, glyphs, instructions, ns), for those finished.
@@ -540,6 +543,8 @@ impl<V: View> App<V> {
             kernel: None,
             target,
             shown_rows: vec![0; ty],
+            #[cfg(target_os = "linux")]
+            pending_present: None,
         }
     }
 
@@ -568,8 +573,38 @@ impl<V: View> App<V> {
     }
     #[cfg(target_os = "linux")]
     fn sync(&mut self) {
+        // a frame still being drawn is presented first (the window shows what the region is about to replace)
+        self.publish_pending();
         if let Some(g) = self.lgpu.as_mut() {
             g.sync();
+        }
+    }
+
+    /// Present the frame the GPU executor was drawing (waiting for it if it is not drawn yet).
+    #[cfg(target_os = "linux")]
+    fn publish_pending(&mut self) {
+        let Some((i, full)) = self.pending_present.take() else { return };
+        if let Some(g) = self.lgpu.as_mut() {
+            g.sync();
+        }
+        if let Some(t) = self.target.as_mut() {
+            t.present(i, &self.shown_rows, full);
+        }
+    }
+
+    /// The fd a window loop polls to present a frame the GPU executor is drawing (`present_ready` when it is
+    /// readable); `None` when no frame waits.
+    #[cfg(target_os = "linux")]
+    pub fn present_fd(&mut self) -> Option<std::os::fd::RawFd> {
+        self.pending_present?;
+        self.lgpu.as_mut()?.completion_fd()
+    }
+
+    /// The fd from `present_fd` became readable: present the frame if it is drawn (a stale wake does nothing).
+    #[cfg(target_os = "linux")]
+    pub fn present_ready(&mut self) {
+        if self.lgpu.as_mut().is_some_and(|g| g.drawn()) {
+            self.publish_pending();
         }
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -966,6 +1001,9 @@ impl<V: View> App<V> {
     /// The publication policy is chosen by the turn's source at compile time (`PACED`), never per frame.
     pub fn frame_as<const PACED: bool>(&mut self) -> bool {
         crate::kernel_backend::kprof::start();
+        // frames reach the window in order: one the GPU is still drawing is presented before the next is picked
+        #[cfg(target_os = "linux")]
+        self.publish_pending();
         let core = !self.rt.bough.plane(0).is_clear();
         let paint = !self.rt.paint.plane(0).is_clear();
         if !core && !paint {
@@ -1183,6 +1221,18 @@ impl<V: View> App<V> {
         let n_dir = self.rt.bough.dir_len() as u32;
         let g = self.lgpu.as_mut().unwrap();
         let t = self.target.as_mut().expect("draw_target without a target");
+        // a window's frame is released and presented once the GPU signals it (`present_fd`): the input thread never
+        // waits for the GPU (Metal's publisher thread, here the window loop's poll)
+        #[cfg(target_os = "linux")]
+        if self.windowed {
+            if let Some(n) = g.draw_async(&mut **t, i, &self.rows, full, n_dir, copy) {
+                self.repaired_tiles = n;
+                let all = self.damage_since_shown(epoch);
+                self.add_copy_damage(full, copy);
+                self.pending_present = Some((i, full || all));
+                return;
+            }
+        }
         self.repaired_tiles = g.draw(&mut **t, i, &self.rows, full, n_dir, copy);
         let all = self.damage_since_shown(epoch);
         self.add_copy_damage(full, copy);

@@ -472,7 +472,55 @@ struct Surf {
     bpr: usize,
 }
 
+/// GPU completion as a pollable fd (Linux): a thread waits on the timeline semaphore for the values it is sent and
+/// writes an eventfd when each is reached, so a window's event loop can commit a frame the moment the GPU finishes it
+/// without the input thread waiting (the role of Metal's publisher thread; Wayland's objects stay on the loop's thread).
+#[cfg(target_os = "linux")]
+struct Waiter {
+    fd: std::os::fd::OwnedFd,
+    tx: Option<std::sync::mpsc::Sender<u64>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(target_os = "linux")]
+impl Waiter {
+    fn new(device: ash::Device, tl: vk::Semaphore) -> Waiter {
+        use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+        // SAFETY: a fresh eventfd this function owns.
+        let fd = unsafe { OwnedFd::from_raw_fd(libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK)) };
+        let wfd = fd.as_raw_fd();
+        let (tx, rx) = std::sync::mpsc::channel::<u64>();
+        let thread = std::thread::Builder::new()
+            .name("bough-vk-waiter".into())
+            .spawn(move || {
+                while let Ok(v) = rx.recv() {
+                    let (sems, vals) = ([tl], [v]);
+                    // SAFETY: the presenter's semaphore, alive until this thread is joined (the presenter's drop);
+                    // every value sent is a released frame's, so the wait ends.
+                    let _ = unsafe { device.wait_semaphores(&vk::SemaphoreWaitInfo::default().semaphores(&sems).values(&vals), 10_000_000_000) };
+                    let one: u64 = 1;
+                    // SAFETY: the eventfd lives as long as the `Waiter` (which joins this thread first).
+                    unsafe { libc::write(wfd, (&one as *const u64).cast(), 8) };
+                }
+            })
+            .expect("waiter thread");
+        Waiter { fd, tx: Some(tx), thread: Some(thread) }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for Waiter {
+    fn drop(&mut self) {
+        drop(self.tx.take());
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
 pub struct Fused {
+    #[cfg(target_os = "linux")]
+    waiter: Option<Waiter>,
     d: Prep,
     /// The region's head (header and frame slots): a view of the region's first pages.
     head: Import,
@@ -554,6 +602,8 @@ impl Fused {
             (dpool, sets[0], sets[1], cpool, [cbs[0], cbs[1]], cbs[2], fence, tl)
         };
         let mut f = Fused {
+            #[cfg(target_os = "linux")]
+            waiter: None,
             d,
             head,
             region: ptr,
@@ -1040,6 +1090,36 @@ impl Fused {
         nt
     }
 
+    /// The fd that becomes readable when a frame `notify_drawn` named is drawn (Linux): poll it with the window's
+    /// connection, then present (the eventfd is drained by `drawn`).
+    #[cfg(target_os = "linux")]
+    pub fn completion_fd(&mut self) -> std::os::fd::RawFd {
+        use std::os::fd::AsRawFd;
+        let w = self.waiter.get_or_insert_with(|| Waiter::new(self.d.device.clone(), self.tl));
+        w.fd.as_raw_fd()
+    }
+
+    /// Have `completion_fd` become readable once the last released frame is drawn.
+    #[cfg(target_os = "linux")]
+    pub fn notify_drawn(&mut self) {
+        self.completion_fd();
+        if let Some(tx) = self.waiter.as_ref().and_then(|w| w.tx.as_ref()) {
+            let _ = tx.send(2 * self.released);
+        }
+    }
+
+    /// The last released frame is drawn (one read of the semaphore's counter); drains the completion fd.
+    pub fn drawn(&mut self) -> bool {
+        #[cfg(target_os = "linux")]
+        if let Some(w) = &self.waiter {
+            use std::os::fd::AsRawFd;
+            let mut v: u64 = 0;
+            // SAFETY: a non-blocking eventfd this presenter owns.
+            unsafe { libc::read(w.fd.as_raw_fd(), (&mut v as *mut u64).cast(), 8) };
+        }
+        self.counter() >= 2 * self.released
+    }
+
     /// Frames armed per arming (the stream's depth).
     pub fn set_batch(&mut self, k: usize) {
         self.batch = k.clamp(1, 16) as u64;
@@ -1139,6 +1219,9 @@ impl Fused {
 impl Drop for Fused {
     fn drop(&mut self) {
         self.drain();
+        // the waiter's thread waits on the semaphore: joined before the semaphore goes
+        #[cfg(target_os = "linux")]
+        drop(self.waiter.take());
         // SAFETY: drained: nothing is pending; every object below was created by this presenter.
         unsafe {
             let _ = self.d.device.device_wait_idle();

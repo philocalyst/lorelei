@@ -236,12 +236,19 @@ pub fn run<V: View>(title: &str, make_cfg: fn(f32) -> Config, view: V, run: Run<
                 timers.push(Timer { at: now + Duration::from_millis(16), period: None, kind: Kind::Anim });
             }
         }
-        // 4. wait for the compositor or the next timer
+        // 4. wait for the compositor or the next timer ...
         let next = timers.iter().map(|t| t.at).chain(blink.map(|b| b.0)).min();
         let timeout = next.map(|at| at.saturating_duration_since(Instant::now()));
-        if let Err(e) = shell.borrow_mut().dispatch(timeout) {
-            eprintln!("bough: the compositor connection closed: {e}");
-            finish(&mut app, &mut report);
+        // ... or for the GPU executor finishing the frame it is drawing (presented then, without the input thread waiting)
+        let gpu = app.present_fd();
+        let r = shell.borrow_mut().dispatch_with(timeout, gpu);
+        match r {
+            Ok(true) => app.present_ready(),
+            Ok(false) => {}
+            Err(e) => {
+                eprintln!("bough: the compositor connection closed: {e}");
+                finish(&mut app, &mut report);
+            }
         }
     }
 }

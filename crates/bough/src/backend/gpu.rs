@@ -139,6 +139,45 @@ impl Gpu {
         }
     }
 
+    /// Draw surface `i` of `t` without waiting for the GPU (Vulkan): the frame is released and `completion_fd`
+    /// becomes readable once it is drawn; the caller presents it then (`App::present_ready`) or at its next `sync`.
+    /// Returns the tiles repaired, or `None` when this executor draws synchronously (GL: drawn, copied, ready).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn draw_async(&mut self, t: &mut dyn super::Surfaces, i: usize, rows: &[u128], full: bool, n_dir: u32, copy: &bough_frame::SlotCopy) -> Option<u32> {
+        match self {
+            Gpu::Vk(f) => {
+                let h = t.size().1 as usize;
+                for s in [Some(i), (!full && !copy.is_none()).then_some((copy.src & 3) as usize)].into_iter().flatten() {
+                    let (p, bpr) = t.pixels(s);
+                    // SAFETY: as in `draw`.
+                    unsafe { f.bind_surface(s, p, bpr * h, bpr) };
+                }
+                let n = f.draw(i, rows, full, n_dir, copy);
+                f.notify_drawn();
+                Some(n)
+            }
+            Gpu::Gl(_) => None,
+        }
+    }
+
+    /// The fd a window loop polls for a frame `draw_async` released (Vulkan).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn completion_fd(&mut self) -> Option<std::os::fd::RawFd> {
+        match self {
+            Gpu::Vk(f) => Some(f.completion_fd()),
+            Gpu::Gl(_) => None,
+        }
+    }
+
+    /// The frame `draw_async` released is drawn (drains the completion fd).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn drawn(&mut self) -> bool {
+        match self {
+            Gpu::Vk(f) => f.drawn(),
+            Gpu::Gl(_) => true,
+        }
+    }
+
     /// Draw surface `i` of `t` and wait for it (the compositor reads a buffer once it is committed): the Vulkan
     /// presenter writes the surface's memory itself (imported once per address), the GL presenter draws its own
     /// surface and copies what changed into it. Returns the tiles repaired.

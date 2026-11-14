@@ -268,6 +268,12 @@ impl Shell {
     /// Send what is queued, wait up to `timeout` (`None`: until something arrives) for the compositor, read
     /// and decode what came. Returns once events were decoded or the timeout passed.
     pub fn dispatch(&mut self, timeout: Option<Duration>) -> Result<(), Error> {
+        self.dispatch_with(timeout, None).map(|_| ())
+    }
+
+    /// `dispatch`, also waking for `extra` (an fd that becomes readable: a GPU frame finished). Returns whether
+    /// `extra` is readable.
+    pub fn dispatch_with(&mut self, timeout: Option<Duration>, extra: Option<std::os::fd::RawFd>) -> Result<bool, Error> {
         self.queue.dispatch_pending(&mut self.state).map_err(err)?;
         // events already decoded (and not yet taken): read what else arrived, but do not wait
         let timeout = if self.state.events.is_empty() { timeout } else { Some(Duration::ZERO) };
@@ -275,14 +281,15 @@ impl Shell {
         let Some(guard) = self.queue.prepare_read() else {
             // events were queued meanwhile: decode them
             self.queue.dispatch_pending(&mut self.state).map_err(err)?;
-            return Ok(());
+            return Ok(false);
         };
         let fd = guard.connection_fd().as_raw_fd();
         let ms = timeout.map_or(-1, |t| t.as_micros().div_ceil(1000).min(i32::MAX as u128) as i32);
-        let mut p = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
-        // SAFETY: one valid pollfd.
-        let n = unsafe { libc::poll(&mut p, 1, ms) };
-        if n > 0 {
+        let mut p = [libc::pollfd { fd, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd: extra.unwrap_or(-1), events: libc::POLLIN, revents: 0 }];
+        // SAFETY: valid pollfds (a negative fd is ignored by poll).
+        let n = unsafe { libc::poll(p.as_mut_ptr(), 2, ms) };
+        let extra_ready = n > 0 && p[1].revents & libc::POLLIN != 0;
+        if n > 0 && p[0].revents != 0 {
             match guard.read() {
                 Ok(_) => {}
                 Err(wayland_client::backend::WaylandError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -292,7 +299,7 @@ impl Shell {
             drop(guard);
         }
         self.queue.dispatch_pending(&mut self.state).map_err(err)?;
-        Ok(())
+        Ok(extra_ready)
     }
 
     /// Read and decode whatever the compositor already sent, without waiting (buffer releases while every buffer
