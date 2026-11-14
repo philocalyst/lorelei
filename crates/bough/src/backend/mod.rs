@@ -16,6 +16,8 @@
 pub mod host;
 pub mod surfaces;
 #[cfg(target_os = "linux")]
+pub mod gpu;
+#[cfg(target_os = "linux")]
 pub mod wayland;
 
 pub use surfaces::{MemSurfaces, Surfaces};

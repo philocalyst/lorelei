@@ -111,7 +111,8 @@ pub fn run<V: View>(title: &str, make_cfg: fn(f32) -> Config, view: V, run: Run<
     let mut cfg = make_cfg(scale);
     (cfg.width_pt, cfg.height_pt) = (lw as f32, lh as f32);
     let shell = Rc::new(RefCell::new(shell));
-    let mut app = App::new(view, cfg, false);
+    // `gpu`: the GPU executor when one runs here (backend/gpu.rs); it draws the shell's buffers set as the target below
+    let mut app = App::new(view, cfg, true);
     app.windowed = true;
     shell.borrow_mut().resize_buffers(app.rt.win_w as u32, app.rt.win_h as u32).expect("wl_shm buffers");
     app.target = Some(Box::new(WlSurfaces(shell.clone())));

@@ -27,6 +27,8 @@ cephal = { path = "../../vendor/cephal", default-features = false, features = ["
 # Linux backend: the Wayland host (the CPU executor draws into its wl_shm buffers).
 [target.'cfg(target_os = "linux")'.dependencies]
 bough-wayland = { path = "../bough-wayland" }
+# The GPU executors (backend/gpu.rs): the fused presenter on Vulkan and OpenGL.
+bough-fused = { path = "../bough-fused" }
 
 # macOS backend: the Metal presenter and the AppKit host.
 [target.'cfg(target_os = "macos")'.dependencies]

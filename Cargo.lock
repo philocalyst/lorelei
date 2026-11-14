@@ -99,6 +99,7 @@ dependencies = [
  "block2",
  "bough-core",
  "bough-frame",
+ "bough-fused",
  "bough-gpu",
  "bough-kernel",
  "bough-mem",
@@ -182,6 +183,17 @@ version = "0.0.0"
 [[package]]
 name = "bough-frame"
 version = "0.0.0"
+
+[[package]]
+name = "bough-fused"
+version = "0.0.0"
+dependencies = [
+ "ash",
+ "bough-frame",
+ "libc",
+ "naga",
+ "wgsl-rs",
+]
 
 [[package]]
 name = "bough-glyph"

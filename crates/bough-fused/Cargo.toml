@@ -1,0 +1,23 @@
+[package]
+name = "bough-fused"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+description = "The fused presenter on Vulkan and OpenGL: bough-metal's kernels (fs_copy, fs_bin, fs_tile) ported to wgsl-rs, compiled at build time to SPIR-V and GLSL; a Vulkan presenter (ash: host-pointer views of the region's columns, surfaces imported from the window's buffers, a pre-armed stream released by a timeline semaphore) and an OpenGL 4.3 presenter (EGL, the region in one persistently mapped buffer)"
+
+[dependencies]
+bough-frame = { path = "../bough-frame" }
+wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false }
+
+# Vulkan: Linux, and macOS through MoltenVK (the loader is opened at run time; nothing links libvulkan).
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+ash = "0.38"
+libc = "0.2"
+
+[build-dependencies]
+wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false }
+naga = { version = "29.0.4", features = ["wgsl-in", "spv-out", "glsl-out"] }
+
+[dev-dependencies]
+# the `#[wgsl]` macro's generated `__validate_wgsl` tests (naga validation of the module); tests only
+wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false, features = ["validation"] }
