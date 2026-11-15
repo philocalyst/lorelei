@@ -1,4 +1,4 @@
-# bough-fused: the fused presenter on Vulkan and OpenGL (2026-11-14, branch `lead/vk-gl`)
+# bough-fused: the fused presenter on Vulkan and OpenGL (2026-11-14; merged into main)
 
 The façade's production GPU path on macOS is bough-metal's fused presenter: three Metal kernels (`fs_copy`, `fs_bin`,
 `fs_tile` in `crates/bough-metal/src/shader.metal`) that repair a frame's damaged 32 px tiles from the region the CPU

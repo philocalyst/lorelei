@@ -144,9 +144,9 @@ measurement under control; (5) every "flat" claim tested past its limit with a f
 6. **Raster and GPU.** Tile prefix caching for canvas hover (M, X14); per-damage executor choice (S-M); the new
    raster as the Linux benchmarked path (M); GPU start-up from a build-time shader plan (M); per-machine work
    estimation (M); incremental binning (M); occlusion mask cost (S); core-owned bands (M, X6); the Vulkan and OpenGL
-   executors (branch `lead/vk-gl`, `crates/bough-fused/RESULTS.md`): on Linux a hardware Vulkan device is the mixed
+   executors (merged 2026-11-14; `crates/bough-fused/RESULTS.md`): on Linux a hardware Vulkan device is the mixed
    model's GPU executor (bough-kernel's integer kernel on `crates/bough-vk`, the CPU executors' bytes, costs measured per
-   device, built from process entry only where a render node exists); Metal's fused presenter ported to Vulkan and
+   device, built lazily in the background the first time a frame's costs favour it, only where a render node exists); Metal's fused presenter ported to Vulkan and
    OpenGL (`crates/bough-fused`) is opt-in (`BOUGH_GPU=fused-vulkan|fused-gl`). Still open: a real Linux GPU run, the
    atlas in device-local memory on discrete GPUs without resizable BAR (S), dmabuf surfaces with explicit sync (M),
    OpenGL inside the mixed model (S-M), the fused port at the Metal presenter's speed (f16, subgroup certificates; S-M),
