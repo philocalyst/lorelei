@@ -127,9 +127,9 @@ validation layer) and 34–59 ms on MoltenVK (5.3 s cold); lavapipe also compile
 
 ## 4. Open
 
-* **No real Linux GPU has run it** (radv, anv, NVIDIA; GL on any hardware). The default executor on Linux is
-  Vulkan on hardware, so the first run on a GPU desktop is its first test there; `BOUGH_GPU=cpu` restores the CPU
-  executor.
+* **No real Linux GPU has run it** (radv, anv, NVIDIA; GL on any hardware). Since round 2 (§5) Linux's default is the
+  mixed model; a hardware Vulkan device joins it only when a frame's measured costs favour it, so on a GPU desktop the
+  first such frame is the executor's first test there; `BOUGH_GPU=cpu` keeps every frame on the CPU.
 * **Zero copy into a GPU compositor:** surfaces are `wl_shm` (the compositor uploads them). The next step is dmabuf
   surfaces (`VK_EXT_external_memory_dma_buf`, `zwp_linux_dmabuf_v1`) with explicit sync
   (`wp_linux_drm_syncobj_v1`: commit at release, the compositor waits on the GPU); lavapipe cannot test it.
@@ -217,3 +217,64 @@ written constant: 150 us) and 0.5-1.1 us per tile (Metal's: 0.18).
 | gallery, default (no render node) | 1.52 ms p50; GPU never built |
 | gallery, mixed model with lavapipe forced | 11.55 ms (the fused Vulkan port: 63.1; fused GL: 106.1) |
 | gallery, lavapipe allowed in the choice | 0 of 15 frames to it (**P5 holds** for the choice); 2.09 ms p50 under load 20, its build overlapping the timed frames |
+
+**ilo-prod, gui-bench's `bough` row (P4).** main `17635c1c98` (binary `a7f8a95c`, 55.9 MB) against this branch at
+`d8ee4a7ade` (binary `24ff909c`, 46.7 MB: bough-kernel no longer links wgpu-hal). Setup:
+
+* Runner: round 8's patched gui-bench runner, a private build of the identical source, pinned as round 8's final runs
+  (`taskset -c 0-7 nice -n 10`). 46 cells per run.
+* Order: main and branch alternating (A1 B1 A2 B2) in fixed 60 Hz timing, then again unthrottled
+  (`gb-ab.sh`, `tools/gbcmp.py`, `gbnull.py`, `gbkey.py`, `gbrun.py` in the lane).
+* Host: load 17-26 throughout from another user's builds. Round 8's final runs had a quiet host, so these absolute
+  numbers are not comparable to those.
+
+The test of a difference is a null comparison: the same statistic for the two splits that mix the binaries
+(A1,B1 | A2,B2 and A1,B2 | A2,B1), which can differ only by noise and drift.
+
+| | fixed | unthrottled |
+|---|---|---|
+| metrics in all four runs | 2,950 | 3,744 |
+| worse in every run by over 10 %: branch / null splits | 54 / 28, 43 | 91 / 104, 58 |
+| cells with errors | the same in both binaries (round 8's known 10,000-row failures) | the same |
+| end-to-end latency (`total_p50`), ratio (>1 worse) / nulls | 0.978 / 0.993, 1.013 | 0.910 / 1.106, 1.058 |
+| `input_to_commit_p50` | 0.930 / 0.969, 1.059 | 0.910 / 1.106, 1.059 |
+| CPU per second | 0.995 / 0.988, 1.026 | 0.962 / 0.987, 0.992 |
+| frames per second | 1.005 / 1.005, 0.995 | 1.059 / 0.949, 0.980 |
+| start latency | 1.024 / 1.220, 0.979 | 1.049 / 0.912, 0.949 |
+
+Ratios are geometric means over cells, direction-adjusted. One main run (A2, fixed) also lost 8 cells to the harness's
+dbus session failing to start.
+
+Notes on the table:
+
+* **Unthrottled frames per second and start latency** follow each run's load, not its binary. Relative to A1 (load
+  26.0): B1 (23.5) 0.958 and 0.998; A2 (17.1) 1.034 and 0.863; B2 (21.8) 1.006 and 0.955.
+* **CPU per frame**, the measure least sensitive to load: B1 0.955, A2 0.946, B2 0.937 of A1's.
+* **Memory first looked worse**: peak RSS was 1.2 MB higher per cell unthrottled (0.2 MB fixed). All of it was the
+  executable's resident code pages: main had 3.5 MB of its 6.1 MB of code resident, the branch 4.7 MB of its 4.9 MB.
+  That is page-cache state, not code. With both binaries dropped from the page cache and loaded alike, the totals were
+  14.77 and 14.90 MB for main against 14.88 and 14.94 MB for the branch (the `rows` scenario at 10 rows, unthrottled).
+* **No Vulkan library** is mapped in the branch's process (no render node). **P4 holds** on this host, with the caveat
+  of its load.
+
+**The final commit** (`d5cefc2f2e`; the device made lazy after the A/B runs, which changes nothing without a render
+node), on ilo-prod:
+
+* `tests/gpu_target.rs` 9 of 9 and `exact.rs` under the validation layer.
+* The gallery exact in every mode. With the costs choosing, no device is built at all, because no frame pays for one.
+* Memory against main, both binaries dropped from the page cache first (`rows`, 1,000 rows, unthrottled): 19.32 and
+  19.20 MB against 19.26 and 19.16 MB.
+* Under fakeland with lavapipe pinned (`BOUGH_KERNEL_TRACE=1`), the window's frame (1,000 tiles, the whole window) was
+  drawn by the Vulkan executor into the compositor's `wl_shm` buffer. Its screenshot is byte-identical to the CPU
+  executor's.
+
+### 5.3 Open
+
+* **A real Linux GPU** (radv, anv, NVIDIA): the calibrated costs and the share of frames the choice gives it.
+* **The atlas in device-local memory** on discrete GPUs without resizable BAR (S). Today it is host-visible, read over
+  PCIe; the calibration measures that cost, so the choice already accounts for it.
+* **OpenGL inside the mixed model** (S-M): the integer kernel as GLSL, and a copy of the repaired tiles, since GL cannot
+  import host memory. Today OpenGL exists only as the opt-in fused presenter.
+* **The fused port at the Metal presenter's speed** (2.5 against 1.33 ms on the M3 Pro): f16 needs half-precision types
+  in wgsl-rs first; band certificates by subgroup.
+* **A quiet-host re-run of the gui-bench A/B**: these were measured at load 17-26.
