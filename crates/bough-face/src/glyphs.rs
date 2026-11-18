@@ -71,7 +71,8 @@ unsafe fn same_key(a: *const u8, b: &[u8]) -> bool {
     }
 }
 
-/// A shaped line: `n` glyphs from `g0` in the lanes, shaped in face `face`, made in generation `gen` of the
+/// A shaped line: `g0` is a globally unique descriptor token, resolved by its owning glyph store.
+/// The descriptor identifies `n` glyphs in face `face`, made in generation `gen` of the
 /// memo. Two words; zero is the empty run. A run from before a [`Glyphs::clear`] names lanes that no longer
 /// hold it: its generation says so, and [`Glyphs::of`] gives it no glyphs.
 #[repr(C)]
@@ -338,7 +339,7 @@ impl Glyphs {
         // Globally unique tokens are never reused, including across stores or clears.
         // Exhaustion is a checked refusal rather than wrapping to a stale handle.
         let token = NEXT_RUN
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .expect("run token space exhausted");
         let descriptor = n as u32 | (id as u32) << 16 | (self.generation as u32) << 24;
         self.runs.insert(token, (g0, descriptor));

@@ -12,6 +12,8 @@ use objc2_metal::*;
 type Buf = Retained<ProtocolObject<dyn MTLBuffer>>;
 
 pub struct Gpu {
+    atlas_bytes: usize,
+    image_bytes: usize,
     admitted_scene: Scene,
     admitted_prog: Option<Prog>,
     owner: std::sync::Arc<()>,
@@ -41,6 +43,8 @@ impl Gpu {
             .admitted_prog
             .as_ref()
             .expect("upload a program before rendering");
+        assert!(p.words[6] as usize < self.atlas_bytes.max(1), "glyph atlas bounds");
+        assert!(p.words[8] as usize < (self.image_bytes / 4).max(1), "image atlas bounds");
         assert!(tiles <= p.tiles(), "invalid dispatch size");
         assert!(
             out_words >= p.validate(&self.admitted_scene),
@@ -62,6 +66,8 @@ impl Gpu {
             .newComputePipelineStateWithFunction_error(&f)
             .expect("pipeline");
         Some(Gpu {
+            atlas_bytes: 0,
+            image_bytes: 0,
             admitted_scene: Scene::default(),
             admitted_prog: None,
             owner: std::sync::Arc::new(()),
@@ -124,20 +130,22 @@ impl Gpu {
         self.put(1, &prog.words);
     }
     pub fn upload_atlas(&mut self, atlas: &[u8]) {
-        let b = self.buf(2, atlas.len() + 4);
-        // SAFETY: as `put`.
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                atlas.as_ptr(),
-                b.contents().as_ptr() as *mut u8,
-                atlas.len(),
-            )
-        };
+        self.atlas_bytes = atlas.len();
+        if atlas.is_empty() {
+            self.put(2, &[0u32]);
+        } else {
+            self.put(2, atlas);
+        }
     }
 
     /// The image atlas (premultiplied RGBA8 bytes).
     pub fn upload_images(&mut self, img: &[u8]) {
-        self.put(4, img);
+        self.image_bytes = img.len();
+        if img.len() < 4 {
+            self.put(4, &[0u32]);
+        } else {
+            self.put(4, img);
+        }
     }
 
     /// A buffer over memory the caller owns: a surface the kernel writes in place (journal E9: Metal accepts

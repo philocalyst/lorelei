@@ -662,7 +662,7 @@ pub mod km {
     pub fn progress(now: u32, t0: u32, dur: u32, ease: u32) -> u32 {
         // the clock is a wrapping word: "started" is at most 2^31 ticks after `t0` modulo 2^32
         let el = (now & 0x7FFFFFFFu32) + (0x7FFFFFFFu32 - (t0 & 0x7FFFFFFFu32)) + 1u32;
-        let el = (el & 0x7FFFFFFFu32) | ((now ^ t0 ^ el) & 0x80000000u32);
+        let el = (el & 0x7FFFFFFFu32) | ((now ^ t0 ^ el ^ 0x80000000u32) & 0x80000000u32);
         if el == 0u32 || el >= 0x80000000u32 {
             return 0u32;
         }
@@ -681,7 +681,7 @@ pub mod km {
     pub fn mix_i(a: i32, b: i32, t: u32) -> i32 {
         let d = b - a;
         let ti = t as i32;
-        a + (((d >> 10u32) * ti) >> 5u32) + (((d & 1023i32) * ti) >> 15u32)
+        a + (d >> 15u32) * ti + (((d & 32767i32) * ti) >> 15u32)
     }
     pub fn mix4i(a: Vec4i, b: Vec4i, t: u32) -> Vec4i {
         vec4i(
@@ -708,7 +708,7 @@ pub mod km {
             let bw = max(rad.y(), 16i32);
             rz = (16777216i32 + bw - 1i32) / bw;
             if rad.x() > 0i32 {
-                rw = min(32768i32, (bw / 8i32) * 32768i32 / max(rad.x(), 1i32));
+                rw = min(32768i32, bw * 4096i32 / max(rad.x(), 1i32));
             } else {
                 rw = 0i32;
             }
