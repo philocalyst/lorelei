@@ -9,7 +9,10 @@
 //! eight (tag, offset) slots; an entry is a four-word header with the key bytes behind it, placed so that a
 //! short entry does not straddle a line: a hit is two dependent lines.
 use crate::face::Face;
+use alloc::collections::BTreeMap;
 use alloc::vec;
+use core::sync::atomic::{AtomicU32, Ordering};
+static NEXT_RUN: AtomicU32 = AtomicU32::new(1);
 use alloc::vec::Vec;
 
 const MUL: u128 = 0x9E37_79B9_7F4A_7C15_F39C_C060_5CED_C835;
@@ -103,7 +106,10 @@ struct Bucket {
     tag: [u32; 8],
     off: [u32; 8],
 }
-const EMPTY: Bucket = Bucket { tag: [0; 8], off: [0; 8] };
+const EMPTY: Bucket = Bucket {
+    tag: [0; 8],
+    off: [0; 8],
+};
 /// Header words: hash; face | len << 32; g0 | n << 32; width | words << 32.
 const HDR: usize = 4;
 
@@ -120,6 +126,7 @@ pub struct Glyphs {
     pub cleared: u64,
     /// Bumped by [`Glyphs::clear`]: runs carry it.
     generation: u8,
+    runs: BTreeMap<u32, (usize, u32)>,
 }
 
 impl Default for Glyphs {
@@ -130,7 +137,18 @@ impl Default for Glyphs {
 
 impl Glyphs {
     pub fn new() -> Glyphs {
-        Glyphs { table: vec![EMPTY; 64], used: 0, ents: vec![0; 8], slot: Vec::new(), x: Vec::new(), shaped: 0, found: 0, cleared: 0, generation: 0 }
+        Glyphs {
+            table: vec![EMPTY; 64],
+            used: 0,
+            ents: vec![0; 8],
+            slot: Vec::new(),
+            x: Vec::new(),
+            shaped: 0,
+            found: 0,
+            cleared: 0,
+            generation: 0,
+            runs: BTreeMap::new(),
+        }
     }
     /// The lanes: every run indexes these.
     #[inline(always)]
@@ -141,15 +159,28 @@ impl Glyphs {
     /// has none: it draws nothing rather than someone else's glyphs.
     #[inline(always)]
     pub fn of(&self, r: Run) -> (&[u16], &[i32]) {
-        let (a, b) = (r.g0 as usize, r.g0 as usize + r.len());
-        if r.generation() != self.generation || b > self.slot.len() {
+        let Some(&(a, descriptor)) = self.runs.get(&r.g0) else {
+            return (&[], &[]);
+        };
+        if descriptor != r.n_face {
             return (&[], &[]);
         }
-        (&self.slot[a..b], &self.x[a..b])
+        let Some(b) = a.checked_add(r.len()) else {
+            return (&[], &[]);
+        };
+        match (self.slot.get(a..b), self.x.get(a..b)) {
+            (Some(s), Some(x)) => (s, x),
+            _ => (&[], &[]),
+        }
     }
+
     /// Bytes held, capacity included: the table, the entries, the lanes.
     pub fn bytes(&self) -> usize {
-        self.table.capacity() * 64 + self.ents.capacity() * 8 + self.slot.capacity() * 2 + self.x.capacity() * 4
+        self.table.capacity() * 64
+            + self.ents.capacity() * 8
+            + self.slot.capacity() * 2
+            + self.x.capacity() * 4
+            + self.runs.len() * core::mem::size_of::<(u32, (usize, u32))>()
     }
     /// The generation runs are being made in.
     pub fn generation(&self) -> u8 {
@@ -165,6 +196,7 @@ impl Glyphs {
     /// longer the memo's): every holder describes its text again, which is what the caller of
     /// [`Glyphs::over`] does next.
     pub fn clear(&mut self) {
+        self.runs.clear();
         self.table.clear();
         self.table.resize(64, EMPTY);
         self.table.shrink_to(64);
@@ -198,7 +230,10 @@ impl Glyphs {
                 // it there), so its header words are in bounds; its key bytes follow the header and are as
                 // long as `head` says, which is compared before they are read.
                 unsafe {
-                    if *self.ents.get_unchecked(off) == h && *self.ents.get_unchecked(off + 1) == head && same_key(self.ents.as_ptr().add(off + HDR) as *const u8, text) {
+                    if *self.ents.get_unchecked(off) == h
+                        && *self.ents.get_unchecked(off + 1) == head
+                        && same_key(self.ents.as_ptr().add(off + HDR) as *const u8, text)
+                    {
                         return off;
                     }
                 }
@@ -235,15 +270,34 @@ impl Glyphs {
             return None;
         }
         // SAFETY: `find` returns the start of an entry: its four header words are in bounds.
-        let (g, w) = unsafe { (*self.ents.get_unchecked(off + 2), *self.ents.get_unchecked(off + 3)) };
-        Some((Run { g0: g as u32, n_face: (g >> 32) as u32 | (id as u32 & 0xff) << 16 | (self.generation as u32) << 24 }, w as u32 as i32))
+        let (g, w) = unsafe {
+            (
+                *self.ents.get_unchecked(off + 2),
+                *self.ents.get_unchecked(off + 3),
+            )
+        };
+        Some((
+            Run {
+                g0: g as u32,
+                n_face: (g >> 32) as u32
+                    | (id as u32 & 0xff) << 16
+                    | (self.generation as u32) << 24,
+            },
+            w as u32 as i32,
+        ))
     }
     /// The line of (`id`, `text`), shaped on a miss by `shape`: any shaper. It appends the line's glyph slots
     /// and pens to the lanes it is given and returns the advance, or `None` to refuse (what it appended is
     /// discarded). This is the one memo: the prepared face, the table shaper and the full shaper differ only
     /// in the closure.
     #[inline]
-    pub fn line_with(&mut self, h: u64, id: u16, text: &[u8], shape: impl FnOnce(&mut Vec<u16>, &mut Vec<i32>) -> Option<i32>) -> Option<(Run, i32)> {
+    pub fn line_with(
+        &mut self,
+        h: u64,
+        id: u16,
+        text: &[u8],
+        shape: impl FnOnce(&mut Vec<u16>, &mut Vec<i32>) -> Option<i32>,
+    ) -> Option<(Run, i32)> {
         if let Some(hit) = self.get(h, id, text) {
             self.found += 1;
             return Some(hit);
@@ -254,7 +308,10 @@ impl Glyphs {
             self.x.truncate(g0);
             return None;
         };
-        assert!(self.slot.len() == self.x.len(), "a shaper appends one pen per glyph slot");
+        assert!(
+            self.slot.len() == self.x.len(),
+            "a shaper appends one pen per glyph slot"
+        );
         Some(self.enter(h, id, text, g0, width))
     }
     /// Whether what the memo holds has outgrown `budget` bytes: time to [`Glyphs::clear`] and describe what
@@ -267,7 +324,10 @@ impl Glyphs {
     fn enter(&mut self, h: u64, id: u16, text: &[u8], g0: usize, width: i32) -> (Run, i32) {
         let head = id as u64 | (text.len() as u64) << 32;
         let n = self.slot.len() - g0;
-        assert!(n < 1 << 16 && g0 < u32::MAX as usize && id < 256, "a line of more than 65,535 glyphs, or a face beyond 255");
+        assert!(
+            n < 1 << 16 && g0 < u32::MAX as usize && id < 256,
+            "a line of more than 65,535 glyphs, or a face beyond 255"
+        );
         let words = HDR + text.len().div_ceil(8);
         // a short entry does not straddle a line
         let at = self.ents.len();
@@ -275,17 +335,41 @@ impl Glyphs {
             self.ents.resize((at + 7) & !7, 0);
         }
         let off = self.ents.len();
-        self.ents.extend_from_slice(&[h, head, g0 as u64 | (n as u64) << 32, width as u32 as u64 | (words as u64) << 32]);
+        // Globally unique tokens are never reused, including across stores or clears.
+        // Exhaustion is a checked refusal rather than wrapping to a stale handle.
+        let token = NEXT_RUN
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+            .expect("run token space exhausted");
+        let descriptor = n as u32 | (id as u32) << 16 | (self.generation as u32) << 24;
+        self.runs.insert(token, (g0, descriptor));
+        self.ents.extend_from_slice(&[
+            h,
+            head,
+            token as u64 | (n as u64) << 32,
+            width as u32 as u64 | (words as u64) << 32,
+        ]);
         self.ents.resize(off + words, 0);
         // SAFETY: the `words - HDR` words just appended hold at least `text.len()` bytes.
-        unsafe { core::ptr::copy_nonoverlapping(text.as_ptr(), self.ents.as_mut_ptr().add(off + HDR) as *mut u8, text.len()) };
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                text.as_ptr(),
+                self.ents.as_mut_ptr().add(off + HDR) as *mut u8,
+                text.len(),
+            )
+        };
         if (self.used + 1) * 4 > self.table.len() * 8 * 3 {
             self.grow();
         }
         Self::put(&mut self.table, h, off as u32);
         self.used += 1;
         self.shaped += 1;
-        (Run { g0: g0 as u32, n_face: n as u32 | (id as u32 & 0xff) << 16 | (self.generation as u32) << 24 }, width)
+        (
+            Run {
+                g0: token,
+                n_face: n as u32 | (id as u32 & 0xff) << 16 | (self.generation as u32) << 24,
+            },
+            width,
+        )
     }
     fn put(table: &mut [Bucket], h: u64, off: u32) {
         let mask = table.len() - 1;
@@ -313,5 +397,35 @@ impl Glyphs {
             p += (self.ents[p + 3] >> 32) as usize;
         }
         self.table = t;
+    }
+}
+
+#[cfg(test)]
+mod handle_tests {
+    use super::*;
+    fn line(g: &mut Glyphs) -> Run {
+        g.line_with(1, 0, b"x", |s, x| {
+            s.push(7);
+            x.push(0);
+            Some(1)
+        })
+        .unwrap()
+        .0
+    }
+    #[test]
+    fn stale_and_foreign_runs_are_refused() {
+        assert_eq!(core::mem::size_of::<Run>(), 8);
+        let mut a = Glyphs::new();
+        let old = line(&mut a);
+        let mut b = Glyphs::new();
+        let foreign = line(&mut b);
+        assert!(a.of(foreign).0.is_empty());
+        assert!(b.of(old).0.is_empty());
+        for _ in 0..301 {
+            a.clear();
+            let fresh = line(&mut a);
+            assert_eq!(a.of(fresh).0, &[7]);
+            assert!(a.of(old).0.is_empty());
+        }
     }
 }

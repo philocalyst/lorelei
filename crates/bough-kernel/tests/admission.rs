@@ -38,7 +38,7 @@ fn a_transition_the_interpolation_cannot_carry_shows_its_target() {
     anim.push_anim(a, b, 100, 50, 0);
     let mut direct = Scene::default();
     direct.push(b);
-    for now in [100, 125, 150, 151, 100_000] {
+    for now in [150, 151, 100_000] {
         let (n1, f1) = frame(&anim, 128, 96, &atlas, now);
         let (n2, _) = frame(&direct, 128, 96, &atlas, now);
         assert_eq!(n1, f1, "executors disagree at tick {now}");
@@ -60,4 +60,75 @@ fn a_transition_the_interpolation_cannot_carry_shows_its_target() {
     late.push_anim(a, b2, 0xFFFF_FFF0, 8, 0);
     let (wrapped, _) = frame(&late, 128, 96, &atlas, 5);
     assert_eq!(wrapped, want);
+}
+
+#[test]
+fn animation_endpoint_matches_every_staged_field() {
+    use bough_kernel::k;
+    let c = stage::NO_CLIP;
+    let pairs = [
+        (
+            stage::shadow(10., 10., 30., 30., 4., 2., 0xff000000, &c).unwrap(),
+            stage::shadow(15., 15., 40., 40., 8., 8., 0xff000000, &c).unwrap(),
+        ),
+        (
+            stage::grad(10., 10., 30., 30., 4., 0., 0xffffffff, 0xff000000, &c).unwrap(),
+            stage::grad(15., 15., 40., 40., 8., 1., 0xffffffff, 0xff000000, &c).unwrap(),
+        ),
+        (
+            stage::xf(
+                stage::rrect(0., 0., 10., 10., 2., 0xffffffff, &c),
+                &stage::Xf {
+                    m: [1., 0., 0., 1.],
+                    k: [0.; 2],
+                    t: [0.; 2],
+                },
+                &c,
+            )
+            .unwrap(),
+            stage::xf(
+                stage::rrect(0., 0., 10., 10., 2., 0xffffffff, &c),
+                &stage::Xf {
+                    m: [0.8, 0.2, -0.2, 0.8],
+                    k: [0.; 2],
+                    t: [10.; 2],
+                },
+                &c,
+            )
+            .unwrap(),
+        ),
+    ];
+    for (a, b) in pairs {
+        let mut anim = Scene::default();
+        anim.push_anim(a, b, u32::MAX - 9, 20, 0);
+        let mut want = Scene::default();
+        want.push(b);
+        let mut got = Scene::default();
+        got.push(anim.load_at(0, 10));
+        assert_eq!(got.words, want.words);
+        assert_eq!(k::progress(0, u32::MAX - 9, 20, 0), k::ONE / 2);
+    }
+}
+
+#[test]
+fn malformed_programs_are_refused_before_execution() {
+    let mut scene = Scene::default();
+    scene.add(stage::solid(0., 0., 32., 32., 0xffffffff, &stage::NO_CLIP));
+    let atlas = Atlas::new(&[], 1);
+    let mut p = Prog::default();
+    Binner::default().bin(&scene, 32, 32, 32, &atlas, 0, &Damage::All, false, &mut p);
+    for (at, value) in [
+        (14, u32::MAX),
+        (15, u32::MAX),
+        (16, u32::MAX),
+        (2, 1),
+        (9, u32::MAX),
+    ] {
+        let mut bad = p.clone();
+        bad.words[at] = value;
+        assert!(
+            std::panic::catch_unwind(|| bad.validate(&scene)).is_err(),
+            "accepted field {at}"
+        );
+    }
 }

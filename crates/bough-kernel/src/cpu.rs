@@ -21,14 +21,23 @@ pub struct Atlas<'a> {
 impl<'a> Atlas<'a> {
     /// Glyphs only.
     pub fn new(px: &'a [u8], w: u32) -> Atlas<'a> {
-        Atlas { px, w, img: &[], iw: 1 }
+        Atlas {
+            px,
+            w,
+            img: &[],
+            iw: 1,
+        }
     }
     pub fn with_images(self, img: &'a [u8], iw: u32) -> Atlas<'a> {
         Atlas { img, iw, ..self }
     }
     #[inline(always)]
     fn cov(&self, t: u32) -> u32 {
-        if t == k::NO_TEXEL || self.px.is_empty() { 0 } else { self.px[(t as usize).min(self.px.len() - 1)] as u32 }
+        if t == k::NO_TEXEL || self.px.is_empty() {
+            0
+        } else {
+            self.px[(t as usize).min(self.px.len() - 1)] as u32
+        }
     }
     #[inline(always)]
     fn image(&self, t: u32) -> u32 {
@@ -36,7 +45,12 @@ impl<'a> Atlas<'a> {
             return 0;
         }
         let i = (t as usize).min(self.img.len() / 4 - 1) * 4;
-        u32::from_le_bytes([self.img[i], self.img[i + 1], self.img[i + 2], self.img[i + 3]])
+        u32::from_le_bytes([
+            self.img[i],
+            self.img[i + 1],
+            self.img[i + 2],
+            self.img[i + 3],
+        ])
     }
     /// The texels `k::shade` needs at pixel (x, y): the CPU's twin of the kernel's `fetch` (the same
     /// `k::taps`, the same clamps).
@@ -45,11 +59,21 @@ impl<'a> Atlas<'a> {
         let kind = c.par.x;
         if kind == k::K_GLYPH {
             let t = k::taps(*c, x, y, self.w, self.iw);
-            return Vec4 { x: self.cov(t.x), y: self.cov(t.y), z: self.cov(t.z), w: self.cov(t.w) };
+            return Vec4 {
+                x: self.cov(t.x),
+                y: self.cov(t.y),
+                z: self.cov(t.z),
+                w: self.cov(t.w),
+            };
         }
         if kind == k::K_IMAGE || kind == k::K_RAMP {
             let t = k::taps(*c, x, y, self.w, self.iw);
-            return Vec4 { x: self.image(t.x), y: self.image(t.y), z: self.image(t.z), w: self.image(t.w) };
+            return Vec4 {
+                x: self.image(t.x),
+                y: self.image(t.y),
+                z: self.image(t.z),
+                w: self.image(t.w),
+            };
         }
         k::splat(0)
     }
@@ -66,6 +90,54 @@ pub struct Prog {
 const HDR: usize = k::PROG_HDR as usize;
 
 impl Prog {
+    /// Validate every address consumed by either executor before dispatch.
+    pub fn validate(&self, scene: &Scene) -> usize {
+        scene.validate();
+        assert!(self.words.len() >= HDR, "short program header");
+        let (fw, fh, stride) = (
+            self.words[0] as usize,
+            self.words[1] as usize,
+            self.words[2] as usize,
+        );
+        assert!(
+            fw <= 32767 && fh <= 32767 && stride >= fw,
+            "invalid frame dimensions"
+        );
+        let end = HDR
+            .checked_add(self.tiles().checked_mul(4).expect("tile overflow"))
+            .expect("tile overflow");
+        assert!(end <= self.words.len(), "short tile table");
+        let mut previous = None;
+        for i in 0..self.tiles() {
+            let w = &self.words[HDR + i * 4..HDR + i * 4 + 4];
+            let (x, y) = (w[0] as usize, w[1] as usize);
+            assert!(
+                x < fw && y < fh && x % 32 == 0 && y % 32 == 0,
+                "invalid tile origin"
+            );
+            assert!(
+                previous.is_none_or(|p| p < (y, x)),
+                "tiles must be unique and ordered"
+            );
+            previous = Some((y, x));
+            let a = w[2] as usize;
+            let b = a.checked_add(w[3] as usize).expect("list overflow");
+            assert!(a >= end && b <= self.words.len(), "invalid command list");
+            for &id in &self.words[a..b] {
+                assert!((id as usize) < scene.len(), "invalid command id");
+            }
+        }
+        let table = self.words[9] as usize;
+        let entries = self.words[10] as usize + 1;
+        assert!(
+            table >= end
+                && table
+                    .checked_add(entries.checked_mul(2).expect("table overflow"))
+                    .is_some_and(|n| n <= self.words.len()),
+            "invalid operand table"
+        );
+        stride.checked_mul(fh).expect("output overflow")
+    }
     pub fn fw(&self) -> u32 {
         self.words[0]
     }
@@ -85,11 +157,17 @@ impl Prog {
     #[inline]
     pub fn tile(&self, i: usize) -> (i32, i32, &[u32]) {
         let t = &self.words[HDR + 4 * i..HDR + 4 * i + 4];
-        (t[0] as i32, t[1] as i32, &self.words[t[2] as usize..(t[2] + t[3]) as usize])
+        (
+            t[0] as i32,
+            t[1] as i32,
+            &self.words[t[2] as usize..(t[2] + t[3]) as usize],
+        )
     }
     /// Commands summed over the tiles' lists.
     pub fn entries(&self) -> usize {
-        (0..self.tiles()).map(|i| self.words[HDR + 4 * i + 3] as usize).sum()
+        (0..self.tiles())
+            .map(|i| self.words[HDR + 4 * i + 3] as usize)
+            .sum()
     }
 }
 
@@ -114,7 +192,17 @@ pub struct Binner {
 /// replication; a command rarely covers its whole tile, so these lean high for the per-pixel kinds, which
 /// biases an effect-heavy frame towards the GPU). Index: kind, then for shadows and gradients whether the
 /// cheap form applies (square corners; vertical).
-pub const KIND_NS: [[u32; 2]; 9] = [[10, 10], [100, 100], [100, 100], [190, 190], [1900, 900], [3000, 300], [2500, 2500], [3000, 3000], [3000, 3000]];
+pub const KIND_NS: [[u32; 2]; 9] = [
+    [10, 10],
+    [100, 100],
+    [100, 100],
+    [190, 190],
+    [1900, 900],
+    [3000, 300],
+    [2500, 2500],
+    [3000, 3000],
+    [3000, 3000],
+];
 
 /// How a frame is executed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -140,15 +228,38 @@ pub struct Costs {
 
 /// M3 Pro, 2026-11-12 (journal E5): 150 us warm and 650 us at a display's cadence; 180 ns per tile and 55 ns
 /// per entry; 30 us to wake workers.
-pub const COSTS: Costs = Costs { gpu_fixed_warm: 150_000, gpu_fixed_cold: 650_000, gpu_tile: 180, gpu_entry: 55, wake: 30_000 };
+pub const COSTS: Costs = Costs {
+    gpu_fixed_warm: 150_000,
+    gpu_fixed_cold: 650_000,
+    gpu_tile: 180,
+    gpu_entry: 55,
+    wake: 30_000,
+};
 
 /// The gradient: the cheapest of one core, `workers` more cores, and the GPU, for a program of `tiles` tiles
 /// and `entries` entries whose one-core estimate is `cpu_ns`. This is the whole scheduler.
-pub fn choose(cpu_ns: u64, tiles: u64, entries: u64, workers: usize, gpu: bool, gpu_warm: bool, c: &Costs) -> Exec {
+pub fn choose(
+    cpu_ns: u64,
+    tiles: u64,
+    entries: u64,
+    workers: usize,
+    gpu: bool,
+    gpu_warm: bool,
+    c: &Costs,
+) -> Exec {
     let n = workers as u64 + 1;
     // bands are tile rows: a small repair has few of them, and the pool never reaches a perfect split
     let many = c.wake + cpu_ns * 5 / (4 * n);
-    let g = if gpu { (if gpu_warm { c.gpu_fixed_warm } else { c.gpu_fixed_cold }) + c.gpu_tile * tiles + c.gpu_entry * entries } else { u64::MAX };
+    let g = if gpu {
+        (if gpu_warm {
+            c.gpu_fixed_warm
+        } else {
+            c.gpu_fixed_cold
+        }) + c.gpu_tile * tiles
+            + c.gpu_entry * entries
+    } else {
+        u64::MAX
+    };
     if cpu_ns <= many.min(g) || workers == 0 && cpu_ns <= g {
         Exec::Cpu1
     } else if many <= g && workers > 0 {
@@ -162,7 +273,30 @@ impl Binner {
     /// Build the tile programs of the damaged tiles of a `fw` x `fh` frame. `cut`: apply the occlusion cut
     /// (identity 2). The input here is the whole command list; in the runtime it is the page cull's output
     /// for the damaged rows.
-    pub fn bin(&mut self, scene: &Scene, fw: u32, fh: u32, stride: u32, atlas: &Atlas, now: u32, damage: &Damage, cut: bool, prog: &mut Prog) {
+    pub fn bin(
+        &mut self,
+        scene: &Scene,
+        fw: u32,
+        fh: u32,
+        stride: u32,
+        atlas: &Atlas,
+        now: u32,
+        damage: &Damage,
+        cut: bool,
+        prog: &mut Prog,
+    ) {
+        scene.validate();
+        assert!(
+            stride >= fw && fw <= 32767 && fh <= 32767,
+            "invalid frame dimensions"
+        );
+        if let Damage::Tiles(t) = damage {
+            assert!(
+                t.iter()
+                    .all(|&(x, y)| (x as u32) < fw.div_ceil(32) && (y as u32) < fh.div_ceil(32)),
+                "invalid damage tile"
+            );
+        }
         let (aw, alim) = (atlas.w, (atlas.px.len() as u32).saturating_sub(1));
         let (tx, ty) = (fw.div_ceil(32) as usize, fh.div_ceil(32) as usize);
         self.slot.clear();
@@ -178,7 +312,12 @@ impl Binner {
                 let mut n = 0u32;
                 (bx0, by0, bx1, by1) = (tx, ty, 0, 0);
                 for &(x, y) in t.iter() {
-                    (bx0, by0, bx1, by1) = (bx0.min(x as usize), by0.min(y as usize), bx1.max(x as usize + 1), by1.max(y as usize + 1));
+                    (bx0, by0, bx1, by1) = (
+                        bx0.min(x as usize),
+                        by0.min(y as usize),
+                        bx1.max(x as usize + 1),
+                        by1.max(y as usize + 1),
+                    );
                 }
                 if t.is_empty() {
                     (bx0, by0, bx1, by1) = (0, 0, 0, 0);
@@ -209,7 +348,12 @@ impl Binner {
         // decodes a command
         let rect = |w: usize| {
             let (a, b) = (scene.words[w], scene.words[w + 1]);
-            [(a as i16) as i32, ((a >> 16) as i16) as i32, (b as i16) as i32, ((b >> 16) as i16) as i32]
+            [
+                (a as i16) as i32,
+                ((a >> 16) as i16) as i32,
+                (b as i16) as i32,
+                ((b >> 16) as i16) as i32,
+            ]
         };
         let span = |win: [i32; 4]| {
             let x0 = ((win[0].max(0) as usize) >> 5).max(bx0);
@@ -238,15 +382,22 @@ impl Binner {
                     k::opaque(scene.load(i))
                 } else {
                     match kind {
-                        k::K_SOLID | k::K_RRECT | k::K_SHADOW => a1 == k::ONE || (cfg!(feature = "mutant_cut") && a1 >= k::ONE / 2),
+                        k::K_SOLID | k::K_RRECT | k::K_SHADOW => {
+                            a1 == k::ONE || (cfg!(feature = "mutant_cut") && a1 >= k::ONE / 2)
+                        }
                         k::K_BORDER => a2 == k::ONE,
                         k::K_GRAD => a1 == k::ONE && a2 == k::ONE,
                         _ => false,
                     }
                 };
             let core = rect(w + 6);
-            let cheap = kind == k::K_SHADOW && scene.words[w + 12] == 0 || kind == k::K_GRAD && scene.words[w + 14] == 0;
-            let ns = if scene.words[w + 28] != 0 { 3000 } else { KIND_NS[(kind as usize).min(8)][cheap as usize] as u64 };
+            let cheap = kind == k::K_SHADOW && scene.words[w + 12] == 0
+                || kind == k::K_GRAD && scene.words[w + 14] == 0;
+            let ns = if scene.words[w + 28] != 0 {
+                3000
+            } else {
+                KIND_NS[(kind as usize).min(8)][cheap as usize] as u64
+            };
             for y in y0..y1 {
                 for x in x0..x1 {
                     let s = self.slot[(y - by0) * bw + (x - bx0)];
@@ -254,7 +405,12 @@ impl Binner {
                         continue;
                     }
                     let (ox, oy) = (x as i32 * 32, y as i32 * 32);
-                    if opaque && core[0] <= ox && core[1] <= oy && core[2] >= ox + 32 && core[3] >= oy + 32 {
+                    if opaque
+                        && core[0] <= ox
+                        && core[1] <= oy
+                        && core[2] >= ox + 32
+                        && core[3] >= oy + 32
+                    {
                         self.floor[s as usize] = i;
                         self.count[s as usize] = 1;
                     } else {
@@ -267,7 +423,20 @@ impl Binner {
         }
         let w = &mut prog.words;
         w.clear();
-        w.extend_from_slice(&[fw, fh, stride, aw, now, nt as u32, alim, atlas.iw, (atlas.img.len() as u32 / 4).saturating_sub(1), 0, 0, 0]);
+        w.extend_from_slice(&[
+            fw,
+            fh,
+            stride,
+            aw,
+            now,
+            nt as u32,
+            alim,
+            atlas.iw,
+            (atlas.img.len() as u32 / 4).saturating_sub(1),
+            0,
+            0,
+            0,
+        ]);
         w.resize(HDR + 4 * nt, 0);
         let mut off = (HDR + 4 * nt) as u32;
         for (i, &s) in self.slot.iter().enumerate() {
@@ -343,7 +512,11 @@ pub struct Scratch {
 
 impl Default for Scratch {
     fn default() -> Self {
-        Scratch { cmds: Vec::new(), acc: Box::new([[0; 4]; 1024]), st: Stats::default() }
+        Scratch {
+            cmds: Vec::new(),
+            acc: Box::new([[0; 4]; 1024]),
+            st: Stats::default(),
+        }
     }
 }
 
@@ -365,22 +538,39 @@ pub const EVERYWHERE: [i32; 4] = [i32::MIN / 2, i32::MIN / 2, i32::MAX / 2, i32:
 
 impl Default for Opt {
     fn default() -> Self {
-        Opt { flat: true, spec: false, clip: EVERYWHERE }
+        Opt {
+            flat: true,
+            spec: false,
+            clip: EVERYWHERE,
+        }
     }
 }
 
 impl Opt {
     pub const fn flat(flat: bool) -> Opt {
-        Opt { flat, spec: false, clip: EVERYWHERE }
+        Opt {
+            flat,
+            spec: false,
+            clip: EVERYWHERE,
+        }
     }
     pub const fn clipped(clip: [i32; 4]) -> Opt {
-        Opt { flat: true, spec: false, clip }
+        Opt {
+            flat: true,
+            spec: false,
+            clip,
+        }
     }
 }
 
 #[inline(always)]
 fn ld(p: &[u16; 4]) -> Vec4u {
-    Vec4 { x: p[0] as u32, y: p[1] as u32, z: p[2] as u32, w: p[3] as u32 }
+    Vec4 {
+        x: p[0] as u32,
+        y: p[1] as u32,
+        z: p[2] as u32,
+        w: p[3] as u32,
+    }
 }
 #[inline(always)]
 fn st(v: Vec4u) -> [u16; 4] {
@@ -394,19 +584,34 @@ fn over(row: &mut [[u16; 4]], sh: Vec4u) {
         simd::blend_const(row, st(sh));
     }
 }
-use crate::simd::{self, store_row};
 /// The vector loops (re-exported for their own test).
 pub use crate::simd as vec;
+use crate::simd::{self, store_row};
 /// Bits [a, b) of a 32-row mask.
 #[inline(always)]
 fn rows(a: i32, b: i32) -> u32 {
     let (a, b) = (a.clamp(0, 32) as u32, b.clamp(0, 32) as u32);
-    if a >= b { 0 } else { (((1u64 << b) - 1) as u32) & !(((1u64 << a) - 1) as u32) }
+    if a >= b {
+        0
+    } else {
+        (((1u64 << b) - 1) as u32) & !(((1u64 << a) - 1) as u32)
+    }
 }
 
 /// Shade one tile whose commands are `sc.cmds` (paint order) into `dst` (`rows` rows of `stride` words, the
 /// tile's first pixel at `dst[0]`, `cols` columns).
-fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: &mut [u32], stride: usize, cols: usize, nrows: usize, opt: Opt) {
+fn shade_tile(
+    sc: &mut Scratch,
+    ox: i32,
+    oy: i32,
+    atlas: &Atlas,
+    now: u32,
+    dst: &mut [u32],
+    stride: usize,
+    cols: usize,
+    nrows: usize,
+    opt: Opt,
+) {
     if opt.spec {
         for y in 0..nrows {
             for x in 0..cols {
@@ -421,8 +626,14 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
         return;
     }
     // the damage's bounds inside this tile: rows and columns outside them are left as they are on the surface
-    let all = rows((opt.clip[1] - oy).max(0), (opt.clip[3] - oy).min(nrows as i32));
-    let (kx0, kx1) = ((opt.clip[0] - ox).max(0), (opt.clip[2] - ox).min(cols as i32));
+    let all = rows(
+        (opt.clip[1] - oy).max(0),
+        (opt.clip[3] - oy).min(nrows as i32),
+    );
+    let (kx0, kx1) = (
+        (opt.clip[0] - ox).max(0),
+        (opt.clip[2] - ox).min(cols as i32),
+    );
     if all == 0 || kx0 >= kx1 {
         return;
     }
@@ -439,8 +650,16 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
             0
         } else if kind == k::K_SOLID {
             win
-        } else if kind == k::K_RRECT || kind == k::K_BORDER || kind == k::K_SHADOW || (kind == k::K_GRAD && c.rad.w == 0) {
-            if cfg!(feature = "mutant_flat") { win } else { rows(c.core.y - oy, c.core.w - oy) & win }
+        } else if kind == k::K_RRECT
+            || kind == k::K_BORDER
+            || kind == k::K_SHADOW
+            || (kind == k::K_GRAD && c.rad.w == 0)
+        {
+            if cfg!(feature = "mutant_flat") {
+                win
+            } else {
+                rows(c.core.y - oy, c.core.w - oy) & win
+            }
         } else {
             0
         };
@@ -466,8 +685,16 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
         let (pm, pm2) = (st(c.pm), st(c.pm2));
         // a shadow's column profile over this tile's columns, made at the first row that needs it
         let (mut zone_x, mut sx_ready) = (0u32, false);
-        let (hx, hy, lim) = ((c.b.z - c.b.x) >> 1, (c.b.w - c.b.y) >> 1, c.rad.y + (c.rad.y >> 1));
-        let cz = if cfg!(feature = "mutant_core") { c.core.z + 1 } else { c.core.z };
+        let (hx, hy, lim) = (
+            (c.b.z - c.b.x) >> 1,
+            (c.b.w - c.b.y) >> 1,
+            c.rad.y + (c.rad.y >> 1),
+        );
+        let cz = if cfg!(feature = "mutant_core") {
+            c.core.z + 1
+        } else {
+            c.core.z
+        };
         let (cx0, cx1) = ((c.core.x - ox).clamp(x0, x1), (cz - ox).clamp(x0, x1));
         let mut m = rows(c.win.y - oy, c.win.w - oy) & need;
         if kind == k::K_GLYPH && c.xs == 0 {
@@ -479,7 +706,11 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
             if xa >= xb {
                 continue;
             }
-            let (n, tcol, aw) = ((xb - xa) as usize, (tx0 + (xa - x0)) as usize, atlas.w as usize);
+            let (n, tcol, aw) = (
+                (xb - xa) as usize,
+                (tx0 + (xa - x0)) as usize,
+                atlas.w as usize,
+            );
             while m != 0 {
                 let y = m.trailing_zeros() as i32;
                 m &= m - 1;
@@ -499,11 +730,19 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
                     None => {
                         for (i, o) in cov[..n].iter_mut().enumerate() {
                             // an empty atlas is transparent, as `Atlas::cov` defines it
-                            *o = if atlas.px.is_empty() { 0 } else { k::q15(atlas.px[(first + i).min(atlas.px.len() - 1)] as u32) as u16 };
+                            *o = if atlas.px.is_empty() {
+                                0
+                            } else {
+                                k::q15(atlas.px[(first + i).min(atlas.px.len() - 1)] as u32) as u16
+                            };
                         }
                     }
                 }
-                simd::blend_cov(&mut sc.acc[(y * 32 + xa) as usize..(y * 32 + xb) as usize], pm, &cov[..n]);
+                simd::blend_cov(
+                    &mut sc.acc[(y * 32 + xa) as usize..(y * 32 + xb) as usize],
+                    pm,
+                    &cov[..n],
+                );
             }
             continue;
         }
@@ -516,7 +755,10 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
                 // a transformed space or a sampler: the kernel's `shade`, pixel by pixel
                 for x in x0..x1 {
                     let p = &mut row[x as usize];
-                    *p = st(k::blend(ld(p), k::shade(*c, ox + x, gy, atlas.fetch(c, ox + x, gy), now)));
+                    *p = st(k::blend(
+                        ld(p),
+                        k::shade(*c, ox + x, gy, atlas.fetch(c, ox + x, gy), now),
+                    ));
                 }
                 continue;
             }
@@ -539,7 +781,11 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
                 let sa = (((lo + 127) >> 8) - ox).clamp(x0, x1);
                 let sb = (((hi - 128) >> 8) + 1 - ox).clamp(sa, x1);
                 // the kernel's `sd` with the x term inactive: the y leg alone, in the command's root units
-                let d = if qy > 0 { (((qy as u32 >> c.par.y).min(16383) << c.par.y) as i32) - r } else { qy - r };
+                let d = if qy > 0 {
+                    (((qy as u32 >> c.par.y).min(16383) << c.par.y) as i32) - r
+                } else {
+                    qy - r
+                };
                 let outer = k::cov(d);
                 let sh = if kind == k::K_RRECT {
                     k::scale(c.pm, outer)
@@ -565,7 +811,10 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
                     sx_ready = true;
                 }
                 let py = cy - (c.b.y + hy);
-                Some((k::span3(py, hy, c.rad.y, c.rad.z) as u16, c.rad.x != 0 && py.abs() > hy - c.rad.x - lim))
+                Some((
+                    k::span3(py, hy, c.rad.y, c.rad.z) as u16,
+                    c.rad.x != 0 && py.abs() > hy - c.rad.x - lim,
+                ))
             } else {
                 None
             };
@@ -577,7 +826,8 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
                 match kind {
                     k::K_RRECT => {
                         for (i, o) in cov[..n].iter_mut().enumerate() {
-                            *o = k::cov(k::sd(cxa + i as i32 * 256, cy, c.b, c.rad.x, c.par.y)) as u16;
+                            *o = k::cov(k::sd(cxa + i as i32 * 256, cy, c.b, c.rad.x, c.par.y))
+                                as u16;
                         }
                         simd::blend_cov(r, pm, &cov[..n]);
                     }
@@ -614,7 +864,10 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
                     }
                     _ => {
                         for (i, p) in r.iter_mut().enumerate() {
-                            *p = st(k::blend(ld(p), k::sh_user(*c, cxa + i as i32 * 256, cy, now)));
+                            *p = st(k::blend(
+                                ld(p),
+                                k::sh_user(*c, cxa + i as i32 * 256, cy, now),
+                            ));
                         }
                     }
                 }
@@ -628,12 +881,18 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
                     // the core's colour varies but its coverage is ONE
                     k::K_GRAD => {
                         for (i, p) in mid.iter_mut().enumerate() {
-                            *p = st(k::blend(ld(p), k::grad_color(*c, px0(a) + i as i32 * 256, cy)));
+                            *p = st(k::blend(
+                                ld(p),
+                                k::grad_color(*c, px0(a) + i as i32 * 256, cy),
+                            ));
                         }
                     }
                     k::K_USER => {
                         for (i, p) in mid.iter_mut().enumerate() {
-                            *p = st(k::blend(ld(p), k::user_color(*c, px0(a) + i as i32 * 256, cy, now)));
+                            *p = st(k::blend(
+                                ld(p),
+                                k::user_color(*c, px0(a) + i as i32 * 256, cy, now),
+                            ));
                         }
                     }
                     _ => over(mid, mid_sh),
@@ -648,12 +907,18 @@ fn shade_tile(sc: &mut Scratch, ox: i32, oy: i32, atlas: &Atlas, now: u32, dst: 
         let y = m.trailing_zeros() as usize;
         m &= m - 1;
         if need >> y & 1 != 0 {
-            store_row(&sc.acc[y * 32 + ka..y * 32 + kb], &mut dst[y * stride + ka..y * stride + kb]);
+            store_row(
+                &sc.acc[y * 32 + ka..y * 32 + kb],
+                &mut dst[y * stride + ka..y * stride + kb],
+            );
         } else {
             let (above, row) = dst.split_at_mut(y * stride);
             let src = &above[(y - 1) * stride + ka..(y - 1) * stride + kb];
             // a whole tile row is the common case: a fixed-size copy (four vector moves, no call)
-            match (<&mut [u32; 32]>::try_from(&mut row[ka..kb]), <&[u32; 32]>::try_from(src)) {
+            match (
+                <&mut [u32; 32]>::try_from(&mut row[ka..kb]),
+                <&[u32; 32]>::try_from(src),
+            ) {
                 (Ok(d), Ok(s)) => *d = *s,
                 _ => row[ka..kb].copy_from_slice(src),
             }
@@ -671,6 +936,27 @@ pub struct Pool {
     sh: Arc<Shared>,
     threads: Vec<std::thread::JoinHandle<()>>,
     scratch: Vec<Mutex<Scratch>>,
+}
+
+thread_local! { static RUNNING: std::cell::RefCell<Vec<usize>> = const { std::cell::RefCell::new(Vec::new()) }; }
+struct Running;
+impl Running {
+    fn enter(sh: &Shared) -> Self {
+        let id = sh as *const Shared as usize;
+        RUNNING.with(|r| {
+            let mut r = r.borrow_mut();
+            assert!(!r.contains(&id), "reentrant Pool::run");
+            r.push(id);
+        });
+        Self
+    }
+}
+impl Drop for Running {
+    fn drop(&mut self) {
+        RUNNING.with(|r| {
+            r.borrow_mut().pop();
+        });
+    }
 }
 
 struct Shared {
@@ -713,7 +999,19 @@ impl Drop for Finish<'_> {
 impl Pool {
     /// A pool with `workers` threads besides the caller.
     pub fn new(workers: usize) -> Pool {
-        let sh = Arc::new(Shared { st: Mutex::new(State { epoch: 0, job: None, want: 0, active: 0, quit: false, panicked: false }), wake: Condvar::new(), done: Condvar::new(), admit: Mutex::new(()) });
+        let sh = Arc::new(Shared {
+            st: Mutex::new(State {
+                epoch: 0,
+                job: None,
+                want: 0,
+                active: 0,
+                quit: false,
+                panicked: false,
+            }),
+            wake: Condvar::new(),
+            done: Condvar::new(),
+            admit: Mutex::new(()),
+        });
         let threads = (1..=workers)
             .map(|id| {
                 let sh = sh.clone();
@@ -739,7 +1037,10 @@ impl Pool {
                         // SAFETY: `run` does not leave its frame (and so the closure is not dropped) before
                         // `active` reaches 0 (`Finish`, also when the caller unwinds), and this worker only
                         // decrements it after the call has ended, by return or by a caught panic.
-                        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe { (*f)(id) }));
+                        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let _running = Running::enter(&sh);
+                            unsafe { (*f)(id) }
+                        }));
                         let mut g = sh.st.lock().unwrap_or_else(|e| e.into_inner());
                         g.panicked |= r.is_err();
                         g.active -= 1;
@@ -750,27 +1051,39 @@ impl Pool {
                 })
             })
             .collect();
-        Pool { sh, threads, scratch: (0..=workers).map(|_| Mutex::new(Scratch::default())).collect() }
+        Pool {
+            sh,
+            threads,
+            scratch: (0..=workers)
+                .map(|_| Mutex::new(Scratch::default()))
+                .collect(),
+        }
     }
     pub fn workers(&self) -> usize {
         self.threads.len()
     }
     /// Run `f(worker)` on the caller and on `extra` workers (at most the pool's); returns when all are done.
-    /// Calls from several threads run one after another. Not reentrant: `f` must not call `run` on the
-    /// same pool (it would wait for itself). If any call of `f` panics, every worker still finishes its
+    /// Calls from several threads run one after another. Reentry from `f` into the
+    /// same pool is refused with a checked panic. If any call of `f` panics, every worker still finishes its
     /// call first, and then this function panics.
     pub fn run(&self, extra: usize, f: &(dyn Fn(usize) + Sync)) {
+        let _running = Running::enter(&self.sh);
+        let _admitted = self.sh.admit.lock().unwrap_or_else(|e| e.into_inner());
         let extra = extra.min(self.threads.len());
         if extra == 0 {
             return f(0);
         }
-        let _admitted = self.sh.admit.lock().unwrap_or_else(|e| e.into_inner());
         {
             let mut g = self.sh.st.lock().unwrap_or_else(|e| e.into_inner());
             // SAFETY (lifetime erasure): the pointer is only dereferenced by workers counted in `active`,
             // and `Finish` (below) waits for `active == 0` before this frame is left, by return or by
             // unwinding; `admit` keeps a second caller from replacing the job meanwhile.
-            g.job = Some(Job(unsafe { std::mem::transmute::<*const (dyn Fn(usize) + Sync + '_), *const (dyn Fn(usize) + Sync + 'static)>(f) }));
+            g.job = Some(Job(unsafe {
+                std::mem::transmute::<
+                    *const (dyn Fn(usize) + Sync + '_),
+                    *const (dyn Fn(usize) + Sync + 'static),
+                >(f)
+            }));
             g.want = extra;
             g.active = extra;
             g.panicked = false;
@@ -781,7 +1094,14 @@ impl Pool {
             let _finish = Finish(&self.sh);
             f(0);
         }
-        if std::mem::take(&mut self.sh.st.lock().unwrap_or_else(|e| e.into_inner()).panicked) {
+        if std::mem::take(
+            &mut self
+                .sh
+                .st
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .panicked,
+        ) {
             panic!("a pool worker's call panicked");
         }
     }
@@ -809,8 +1129,27 @@ impl Drop for Pool {
 /// The fast executor: repair the program's tiles in `out` (`stride` words per row), on the caller plus
 /// `extra` pool workers. The unit of work is a band (one row of tiles); bands are disjoint `&mut` slices of
 /// `out`, which is the whole proof that they may be written concurrently.
-pub fn raster(scene: &Scene, prog: &Prog, atlas: &Atlas, out: &mut [u32], stride: usize, pool: &Pool, extra: usize, opt: Opt) -> Stats {
-    let (fw, fh, now, nt) = (prog.fw() as usize, prog.fh() as usize, prog.now(), prog.tiles());
+pub fn raster(
+    scene: &Scene,
+    prog: &Prog,
+    atlas: &Atlas,
+    out: &mut [u32],
+    stride: usize,
+    pool: &Pool,
+    extra: usize,
+    opt: Opt,
+) -> Stats {
+    let needed = prog.validate(scene);
+    assert!(
+        stride == prog.words[2] as usize && out.len() >= needed,
+        "invalid output slice"
+    );
+    let (fw, fh, now, nt) = (
+        prog.fw() as usize,
+        prog.fh() as usize,
+        prog.now(),
+        prog.tiles(),
+    );
     if extra == 0 {
         // one core: the same per-tile loop with no band bookkeeping (a two-tile repair should not pay for a
         // vector of bands and their locks)
@@ -820,7 +1159,18 @@ pub fn raster(scene: &Scene, prog: &Prog, atlas: &Atlas, out: &mut [u32], stride
             sc.cmds.clear();
             sc.cmds.extend(list.iter().map(|&i| scene.load_at(i, now)));
             let (cols, nrows) = ((fw - ox as usize).min(32), (fh - oy as usize).min(32));
-            shade_tile(&mut sc, ox, oy, atlas, now, &mut out[oy as usize * stride + ox as usize..], stride, cols, nrows, opt);
+            shade_tile(
+                &mut sc,
+                ox,
+                oy,
+                atlas,
+                now,
+                &mut out[oy as usize * stride + ox as usize..],
+                stride,
+                cols,
+                nrows,
+                opt,
+            );
         }
         let st = sc.st;
         sc.st = Stats::default();
@@ -849,13 +1199,26 @@ pub fn raster(scene: &Scene, prog: &Prog, atlas: &Atlas, out: &mut [u32], stride
             if b >= bands.len() {
                 break;
             }
-            let Some((t0, t1, px)) = bands[b].lock().unwrap().take() else { continue };
+            let Some((t0, t1, px)) = bands[b].lock().unwrap().take() else {
+                continue;
+            };
             for t in t0..t1 {
                 let (ox, oy, list) = prog.tile(t);
                 sc.cmds.clear();
                 sc.cmds.extend(list.iter().map(|&i| scene.load_at(i, now)));
                 let (cols, nrows) = ((fw - ox as usize).min(32), (fh - oy as usize).min(32));
-                shade_tile(&mut sc, ox, oy, atlas, now, &mut px[ox as usize..], stride, cols, nrows, opt);
+                shade_tile(
+                    &mut sc,
+                    ox,
+                    oy,
+                    atlas,
+                    now,
+                    &mut px[ox as usize..],
+                    stride,
+                    cols,
+                    nrows,
+                    opt,
+                );
             }
         }
     };
@@ -866,21 +1229,80 @@ pub fn raster(scene: &Scene, prog: &Prog, atlas: &Atlas, out: &mut [u32], stride
 
 /// The gates' oracle for large scenes: the specification per tile (every pixel folds its tile's whole,
 /// uncut list through `k::shade`), across the pool. Equal to `naive` by identity 1 alone.
-pub fn reference(scene: &Scene, fw: u32, fh: u32, atlas: &Atlas, now: u32, out: &mut [u32], stride: usize, pool: &Pool) {
+pub fn reference(
+    scene: &Scene,
+    fw: u32,
+    fh: u32,
+    atlas: &Atlas,
+    now: u32,
+    out: &mut [u32],
+    stride: usize,
+    pool: &Pool,
+) {
     let mut prog = Prog::default();
-    Binner::default().bin(scene, fw, fh, stride as u32, atlas, now, &Damage::All, false, &mut prog);
-    raster(scene, &prog, atlas, out, stride, pool, pool.workers(), Opt { flat: false, spec: true, clip: EVERYWHERE });
+    Binner::default().bin(
+        scene,
+        fw,
+        fh,
+        stride as u32,
+        atlas,
+        now,
+        &Damage::All,
+        false,
+        &mut prog,
+    );
+    raster(
+        scene,
+        &prog,
+        atlas,
+        out,
+        stride,
+        pool,
+        pool.workers(),
+        Opt {
+            flat: false,
+            spec: true,
+            clip: EVERYWHERE,
+        },
+    );
 }
 
 /// `reference` at clock 0 (a scene with no transitions).
-pub fn naive_tiles(scene: &Scene, fw: u32, fh: u32, atlas: &Atlas, out: &mut [u32], stride: usize, pool: &Pool) {
+pub fn naive_tiles(
+    scene: &Scene,
+    fw: u32,
+    fh: u32,
+    atlas: &Atlas,
+    out: &mut [u32],
+    stride: usize,
+    pool: &Pool,
+) {
     reference(scene, fw, fh, atlas, 0, out, stride, pool);
 }
 
 /// The specification: every pixel of the frame folds every command of the scene, in order, with no binning,
 /// no cut, no core, no span (identities 1-4 are what make `raster` and the GPU equal to this).
-pub fn naive(scene: &Scene, fw: u32, fh: u32, atlas: &Atlas, now: u32, out: &mut [u32], stride: usize) {
-    let cmds: Vec<Cmd> = (0..scene.len() as u32).filter(|&i| scene.head(i) & F_TO == 0).map(|i| scene.load_at(i, now)).collect();
+pub fn naive(
+    scene: &Scene,
+    fw: u32,
+    fh: u32,
+    atlas: &Atlas,
+    now: u32,
+    out: &mut [u32],
+    stride: usize,
+) {
+    scene.validate();
+    assert!(
+        stride >= fw as usize
+            && stride
+                .checked_mul(fh as usize)
+                .is_some_and(|n| n <= out.len()),
+        "invalid output slice"
+    );
+    let cmds: Vec<Cmd> = (0..scene.len() as u32)
+        .filter(|&i| scene.head(i) & F_TO == 0)
+        .map(|i| scene.load_at(i, now))
+        .collect();
     for y in 0..fh as i32 {
         for x in 0..fw as i32 {
             let mut acc = k::splat(0);
@@ -901,26 +1323,48 @@ const _: () = assert!(WORDS == 32);
 pub fn tile_key(scene: &Scene, list: &[u32], ox: i32, oy: i32, now: u32) -> u128 {
     let mut h = (0x9e37_79b9_7f4a_7c15u64, 0xc2b2_ae3d_27d4_eb4fu64);
     let mut mix = |v: u64| {
-        h.0 = (h.0 ^ v).wrapping_mul(0x0000_0100_0000_01b3).rotate_left(29);
+        h.0 = (h.0 ^ v)
+            .wrapping_mul(0x0000_0100_0000_01b3)
+            .rotate_left(29);
         h.1 = (h.1.rotate_left(23) ^ v).wrapping_mul(0xff51_afd7_ed55_8ccd);
     };
-    let p4 = |a: i32, b: i32, c: i32, d: i32| (a as u16 as u64) | (b as u16 as u64) << 16 | (c as u16 as u64) << 32 | (d as u16 as u64) << 48;
+    let p4 = |a: i32, b: i32, c: i32, d: i32| {
+        (a as u16 as u64)
+            | (b as u16 as u64) << 16
+            | (c as u16 as u64) << 32
+            | (d as u16 as u64) << 48
+    };
     let c4 = |v: Vec4u| (v.x as u64) | (v.y as u64) << 16 | (v.z as u64) << 32 | (v.w as u64) << 48;
     for &i in list {
         let c = scene.load_at(i, now);
-        let (x0, y0, x1, y1) = ((c.win.x - ox).clamp(0, 32), (c.win.y - oy).clamp(0, 32), (c.win.z - ox).clamp(0, 32), (c.win.w - oy).clamp(0, 32));
+        let (x0, y0, x1, y1) = (
+            (c.win.x - ox).clamp(0, 32),
+            (c.win.y - oy).clamp(0, 32),
+            (c.win.z - ox).clamp(0, 32),
+            (c.win.w - oy).clamp(0, 32),
+        );
         if x0 >= x1 || y0 >= y1 {
             continue;
         }
         mix(p4(x0, y0, x1, y1));
         let kind = c.par.x;
-        let in_core = c.core.x <= ox + x0 && c.core.y <= oy + y0 && c.core.z >= ox + x1 && c.core.w >= oy + y1;
-        if kind == k::K_SOLID || (in_core && (kind == k::K_RRECT || kind == k::K_BORDER || kind == k::K_SHADOW)) {
+        let in_core = c.core.x <= ox + x0
+            && c.core.y <= oy + y0
+            && c.core.z >= ox + x1
+            && c.core.w >= oy + y1;
+        if kind == k::K_SOLID
+            || (in_core && (kind == k::K_RRECT || kind == k::K_BORDER || kind == k::K_SHADOW))
+        {
             mix(c4(if kind == k::K_BORDER { c.pm2 } else { c.pm }));
             continue;
         }
         mix(kind as u64 | (c.par.y as u64) << 8 | (c.par.z as u64) << 16 | (c.par.w as u64) << 48);
-        mix(p4((c.core.x - ox).clamp(0, 32), (c.core.y - oy).clamp(0, 32), (c.core.z - ox).clamp(0, 32), (c.core.w - oy).clamp(0, 32)));
+        mix(p4(
+            (c.core.x - ox).clamp(0, 32),
+            (c.core.y - oy).clamp(0, 32),
+            (c.core.z - ox).clamp(0, 32),
+            (c.core.w - oy).clamp(0, 32),
+        ));
         mix(((c.b.x - ox * 256) as u32 as u64) | ((c.b.y - oy * 256) as u32 as u64) << 32);
         mix(((c.b.z - ox * 256) as u32 as u64) | ((c.b.w - oy * 256) as u32 as u64) << 32);
         mix((c.rad.x as u32 as u64) | (c.rad.y as u32 as u64) << 32);

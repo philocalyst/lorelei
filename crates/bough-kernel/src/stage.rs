@@ -12,7 +12,12 @@ pub const F_TO: u32 = 0x20000;
 /// plus 8/256 px for the rounding of an interpolated transition's edges.
 const CORE_SLACK: i32 = 128 + 8;
 
-const EMPTY: Vec4i = Vec4 { x: 0, y: 0, z: 0, w: 0 };
+const EMPTY: Vec4i = Vec4 {
+    x: 0,
+    y: 0,
+    z: 0,
+    w: 0,
+};
 
 #[inline]
 pub fn q8(v: f32) -> i32 {
@@ -32,7 +37,12 @@ fn window(a: [i32; 2], b: [i32; 2], clip: &Clip) -> Option<Vec4i> {
     let c = clip.map(q8);
     let (x0, y0) = (px(a[0].clamp(c[0], c[2])), px(a[1].clamp(c[1], c[3])));
     let (x1, y1) = (px(b[0].clamp(c[0], c[2])), px(b[1].clamp(c[1], c[3])));
-    (x0 < x1 && y0 < y1).then_some(Vec4 { x: x0.max(-32768), y: y0.max(-32768), z: x1.min(32767), w: y1.min(32767) })
+    (x0 < x1 && y0 < y1).then_some(Vec4 {
+        x: x0.max(-32768),
+        y: y0.max(-32768),
+        z: x1.min(32767),
+        w: y1.min(32767),
+    })
 }
 /// Pixels whose centres are at least `kc` inside the box (coverage provably ONE), within `win`.
 fn core(p0: [i32; 2], p1: [i32; 2], kc: i32, win: Vec4i) -> Vec4i {
@@ -40,7 +50,16 @@ fn core(p0: [i32; 2], p1: [i32; 2], kc: i32, win: Vec4i) -> Vec4i {
     let y0 = px(p0[1] + kc).max(win.y);
     let x1 = (((p1[0] - kc - 128) >> 8) + 1).min(win.z);
     let y1 = (((p1[1] - kc - 128) >> 8) + 1).min(win.w);
-    if x0 < x1 && y0 < y1 { Vec4 { x: x0, y: y0, z: x1, w: y1 } } else { EMPTY }
+    if x0 < x1 && y0 < y1 {
+        Vec4 {
+            x: x0,
+            y: y0,
+            z: x1,
+            w: y1,
+        }
+    } else {
+        EMPTY
+    }
 }
 /// The root shift for a corner radius: its legs (radius + the AA margin) must fit 14 bits.
 fn shift(r: i32) -> u32 {
@@ -50,8 +69,44 @@ fn shift(r: i32) -> u32 {
     }
     s
 }
-fn cmd(kind: u32, sh: u32, win: Vec4i, core: Vec4i, b: [i32; 4], rad: [i32; 4], aux: [u32; 2], pm: Vec4u, pm2: Vec4u) -> Cmd {
-    Cmd { win, core, b: Vec4 { x: b[0], y: b[1], z: b[2], w: b[3] }, par: Vec4 { x: kind, y: sh, z: aux[0], w: aux[1] }, rad: Vec4 { x: rad[0], y: rad[1], z: rad[2], w: rad[3] }, pm, pm2, xi: EMPTY, xk: EMPTY, xs: 0 }
+fn cmd(
+    kind: u32,
+    sh: u32,
+    win: Vec4i,
+    core: Vec4i,
+    b: [i32; 4],
+    rad: [i32; 4],
+    aux: [u32; 2],
+    pm: Vec4u,
+    pm2: Vec4u,
+) -> Cmd {
+    Cmd {
+        win,
+        core,
+        b: Vec4 {
+            x: b[0],
+            y: b[1],
+            z: b[2],
+            w: b[3],
+        },
+        par: Vec4 {
+            x: kind,
+            y: sh,
+            z: aux[0],
+            w: aux[1],
+        },
+        rad: Vec4 {
+            x: rad[0],
+            y: rad[1],
+            z: rad[2],
+            w: rad[3],
+        },
+        pm,
+        pm2,
+        xi: EMPTY,
+        xk: EMPTY,
+        xs: 0,
+    }
 }
 fn edges(x: f32, y: f32, w: f32, h: f32) -> ([i32; 2], [i32; 2]) {
     let p0 = [q8(x), q8(y)];
@@ -62,7 +117,17 @@ fn edges(x: f32, y: f32, w: f32, h: f32) -> ([i32; 2], [i32; 2]) {
 pub fn solid(x: f32, y: f32, w: f32, h: f32, color: u32, clip: &Clip) -> Option<Cmd> {
     let (p0, p1) = edges(x, y, w, h);
     let win = window(p0, p1, clip)?;
-    Some(cmd(k::K_SOLID, 0, win, win, [p0[0], p0[1], p1[0], p1[1]], [0; 4], [0; 2], k::premul(color), k::splat(0)))
+    Some(cmd(
+        k::K_SOLID,
+        0,
+        win,
+        win,
+        [p0[0], p0[1], p1[0], p1[1]],
+        [0; 4],
+        [0; 2],
+        k::premul(color),
+        k::splat(0),
+    ))
 }
 /// A rounded box.
 pub fn rrect(x: f32, y: f32, w: f32, h: f32, radius: f32, color: u32, clip: &Clip) -> Option<Cmd> {
@@ -70,26 +135,83 @@ pub fn rrect(x: f32, y: f32, w: f32, h: f32, radius: f32, color: u32, clip: &Cli
     let win = window([p0[0] - 256, p0[1] - 256], [p1[0] + 256, p1[1] + 256], clip)?;
     let r = q8(radius).clamp(0, (p1[0] - p0[0]).min(p1[1] - p0[1]) / 2);
     let kc = r.max(128) + CORE_SLACK;
-    Some(cmd(k::K_RRECT, shift(r), win, core(p0, p1, kc, win), [p0[0], p0[1], p1[0], p1[1]], [r, 0, 0, 0], [0; 2], k::premul(color), k::splat(0)))
+    Some(cmd(
+        k::K_RRECT,
+        shift(r),
+        win,
+        core(p0, p1, kc, win),
+        [p0[0], p0[1], p1[0], p1[1]],
+        [r, 0, 0, 0],
+        [0; 2],
+        k::premul(color),
+        k::splat(0),
+    ))
 }
 /// A rounded box filled with `fill` carrying a border of `bw` px in `color` inside its edge.
-pub fn border(x: f32, y: f32, w: f32, h: f32, radius: f32, bw: f32, color: u32, fill: u32, clip: &Clip) -> Option<Cmd> {
+pub fn border(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    radius: f32,
+    bw: f32,
+    color: u32,
+    fill: u32,
+    clip: &Clip,
+) -> Option<Cmd> {
     let (p0, p1) = edges(x, y, w, h);
     let win = window([p0[0] - 256, p0[1] - 256], [p1[0] + 256, p1[1] + 256], clip)?;
     let r = q8(radius).clamp(0, (p1[0] - p0[0]).min(p1[1] - p0[1]) / 2);
     let b = q8(bw).max(0);
     let kc = r.max(128 + b) + CORE_SLACK;
-    Some(cmd(k::K_BORDER, shift(r), win, core(p0, p1, kc, win), [p0[0], p0[1], p1[0], p1[1]], [r, b, 0, 0], [0; 2], k::premul(color), k::premul(fill)))
+    Some(cmd(
+        k::K_BORDER,
+        shift(r),
+        win,
+        core(p0, p1, kc, win),
+        [p0[0], p0[1], p1[0], p1[1]],
+        [r, b, 0, 0],
+        [0; 2],
+        k::premul(color),
+        k::premul(fill),
+    ))
 }
 /// A glyph: `gw` x `gh` coverage texels starting at atlas index `texel0` (row stride = the atlas width).
-pub fn glyph(x: f32, y: f32, gw: u32, gh: u32, texel0: u32, color: u32, clip: &Clip) -> Option<Cmd> {
+pub fn glyph(
+    x: f32,
+    y: f32,
+    gw: u32,
+    gh: u32,
+    texel0: u32,
+    color: u32,
+    clip: &Clip,
+) -> Option<Cmd> {
     let p0 = [q8(x), q8(y)];
     let p1 = [p0[0] + gw as i32 * 256, p0[1] + gh as i32 * 256];
     let win = window(p0, p1, clip)?;
-    Some(cmd(k::K_GLYPH, 0, win, EMPTY, [p0[0], p0[1], p1[0], p1[1]], [0; 4], [texel0, 0], k::premul(color), k::splat(0)))
+    Some(cmd(
+        k::K_GLYPH,
+        0,
+        win,
+        EMPTY,
+        [p0[0], p0[1], p1[0], p1[1]],
+        [0; 4],
+        [texel0, 0],
+        k::premul(color),
+        k::splat(0),
+    ))
 }
 /// The shadow of a rounded box blurred by `sigma` px (the caller applies offset and spread to the box).
-pub fn shadow(x: f32, y: f32, w: f32, h: f32, radius: f32, sigma: f32, color: u32, clip: &Clip) -> Option<Cmd> {
+pub fn shadow(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    radius: f32,
+    sigma: f32,
+    color: u32,
+    clip: &Clip,
+) -> Option<Cmd> {
     let (p0, p1) = edges(x, y, w, h);
     let bw = q8(2.0 * sigma).clamp(16, 1 << 15);
     let ext = bw + bw / 2 + 256;
@@ -97,34 +219,112 @@ pub fn shadow(x: f32, y: f32, w: f32, h: f32, radius: f32, sigma: f32, color: u3
     let r = q8(radius).clamp(0, (p1[0] - p0[0]).min(p1[1] - p0[1]) / 2);
     // interior: both 1-D profiles saturate and no corner is within reach (2 units for the centre's rounding)
     let cr = core(p0, p1, bw + bw / 2 + r + 2, win);
-    Some(cmd(k::K_SHADOW, shift(r), win, cr, [p0[0], p0[1], p1[0], p1[1]], [r, bw, ((1 << 24) + bw - 1) / bw, if r > 0 { ((bw as i64 * 32768) / (8 * r as i64)).min(32768) as i32 } else { 0 }], [0; 2], k::premul(color), k::splat(0)))
+    Some(cmd(
+        k::K_SHADOW,
+        shift(r),
+        win,
+        cr,
+        [p0[0], p0[1], p1[0], p1[1]],
+        [
+            r,
+            bw,
+            ((1 << 24) + bw - 1) / bw,
+            if r > 0 {
+                ((bw as i64 * 32768) / (8 * r as i64)).min(32768) as i32
+            } else {
+                0
+            },
+        ],
+        [0; 2],
+        k::premul(color),
+        k::splat(0),
+    ))
 }
 /// A two-stop linear gradient at `angle` (radians, CSS: 0 = to top, clockwise) in a rounded box.
-pub fn grad(x: f32, y: f32, w: f32, h: f32, radius: f32, angle: f32, c0: u32, c1: u32, clip: &Clip) -> Option<Cmd> {
+pub fn grad(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    radius: f32,
+    angle: f32,
+    c0: u32,
+    c1: u32,
+    clip: &Clip,
+) -> Option<Cmd> {
     let (p0, p1) = edges(x, y, w, h);
     let win = window([p0[0] - 256, p0[1] - 256], [p1[0] + 256, p1[1] + 256], clip)?;
     let r = q8(radius).clamp(0, (p1[0] - p0[0]).min(p1[1] - p0[1]) / 2);
     let (dx, dy) = (angle.sin(), -angle.cos());
     let len = ((w * dx).abs() + (h * dy).abs()).max(1.0);
     let s = (1u32 << 26) as f32 / len;
-    Some(cmd(k::K_GRAD, shift(r), win, core(p0, p1, r.max(128) + CORE_SLACK, win), [p0[0], p0[1], p1[0], p1[1]], [r, 0, (dx * s).round() as i32, (dy * s).round() as i32], [0; 2], k::premul(c0), k::premul(c1)))
+    Some(cmd(
+        k::K_GRAD,
+        shift(r),
+        win,
+        core(p0, p1, r.max(128) + CORE_SLACK, win),
+        [p0[0], p0[1], p1[0], p1[1]],
+        [r, 0, (dx * s).round() as i32, (dy * s).round() as i32],
+        [0; 2],
+        k::premul(c0),
+        k::premul(c1),
+    ))
 }
 /// A user shader node `id` (`fx::user_shade`) in a rounded box, with two colours for it to use.
-pub fn user(x: f32, y: f32, w: f32, h: f32, radius: f32, id: u32, c0: u32, c1: u32, clip: &Clip) -> Option<Cmd> {
+pub fn user(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    radius: f32,
+    id: u32,
+    c0: u32,
+    c1: u32,
+    clip: &Clip,
+) -> Option<Cmd> {
     let (p0, p1) = edges(x, y, w, h);
     let win = window([p0[0] - 256, p0[1] - 256], [p1[0] + 256, p1[1] + 256], clip)?;
     let r = q8(radius).clamp(0, (p1[0] - p0[0]).min(p1[1] - p0[1]) / 2);
-    Some(cmd(k::K_USER, shift(r), win, core(p0, p1, r.max(128) + CORE_SLACK, win), [p0[0], p0[1], p1[0], p1[1]], [r, 0, 0, 0], [id, 0], k::premul(c0), k::premul(c1)))
+    Some(cmd(
+        k::K_USER,
+        shift(r),
+        win,
+        core(p0, p1, r.max(128) + CORE_SLACK, win),
+        [p0[0], p0[1], p1[0], p1[1]],
+        [r, 0, 0, 0],
+        [id, 0],
+        k::premul(c0),
+        k::premul(c1),
+    ))
 }
 
 /// An image: `w` x `h` premultiplied RGBA texels of the image atlas starting at index `texel0` (row stride =
 /// the atlas width), drawn in the box at (x, y), rotated by `angle` radians about its centre, times the
 /// alpha of `color`.
-pub fn image(x: f32, y: f32, w: f32, h: f32, angle: f32, texel0: u32, color: u32, clip: &Clip) -> Option<Cmd> {
+pub fn image(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    angle: f32,
+    texel0: u32,
+    color: u32,
+    clip: &Clip,
+) -> Option<Cmd> {
     let (p0, p1) = edges(x, y, w, h);
     let win = window([p0[0] - 256, p0[1] - 256], [p1[0] + 256, p1[1] + 256], clip)?;
     let q16 = |v: f32| (v * 65536.0).round() as i32;
-    Some(cmd(k::K_IMAGE, 0, win, EMPTY, [p0[0], p0[1], p1[0], p1[1]], [0, 0, q16(angle.cos()), q16(angle.sin())], [texel0, 0], k::premul(color), k::splat(0)))
+    Some(cmd(
+        k::K_IMAGE,
+        0,
+        win,
+        EMPTY,
+        [p0[0], p0[1], p1[0], p1[1]],
+        [0, 0, q16(angle.cos()), q16(angle.sin())],
+        [texel0, 0],
+        k::premul(color),
+        k::splat(0),
+    ))
 }
 /// Where a ramp gradient runs.
 pub enum Ramp {
@@ -134,7 +334,16 @@ pub enum Ramp {
     Radial(f32, f32),
 }
 /// A ramp gradient in a rounded box: 256 premultiplied RGBA texels of the image atlas starting at `texel0`.
-pub fn ramp(x: f32, y: f32, w: f32, h: f32, radius: f32, dir: Ramp, texel0: u32, clip: &Clip) -> Option<Cmd> {
+pub fn ramp(
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    radius: f32,
+    dir: Ramp,
+    texel0: u32,
+    clip: &Clip,
+) -> Option<Cmd> {
     let (p0, p1) = edges(x, y, w, h);
     let win = window([p0[0] - 256, p0[1] - 256], [p1[0] + 256, p1[1] + 256], clip)?;
     let r = q8(radius).clamp(0, (p1[0] - p0[0]).min(p1[1] - p0[1]) / 2);
@@ -149,10 +358,24 @@ pub fn ramp(x: f32, y: f32, w: f32, h: f32, radius: f32, dir: Ramp, texel0: u32,
             let (hx, hy) = (w * 0.5, h * 0.5);
             let g = [(gx - 0.5) * 2.0 * hx, (gy - 0.5) * 2.0 * hy];
             let far = ((g[0].abs() + hx).powi(2) + (g[1].abs() + hy).powi(2)).sqrt();
-            (q8(g[0]), q8(g[1]), 0x8000_0000 | ((far * 16.0).round() as u32).clamp(1, 16383))
+            (
+                q8(g[0]),
+                q8(g[1]),
+                0x8000_0000 | ((far * 16.0).round() as u32).clamp(1, 16383),
+            )
         }
     };
-    Some(cmd(k::K_RAMP, shift(r), win, EMPTY, [p0[0], p0[1], p1[0], p1[1]], [r, 0, rz, rw], [texel0, aux], k::splat(0), k::splat(0)))
+    Some(cmd(
+        k::K_RAMP,
+        shift(r),
+        win,
+        EMPTY,
+        [p0[0], p0[1], p1[0], p1[1]],
+        [r, 0, rz, rw],
+        [texel0, aux],
+        k::splat(0),
+        k::splat(0),
+    ))
 }
 
 /// An affine transform of a space: p' = k + t + M (p - k), M = (m00, m01, m10, m11).
@@ -170,20 +393,46 @@ pub fn xf(c: Option<Cmd>, x: &Xf, clip: &Clip) -> Option<Cmd> {
     let mut c = c?;
     let pt = |u: [f32; 2]| {
         let d = [u[0] - x.k[0], u[1] - x.k[1]];
-        [x.k[0] + x.t[0] + x.m[0] * d[0] + x.m[1] * d[1], x.k[1] + x.t[1] + x.m[2] * d[0] + x.m[3] * d[1]]
+        [
+            x.k[0] + x.t[0] + x.m[0] * d[0] + x.m[1] * d[1],
+            x.k[1] + x.t[1] + x.m[2] * d[0] + x.m[3] * d[1],
+        ]
     };
-    let (a, b) = ([c.win.x as f32, c.win.y as f32], [c.win.z as f32, c.win.w as f32]);
+    let (a, b) = (
+        [c.win.x as f32, c.win.y as f32],
+        [c.win.z as f32, c.win.w as f32],
+    );
     let ps = [pt(a), pt([b[0], a[1]]), pt([a[0], b[1]]), pt(b)];
-    let lo = [ps.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min) - 1.0, ps.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min) - 1.0];
-    let hi = [ps.iter().map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max) + 1.0, ps.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max) + 1.0];
+    let lo = [
+        ps.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min) - 1.0,
+        ps.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min) - 1.0,
+    ];
+    let hi = [
+        ps.iter().map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max) + 1.0,
+        ps.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max) + 1.0,
+    ];
     let lim = |v: f32| v.clamp(-16000.0, 16000.0);
-    c.win = window([q8(lim(lo[0])), q8(lim(lo[1]))], [q8(lim(hi[0])), q8(lim(hi[1]))], clip)?;
+    c.win = window(
+        [q8(lim(lo[0])), q8(lim(lo[1]))],
+        [q8(lim(hi[0])), q8(lim(hi[1]))],
+        clip,
+    )?;
     c.core = EMPTY;
     let det = x.m[0] * x.m[3] - x.m[1] * x.m[2];
     let id = if det.abs() > 1e-12 { 1.0 / det } else { 0.0 };
     let q16 = |v: f32| ((v * 65536.0).round() as i64).clamp(-(1 << 23) + 1, (1 << 23) - 1) as i32;
-    c.xi = Vec4 { x: q16(x.m[3] * id), y: q16(-x.m[1] * id), z: q16(-x.m[2] * id), w: q16(x.m[0] * id) };
-    c.xk = Vec4 { x: q8(x.k[0]), y: q8(x.k[1]), z: q8(x.k[0] + x.t[0]), w: q8(x.k[1] + x.t[1]) };
+    c.xi = Vec4 {
+        x: q16(x.m[3] * id),
+        y: q16(-x.m[1] * id),
+        z: q16(-x.m[2] * id),
+        w: q16(x.m[0] * id),
+    };
+    c.xk = Vec4 {
+        x: q8(x.k[0]),
+        y: q8(x.k[1]),
+        z: q8(x.k[0] + x.t[0]),
+        w: q8(x.k[1] + x.t[1]),
+    };
     c.xs = ((det.abs().sqrt() * 256.0).round() as i32).clamp(1, 16384);
     if c.par.x == k::K_SOLID {
         c.par.x = k::K_RRECT;
@@ -224,7 +473,12 @@ pub fn table_scalar(q15: u32) -> [u32; 2] {
 /// The table between `from` and `to` at progress `t` (Q15): what a presenter writes each frame of an
 /// animated theme change. The kernel's own interpolation, entry by entry.
 pub fn table_mix(from: &[u32], to: &[u32], t: u32) -> Vec<u32> {
-    let un = |w: &[u32]| Vec4 { x: w[0] & 0xffff, y: w[0] >> 16, z: w[1] & 0xffff, w: w[1] >> 16 };
+    let un = |w: &[u32]| Vec4 {
+        x: w[0] & 0xffff,
+        y: w[0] >> 16,
+        z: w[1] & 0xffff,
+        w: w[1] >> 16,
+    };
     from.chunks_exact(2)
         .zip(to.chunks_exact(2))
         .flat_map(|(a, b)| {
@@ -279,6 +533,23 @@ fn pack(c: &Cmd, flags: u32, time: u32) -> [u32; WORDS] {
 }
 
 impl Scene {
+    /// Refuse malformed records before an executor reads them.
+    pub fn validate(&self) {
+        assert!(self.words.len().is_multiple_of(WORDS), "partial command");
+        for (i, w) in self.words.chunks_exact(WORDS).enumerate() {
+            assert!(
+                (w[0] & 255) <= k::K_RAMP && ((w[0] >> 8) & 255) < 32,
+                "invalid command kind/shift"
+            );
+            if w[0] & k::F_ANIM != 0 {
+                assert!(
+                    i + 1 < self.len() && self.head(i as u32 + 1) & F_TO != 0,
+                    "missing animation target"
+                );
+            }
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.words.len() / WORDS
     }
@@ -322,7 +593,10 @@ impl Scene {
     /// The same scene with every themed operand written into its command (no table): what staging would
     /// have produced had the theme been applied to each record. Equal pixels by definition; the gate checks.
     pub fn baked(&self) -> Scene {
-        let mut out = Scene { words: self.words.clone(), table: Vec::new() };
+        let mut out = Scene {
+            words: self.words.clone(),
+            table: Vec::new(),
+        };
         for i in 0..self.len() {
             let w = i * WORDS;
             if self.words[w] & k::F_T_ANY == 0 {
@@ -341,7 +615,9 @@ impl Scene {
     }
     /// Append a command whose colours (some of them) are table entries; returns its slot.
     pub fn push_tinted(&mut self, c: Cmd, t: Tint) -> u32 {
-        let flags = if t.pm.is_some() { k::F_T_PM } else { 0 } | if t.pm2.is_some() { k::F_T_PM2 } else { 0 } | if t.opacity.is_some() { k::F_T_OP } else { 0 };
+        let flags = if t.pm.is_some() { k::F_T_PM } else { 0 }
+            | if t.pm2.is_some() { k::F_T_PM2 } else { 0 }
+            | if t.opacity.is_some() { k::F_T_OP } else { 0 };
         let mut w = pack(&c, flags, 0);
         w[29] = t.pm.unwrap_or(0) as u32 | (t.pm2.unwrap_or(0) as u32) << 16;
         w[30] = t.opacity.unwrap_or(0) as u32;
@@ -363,27 +639,45 @@ impl Scene {
     /// program is valid for the whole transition; slot i + 1 holds `b`.
     pub fn push_anim(&mut self, a: Cmd, b: Cmd, t0: u32, dur: u32, ease: u32) -> u32 {
         assert_eq!(a.par.x, b.par.x, "a transition keeps its kind");
-        // `k::at` interpolates the box, the radius, the border or blur width and the colours, and keeps
-        // `a`'s derived fields (the inverse blur width and corner curve of a shadow, a gradient's
-        // direction, a transformed space). Where those differ between the two states the interpolation
-        // would not arrive at `b`: such a transition is admitted as its target state, unanimated.
-        let reaches = a.rad.z == b.rad.z && a.rad.w == b.rad.w && a.par.z == b.par.z && a.par.w == b.par.w && a.xi == b.xi && a.xk == b.xk && a.xs == b.xs;
-        // (one tick long, so its progress is only ever 0 or ONE, where a mix of two equal states is exact)
-        let (mut a, dur) = if reaches { (a, dur) } else { (b, 1) };
-        a.win = Vec4 { x: a.win.x.min(b.win.x), y: a.win.y.min(b.win.y), z: a.win.z.max(b.win.z), w: a.win.w.max(b.win.w) };
+        let mut a = a;
+        let mut b = b;
+        if cfg!(feature = "mutant_anim_stale_derived") {
+            b.rad.z = a.rad.z;
+            b.rad.w = a.rad.w;
+            b.xi = a.xi;
+            b.xk = a.xk;
+            b.xs = a.xs;
+        }
+        a.win = Vec4 {
+            x: a.win.x.min(b.win.x),
+            y: a.win.y.min(b.win.y),
+            z: a.win.z.max(b.win.z),
+            w: a.win.w.max(b.win.w),
+        };
         // A pixel in both cores is in the core of every interpolated box (edges move linearly and the radii
         // interpolate between two values the margin already covers).
-        let c = Vec4 { x: a.core.x.max(b.core.x), y: a.core.y.max(b.core.y), z: a.core.z.min(b.core.z), w: a.core.w.min(b.core.w) };
+        let c = Vec4 {
+            x: a.core.x.max(b.core.x),
+            y: a.core.y.max(b.core.y),
+            z: a.core.z.min(b.core.z),
+            w: a.core.w.min(b.core.w),
+        };
         a.core = if c.x < c.z && c.y < c.w { c } else { EMPTY };
         a.par.y = a.par.y.max(b.par.y);
         self.words.extend_from_slice(&pack(&a, k::F_ANIM, t0));
-        self.words.extend_from_slice(&pack(&b, F_TO, dur.clamp(1, 65535) << 2 | (ease & 3)));
+        self.words
+            .extend_from_slice(&pack(&b, F_TO, dur.clamp(1, 65535) << 2 | (ease & 3)));
         (self.len() - 2) as u32
     }
     #[inline]
     fn w4(&self, at: usize) -> Vec4u {
         let w = &self.words[at..at + 4];
-        Vec4 { x: w[0], y: w[1], z: w[2], w: w[3] }
+        Vec4 {
+            x: w[0],
+            y: w[1],
+            z: w[2],
+            w: w[3],
+        }
     }
     #[inline]
     pub fn head(&self, i: u32) -> u32 {
@@ -394,13 +688,28 @@ impl Scene {
     #[inline]
     pub fn load(&self, i: u32) -> Cmd {
         let w = i as usize * WORDS;
-        let c = k::decode(self.w4(w), self.w4(w + 4), self.w4(w + 8), self.w4(w + 12), self.w4(w + 16), self.w4(w + 20), self.w4(w + 24), self.words[w + 28]);
+        let c = k::decode(
+            self.w4(w),
+            self.w4(w + 4),
+            self.w4(w + 8),
+            self.w4(w + 12),
+            self.w4(w + 16),
+            self.w4(w + 20),
+            self.w4(w + 24),
+            self.words[w + 28],
+        );
         let flags = self.words[w];
         if flags & k::F_T_ANY == 0 {
             return c;
         }
         let ix = self.words[w + 29];
-        k::tint(c, flags, self.entry(ix & 0xffff), self.entry(ix >> 16), self.entry(self.words[w + 30] & 0xffff).x)
+        k::tint(
+            c,
+            flags,
+            self.entry(ix & 0xffff),
+            self.entry(ix >> 16),
+            self.entry(self.words[w + 30] & 0xffff).x,
+        )
     }
     /// Command `i` as it is at `now` (the CPU's twin of the kernel's `load_at`: the same `decode` and `timed`
     /// over the same words).

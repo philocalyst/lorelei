@@ -14,7 +14,9 @@
 //! * Otherwise the words are laid out by [`place`]: the flex algorithm of [`crate::flex`], instantiated once,
 //!   for a cursor into the array. One body for every row type of a program.
 use crate::el::{Block, Measure, leaf_size};
-use crate::flex::{Align, Dim, Hk, Item, Justify, Kids, Lay, Out, Pass, Spec, place_kids, rect, solve};
+use crate::flex::{
+    Align, Dim, Hk, Item, Justify, Kids, Lay, Out, Pass, Spec, place_kids, rect, solve,
+};
 use crate::tree::standin::Line;
 use crate::tree::{Kind, Node};
 use crate::val::{Av, Cx, V, Valid};
@@ -51,8 +53,22 @@ const fn undim(t: u32, v: u32) -> Dim {
         _ => Dim::Auto,
     }
 }
-const ALIGNS: [Option<Align>; 5] = [None, Some(Align::Start), Some(Align::End), Some(Align::Center), Some(Align::Stretch)];
-const JUSTS: [Option<Justify>; 7] = [None, Some(Justify::Start), Some(Justify::End), Some(Justify::Center), Some(Justify::SpaceBetween), Some(Justify::SpaceAround), Some(Justify::SpaceEvenly)];
+const ALIGNS: [Option<Align>; 5] = [
+    None,
+    Some(Align::Start),
+    Some(Align::End),
+    Some(Align::Center),
+    Some(Align::Stretch),
+];
+const JUSTS: [Option<Justify>; 7] = [
+    None,
+    Some(Justify::Start),
+    Some(Justify::End),
+    Some(Justify::Center),
+    Some(Justify::SpaceBetween),
+    Some(Justify::SpaceAround),
+    Some(Justify::SpaceEvenly),
+];
 #[inline(always)]
 const fn alw(a: Option<Align>) -> u32 {
     match a {
@@ -79,14 +95,30 @@ const fn juw(j: Option<Justify>) -> u32 {
 impl Nd {
     /// `a`, `b`: a line's width and height in pixels. `key`: what identifies a wrapping leaf's content.
     #[inline(always)]
-    pub const fn pack(sp: &Spec, kind: u32, painted: bool, count: u32, a: f32, b: f32, key: [u32; 2]) -> Nd {
+    pub const fn pack(
+        sp: &Spec,
+        kind: u32,
+        painted: bool,
+        count: u32,
+        a: f32,
+        b: f32,
+        key: [u32; 2],
+    ) -> Nd {
         let (wt, wv) = dimw(sp.w);
         let (ht, hv) = dimw(sp.h);
         let (ax, ay, aon) = match sp.abs {
             Some((x, y)) => (x.to_bits(), y.to_bits(), 1),
             None => (0, 0, 0),
         };
-        let flags = sp.column as u32 | alw(sp.items) << 1 | alw(sp.self_align) << 4 | juw(sp.justify) << 7 | aon << 10 | kind << 11 | (painted as u32) << 13 | wt << 14 | ht << 16;
+        let flags = sp.column as u32
+            | alw(sp.items) << 1
+            | alw(sp.self_align) << 4
+            | juw(sp.justify) << 7
+            | aon << 10
+            | kind << 11
+            | (painted as u32) << 13
+            | wt << 14
+            | ht << 16;
         Nd([
             wv,
             hv,
@@ -130,7 +162,11 @@ impl Nd {
             items: ALIGNS[(f >> 1 & 7) as usize],
             self_align: ALIGNS[(f >> 4 & 7) as usize],
             justify: JUSTS[(f >> 7 & 7) as usize],
-            abs: if f >> 10 & 1 != 0 { Some((fl(w[15]), fl(w[16]))) } else { None },
+            abs: if f >> 10 & 1 != 0 {
+                Some((fl(w[15]), fl(w[16])))
+            } else {
+                None
+            },
         }
     }
     #[inline(always)]
@@ -233,7 +269,15 @@ impl<'a> Sink<'a> for Flat<'a> {
     fn node(&mut self, nd: Nd) {
         assert!(self.n < MAXN, "a row has at most 96 elements");
         self.spec[self.n] = MaybeUninit::new(nd.spec());
-        self.meta[self.n] = Meta { kind: nd.kind() as u8, painted: nd.painted(), count: nd.count() as u16, end: 0, wrap: self.nw as u16, a: f32::from_bits(nd.0[19]), b: f32::from_bits(nd.0[20]) };
+        self.meta[self.n] = Meta {
+            kind: nd.kind() as u8,
+            painted: nd.painted(),
+            count: nd.count() as u16,
+            end: 0,
+            wrap: self.nw as u16,
+            a: f32::from_bits(nd.0[19]),
+            b: f32::from_bits(nd.0[20]),
+        };
         self.n += 1;
     }
     #[inline]
@@ -245,7 +289,21 @@ impl<'a> Sink<'a> for Flat<'a> {
 }
 impl<'a> Flat<'a> {
     pub fn of<T: Shape>(t: &'a T) -> Flat<'a> {
-        let mut f = Flat { n: 0, nw: 0, spec: [const { MaybeUninit::uninit() }; MAXN], meta: [Meta { kind: 0, painted: false, count: 0, end: 0, wrap: 0, a: 0.0, b: 0.0 }; MAXN], wraps: [None; MAXW] };
+        let mut f = Flat {
+            n: 0,
+            nw: 0,
+            spec: [const { MaybeUninit::uninit() }; MAXN],
+            meta: [Meta {
+                kind: 0,
+                painted: false,
+                count: 0,
+                end: 0,
+                wrap: 0,
+                a: 0.0,
+                b: 0.0,
+            }; MAXN],
+            wraps: [None; MAXW],
+        };
         t.emit(&mut f);
         f.ends(0);
         f
@@ -287,8 +345,14 @@ impl Kids for Under<'_, '_> {
     #[inline(always)]
     fn st(&self) -> Items {
         let n = self.0.f.meta[self.0.i].count as usize;
-        assert!(n <= crate::flex::CAP, "a flex container has at most 32 children; a longer run is a list");
-        let mut st = Items { n, it: [const { MaybeUninit::uninit() }; crate::flex::CAP] };
+        assert!(
+            n <= crate::flex::CAP,
+            "a flex container has at most 32 children; a longer run is a list"
+        );
+        let mut st = Items {
+            n,
+            it: [const { MaybeUninit::uninit() }; crate::flex::CAP],
+        };
         for k in 0..n {
             st.it[k] = MaybeUninit::new(Item::NONE);
         }
@@ -299,7 +363,9 @@ impl Kids for Under<'_, '_> {
         let mut j = self.0.i + 1;
         for k in 0..st.n {
             // SAFETY: the first `n` items were written by `st`.
-            p.kid(&At { f: self.0.f, i: j }, unsafe { st.it[k].assume_init_mut() });
+            p.kid(&At { f: self.0.f, i: j }, unsafe {
+                st.it[k].assume_init_mut()
+            });
             j = self.0.f.meta[j].end as usize;
         }
     }
@@ -363,23 +429,67 @@ impl Lay for At<'_, '_> {
         self.f.meta[self.i].kind == K_GONE as u8
     }
     #[inline(never)]
-    fn size(&self, cx: &mut Cx, known: [Option<V>; 2], parent: [Option<V>; 2], avail: [Av; 2], content_only: bool) -> [V; 2] {
+    fn size(
+        &self,
+        cx: &mut Cx,
+        known: [Option<V>; 2],
+        parent: [Option<V>; 2],
+        avail: [Av; 2],
+        content_only: bool,
+    ) -> [V; 2] {
         let m = &self.f.meta[self.i];
         if m.kind == K_BOX as u8 {
-            return solve(self.spec(), &Under(*self), cx, known, parent, avail, content_only, false).outer;
+            return solve(
+                self.spec(),
+                &Under(*self),
+                cx,
+                known,
+                parent,
+                avail,
+                content_only,
+                false,
+            )
+            .outer;
         }
         if m.kind == K_LINE as u8 {
-            leaf_size(self.spec(), &Line(m.a, m.b), cx, known, parent, avail, content_only)
+            leaf_size(
+                self.spec(),
+                &Line(m.a, m.b),
+                cx,
+                known,
+                parent,
+                avail,
+                content_only,
+            )
         } else {
-            leaf_size(self.spec(), &ByRef(self.f.wraps[m.wrap as usize].expect("a wrapping leaf")), cx, known, parent, avail, content_only)
+            leaf_size(
+                self.spec(),
+                &ByRef(self.f.wraps[m.wrap as usize].expect("a wrapping leaf")),
+                cx,
+                known,
+                parent,
+                avail,
+                content_only,
+            )
         }
     }
     #[inline(always)]
     fn reported(&self, cx: &mut Cx, size: [V; 2]) -> [V; 2] {
-        if self.f.meta[self.i].kind == K_BOX as u8 { crate::flex::reported(self.spec(), cx, size) } else { size }
+        if self.f.meta[self.i].kind == K_BOX as u8 {
+            crate::flex::reported(self.spec(), cx, size)
+        } else {
+            size
+        }
     }
     #[inline(never)]
-    fn place<O: Out + ?Sized>(&self, cx: &mut Cx, size: [V; 2], org: [V; 2], out: &mut O, mut k: usize) -> usize {
+    fn place<O: Out + ?Sized>(
+        &self,
+        cx: &mut Cx,
+        size: [V; 2],
+        org: [V; 2],
+        out: &mut O,
+        mut k: usize,
+    ) -> usize {
         let m = &self.f.meta[self.i];
         if m.kind == K_GONE as u8 {
             for j in 0..m.count as usize {
@@ -393,7 +503,16 @@ impl Lay for At<'_, '_> {
         }
         if m.kind == K_BOX as u8 && m.count != 0 {
             let av = [Av::Def(size[0]), Av::Def(size[1])];
-            let mut sol = solve(self.spec(), &Under(*self), cx, [Some(size[0]), Some(size[1])], [None; 2], av, false, true);
+            let mut sol = solve(
+                self.spec(),
+                &Under(*self),
+                cx,
+                [Some(size[0]), Some(size[1])],
+                [None; 2],
+                av,
+                false,
+                true,
+            );
             k = place_kids(&Under(*self), cx, &mut sol, org, out, k);
         }
         k
@@ -403,8 +522,22 @@ impl Lay for At<'_, '_> {
         let p = m.painted as usize;
         match m.kind as u32 {
             K_GONE => Node::gone(m.count as usize),
-            K_LINE => Node { spec: *self.spec(), kind: Kind::Leaf(crate::tree::measurer(Line(m.a, m.b))), kids: vec![], leaves: p, total: p },
-            K_WRAP => Node { spec: *self.spec(), kind: Kind::Leaf(crate::tree::measurer(ByRc(self.f.wraps[m.wrap as usize].expect("a wrapping leaf").rc()))), kids: vec![], leaves: p, total: p },
+            K_LINE => Node {
+                spec: *self.spec(),
+                kind: Kind::Leaf(crate::tree::measurer(Line(m.a, m.b))),
+                kids: vec![],
+                leaves: p,
+                total: p,
+            },
+            K_WRAP => Node {
+                spec: *self.spec(),
+                kind: Kind::Leaf(crate::tree::measurer(ByRc(
+                    self.f.wraps[m.wrap as usize].expect("a wrapping leaf").rc(),
+                ))),
+                kids: vec![],
+                leaves: p,
+                total: p,
+            },
             _ => {
                 let mut kids = Vec::new();
                 let mut j = self.i + 1;
@@ -413,7 +546,13 @@ impl Lay for At<'_, '_> {
                     j = self.f.meta[j].end as usize;
                 }
                 let total = p + kids.iter().map(|k| k.total).sum::<usize>();
-                Node { spec: *self.spec(), kind: Kind::Flex, kids, leaves: p, total }
+                Node {
+                    spec: *self.spec(),
+                    kind: Kind::Flex,
+                    kids,
+                    leaves: p,
+                    total,
+                }
             }
         }
     }
@@ -422,13 +561,25 @@ impl Lay for At<'_, '_> {
 /// Lay a row out: its words, then the one layout function. No memo. Returns the slot's height and the interval
 /// of list widths over which every rect and the height are the same.
 #[inline(never)]
-pub fn place<T: Shape, O: Out + ?Sized>(t: &T, s: f32, u: &U, width: f32, out: &mut O) -> (i32, Valid) {
+pub fn place<T: Shape, O: Out + ?Sized>(
+    t: &T,
+    s: f32,
+    u: &U,
+    width: f32,
+    out: &mut O,
+) -> (i32, Valid) {
     let f = Flat::of(t);
     place_flat(&f, s, u, width, out)
 }
 /// The layout function: one body for every row type.
 #[inline(never)]
-pub fn place_flat<O: Out + ?Sized>(f: &Flat<'_>, s: f32, u: &U, width: f32, out: &mut O) -> (i32, Valid) {
+pub fn place_flat<O: Out + ?Sized>(
+    f: &Flat<'_>,
+    s: f32,
+    u: &U,
+    width: f32,
+    out: &mut O,
+) -> (i32, Valid) {
     crate::place_row(&f.root(), s, u, width, out)
 }
 /// A row's height and its interval, with no rects.
@@ -446,10 +597,25 @@ pub fn tree<T: Shape>(t: &T) -> Node {
     Flat::of(t).root().tree()
 }
 
+fn canonical<T: Shape>(t: &T) -> Vec<Nd> {
+    struct Words(Vec<Nd>);
+    impl<'a> Sink<'a> for Words {
+        fn node(&mut self, n: Nd) {
+            self.0.push(n);
+        }
+    }
+    let mut w = Words(Vec::new());
+    t.emit(&mut w);
+    w.0
+}
+
 /// The rects of the last shape a list laid out, with the widths they hold over. A row of the same shape at a
 /// width inside that interval is a copy of them.
 pub struct Memo {
     hash: u64,
+    canonical: Vec<Nd>,
+    scale: u32,
+    inputs: Vec<u32>,
     valid: Valid,
     h: i32,
     rects: Vec<[i32; 4]>,
@@ -463,7 +629,20 @@ impl Default for Memo {
 }
 impl Memo {
     pub const fn new() -> Memo {
-        Memo { hash: 0, valid: Valid { lo: [1.0; 2], hi: [0.0; 2] }, h: 0, rects: Vec::new(), hits: 0, misses: 0 }
+        Memo {
+            hash: 0,
+            canonical: Vec::new(),
+            scale: 0,
+            inputs: Vec::new(),
+            valid: Valid {
+                lo: [1.0; 2],
+                hi: [0.0; 2],
+            },
+            h: 0,
+            rects: Vec::new(),
+            hits: 0,
+            misses: 0,
+        }
     }
     /// Whether a row of shape `hash` at `width` is the kept answer.
     #[inline(always)]
@@ -483,6 +662,9 @@ impl Memo {
     /// Lay `t` out into the memo.
     #[inline(never)]
     pub fn lay<T: Shape>(&mut self, t: &T, hash: u64, s: f32, u: &U, width: f32) {
+        self.canonical = canonical(t);
+        self.scale = s.to_bits();
+        self.inputs = u.w.to_vec();
         self.rects.clear();
         self.rects.resize(T::LEAVES, [0; 4]);
         let (h, v) = place(t, s, u, width, &mut self.rects[..]);
@@ -492,9 +674,22 @@ impl Memo {
     /// The rects of row `t` at `at`, into `out`; returns the row's height. The whole of a row's layout on the
     /// path of a list: a compare of the shape, a compare of the width, a copy.
     #[inline(always)]
-    pub fn row<T: Shape, O: Out + ?Sized>(&mut self, t: &T, s: f32, u: &U, width: f32, at: (i32, i32), out: &mut O) -> i32 {
+    pub fn row<T: Shape, O: Out + ?Sized>(
+        &mut self,
+        t: &T,
+        s: f32,
+        u: &U,
+        width: f32,
+        at: (i32, i32),
+        out: &mut O,
+    ) -> i32 {
         let hash = hash(t);
-        if !self.holds(hash, width) {
+        if !self.holds(hash, width)
+            || (!cfg!(feature = "mutant_memo_hash_only")
+                && (self.canonical != canonical(t)
+                    || self.scale != s.to_bits()
+                    || self.inputs != u.w))
+        {
             self.lay(t, hash, s, u, width);
         } else {
             self.hits += 1;
@@ -557,7 +752,12 @@ pub fn reflect<T: Shape>(t: &T) -> Vec<Reflected> {
                 Dim::Auto => Why::Content,
             }
         };
-        out.push(Reflected { spec: sp, depth, painted: m.painted, why: [why(0), why(1)] });
+        out.push(Reflected {
+            spec: sp,
+            depth,
+            painted: m.painted,
+            why: [why(0), why(1)],
+        });
         if let Some(top) = stack.last_mut() {
             top.3 -= 1;
         }
@@ -569,4 +769,40 @@ pub fn reflect<T: Shape>(t: &T) -> Vec<Reflected> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod memo_tests {
+    use super::*;
+    struct Leaf(f32);
+    impl Shape for Leaf {
+        const LEAVES: usize = 1;
+        const WRAPS: bool = false;
+        const VARIES: bool = true;
+        const HK: Hk = Hk::Fixed;
+        fn emit<'a, S: Sink<'a>>(&'a self, s: &mut S) {
+            let sp = Spec {
+                w: Dim::Pt(self.0),
+                h: Dim::Pt(10.0),
+                ..Spec::new(false)
+            };
+            s.node(Nd::pack(&sp, K_LINE, true, 0, self.0, 10.0, [0; 2]));
+        }
+    }
+    #[test]
+    fn memo_collision_and_scale_match_uncached() {
+        let u = U::default();
+        let mut m = Memo::new();
+        let a = Leaf(10.0);
+        let b = Leaf(30.0);
+        m.lay(&a, hash(&b), 1.0, &u, 100.0); // deterministic forced collision
+        let mut got = [[0; 4]; 1];
+        m.row(&b, 1.0, &u, 100.0, (0, 0), &mut got[..]);
+        let mut want = [[0; 4]; 1];
+        place(&b, 1.0, &u, 100.0, &mut want[..]);
+        assert_eq!(got, want);
+        m.row(&b, 2.0, &u, 100.0, (0, 0), &mut got[..]);
+        place(&b, 2.0, &u, 100.0, &mut want[..]);
+        assert_eq!(got, want);
+    }
 }
