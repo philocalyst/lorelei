@@ -1,19 +1,17 @@
-## Lock-free follow-up candidate
-
-The source includes the coordinator's lock-free signal and allocation-free slot
-reader cleanup. Focused verification passes: three slab/TLS unit tests and
-eighteen Card 1 integration probes. The earlier full-suite results below belong
-to the preceding candidate; final replay results will be recorded after the
-new frozen source is tested.
-
 # Card 1: typed admission, opaque CPU records and sparse delta
 
-Status: **GATED for the tests below; performance prediction not established.**
-Independent replay remains required before integration.
+Status: **GATED, including lock-free signal operations and scoped zero-allocation
+checks.** No general zero-CPU-cost or complete retained-memory claim is made.
+Independent acceptance remains with the coordinator.
 
-Frozen source candidate: 76fa3066443689799ed1827ab9addc270cd58872.
+Frozen library source for the lock-free replay:
+2a2c9362a10a3d4227db3d7ddd71066c8c080fab.
+After that complete replay, the allocation probe gained a positive control and
+black_box barriers; the final nineteen-probe binary was rerun successfully.
+No library source changed after the full replay.
+
+Earlier complete Card 1 source: 76fa3066443689799ed1827ab9addc270cd58872.
 Earlier sparse checkpoint: 5d023b9ad2a49abc01ef0a04f57a0a3bc97c6583.
-The final report commit changes documentation only.
 
 Scope: body B, the new core prototype, on headless macOS aarch64, pinned
 nightly-2026-10-17, release, Soft and the existing paint test backends. These are
@@ -77,22 +75,23 @@ the final batch. All checks below returned zero, except deliberate mutants.
 | Gate | Outcome |
 |---|---|
 | bough-expr release unit tests | 1 passed |
-| bough-x release tests | 70 passed |
+| bough-x release tests on lock-free source | 77 passed (including 3 slab/TLS unit tests) |
+| Final strengthened Card 1 probe binary | 19 passed |
 | bough-ax release tests | 11 passed; 1 ignored |
 | bough-paint release tests | 17 passed |
 | Slot raw-descriptor compile-fail documentation | Passed |
 | Wrong-owner World compile-fail documentation | Passed |
-| macOS workspace check, all tests | Passed |
-| bough-guibench-x check, including tests | Passed |
-| bough-x release check of tests, -j 3 | Passed; Cargo reported 0.87 s |
-| Final full release batch compilation | Cargo reported 1 min 16 s |
-| Last focused incremental test compilation | Cargo reported 4.25 s |
+| macOS workspace check, all tests | Passed again on lock-free source; Cargo reported 2.50 s |
+| bough-guibench-x check, including tests | Passed on prior Card 1 source; no caller API changed in this cleanup |
+| bough-x release check of tests, -j 3 | Prior Card 1 check passed; Cargo reported 0.87 s |
+| Lock-free full release batch compilation | Cargo reported 1 min 30 s |
+| Final focused incremental test compilation | Cargo reported 3.89 s |
 
 The last two times are included to avoid presenting the cached check as a full
 rebuild. These are Cargo-reported build times, not a randomized leaf-edit
 compile-time study.
 
-The fourteen Card 1 probes cover:
+The nineteen final Card 1 integration probes cover:
 
 - Arbitrary nominal offset on a padded owner: safe projection value is gathered.
 - Foreign gathered owner: checked refusal before its reader executes.
@@ -105,6 +104,19 @@ The fourteen Card 1 probes cover:
 - Foreign WorldId place and reflection refusal.
 - Independent relation edits: zero extra A descriptions and retables.
 - Signal extraction moves and drops its value exactly once.
+- Signal<u32>, Signal<f32> and the numeric sheet owner have no drop glue.
+- A thread-local counting allocator observes zero allocation calls over 1,000
+  signal set/deref/once-settle steps; view descriptions and retables also stay flat.
+- Typed and projected Slot construction/read performs zero allocations across
+  1,000 iterations, with black_box keeping the operations observable.
+- A deliberate allocation is detected by the counting allocator's positive control.
+- Shared signals notify all three observing worlds, including a world observing
+  an already-shared sentinel; an unrelated single-owner app remains unchanged.
+- Stale signal tokens are inert after their world drops and rebind on observation.
+
+Three additional library unit probes verify stale CAS updates racing release/reuse,
+terminal generation retirement without issuing the shared sentinel, and restoration
+of nested/unwound scalar TLS input tokens.
 - Packed column/record overflow and 4,097-column admission refusal.
 - Sparse slope, large incidence storage and the retained sheet ledger.
 
@@ -125,8 +137,10 @@ sheet_el at 10,000 rows, 2560x1600, scale 2, Soft:
 record/column-storage limits pass. The earlier checkpoint used 49,408 column
 bytes; initialized-page metadata adds 2,048 bytes here.
 
-Each mutant ran separately, compiled successfully, and failed its named oracle
-with exit 101:
+All seven mutants ran separately on the preceding full Card 1 source, compiled
+successfully and failed their named oracle with exit 101. The requested
+mutant_sparse_union replay on the lock-free source also compiled successfully
+and failed the same damage oracle (exit 101):
 
 | Feature | Test target / oracle |
 |---|---|
@@ -143,7 +157,7 @@ The sparse mutant fails the damage comparison at 64 columns: actual tile bits
 
 ## Costs and limits
 
-The requested lock-free follow-up removes the signal watch mutex, hash map,
+The lock-free follow-up removes the signal watch mutex, hash map,
 Arc/Weak subscriptions and Signal's Drop implementation. A thread-local counting
 allocator observes zero allocations across 1,000 set/deref/once-settle steps,
 and across 1,000 typed/projected Slot constructions and reads. Signal<u32>,
@@ -158,6 +172,10 @@ issued, including the combination that would equal the shared-signal sentinel.
 If all slots are occupied or retired, world construction refuses cleanly.
 The existing cold field-admission registry still uses a mutex/map; no signal
 setter, observer, dereference, or ordinary gathered slot read consults it.
+Slot::typed and Slot::projected use no Box::leak or heap allocation. Their sealed
+function-pointer trampolines restore the exact typed signatures only after the
+owner TypeId check; no integer-to-function-pointer round trip or Any downcast
+is needed.
 
 Exact model, static slab, field-registry, incidence scratch, code-size and total
 retained-memory costs were not measured. The column ledger excludes them.

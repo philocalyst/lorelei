@@ -566,11 +566,28 @@ fn typed_slot_construction_and_projected_reads_allocate_nothing() {
             let direct = Slot::typed::<Padded, ()>(0, usize::MAX, |v| v.next);
             let projected =
                 Slot::projected::<Padded, u32, u32>(1, usize::MAX, |v| &v.next, |word| *word);
-            assert_eq!(direct.read(&v), 42);
-            assert_eq!(projected.read(&v), 42);
+            assert_eq!(
+                std::hint::black_box(direct).read(std::hint::black_box(&v)),
+                42
+            );
+            assert_eq!(
+                std::hint::black_box(projected).read(std::hint::black_box(&v)),
+                42
+            );
         }
     });
     assert_eq!(count, 0);
     let projected = Slot::projected::<Padded, u32, ()>(1, 0, |v| &v.next, |word| *word);
     assert!(std::panic::catch_unwind(|| projected.read(&42u32)).is_err());
+}
+
+#[test]
+fn allocation_counter_detects_a_deliberate_allocation() {
+    let count = allocations::count(|| {
+        drop(std::hint::black_box(Box::new(std::hint::black_box(7u32))));
+    });
+    assert!(
+        count > 0,
+        "positive control: allocator probe must detect an allocation"
+    );
 }
