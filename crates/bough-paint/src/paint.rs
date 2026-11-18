@@ -12,9 +12,19 @@ use crate::ops::ops as x;
 use bough_kernel::Cmd;
 use wgsl_rs::std::{Vec4, Vec4i, Vec4u};
 
-pub const EMPTY: Vec4i = Vec4 { x: 0, y: 0, z: 0, w: 0 };
+pub const EMPTY: Vec4i = Vec4 {
+    x: 0,
+    y: 0,
+    z: 0,
+    w: 0,
+};
 /// No clip (Q8), the kernel stager's bounds.
-pub const NO_CLIP: Vec4i = Vec4 { x: -4_096_000, y: -4_096_000, z: 4_096_000, w: 4_096_000 };
+pub const NO_CLIP: Vec4i = Vec4 {
+    x: -4_096_000,
+    y: -4_096_000,
+    z: 4_096_000,
+    w: 4_096_000,
+};
 pub const NO_HIT: u32 = u32::MAX;
 
 /// Per-pixel cost class of a paint (the plan's input; `plan.rs`).
@@ -62,9 +72,19 @@ pub enum PCode {
         tab: bool,
     },
     /// `a` then `b`; `cut`: `b`'s core is opaque, so `a` is skipped inside it.
-    Over { a: &'static PCode, b: &'static PCode, cut: bool },
-    Clip { p: &'static PCode, k: &'static Code },
-    Hit { p: &'static PCode, id: &'static Code },
+    Over {
+        a: &'static PCode,
+        b: &'static PCode,
+        cut: bool,
+    },
+    Clip {
+        p: &'static PCode,
+        k: &'static Code,
+    },
+    Hit {
+        p: &'static PCode,
+        id: &'static Code,
+    },
 }
 
 /// Where a paint's staged primitives go. Every method has the kind in its name: the caller is a paint
@@ -125,7 +145,7 @@ macro_rules! prim {
         pub struct $name<$($T),*> { $(pub $f: $T),* }
         // SAFETY: `repr(C)` over `Words` operands.
         unsafe impl<$($T: Words),*> Words for $name<$($T),*> {}
-        impl<$($T: Expr<Out = $ty>),*> Paint for $name<$($T),*>
+        impl<$($T: Expr<Out = $ty> + Words),*> Paint for $name<$($T),*>
         where
             $($FT: Alpha,)*
         {
@@ -162,7 +182,7 @@ prim!(/// A rounded box.
 prim!(/// A rounded box of colour `fill` with a border of width `w` in colour `c` inside its edge.
     Border: border = mk_border, p_border(b: B: Vec4i: true, r: R: i32: true, w: W: i32: true, c: C: Vec4u: false, fill: F: Vec4u: false); full = [fill: F = 4]; cover = true; cost = Cost::Edge; glyph = false);
 /// A table handle operand of a primitive that can memoise part of its coverage (`Shadow`'s corners).
-pub trait TabOp: Expr<Out = u32> {
+pub trait TabOp: Expr<Out = u32> + Words {
     /// The record owns a handle word.
     const ON: bool;
     fn put(&mut self, _handle: u32) {}
@@ -213,7 +233,14 @@ pub struct Shadow<B, R, S, C, T = NoTab> {
 }
 // SAFETY: `repr(C)` over `Words` operands.
 unsafe impl<B: Words, R: Words, S: Words, C: Words, T: Words> Words for Shadow<B, R, S, C, T> {}
-impl<B: Expr<Out = Vec4i>, R: Expr<Out = i32>, S: Expr<Out = i32>, C: Expr<Out = Vec4u>, T: TabOp> Paint for Shadow<B, R, S, C, T> {
+impl<
+    B: Expr<Out = Vec4i> + Words,
+    R: Expr<Out = i32> + Words,
+    S: Expr<Out = i32> + Words,
+    C: Expr<Out = Vec4u> + Words,
+    T: TabOp,
+> Paint for Shadow<B, R, S, C, T>
+{
     const READS: u64 = B::READS | R::READS | S::READS | C::READS;
     const GEOM_READS: u64 = B::READS | R::READS | S::READS;
     const OPAQUE_CORE: bool = false;
@@ -231,7 +258,14 @@ impl<B: Expr<Out = Vec4i>, R: Expr<Out = i32>, S: Expr<Out = i32>, C: Expr<Out =
     };
     #[inline(always)]
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
-        s.shadow(x::mk_shadow(self.b.eval(cx), self.r.eval(cx), self.blur.eval(cx), self.c.eval(cx), self.tab.eval(cx), clip))
+        s.shadow(x::mk_shadow(
+            self.b.eval(cx),
+            self.r.eval(cx),
+            self.blur.eval(cx),
+            self.c.eval(cx),
+            self.tab.eval(cx),
+            clip,
+        ))
     }
     #[inline(always)]
     fn changed_win(&self, old: &Cx, new: &Cx, mask: u64, clip: Vec4i) -> Vec4i {
@@ -240,7 +274,15 @@ impl<B: Expr<Out = Vec4i>, R: Expr<Out = i32>, S: Expr<Out = i32>, C: Expr<Out =
             || (S::READS & mask != 0 && self.blur.eval(old) != self.blur.eval(new))
             || (C::READS & mask != 0 && self.c.eval(old) != self.c.eval(new))
         {
-            x::mk_shadow(self.b.eval(new), self.r.eval(new), self.blur.eval(new), self.c.eval(new), self.tab.eval(new), clip).win
+            x::mk_shadow(
+                self.b.eval(new),
+                self.r.eval(new),
+                self.blur.eval(new),
+                self.c.eval(new),
+                self.tab.eval(new),
+                clip,
+            )
+            .win
         } else {
             EMPTY
         }
@@ -254,8 +296,20 @@ impl<B: Expr<Out = Vec4i>, R: Expr<Out = i32>, S: Expr<Out = i32>, C: Expr<Out =
         // animated can still change the clamped radius; the key in the table's header is checked while
         // shading, so that only costs the closed form.)
         if T::ON && R::READS == 0 && S::READS == 0 {
-            let z = Vec4 { x: 0, y: 0, z: 0, w: 0 };
-            let c = x::mk_shadow(self.b.eval(cx), self.r.eval(cx), self.blur.eval(cx), z, x::T_MISS, NO_CLIP);
+            let z = Vec4 {
+                x: 0,
+                y: 0,
+                z: 0,
+                w: 0,
+            };
+            let c = x::mk_shadow(
+                self.b.eval(cx),
+                self.r.eval(cx),
+                self.blur.eval(cx),
+                z,
+                x::T_MISS,
+                NO_CLIP,
+            );
             if x::t_regime(c.rad.x, c.rad.y) {
                 self.tab.put(m(c.rad.x, c.rad.y));
             }
@@ -281,7 +335,11 @@ impl<A: Paint, B: Paint> Paint for Over<A, B> {
     const COST: Cost = worst(A::COST, B::COST);
     const LAYERS: usize = A::LAYERS + B::LAYERS;
     const HIT: bool = A::HIT || B::HIT;
-    const CODE: &'static PCode = &PCode::Over { a: A::CODE, b: B::CODE, cut: B::OPAQUE_CORE };
+    const CODE: &'static PCode = &PCode::Over {
+        a: A::CODE,
+        b: B::CODE,
+        cut: B::OPAQUE_CORE,
+    };
     #[inline(always)]
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
         if B::OPAQUE_CORE {
@@ -295,17 +353,28 @@ impl<A: Paint, B: Paint> Paint for Over<A, B> {
     }
     #[inline(always)]
     fn changed_win(&self, old: &Cx, new: &Cx, mask: u64, clip: Vec4i) -> Vec4i {
-        x::x_union(self.0.changed_win(old, new, mask, clip), self.1.changed_win(old, new, mask, clip))
+        x::x_union(
+            self.0.changed_win(old, new, mask, clip),
+            self.1.changed_win(old, new, mask, clip),
+        )
     }
     #[inline(always)]
     fn cover(&self, cx: &Cx, clip: Vec4i) -> Vec4i {
         // the upper layer's core if it has one; else the lower's is still a cover only where the upper layer
         // does not ink, which is not known here, so a translucent top makes the record no cover
-        if B::OPAQUE_CORE { self.1.cover(cx, clip) } else { EMPTY }
+        if B::OPAQUE_CORE {
+            self.1.cover(cx, clip)
+        } else {
+            EMPTY
+        }
     }
     #[inline(always)]
     fn pick_id(&self, cx: &Cx) -> u32 {
-        if B::HIT { self.1.pick_id(cx) } else { self.0.pick_id(cx) }
+        if B::HIT {
+            self.1.pick_id(cx)
+        } else {
+            self.0.pick_id(cx)
+        }
     }
     #[inline(always)]
     fn memo(&mut self, cx: &Cx, m: &mut dyn FnMut(i32, i32) -> u32) {
@@ -323,14 +392,17 @@ pub struct Clip<P, K> {
 }
 // SAFETY: `repr(C)` over `Words` operands.
 unsafe impl<P: Words, K: Words> Words for Clip<P, K> {}
-impl<P: Paint, K: Expr<Out = Vec4i>> Paint for Clip<P, K> {
+impl<P: Paint, K: Expr<Out = Vec4i> + Words> Paint for Clip<P, K> {
     const READS: u64 = P::READS | K::READS;
     const GEOM_READS: u64 = P::GEOM_READS | K::READS;
     const OPAQUE_CORE: bool = P::OPAQUE_CORE;
     const COST: Cost = P::COST;
     const LAYERS: usize = P::LAYERS;
     const HIT: bool = P::HIT;
-    const CODE: &'static PCode = &PCode::Clip { p: P::CODE, k: K::CODE };
+    const CODE: &'static PCode = &PCode::Clip {
+        p: P::CODE,
+        k: K::CODE,
+    };
     #[inline(always)]
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
         self.p.paint(cx, x::x_and(clip, self.k.eval(cx)), s)
@@ -338,7 +410,8 @@ impl<P: Paint, K: Expr<Out = Vec4i>> Paint for Clip<P, K> {
     #[inline(always)]
     fn changed_win(&self, old: &Cx, new: &Cx, mask: u64, clip: Vec4i) -> Vec4i {
         // a clip that changed moved the window where it matters: that is the window pass's other branch
-        self.p.changed_win(old, new, mask, x::x_and(clip, self.k.eval(new)))
+        self.p
+            .changed_win(old, new, mask, x::x_and(clip, self.k.eval(new)))
     }
     #[inline(always)]
     fn cover(&self, cx: &Cx, clip: Vec4i) -> Vec4i {
@@ -363,14 +436,17 @@ pub struct Hit<P, I> {
 }
 // SAFETY: `repr(C)` over `Words` operands.
 unsafe impl<P: Words, I: Words> Words for Hit<P, I> {}
-impl<P: Paint, I: Expr<Out = u32>> Paint for Hit<P, I> {
+impl<P: Paint, I: Expr<Out = u32> + Words> Paint for Hit<P, I> {
     const READS: u64 = P::READS | I::READS;
     const GEOM_READS: u64 = P::GEOM_READS;
     const OPAQUE_CORE: bool = P::OPAQUE_CORE;
     const COST: Cost = P::COST;
     const LAYERS: usize = P::LAYERS;
     const HIT: bool = true;
-    const CODE: &'static PCode = &PCode::Hit { p: P::CODE, id: I::CODE };
+    const CODE: &'static PCode = &PCode::Hit {
+        p: P::CODE,
+        id: I::CODE,
+    };
     #[inline(always)]
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
         self.p.paint(cx, clip, s)
@@ -496,7 +572,11 @@ impl Sink for SpecSink<'_> {
     #[inline(always)]
     fn glyph(&mut self, c: Cmd) {
         let t = x::x_texel(c, self.x, self.y, self.aw);
-        let cov = if t == bough_kernel::k::NO_TEXEL || self.atlas.is_empty() { 0 } else { self.atlas[(t as usize).min(self.atlas.len() - 1)] as u32 };
+        let cov = if t == bough_kernel::k::NO_TEXEL || self.atlas.is_empty() {
+            0
+        } else {
+            self.atlas[(t as usize).min(self.atlas.len() - 1)] as u32
+        };
         self.put(x::p_glyph(c, self.x, self.y, cov))
     }
 }

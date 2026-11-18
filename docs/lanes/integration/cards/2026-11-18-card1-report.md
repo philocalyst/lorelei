@@ -1,3 +1,48 @@
+# Card 1 implementation candidate
+
+The source now implements typed field-reader admission, opaque CPU records,
+World<V,B>/WorldId/Reflect<V,B>, local shape/relation/input revisions, checked
+packed-place admission and sparse delta. Fourteen focused release probes pass.
+Final full-suite and mutant replay results will be appended after the frozen
+candidate is checked. This is not an independent acceptance receipt.
+
+Important deviations from the frozen prediction:
+
+- Signal carries a four-byte stable identity, is Clone rather than Copy, and
+  stores weak world subscriptions in a registry. Copies made by Clone are
+  independent. This preserves all required sig! syntax, but does not preserve
+  the previous Copy trait or the claim that a signal is only its value.
+- Input observation and setters use a registry mutex. No zero-cost or zero
+  steady-state-tax claim is made. Signal<u32> now occupies eight bytes on this
+  host; the sheet's model storage increases accordingly, separately from its
+  retained column ledger.
+- Record uses pinned nightly specialization to restrict raw words to Words.
+  Opaque CPU record equality uses evaluated operands; new captures are retained
+  even when their current output agrees.
+- Sparse/dense crossover is by exact incidence count, not calibrated wall time.
+- Field reader descriptors are interned by owner, value type and nominal offset.
+  The offset selects a uniform word; it is never a raw read address. Repeated
+  syntax for the same field uses its canonical reader. Distinct nominal
+  projections colliding modulo APP_WORDS are refused at retable.
+- Place tokens carry WorldId. The packed u32 helper remains available for raster
+  indexing, with bounds/liveness checks; only the token API proves provenance.
+
+Latest focused ledger: sheet_el, 10,000 rows, 2560x1600, scale 2, Soft:
+764 records, 14 columns, 32 pages, 51,456 column bytes. This excludes the model,
+signal registry, field-reader registry, incidence scratch and other allocations.
+
+The initial inline signal watcher representation overflowed the default test
+thread's stack when moving the large sheet. It was replaced with the four-byte
+identity representation; the corrected default-stack probe passes. The initial
+padded snapshot probe also exposed the reflecting sink's missing element
+environment; reflection now learns from the typed world's gathered block.
+All failed attempts remain in ignored runtime logs.
+
+The earlier checkpoint evidence follows for provenance; its incomplete status
+and old ledger apply only to that checkpoint.
+
+---
+
 # Card 1 checkpoint: sparse delta and packed places
 
 Status: **INCOMPLETE**. This checkpoint implements only the sparse invalidation

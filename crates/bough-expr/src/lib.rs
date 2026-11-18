@@ -9,6 +9,11 @@
 //!   named after a leaf function and live with those functions (`bough-paint`). [`Map`] is the combinator for
 //!   an arbitrary Rust function: it has no GPU code, so it is evaluated on the CPU.
 #![no_std]
+#![feature(specialization)]
+#![allow(incomplete_features)]
+extern crate alloc;
+use alloc::boxed::Box;
+use core::any::{Any, TypeId};
 use core::marker::PhantomData;
 
 /// Words in a uniform block. One `u64` names any subset.
@@ -154,15 +159,85 @@ pub trait Lens: Copy + 'static {
     const SLOT: usize;
     /// Where the word comes from when the block is gathered from the application's own state: the field's byte
     /// offset in the root view and its size. `None`: the application declares a block and writes it itself.
-    const AT: Option<(usize, usize)> = None;
+    fn field() -> Option<Slot> {
+        None
+    }
 }
 
 /// A word of the block and the field of the root view it is gathered from.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// A sealed safe typed reader; raw offsets confer no read authority.
+///
+/// ```compile_fail
+/// use bough_expr::Slot;
+/// let forged = Slot { slot: 0, bytes: 4, off: u32::MAX };
+/// ```
+#[derive(Clone, Copy)]
 pub struct Slot {
-    pub slot: u8,
-    pub bytes: u8,
-    pub off: u32,
+    slot: usize,
+    off: usize,
+    owner: TypeId,
+    projection: TypeId,
+    reader: &'static (dyn Fn(&dyn Any) -> u32 + Send + Sync),
+}
+impl Slot {
+    /// Construct only a typed safe reader. There is no raw-offset constructor.
+    pub fn typed<V: 'static, P: 'static>(
+        slot: usize,
+        off: usize,
+        read: impl Fn(&V) -> u32 + Send + Sync + 'static,
+    ) -> Self {
+        assert!(slot < APP_WORDS, "field slot outside application block");
+        let reader = Box::leak(Box::new(move |v: &dyn Any| {
+            read(v.downcast_ref::<V>().expect("field reader owner mismatch"))
+        }));
+        Self {
+            slot,
+            off,
+            owner: TypeId::of::<V>(),
+            projection: TypeId::of::<P>(),
+            reader,
+        }
+    }
+    pub fn index(self) -> usize {
+        self.slot
+    }
+    pub fn offset(self) -> usize {
+        self.off
+    }
+    pub fn owner(self) -> TypeId {
+        self.owner
+    }
+    pub fn read<V: 'static>(self, v: &V) -> u32 {
+        assert_eq!(self.owner, TypeId::of::<V>(), "field reader owner mismatch");
+        assert!(
+            self.slot < APP_WORDS,
+            "field slot outside application block"
+        );
+        (self.reader)(v)
+    }
+}
+impl PartialEq for Slot {
+    fn eq(&self, other: &Self) -> bool {
+        (self.slot, self.off, self.owner, self.projection)
+            == (other.slot, other.off, other.owner, other.projection)
+            && core::ptr::eq(self.reader, other.reader)
+    }
+}
+impl Eq for Slot {}
+impl core::fmt::Debug for Slot {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Slot")
+            .field("slot", &self.slot)
+            .field("owner", &self.owner)
+            .field("projection", &self.projection)
+            .finish()
+    }
+}
+/// A zero-sized typed projection reads through safe Rust, never through its nominal offset.
+pub trait FieldProj<V>: 'static {
+    type T: Word;
+    const NOMINAL_OFF: usize;
+    fn read(v: &V) -> Self::T;
 }
 /// The name of a run of words of the block (an array field).
 pub trait LensArr: Copy + 'static {
@@ -210,22 +285,47 @@ pub struct Rect {
 }
 impl Rect {
     /// A box no record leaves: what an unbounded motion sweeps (cut to the space's clip by whoever marks it).
-    pub const EVERYWHERE: Rect = Rect { x0: -(1 << 28), y0: -(1 << 28), x1: 1 << 28, y1: 1 << 28 };
+    pub const EVERYWHERE: Rect = Rect {
+        x0: -(1 << 28),
+        y0: -(1 << 28),
+        x1: 1 << 28,
+        y1: 1 << 28,
+    };
     #[inline(always)]
     pub const fn new(x: i32, y: i32, w: i32, h: i32) -> Rect {
-        Rect { x0: x, y0: y, x1: x + w, y1: y + h }
+        Rect {
+            x0: x,
+            y0: y,
+            x1: x + w,
+            y1: y + h,
+        }
     }
     #[inline(always)]
     pub fn shift(self, d: (i32, i32)) -> Rect {
-        Rect { x0: self.x0 + d.0, y0: self.y0 + d.1, x1: self.x1 + d.0, y1: self.y1 + d.1 }
+        Rect {
+            x0: self.x0 + d.0,
+            y0: self.y0 + d.1,
+            x1: self.x1 + d.0,
+            y1: self.y1 + d.1,
+        }
     }
     #[inline(always)]
     pub fn and(self, o: Rect) -> Rect {
-        Rect { x0: self.x0.max(o.x0), y0: self.y0.max(o.y0), x1: self.x1.min(o.x1), y1: self.y1.min(o.y1) }
+        Rect {
+            x0: self.x0.max(o.x0),
+            y0: self.y0.max(o.y0),
+            x1: self.x1.min(o.x1),
+            y1: self.y1.min(o.y1),
+        }
     }
     #[inline(always)]
     pub fn or(self, o: Rect) -> Rect {
-        Rect { x0: self.x0.min(o.x0), y0: self.y0.min(o.y0), x1: self.x1.max(o.x1), y1: self.y1.max(o.y1) }
+        Rect {
+            x0: self.x0.min(o.x0),
+            y0: self.y0.min(o.y0),
+            x1: self.x1.max(o.x1),
+            y1: self.y1.max(o.y1),
+        }
     }
     #[inline(always)]
     pub fn empty(self) -> bool {
@@ -315,8 +415,17 @@ pub unsafe trait Words: Copy + 'static {
     fn words(&self) -> &[u32] {
         // SAFETY: the trait's contract: `N` whole words, alignment at most 4 (and at least 1; a zero-sized value
         // gives an empty slice at a dangling but aligned-enough address only when N == 0, handled below).
-        const { assert!(size_of::<Self>() == 0 || (align_of::<Self>() == 4 && size_of::<Self>() % 4 == 0), "Words: a non-empty record type is whole words at alignment 4") };
-        if Self::N == 0 { &[] } else { unsafe { core::slice::from_raw_parts(self as *const Self as *const u32, Self::N) } }
+        const {
+            assert!(
+                size_of::<Self>() == 0 || (align_of::<Self>() == 4 && size_of::<Self>() % 4 == 0),
+                "Words: a non-empty record type is whole words at alignment 4"
+            )
+        };
+        if Self::N == 0 {
+            &[]
+        } else {
+            unsafe { core::slice::from_raw_parts(self as *const Self as *const u32, Self::N) }
+        }
     }
     /// Equality of records is equality of their words.
     #[inline(always)]
@@ -343,6 +452,32 @@ unsafe impl<A: Words, B: Words> Words for (A, B) {}
 unsafe impl<A: Words, B: Words, C: Words> Words for (A, B, C) {}
 // SAFETY: as pairs.
 unsafe impl<A: Words, B: Words, C: Words, D: Words> Words for (A, B, C, D) {}
+
+/// CPU record storage accepts arbitrary Copy values, including padded closures.
+/// Only the Words specialization exposes representation bytes.
+pub trait Record: Copy + 'static {
+    const WORD_LAYOUT: bool;
+    fn record_words(&self) -> &[u32];
+    fn same_record(&self, other: &Self) -> bool;
+}
+impl<T: Copy + 'static> Record for T {
+    default const WORD_LAYOUT: bool = false;
+    default fn record_words(&self) -> &[u32] {
+        &[]
+    }
+    default fn same_record(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl<T: Words> Record for T {
+    const WORD_LAYOUT: bool = true;
+    fn record_words(&self) -> &[u32] {
+        self.words()
+    }
+    fn same_record(&self, other: &Self) -> bool {
+        self.same(other)
+    }
+}
 
 // ---- stages ------------------------------------------------------------------------------------------------
 
@@ -479,7 +614,7 @@ impl<'a> Cx<'a> {
     }
 }
 
-pub trait Expr: Words {
+pub trait Expr: Record {
     type Out: Copy + PartialEq;
     type Stage: Stage;
     const STAGE: StageId = <Self::Stage as Stage>::ID;
@@ -502,7 +637,11 @@ pub trait Expr: Words {
     /// they stop.
     #[inline(always)]
     fn until(&self, _cx: &Cx) -> u32 {
-        if Self::READS >> U_TIME & 1 != 0 { u32::MAX } else { 0 }
+        if Self::READS >> U_TIME & 1 != 0 {
+            u32::MAX
+        } else {
+            0
+        }
     }
 
     /// The fields of the root view this expression's block words are gathered from. A combinator forwards to
@@ -512,7 +651,7 @@ pub trait Expr: Words {
     /// The same operands as `o`, state words aside. Only asked when `STATE`.
     #[inline(always)]
     fn eq_ops(&self, o: &Self) -> bool {
-        self.same(o)
+        self.same_record(o)
     }
     /// `self` (operands just described, or the same record under a new block) takes over from `was`, which
     /// was showing under `old`: a transition starts from what `was` showed, now. Only called when `STATE`.
@@ -522,7 +661,10 @@ pub trait Expr: Words {
     /// Apply a Rust function that captures nothing. What varies per record belongs in a `Rec` operand. The
     /// result is CPU stage: it is re-evaluated for exposed records when a word it reads changes.
     #[inline(always)]
-    fn map<O: Copy + PartialEq, F: Fn(Self::Out) -> O + Copy + 'static>(self, f: F) -> Map<F, Self> {
+    fn map<O: Copy + PartialEq, F: Fn(Self::Out) -> O + Copy + 'static>(
+        self,
+        f: F,
+    ) -> Map<F, Self> {
         let _ = f;
         Map(self, PhantomData)
     }
@@ -570,8 +712,8 @@ impl<L: Lens> Expr for Un<L> {
     }
     #[inline]
     fn slots(f: &mut dyn FnMut(Slot)) {
-        if let Some((off, bytes)) = L::AT {
-            f(Slot { slot: L::SLOT as u8, bytes: bytes as u8, off: off as u32 })
+        if let Some(slot) = L::field() {
+            f(slot);
         }
     }
 }
@@ -724,7 +866,12 @@ where
     const CODE: &'static Code = &Code::Cpu(&[A::CODE]);
     #[inline(always)]
     fn eval(&self, cx: &Cx) -> O {
-        const { assert!(size_of::<F>() == 0, "a mapped function must capture nothing: put per-record data in a Rec operand") };
+        const {
+            assert!(
+                size_of::<F>() == 0,
+                "a mapped function must capture nothing: put per-record data in a Rec operand"
+            )
+        };
         // SAFETY: `F` is zero-sized (asserted above) and `Copy`, and a `Map<F, _>` is only built by `Expr::map`,
         // which was handed a value of `F`: the type is inhabited and copying that value is what this is.
         let f: F = unsafe { core::mem::zeroed() };
@@ -802,7 +949,11 @@ where
     }
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
-        latest(latest(self.0.until(cx), self.1.until(cx), cx.u.w[U_TIME]), self.2.until(cx), cx.u.w[U_TIME])
+        latest(
+            latest(self.0.until(cx), self.1.until(cx), cx.u.w[U_TIME]),
+            self.2.until(cx),
+            cx.u.w[U_TIME],
+        )
     }
 }
 

@@ -45,8 +45,24 @@ impl<C> Line<C> {
 }
 impl<C: Expr<Out = Color>> Arch for Line<C> {
     const OPS: &'static [Op] = &[
-        Op { name: "run", code: &Code::Rec, ty: core::any::type_name::<Run>, stage: StageId::Mount, reads: 0, word: 0, words: 2 },
-        Op { name: "color", code: C::CODE, ty: core::any::type_name::<C>, stage: C::STAGE, reads: C::READS, word: (offset_of!(Self, 1) / 4) as u16, words: (size_of::<C>() / 4) as u16 },
+        Op {
+            name: "run",
+            code: &Code::Rec,
+            ty: core::any::type_name::<Run>,
+            stage: StageId::Mount,
+            reads: 0,
+            word: 0,
+            words: 2,
+        },
+        Op {
+            name: "color",
+            code: C::CODE,
+            ty: core::any::type_name::<C>,
+            stage: C::STAGE,
+            reads: C::READS,
+            word: (offset_of!(Self, 1) / 4) as u16,
+            words: (size_of::<C>() / 4) as u16,
+        },
     ];
     const READS: u64 = C::READS;
     const NAME: &'static str = "line";
@@ -94,10 +110,28 @@ impl<C: Expr<Out = Color>> LineArch for Line<C> {
 pub struct Digits<const D: u8, const P: u8, V, C>(pub V, pub C);
 // SAFETY: `repr(C)` over `Words` operands.
 unsafe impl<const D: u8, const P: u8, V: Words, C: Words> Words for Digits<D, P, V, C> {}
-impl<const D: u8, const P: u8, V: Expr<Out = i32>, C: Expr<Out = Color>> Arch for Digits<D, P, V, C> {
+impl<const D: u8, const P: u8, V: Expr<Out = i32>, C: Expr<Out = Color>> Arch
+    for Digits<D, P, V, C>
+{
     const OPS: &'static [Op] = &[
-        Op { name: "value", code: V::CODE, ty: core::any::type_name::<V>, stage: V::STAGE, reads: V::READS, word: 0, words: (size_of::<V>() / 4) as u16 },
-        Op { name: "color", code: C::CODE, ty: core::any::type_name::<C>, stage: C::STAGE, reads: C::READS, word: (offset_of!(Self, 1) / 4) as u16, words: (size_of::<C>() / 4) as u16 },
+        Op {
+            name: "value",
+            code: V::CODE,
+            ty: core::any::type_name::<V>,
+            stage: V::STAGE,
+            reads: V::READS,
+            word: 0,
+            words: (size_of::<V>() / 4) as u16,
+        },
+        Op {
+            name: "color",
+            code: C::CODE,
+            ty: core::any::type_name::<C>,
+            stage: C::STAGE,
+            reads: C::READS,
+            word: (offset_of!(Self, 1) / 4) as u16,
+            words: (size_of::<C>() / 4) as u16,
+        },
     ];
     const READS: u64 = V::READS | C::READS;
     const NAME: &'static str = "digits";
@@ -109,7 +143,8 @@ impl<const D: u8, const P: u8, V: Expr<Out = i32>, C: Expr<Out = Color>> Arch fo
     }
     #[inline(always)]
     fn changed(&self, old: &U, new: &U) -> bool {
-        (self.0.eval(&Cx::of(old)) != self.0.eval(&Cx::of(new))) | (self.1.eval(&Cx::of(old)) != self.1.eval(&Cx::of(new)))
+        (self.0.eval(&Cx::of(old)) != self.0.eval(&Cx::of(new)))
+            | (self.1.eval(&Cx::of(old)) != self.1.eval(&Cx::of(new)))
     }
     #[inline(always)]
     fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
@@ -124,7 +159,9 @@ impl<const D: u8, const P: u8, V: Expr<Out = i32>, C: Expr<Out = Color>> Arch fo
         }
     }
 }
-impl<const D: u8, const P: u8, V: Expr<Out = i32>, C: Expr<Out = Color>> NumArch for Digits<D, P, V, C> {
+impl<const D: u8, const P: u8, V: Expr<Out = i32>, C: Expr<Out = Color>> NumArch
+    for Digits<D, P, V, C>
+{
     const DECIMALS: u8 = D;
     const PAD: u8 = P;
     #[inline(always)]
@@ -148,17 +185,45 @@ pub struct TextCx<'a> {
 impl TextCx<'_> {
     /// The coverage of a line record whose box is `r` (already in screen coordinates), cut to `clip`.
     #[inline(always)]
-    pub fn line(&self, run: Run, r: crate::store::Rect, clip: crate::store::Rect, f: impl FnMut(i32, i32, &[u8])) {
+    pub fn line(
+        &self,
+        run: Run,
+        r: crate::store::Rect,
+        clip: crate::store::Rect,
+        f: impl FnMut(i32, i32, &[u8]),
+    ) {
         let face = &self.faces[run.face()];
         let (slot, x) = self.glyphs.of(run);
-        face.spans(slot, x, 0, (r.x0, r.y0 + face.baseline(r.y1 - r.y0)), [clip.x0, clip.y0, clip.x1, clip.y1], f);
+        face.spans(
+            slot,
+            x,
+            0,
+            (r.x0, r.y0 + face.baseline(r.y1 - r.y0)),
+            [clip.x0, clip.y0, clip.x1, clip.y1],
+            f,
+        );
     }
     /// The coverage of a number record whose box is `r`: its left edge at the box's left edge.
     #[inline(always)]
-    pub fn num(&self, v: i32, d: u8, pad: u8, r: crate::store::Rect, clip: crate::store::Rect, f: impl FnMut(i32, i32, &[u8])) {
+    pub fn num(
+        &self,
+        v: i32,
+        d: u8,
+        pad: u8,
+        r: crate::store::Rect,
+        clip: crate::store::Rect,
+        f: impl FnMut(i32, i32, &[u8]),
+    ) {
         let face = &self.faces[0];
         let Some(cell) = face.cell() else { return };
-        bough_face::num::Num::new(v, d as u32, pad as u32).spans(face, &cell, (r.x0, r.y0 + face.baseline(r.y1 - r.y0)), false, [clip.x0, clip.y0, clip.x1, clip.y1], f);
+        bough_face::num::Num::new(v, d as u32, pad as u32).spans(
+            face,
+            &cell,
+            (r.x0, r.y0 + face.baseline(r.y1 - r.y0)),
+            false,
+            [clip.x0, clip.y0, clip.x1, clip.y1],
+            f,
+        );
     }
 }
 
@@ -167,7 +232,12 @@ impl TextCx<'_> {
 /// re-description every run on screen is of the new generation and everything else is gone. The cost is one
 /// re-description and one repaint of every text record's rect (their run words changed, though their pixels
 /// did not). Returns whether it collected.
-pub fn collect<V: crate::sink::View, B: Backend>(world: &mut crate::world::World<B>, v: &V, glyphs: &core::cell::RefCell<Glyphs>, budget: usize) -> bool {
+pub fn collect<V: crate::sink::View, B: Backend>(
+    world: &mut crate::world::World<V, B>,
+    v: &V,
+    glyphs: &core::cell::RefCell<Glyphs>,
+    budget: usize,
+) -> bool {
     if !glyphs.borrow().over(budget) {
         return false;
     }

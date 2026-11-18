@@ -11,8 +11,8 @@
 //! * `sig!(self.field)` is a lens whose word of the block is found from the field's byte offset in the view
 //!   (`offset_of!`, a constant of the type). The block is gathered from the view's own fields before a turn is
 //!   settled, so a handler's write is a plain store and is noticed by the compare. No field is numbered.
-//! * `.map(closure)` keeps the closure's captures as the record's own words (a `Copy` closure is plain bytes),
-//!   so `move |l| fill(*l, col, row)` is one archetype for every cell, with `col` and `row` in its record.
+//! * `.map(closure)` keeps captures in typed CPU slots. Padding is never exposed as words;
+//!   evaluated outputs determine whether opaque records changed.
 //! * `.transition(curve)` keeps where the value started from, and when, in the record. A turn that moves the
 //!   target restarts it from what the record shows; frames in between evaluate nothing on the CPU.
 //! * `each(iter)` under a scrolled box is a list by exposure: the iterator is indexed, never walked
@@ -21,7 +21,9 @@
 //!
 //! What cannot be carried from the façade unchanged is listed in the expr journal, with the reason for each.
 use crate::event::{Click, Drag, Handler, Hover, On, OnFocus, OnKey, OnText, Press, Target, Wheel};
-use crate::expr::{APP_WORDS, Code, Color, Cx as ECx, Expr, Lens, Slot, Turn, U, U_SCALE, U_TIME, Un, Word, Words};
+use crate::expr::{
+    APP_WORDS, Code, Color, Cx as ECx, Expr, Lens, Slot, Turn, U, U_SCALE, U_TIME, Un, Word, Words,
+};
 use crate::kinds::{Fill, LabelArch, Motion, NumArch, OutlineArch, Txt};
 use crate::sink::{Cx, Geo, Leaf, Mk, Row, Sink};
 use crate::store::{Arch, Backend, ColRef, POINTS, Rect, Site, Space};
@@ -29,52 +31,129 @@ use bough_lay::flex::{Dim, Spec};
 use bough_lay::shape::{Flat, K_BOX, K_LINE, Nd, Sink as LSink};
 use bough_lay::{Chain, Hk, LBox, Lay, Rec1, Shape};
 use core::marker::PhantomData;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::iter::TrustedRandomAccessNoCoerce;
+use std::sync::{Arc, Mutex, Weak};
 
 pub use bough_lay::{Align, Flex, Justify, block, column, div, row};
 
 // ---- state ---------------------------------------------------------------------------------------------------
 
-/// How many [`Signal::set`] calls changed a value, ever. A turn compares the count before and after its
-/// handlers with the number of block words that changed: if every set is accounted for by a changed word of
-/// the block, the damage is the block's alone; if not, some state the view reads elsewhere changed and the
-/// exposed view is described again.
-pub static SETS: AtomicU32 = AtomicU32::new(0);
+thread_local! {
+    static INPUT_OWNER: std::cell::RefCell<Vec<Arc<AtomicU64>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+pub(crate) fn track_inputs<R>(owner: &Arc<AtomicU64>, f: impl FnOnce() -> R) -> R {
+    INPUT_OWNER.with(|s| s.borrow_mut().push(owner.clone()));
+    struct Pop;
+    impl Drop for Pop {
+        fn drop(&mut self) {
+            INPUT_OWNER.with(|s| {
+                s.borrow_mut().pop();
+            });
+        }
+    }
+    let _pop = Pop;
+    f()
+}
 
-/// A field of state. It is the value and nothing else: no subscribers, no wires. `set` is a store.
-#[repr(transparent)]
-#[derive(Clone, Copy, Default, Debug)]
-pub struct Signal<T>(T);
+/// State with weak subscriptions to the worlds that described a read of it.
+/// Moving a signal preserves its identity; cloning creates independent state.
+#[derive(Debug)]
+pub struct Signal<T>(T, AtomicU32);
+#[derive(Default)]
+struct Watches {
+    next: u32,
+    by_signal: std::collections::HashMap<u32, Vec<Weak<AtomicU64>>>,
+}
+fn watches() -> &'static Mutex<Watches> {
+    static WATCHES: std::sync::OnceLock<Mutex<Watches>> = std::sync::OnceLock::new();
+    WATCHES.get_or_init(Default::default)
+}
+impl<T> Drop for Signal<T> {
+    fn drop(&mut self) {
+        let id = *self.1.get_mut();
+        if id != 0 {
+            watches().lock().unwrap().by_signal.remove(&id);
+        }
+    }
+}
+impl<T: Clone> Clone for Signal<T> {
+    fn clone(&self) -> Self {
+        Self::new(self.0.clone())
+    }
+}
+impl<T: Default> Default for Signal<T> {
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
 impl<T> Signal<T> {
-    pub const fn new(v: T) -> Signal<T> {
-        Signal(v)
+    pub const fn new(v: T) -> Self {
+        Self(v, AtomicU32::new(0))
     }
     pub fn into_inner(self) -> T {
-        self.0
+        let mut this = core::mem::ManuallyDrop::new(self);
+        let id = *this.1.get_mut();
+        if id != 0 {
+            watches().lock().unwrap().by_signal.remove(&id);
+        }
+        // SAFETY: ManuallyDrop prevents a second drop; value is moved out exactly once.
+        unsafe { core::ptr::read(&this.0) }
     }
-    /// Overwrite without counting: for a value the framework itself wrote back.
-    #[inline(always)]
+    fn observe(&self) {
+        INPUT_OWNER.with(|s| {
+            let stack = s.borrow();
+            let Some(owner) = stack.last() else {
+                return;
+            };
+            let mut registry = watches().lock().unwrap();
+            let mut id = self.1.load(Ordering::Relaxed);
+            if id == 0 {
+                registry.next = registry
+                    .next
+                    .checked_add(1)
+                    .expect("signal identity space exhausted");
+                id = registry.next;
+                self.1.store(id, Ordering::Relaxed);
+            }
+            let watchers = registry.by_signal.entry(id).or_default();
+            watchers.retain(|w| w.strong_count() != 0);
+            if !watchers.iter().any(|w| w.ptr_eq(&Arc::downgrade(owner))) {
+                watchers.push(Arc::downgrade(owner));
+            }
+        });
+    }
     pub fn set_silent(&mut self, v: T) {
         self.0 = v;
     }
 }
 impl<T: PartialEq> Signal<T> {
-    /// Store `v`. Returns whether the value changed.
-    #[inline(always)]
     pub fn set(&mut self, v: T) -> bool {
         if self.0 == v {
             return false;
         }
         self.0 = v;
-        SETS.fetch_add(1, Ordering::Relaxed);
+        let id = *self.1.get_mut();
+        let mut registry = watches().lock().unwrap();
+        let Some(watchers) = registry.by_signal.get_mut(&id) else {
+            return true;
+        };
+        watchers.retain(|w| {
+            let Some(owner) = w.upgrade() else {
+                return false;
+            };
+            owner
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+                .expect("input revision exhausted");
+            true
+        });
         true
     }
 }
 impl<T> core::ops::Deref for Signal<T> {
     type Target = T;
-    #[inline(always)]
     fn deref(&self) -> &T {
+        self.observe();
         &self.0
     }
 }
@@ -82,26 +161,57 @@ impl<T> core::ops::Deref for Signal<T> {
 /// A field of the view named by its path: `sig!(self.look)`. The offset is a constant of the type.
 pub struct Sig<'a, V, T, const OFF: usize> {
     r: &'a T,
+    projection: fn(&V) -> &T,
+    cache: Option<&'static std::sync::OnceLock<Slot>>,
     _v: PhantomData<fn(&V)>,
 }
-/// SAFETY (of the macro's use, not of this function): `OFF` is `offset_of!(V, path)` for the path `p` reads.
+/// A safe typed reader. OFF selects a nominal block slot and is never dereferenced.
 #[inline(always)]
 pub fn prove<'a, V, T, const OFF: usize>(r: &'a T, _p: fn(&V) -> &T) -> Sig<'a, V, T, OFF> {
-    Sig { r, _v: PhantomData }
+    Sig {
+        r,
+        projection: _p,
+        cache: None,
+        _v: PhantomData,
+    }
+}
+impl<'a, V, T, const OFF: usize> Sig<'a, V, T, OFF> {
+    #[doc(hidden)]
+    pub fn cached(mut self, cache: &'static std::sync::OnceLock<Slot>) -> Self {
+        self.cache = Some(cache);
+        self
+    }
+}
+fn field_registry() -> &'static std::sync::Mutex<std::collections::HashMap<core::any::TypeId, Slot>>
+{
+    static FIELDS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<core::any::TypeId, Slot>>,
+    > = std::sync::OnceLock::new();
+    FIELDS.get_or_init(Default::default)
+}
+fn admitted_field<L: 'static>() -> Slot {
+    let slot = field_registry()
+        .lock()
+        .unwrap()
+        .get(&core::any::TypeId::of::<L>())
+        .copied();
+    slot.expect("field projection has not been admitted by sig!/prove")
 }
 /// `sig!(self.field)`: the field as an operand. In a view whose type has generic parameters the compiler
 /// cannot name `Self` in a constant: write `sig!(self: TheType => field)`.
 #[macro_export]
 macro_rules! sig {
     ($o:ident : $t:ty => $($f:ident).+) => {{
+        static SLOT: ::std::sync::OnceLock<$crate::expr::Slot> = ::std::sync::OnceLock::new();
         let r = &$o.$($f).+;
         let p: fn(&$t) -> &_ = |o: &$t| &o.$($f).+;
-        $crate::el::prove::<$t, _, { ::core::mem::offset_of!($t, $($f).+) }>(r, p)
+        $crate::el::prove::<$t, _, { ::core::mem::offset_of!($t, $($f).+) }>(r, p).cached(&SLOT)
     }};
     ($s:tt . $($f:ident).+) => {{
+        static SLOT: ::std::sync::OnceLock<$crate::expr::Slot> = ::std::sync::OnceLock::new();
         let r = &$s.$($f).+;
         let p: fn(&Self) -> &_ = |o: &Self| &o.$($f).+;
-        $crate::el::prove::<Self, _, { ::core::mem::offset_of!(Self, $($f).+) }>(r, p)
+        $crate::el::prove::<Self, _, { ::core::mem::offset_of!(Self, $($f).+) }>(r, p).cached(&SLOT)
     }};
 }
 
@@ -117,37 +227,80 @@ impl<V, X, const OFF: usize> Copy for At<V, X, OFF> {}
 impl<V: 'static, X: Word, const OFF: usize> Lens for At<V, X, OFF> {
     type T = X;
     const SLOT: usize = (OFF / 4) % APP_WORDS;
-    const AT: Option<(usize, usize)> = {
-        assert!(OFF % 4 == 0 || size_of::<X>() == 1, "Frame state is whole words: a field read by sig! is aligned to 4");
-        assert!(size_of::<X>() <= 4);
-        Some((OFF, size_of::<X>()))
-    };
+    fn field() -> Option<Slot> {
+        Some(admitted_field::<Self>())
+    }
 }
 
+impl<V: 'static, X: Word, const OFF: usize> crate::expr::FieldProj<V> for At<V, X, OFF> {
+    type T = X;
+    const NOMINAL_OFF: usize = OFF;
+    fn read(v: &V) -> X {
+        X::from_word(admitted_field::<Self>().read(v))
+    }
+}
 /// An operand whose block words (if any) are fields of the view `V`. A field path proved against one view
 /// cannot end up in another view's records.
 pub trait Rooted<V> {}
 impl<V> Rooted<V> for Color {}
 
 impl<'a, V: 'static, X: Word, const OFF: usize> Sig<'a, V, Signal<X>, OFF> {
+    fn admit(&self) {
+        self.r.observe();
+        let create = || {
+            let mut fields = field_registry().lock().unwrap();
+            *fields
+                .entry(core::any::TypeId::of::<At<V, X, OFF>>())
+                .or_insert_with(|| {
+                    let p = self.projection;
+                    Slot::typed::<V, At<V, X, OFF>>(<At<V, X, OFF> as Lens>::SLOT, OFF, move |v| {
+                        p(v).0.to_word()
+                    })
+                })
+        };
+        let slot = if let Some(cache) = self.cache {
+            let cached = *cache.get_or_init(create);
+            // A static inside a generic function is shared across instantiations.
+            if cached.owner() == core::any::TypeId::of::<V>() && cached.offset() == OFF {
+                cached
+            } else {
+                create()
+            }
+        } else {
+            create()
+        };
+        assert_eq!(
+            slot.owner(),
+            core::any::TypeId::of::<V>(),
+            "field cache owner mismatch"
+        );
+        assert_eq!(slot.offset(), OFF, "field cache projection mismatch");
+    }
     /// The field through a function. The closure may capture: its captures are the record's own words.
     #[inline(always)]
-    pub fn map<O: Copy + PartialEq, F: Fn(&X) -> O + Copy + 'static>(self, f: F) -> MapRef<F, At<V, X, OFF>> {
+    pub fn map<O: Copy + PartialEq, F: Fn(&X) -> O + Copy + 'static>(
+        self,
+        f: F,
+    ) -> MapRef<F, At<V, X, OFF>> {
+        self.admit();
         MapRef(f, PhantomData)
     }
     /// The field itself as an expression.
     #[inline(always)]
     pub fn get(self) -> Un<At<V, X, OFF>> {
+        self.admit();
         crate::expr::un()
     }
     /// The field as a number to show (read now: a record's own value).
     #[inline(always)]
     pub fn num<F: Fn(&X) -> f32>(self, f: F, fmt: NumFmt) -> NumText {
+        self.r.observe();
         fmt.of(f(&self.r.0))
     }
     /// The word of the block the field is.
     #[inline(always)]
     pub fn word(&self) -> u8 {
+        self.admit();
         <At<V, X, OFF> as Lens>::SLOT as u8
     }
 }
@@ -155,6 +308,7 @@ impl<'a, V: 'static, X: Word, const N: usize, const OFF: usize> Sig<'a, V, [Sign
     /// One element of an array field.
     #[inline(always)]
     pub fn at(self, i: usize) -> SigAt<'a, X> {
+        self.r[i].observe();
         SigAt(&self.r[i].0)
     }
 }
@@ -167,7 +321,7 @@ impl<X: Word> SigAt<'_, X> {
     }
 }
 
-/// A field through a closure. The value of this type is the closure: its captures are the record's words.
+/// A field through an opaque CPU closure. Captures are never exposed as raw words.
 #[repr(transparent)]
 pub struct MapRef<F, L>(F, PhantomData<L>);
 impl<F: Copy, L> Clone for MapRef<F, L> {
@@ -176,10 +330,6 @@ impl<F: Copy, L> Clone for MapRef<F, L> {
     }
 }
 impl<F: Copy, L> Copy for MapRef<F, L> {}
-// SAFETY: transparent over `F`, whose size and alignment are asserted to be whole words where it is evaluated
-// (`eval` below). A closure's captures must not leave padding between them: `u32`, `i32`, `f32` and `Color`
-// captures do not; this is the one thing the compiler is not asked to prove (see the journal).
-unsafe impl<F: Copy + 'static, L: 'static> Words for MapRef<F, L> {}
 impl<F, L, O> Expr for MapRef<F, L>
 where
     L: Lens,
@@ -192,7 +342,6 @@ where
     const CODE: &'static Code = &Code::Cpu(&[&Code::U(L::SLOT)]);
     #[inline(always)]
     fn eval(&self, cx: &ECx) -> O {
-        const { assert!(size_of::<F>() % 4 == 0 && align_of::<F>() <= 4, "a mapped closure's captures are record words: capture u32, i32, f32 or Color values (not references, usize or u8)") };
         (self.0)(&cx.u.get::<L>())
     }
     #[inline]
@@ -214,10 +363,16 @@ pub struct Curve {
 impl Curve {
     /// Ease out over `secs` seconds.
     pub const fn out(secs: f32) -> Curve {
-        Curve { ms: (secs * 1000.0) as u32, ease_out: true }
+        Curve {
+            ms: (secs * 1000.0) as u32,
+            ease_out: true,
+        }
     }
     pub const fn linear(secs: f32) -> Curve {
-        Curve { ms: (secs * 1000.0) as u32, ease_out: false }
+        Curve {
+            ms: (secs * 1000.0) as u32,
+            ease_out: false,
+        }
     }
 }
 
@@ -288,7 +443,7 @@ where
 }
 impl<E: Expr> Copy for Tr<E> where E::Out: Lerp {}
 // SAFETY: `repr(C)` over `Words` fields of alignment at most 4: no padding.
-unsafe impl<E: Expr> Words for Tr<E> where E::Out: Lerp {}
+unsafe impl<E: Expr + Words> Words for Tr<E> where E::Out: Lerp {}
 impl<E: Expr> Tr<E>
 where
     E::Out: Lerp,
@@ -331,7 +486,11 @@ where
     #[inline(always)]
     fn until(&self, cx: &ECx) -> u32 {
         let now = cx.u.w[U_TIME];
-        let mine = if self.t0 == 0 { 0 } else { crate::expr::ramp_end(self.t0, self.dur & 0x7fff_ffff, now) };
+        let mine = if self.t0 == 0 {
+            0
+        } else {
+            crate::expr::ramp_end(self.t0, self.dur & 0x7fff_ffff, now)
+        };
         crate::expr::latest(mine, self.e.until(cx), now)
     }
     #[inline]
@@ -340,7 +499,12 @@ where
     }
     #[inline(always)]
     fn eq_ops(&self, o: &Self) -> bool {
-        (self.dur == o.dur) & if E::STATE { self.e.eq_ops(&o.e) } else { self.e.same(&o.e) }
+        (self.dur == o.dur)
+            & if E::STATE {
+                self.e.eq_ops(&o.e)
+            } else {
+                self.e.same_record(&o.e)
+            }
     }
     #[inline(always)]
     fn carry(&mut self, was: &Self, old: &ECx, new: &ECx) {
@@ -366,7 +530,12 @@ where
     #[inline(always)]
     fn transition(self, c: Curve) -> Tr<Self> {
         // SAFETY: `W: Words`: zero bytes are a valid value.
-        Tr { e: self, from: unsafe { core::mem::zeroed() }, t0: 0, dur: c.ms.max(1) | (c.ease_out as u32) << 31 }
+        Tr {
+            e: self,
+            from: unsafe { core::mem::zeroed() },
+            t0: 0,
+            dur: c.ms.max(1) | (c.ease_out as u32) << 31,
+        }
     }
 }
 impl<E: Expr> Transition for E where E::Out: Lerp {}
@@ -483,7 +652,11 @@ impl<C: Expr<Out = Color>, T: Motion> Arch for Bord<C, T> {
     }
     #[inline(always)]
     fn until(&self, u: &U) -> u32 {
-        crate::expr::latest(self.t.until(&ECx::of(u)), self.c.until(&ECx::of(u)), u.w[U_TIME])
+        crate::expr::latest(
+            self.t.until(&ECx::of(u)),
+            self.c.until(&ECx::of(u)),
+            u.w[U_TIME],
+        )
     }
     #[inline(always)]
     fn sweep(&self, r: Rect, u: &U) -> Rect {
@@ -545,7 +718,11 @@ impl<Cl: Copy, C, H> Translate<Cl, C, H> for LBox<Rec1<Bord<Cl, Still>>, C, H> {
     #[inline(always)]
     fn translate<E: Expr<Out = (f32, f32)>>(self, e: E) -> LBox<Rec1<Bord<Cl, Px<E>>>, C, H> {
         let b = self.paint.0;
-        self.bg(Bord { w: b.w, c: b.c, t: Px(e) })
+        self.bg(Bord {
+            w: b.w,
+            c: b.c,
+            t: Px(e),
+        })
     }
 }
 
@@ -558,10 +735,12 @@ pub struct NumFmt {
 }
 impl NumFmt {
     pub const fn new(_prefix: &'static str, decimals: Option<u8>, _suffix: &'static str) -> NumFmt {
-        NumFmt { decimals: match decimals {
-            Some(d) => d,
-            None => 0,
-        } }
+        NumFmt {
+            decimals: match decimals {
+                Some(d) => d,
+                None => 0,
+            },
+        }
     }
     #[inline(always)]
     pub fn of(self, v: f32) -> NumText {
@@ -571,7 +750,10 @@ impl NumFmt {
             k *= 10.0;
             i += 1;
         }
-        NumText { value: (v as f64 * k).round() as i32, decimals: self.decimals as u32 }
+        NumText {
+            value: (v as f64 * k).round() as i32,
+            decimals: self.decimals as u32,
+        }
     }
 }
 /// A number to show: an integer scaled by `10^decimals`, drawn with tabular digits while shading.
@@ -648,7 +830,8 @@ macro_rules! color_arch {
     };
 }
 color_arch!(NumRec, "num", num, |s, o| (s.v == o.v) & (s.d == o.d));
-color_arch!(StrRec, "label", label, |s, o| (s.at == o.at) & (s.len == o.len));
+color_arch!(StrRec, "label", label, |s, o| (s.at == o.at)
+    & (s.len == o.len));
 impl<C: Expr<Out = Color>> NumArch for NumRec<C> {
     const DECIMALS: u8 = 0;
     #[inline(always)]
@@ -676,7 +859,12 @@ impl<C: Expr<Out = Color>> LabelArch for StrRec<C> {
     #[inline(always)]
     fn str(&self) -> &[u8] {
         // SAFETY: `at` and `len` were taken from an interned string, which lives for the process.
-        unsafe { core::slice::from_raw_parts((self.at[0] as usize | (self.at[1] as usize) << 32) as *const u8, self.len as usize) }
+        unsafe {
+            core::slice::from_raw_parts(
+                (self.at[0] as usize | (self.at[1] as usize) << 32) as *const u8,
+                self.len as usize,
+            )
+        }
     }
     #[inline(always)]
     fn color(&self, u: &U) -> Color {
@@ -687,7 +875,11 @@ impl Content for NumText {
     type A<C: Expr<Out = Color>> = NumRec<C>;
     #[inline(always)]
     fn arch<C: Expr<Out = Color>>(&self, c: C) -> NumRec<C> {
-        NumRec { v: self.value, d: self.decimals, c }
+        NumRec {
+            v: self.value,
+            d: self.decimals,
+            c,
+        }
     }
     fn chars(&self) -> usize {
         12
@@ -717,7 +909,11 @@ impl Content for Str {
     #[inline(always)]
     fn arch<C: Expr<Out = Color>>(&self, c: C) -> StrRec<C> {
         let p = self.0.as_ptr() as usize;
-        StrRec { at: [p as u32, (p >> 32) as u32], len: self.0.len() as u32, c }
+        StrRec {
+            at: [p as u32, (p >> 32) as u32],
+            len: self.0.len() as u32,
+            c,
+        }
     }
     fn chars(&self) -> usize {
         self.0.chars().count()
@@ -762,7 +958,12 @@ pub struct Text<K, C> {
 /// `text("label")`, `text(format!(..))`, `text(sig!(self.cells).at(i).num(|v| *v, FMT))`.
 #[inline(always)]
 pub fn text<T: IntoContent>(t: T) -> Text<T::K, Color> {
-    Text { spec: Spec::new(false), k: t.content(), c: Color(0), line: 0.0 }
+    Text {
+        spec: Spec::new(false),
+        k: t.content(),
+        c: Color(0),
+        line: 0.0,
+    }
 }
 impl<K, C> Text<K, C> {
     /// Size and line height, in points. (The stand-in raster has one size; the line height is laid out.)
@@ -773,7 +974,12 @@ impl<K, C> Text<K, C> {
     }
     #[inline(always)]
     pub fn color<C2>(self, c: C2) -> Text<K, C2> {
-        Text { spec: self.spec, k: self.k, c, line: self.line }
+        Text {
+            spec: self.spec,
+            k: self.k,
+            c,
+            line: self.line,
+        }
     }
 }
 /// Text as layout words: one line. The stand-in measure: the reference raster's glyphs are 12 device pixels
@@ -790,7 +996,15 @@ impl<K: Content, C> Shape for Text<K, C> {
         if self.line > 0.0 && matches!(spec.h, Dim::Auto) {
             spec.h = Dim::Pt(self.line);
         }
-        s.node(Nd::pack(&spec, K_LINE, true, 0, 24.0 + 12.0 * self.k.chars() as f32, 15.0, [0; 2]));
+        s.node(Nd::pack(
+            &spec,
+            K_LINE,
+            true,
+            0,
+            24.0 + 12.0 * self.k.chars() as f32,
+            15.0,
+            [0; 2],
+        ));
     }
 }
 impl<V, K: Content, C: Expr<Out = Color> + Rooted<V>> Row<V> for Text<K, C> {
@@ -1024,7 +1238,12 @@ pub trait Scrolls<P, C>: Sized {
 impl<P, C, H> Scrolls<P, C> for LBox<P, C, H> {
     #[inline(always)]
     fn scroll<V: 'static, const OFF: usize>(self, y: Sig<'_, V, Signal<f32>, OFF>) -> Scroll<P, C> {
-        Scroll { spec: self.spec, paint: self.paint, content: self.kids, word: y.word() }
+        Scroll {
+            spec: self.spec,
+            paint: self.paint,
+            content: self.kids,
+            word: y.word(),
+        }
     }
 }
 /// The hole of a scrolled box, as layout: out of flow at the box's corner and as large as the box, so its rect
@@ -1098,7 +1317,15 @@ where
     fn seg<S: Sink<V>>(&mut self, s: &mut S, f: &mut Flow) {
         let n = self.0.size();
         let it = &mut self.0;
-        let geo = if f.lay { Some(Geo { x: 0, y: f.y, w: f.w }) } else { None };
+        let geo = if f.lay {
+            Some(Geo {
+                x: 0,
+                y: f.y,
+                w: f.w,
+            })
+        } else {
+            None
+        };
         // SAFETY: `r < size()` (the list pass asks only for rows under `n`), each row is asked at most once
         // per pass (a pass visits distinct rows) and the iterator is not advanced otherwise: the contract of
         // `__iterator_get_unchecked`. A row's value is a plain element, so being asked again by a later pass
@@ -1119,9 +1346,20 @@ fn seg_el<V, E: Part<V> + Shape, S: Sink<V>>(e: &mut E, s: &mut S, f: &mut Flow)
     let mut out = vec![[0i32; 4]; <E as Shape>::LEAVES];
     let (h, abs) = {
         let flat = Flat::of(&*e);
-        (bough_lay::shape::place_flat(&flat, env.scale, env.u, f.w as f32, &mut out[..]).0, flat.root().spec().abs.is_some())
+        (
+            bough_lay::shape::place_flat(&flat, env.scale, env.u, f.w as f32, &mut out[..]).0,
+            flat.root().spec().abs.is_some(),
+        )
     };
-    let rects: Vec<Rect> = out.iter().map(|r| Rect { x0: r[0], y0: r[1] + f.y, x1: r[2], y1: r[3] + f.y }).collect();
+    let rects: Vec<Rect> = out
+        .iter()
+        .map(|r| Rect {
+            x0: r[0],
+            y0: r[1] + f.y,
+            x1: r[2],
+            y1: r[3] + f.y,
+        })
+        .collect();
     s.row(|| (&rects[..], ByRef(&*e)));
     e.holes(Some(&rects), &mut 0, s);
     if !abs {
@@ -1267,7 +1505,9 @@ impl<V, P: Paints<V>, C: Part<V>, H> Part<V> for LBox<Rec1<P>, C, H> {
         self.kids.holes(rects, k, s)
     }
 }
-impl<V: 'static, X: Boxy<V> + Part<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Part<V> for Hd<X, H> {
+impl<V: 'static, X: Boxy<V> + Part<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Part<V>
+    for Hd<X, H>
+{
     const HOLES: bool = X::HOLES;
     #[inline(always)]
     fn holes<S: Sink<V>>(&mut self, rects: Option<&[Rect]>, k: &mut usize, s: &mut S) {
@@ -1351,7 +1591,12 @@ pub trait Element<V> {
 impl<V, E: Part<V> + Shape> Element<V> for E {
     #[inline]
     fn drive<S: Sink<V>>(mut self, s: &mut S) {
-        const { assert!(<E as Row<V>>::LEAVES as usize == <E as Shape>::LEAVES, "an element's layout has one rect per record") };
+        const {
+            assert!(
+                <E as Row<V>>::LEAVES as usize == <E as Shape>::LEAVES,
+                "an element's layout has one rect per record"
+            )
+        };
         if !S::FIXED {
             // a turn: the fixed records are expressions over the block and are not described; only lists are
             return self.holes(None, &mut 0, s);
@@ -1360,8 +1605,22 @@ impl<V, E: Part<V> + Shape> Element<V> for E {
         let mut out = vec![[0i32; 4]; <E as Shape>::LEAVES];
         // the element's layout words, then the one layout function (bough-lay's `shape`): no layout code is
         // generated per element type
-        bough_lay::place_root(&Flat::of(&self).root(), env.scale, env.u, env.size, &mut out[..]);
-        let rects: Vec<Rect> = out.iter().map(|r| Rect { x0: r[0], y0: r[1], x1: r[2], y1: r[3] }).collect();
+        bough_lay::place_root(
+            &Flat::of(&self).root(),
+            env.scale,
+            env.u,
+            env.size,
+            &mut out[..],
+        );
+        let rects: Vec<Rect> = out
+            .iter()
+            .map(|r| Rect {
+                x0: r[0],
+                y0: r[1],
+                x1: r[2],
+                y1: r[3],
+            })
+            .collect();
         s.row(|| (&rects[..], ByRef(&self)));
         self.holes(Some(&rects), &mut 0, s);
     }
@@ -1379,14 +1638,8 @@ impl<V: View> crate::sink::View for V {
     /// The block is the view's own fields: each word the columns' lenses named is read from its field.
     #[inline]
     fn gathered<'a>(&'a self, slots: &[Slot], out: &'a mut U) -> &'a U {
-        let base = self as *const V as *const u8;
-        for s in slots {
-            debug_assert!(s.off as usize + s.bytes as usize <= size_of::<V>());
-            let mut w = [0u8; 4];
-            // SAFETY: the slot was named by a lens `At<V, X, OFF>` of a record of this view (`Rooted<V>`), so
-            // `off..off + bytes` is a field of `V` holding an initialised `X`.
-            unsafe { core::ptr::copy_nonoverlapping(base.add(s.off as usize), w.as_mut_ptr(), s.bytes as usize) };
-            out.w[s.slot as usize] = u32::from_le_bytes(w);
+        for slot in slots {
+            out.w[slot.index()] = slot.read(self);
         }
         out
     }
@@ -1402,21 +1655,29 @@ impl<V: View> crate::sink::View for V {
 /// the pointer and key calls); what they changed is found afterwards, by comparing.
 pub struct App<V: View, B: Backend> {
     pub v: V,
-    pub world: crate::world::World<B>,
+    pub world: crate::world::World<V, B>,
     /// Mount-once: the view is described once and state reaches it through `sig!` operands and `Signal`s. If
     /// false, the exposed view is described again after every turn (the façade's default).
     pub once: bool,
-    sets: u32,
+    sets: u64,
 }
 impl<V: View, B: Backend> App<V, B> {
     /// A window of `w` x `h` device pixels at `scale` device pixels per point.
     pub fn new(v: V, w: i32, h: i32, scale: f32) -> App<V, B> {
-        let mut world = crate::world::World::<B>::new(w, h, APP_WORDS);
+        let mut world = crate::world::World::<V, B>::new(w, h, APP_WORDS);
         world.set_scale(scale);
         // Transitions keep the time they started at, and 0 means at rest: time starts after 0.
         world.tick(1);
         world.mount(&v);
-        App { v, world, once: false, sets: SETS.load(Ordering::Relaxed) }
+        {
+            let sets = world.input_revision();
+            App {
+                v,
+                world,
+                once: false,
+                sets,
+            }
+        }
     }
     pub fn once(mut self) -> Self {
         self.once = true;
@@ -1432,10 +1693,10 @@ impl<V: View, B: Backend> App<V, B> {
     /// account for every change.
     #[inline]
     pub fn settle(&mut self) {
-        let now = SETS.load(Ordering::Relaxed);
+        let now = self.world.input_revision();
         let sets = now.wrapping_sub(self.sets);
         self.sets = now;
-        if self.once && sets == self.world.changed_words(&self.v).count_ones() {
+        if self.once && sets == self.world.changed_words(&self.v).count_ones() as u64 {
             self.world.settle(&self.v);
         } else {
             self.world.redescribe(&self.v);
@@ -1451,14 +1712,18 @@ impl<V: View, B: Backend> App<V, B> {
         self.settle();
     }
     pub fn key(&mut self, key: crate::event::Key) {
-        self.world.key_down(&mut self.v, key, crate::event::Mods::default());
+        self.world
+            .key_down(&mut self.v, key, crate::event::Mods::default());
         self.settle();
     }
 }
 
 /// What a scene imports.
 pub mod prelude {
-    pub use super::{Align, App, Curve, Deco, Element, Flex, Interactive, Justify, NumFmt, Scrolls, Signal, Transition, Translate, View, block, column, div, each, rgb, row, text};
+    pub use super::{
+        Align, App, Curve, Deco, Element, Flex, Interactive, Justify, NumFmt, Scrolls, Signal,
+        Transition, Translate, View, block, column, div, each, rgb, row, text,
+    };
     pub use crate::event::{Ev, Key};
     pub use crate::expr::Color;
     pub use crate::sig;

@@ -11,9 +11,9 @@ use bough_x::soft::Soft;
 use core::marker::PhantomData;
 use sheet::*;
 
-fn mounted(rows: usize) -> (Sheet, World<Soft>) {
+fn mounted(rows: usize) -> (Sheet, World<Sheet, Soft>) {
     let s = Sheet::new(rows);
-    let mut w = World::<Soft>::new(W, H, NWORDS);
+    let mut w = World::<_, Soft>::new(W, H, NWORDS);
     w.mount(&s);
     (s, w)
 }
@@ -30,12 +30,23 @@ fn the_sheet_is_a_grid_of_100k_rows_with_its_headers() {
     let mut ax = Ax::new();
     let up = ax.update(&w, &s);
     let t = ax.tree();
-    assert!(up.changed.len() == t.nodes.len() && up.root.is_some(), "the first update is the whole tree");
+    assert!(
+        up.changed.len() == t.nodes.len() && up.root.is_some(),
+        "the first update is the whole tree"
+    );
     let grid = t.one(|n| n.role == Role::Grid);
     assert_eq!(grid.row_count, Some(100_000));
-    assert_eq!(grid.col_count, Some(1 + COLS as u32), "the row number and ten cells");
+    assert_eq!(
+        grid.col_count,
+        Some(1 + COLS as u32),
+        "the row number and ten cells"
+    );
     // published: the exposed window and a page on each side, never the 100,000
-    assert!(grid.children.len() < 3 * 36, "{} rows published", grid.children.len());
+    assert!(
+        grid.children.len() < 3 * 36,
+        "{} rows published",
+        grid.children.len()
+    );
     assert!(t.nodes.len() < 2_000, "{} nodes", t.nodes.len());
     // the cells of row 3, column C, by what they say
     let row3 = t.get(grid.children[3]).unwrap();
@@ -58,7 +69,11 @@ fn the_sheet_is_a_grid_of_100k_rows_with_its_headers() {
     assert!(sv.children.contains(&grid.id));
     assert_eq!(sv.scroll.unwrap().1, 100_000 * CELL_H);
     // provenance: every node made from a record knows its line
-    assert!(t.all(|n| n.id.tag == Tag::Rec).iter().all(|n| n.loc.is_some_and(|l| l.file().ends_with("sheet.rs"))));
+    assert!(
+        t.all(|n| n.id.tag == Tag::Rec)
+            .iter()
+            .all(|n| n.loc.is_some_and(|l| l.file().ends_with("sheet.rs")))
+    );
 }
 
 #[test]
@@ -76,7 +91,10 @@ fn any_row_is_described_on_demand() {
     assert_eq!(cells.len(), 1 + COLS);
     assert_eq!(cells[0].name, "77778", "the row number");
     assert_eq!(cells[1 + 4].name, num(value(77_777, 4)));
-    assert!(cells.iter().all(|c| c.place.is_none()), "not materialised: no place");
+    assert!(
+        cells.iter().all(|c| c.place.is_none()),
+        "not materialised: no place"
+    );
 }
 
 #[test]
@@ -87,7 +105,10 @@ fn a_theme_a_hover_and_a_motion_cost_nothing() {
     s.toggle_theme();
     w.settle(&s);
     assert!(ax.update(&w, &s).is_empty());
-    assert_eq!(ax.projected, 0, "a colour is not what a screen reader is told");
+    assert_eq!(
+        ax.projected, 0,
+        "a colour is not what a screen reader is told"
+    );
     w.pointer(&mut s, GUTTER + 3 * CELL_W + 20, TOOLBAR + 10);
     w.settle(&s);
     assert!(ax.update(&w, &s).is_empty());
@@ -114,7 +135,11 @@ fn in_motion_the_tree_reports_where_things_rest() {
     w.tick(1_016); // one frame into a 180 ms glide: the pixels show the outline near cell (0, A)
     ax.update(&w, &s);
     let sel = ax.tree().one(|n| n.selected == Some(true));
-    assert_eq!((sel.id.row, sel.col_index), (2, Some(6)), "the cell the outline is going to");
+    assert_eq!(
+        (sel.id.row, sel.col_index),
+        (2, Some(6)),
+        "the cell the outline is going to"
+    );
 }
 
 #[test]
@@ -129,7 +154,11 @@ fn an_edit_is_a_small_delta() {
     assert!(up.removed.is_empty());
     assert!(names.contains(&"1234.50"), "{names:?}");
     // the cell and its column's total; the grid's own node does not change
-    assert!(up.changed.len() <= 3, "{} nodes changed: {names:?}", up.changed.len());
+    assert!(
+        up.changed.len() <= 3,
+        "{} nodes changed: {names:?}",
+        up.changed.len()
+    );
 }
 
 /// After every step of a random script, the tree kept by applying deltas equals the tree the projection holds,
@@ -154,23 +183,41 @@ fn script(seed: u64, steps: usize) {
         let top = (s.u.get::<Scroll>() / CELL_H) as usize;
         match rnd(8) {
             0 => s.toggle_theme(),
-            1 => s.edit((top + rnd(30) as usize).min(n - 1), rnd(COLS as u64) as usize, rnd(100_000) as f32 / 100.0),
-            2 => s.select(((top + rnd(30) as usize).min(n - 1) * COLS + rnd(COLS as u64) as usize) as u32, w.now()),
+            1 => s.edit(
+                (top + rnd(30) as usize).min(n - 1),
+                rnd(COLS as u64) as usize,
+                rnd(100_000) as f32 / 100.0,
+            ),
+            2 => s.select(
+                ((top + rnd(30) as usize).min(n - 1) * COLS + rnd(COLS as u64) as usize) as u32,
+                w.now(),
+            ),
             3 => s.scroll_by(rnd(4_000) as i32 - 1_500),
             4 => s.insert_row((top + rnd(30) as usize).min(n), [1.0; COLS], false),
             5 => s.remove_row((top + rnd(30) as usize).min(n - 1), false),
             6 => {
-                w.pointer(&mut s, GUTTER + rnd(COLS as u64) as i32 * CELL_W + 9, TOOLBAR + 10);
+                w.pointer(
+                    &mut s,
+                    GUTTER + rnd(COLS as u64) as i32 * CELL_W + 9,
+                    TOOLBAR + 10,
+                );
             }
             _ => s.edit(rnd(n as u64) as usize, 0, 7.0),
         }
         w.settle(&s);
         let up = ax.update(&w, &s);
         mirror.apply(&up);
-        assert!(mirror == *ax.tree(), "step {step}: the tree kept by deltas differs from the projection's");
+        assert!(
+            mirror == *ax.tree(),
+            "step {step}: the tree kept by deltas differs from the projection's"
+        );
         let mut fresh = Ax::new();
         fresh.update(&w, &s);
-        assert!(*fresh.tree() == mirror, "step {step}: deltas drifted from a fresh projection\n{}", diff(fresh.tree(), &mirror));
+        assert!(
+            *fresh.tree() == mirror,
+            "step {step}: deltas drifted from a fresh projection\n{}",
+            diff(fresh.tree(), &mirror)
+        );
     }
 }
 fn diff(a: &Tree, b: &Tree) -> String {
@@ -222,7 +269,10 @@ impl<L: Lens<T = u32>> Expr for Is<L> {
 #[derive(Clone, Copy)]
 struct Choose<C, const A: u32, const B: u32>(C);
 // SAFETY: transparent over a `Words` operand.
-unsafe impl<C: bough_x::expr::Words, const A: u32, const B: u32> bough_x::expr::Words for Choose<C, A, B> {}
+unsafe impl<C: bough_x::expr::Words, const A: u32, const B: u32> bough_x::expr::Words
+    for Choose<C, A, B>
+{
+}
 impl<C: Expr<Out = bool>, const A: u32, const B: u32> Expr for Choose<C, A, B> {
     type Out = Color;
     type Stage = Frame;
@@ -249,7 +299,12 @@ impl Inbox {
     fn new(n: usize) -> Inbox {
         let mut u = U::default();
         u.set::<Sel>(u32::MAX);
-        Inbox { u, items: Rel::new((0..n).map(|i| Txt::new(&format!("msg {i}"))).collect()), draft: Rel::new(vec![Txt::new("hello")]), sent: 0 }
+        Inbox {
+            u,
+            items: Rel::new((0..n).map(|i| Txt::new(&format!("msg {i}"))).collect()),
+            draft: Rel::new(vec![Txt::new("hello")]),
+            sent: 0,
+        }
     }
     fn text(&self) -> String {
         let (b, n) = self.draft.get(0).bytes();
@@ -267,30 +322,75 @@ impl View for Inbox {
         s.row(|| {
             (
                 [Rect::new(20, 20, 120, 40), Rect::new(20, 20, 120, 40)],
-                (Fill(Kc::<0xff2f6bff>).on_click(|s: &mut Inbox| s.sent += 1).focusable(), Label(Txt::new("Send"), Kc::<0xffffffff>)),
+                (
+                    Fill(Kc::<0xff2f6bff>)
+                        .on_click(|s: &mut Inbox| s.sent += 1)
+                        .focusable(),
+                    Label(Txt::new("Send"), Kc::<0xffffffff>),
+                ),
             )
         });
-        s.list(&List { n: 1, row_h: 40, x: 400, y: 20, shape: &IFIELD, edits: &self.draft.journal }, |_| {
-            (Fill(Kc::<0xfffafafa>).on_text(|s: &mut Inbox, t: &str| {
-                let x = s.text() + t;
-                *s.draft.edit(0) = Txt::new(&x[..x.len().min(12)]);
-            }), Label(*self.draft.get(0), Kc::<0xff000000>))
-        });
-        s.scope(Space { clip: Rect { x0: 0, y0: ITOP, x1: IW, y1: IH }, base: (0, ITOP), scroll: Scroll2::SLOT as u8 }, |s| {
-            s.list(&List { n: self.items.len() as u32, row_h: ROW, x: 0, y: 0, shape: &IROW, edits: &self.items.journal }, |r| {
+        s.list(
+            &List {
+                n: 1,
+                row_h: 40,
+                x: 400,
+                y: 20,
+                shape: &IFIELD,
+                edits: &self.draft.journal,
+            },
+            |_| {
                 (
-                    Fill(Choose::<_, 0xffdbe8ff, 0xfff6f7f9>(Is::<Sel>(rec(r as u32), PhantomData))).on_click(move |s: &mut Inbox| s.u.set::<Sel>(r as u32)).focusable(),
-                    Label(*self.items.get(r), Kc::<0xff1d2129>),
+                    Fill(Kc::<0xfffafafa>).on_text(|s: &mut Inbox, t: &str| {
+                        let x = s.text() + t;
+                        *s.draft.edit(0) = Txt::new(&x[..x.len().min(12)]);
+                    }),
+                    Label(*self.draft.get(0), Kc::<0xff000000>),
                 )
-            });
-        });
+            },
+        );
+        s.scope(
+            Space {
+                clip: Rect {
+                    x0: 0,
+                    y0: ITOP,
+                    x1: IW,
+                    y1: IH,
+                },
+                base: (0, ITOP),
+                scroll: Scroll2::SLOT as u8,
+            },
+            |s| {
+                s.list(
+                    &List {
+                        n: self.items.len() as u32,
+                        row_h: ROW,
+                        x: 0,
+                        y: 0,
+                        shape: &IROW,
+                        edits: &self.items.journal,
+                    },
+                    |r| {
+                        (
+                            Fill(Choose::<_, 0xffdbe8ff, 0xfff6f7f9>(Is::<Sel>(
+                                rec(r as u32),
+                                PhantomData,
+                            )))
+                            .on_click(move |s: &mut Inbox| s.u.set::<Sel>(r as u32))
+                            .focusable(),
+                            Label(*self.items.get(r), Kc::<0xff1d2129>),
+                        )
+                    },
+                );
+            },
+        );
     }
 }
 
 #[test]
 fn roles_names_and_states_from_what_is_there() {
     let mut v = Inbox::new(500);
-    let mut w = World::<Soft>::new(IW, IH, 4);
+    let mut w = World::<_, Soft>::new(IW, IH, 4);
     w.mount(&v);
     let mut ax = Ax::new();
     ax.update(&w, &v);
@@ -303,19 +403,34 @@ fn roles_names_and_states_from_what_is_there() {
     let list = t.one(|n| n.role == Role::List && n.row_count == Some(500));
     assert_eq!(list.row_count, Some(500));
     let item = t.get(list.children[3]).unwrap();
-    assert_eq!((item.role, item.name.as_str(), item.row_index), (Role::ListItem, "msg 3", Some(3)));
-    assert_eq!(item.selected, Some(false), "the row's fill compares Sel with its own constant");
+    assert_eq!(
+        (item.role, item.name.as_str(), item.row_index),
+        (Role::ListItem, "msg 3", Some(3))
+    );
+    assert_eq!(
+        item.selected,
+        Some(false),
+        "the row's fill compares Sel with its own constant"
+    );
     // select row 3 with a click: the state follows the word
     let p = item.place.unwrap();
     w.activate(&mut v, p);
     w.settle(&v);
     let up = ax.update(&w, &v);
-    assert_eq!(up.changed.len(), 1, "only the selected item changed: {:?}", up.changed.iter().map(|n| &n.name).collect::<Vec<_>>());
+    assert_eq!(
+        up.changed.len(),
+        1,
+        "only the selected item changed: {:?}",
+        up.changed.iter().map(|n| &n.name).collect::<Vec<_>>()
+    );
     assert_eq!(ax.tree().one(|n| n.selected == Some(true)).name, "msg 3");
     // focus: Tab to the button, then into the list; the tree's focus follows the core's
     w.tab(&mut v, false);
     ax.update(&w, &v);
-    assert_eq!(ax.tree().get(ax.tree().focus.unwrap()).unwrap().name, "Send");
+    assert_eq!(
+        ax.tree().get(ax.tree().focus.unwrap()).unwrap().name,
+        "Send"
+    );
     w.tab(&mut v, false);
     w.tab(&mut v, false);
     ax.update(&w, &v);
@@ -327,14 +442,20 @@ fn roles_names_and_states_from_what_is_there() {
     w.text(&mut v, "!");
     w.settle(&v);
     ax.update(&w, &v);
-    assert_eq!(ax.tree().one(|n| n.role == Role::TextInput).value.as_deref(), Some("hello!"));
+    assert_eq!(
+        ax.tree()
+            .one(|n| n.role == Role::TextInput)
+            .value
+            .as_deref(),
+        Some("hello!")
+    );
     assert_ne!(w.shown.w[U_FOCUS], NONE);
 }
 
 #[test]
 fn focus_on_a_row_that_scrolled_away() {
     let mut v = Inbox::new(500);
-    let mut w = World::<Soft>::new(IW, IH, 4);
+    let mut w = World::<_, Soft>::new(IW, IH, 4);
     w.mount(&v);
     let mut ax = Ax::new();
     ax.update(&w, &v);
@@ -343,21 +464,44 @@ fn focus_on_a_row_that_scrolled_away() {
     let f = ax.tree().focus.unwrap();
     assert_eq!(f.row, 4);
     // the row leaves exposure and the published margin: the tree still says what is focused only if published
-    let list = ax.tree().one(|n| n.role == Role::List && n.row_count == Some(500)).id;
+    let list = ax
+        .tree()
+        .one(|n| n.role == Role::List && n.row_count == Some(500))
+        .id;
     let path = list.path();
-    assert!(w.scroll_into_view(&mut v, &path, 300), "an explicit action scrolls");
+    assert!(
+        w.scroll_into_view(&mut v, &path, 300),
+        "an explicit action scrolls"
+    );
     w.settle(&v);
     ax.update(&w, &v);
     assert_eq!(w.shown.w[U_FOCUS], NONE);
     assert_eq!(w.focused().map(|f| f.2), Some(4), "the core still knows");
-    assert!(ax.tree().get(ax.tree().one(|n| n.role == Role::List && n.row_count == Some(500)).children[0]).unwrap().row_index.unwrap() > 250);
-    let _ = NodeId { path: [0; 6], depth: 0, row: 0, pos: 0, tag: Tag::Rec };
+    assert!(
+        ax.tree()
+            .get(
+                ax.tree()
+                    .one(|n| n.role == Role::List && n.row_count == Some(500))
+                    .children[0]
+            )
+            .unwrap()
+            .row_index
+            .unwrap()
+            > 250
+    );
+    let _ = NodeId {
+        path: [0; 6],
+        depth: 0,
+        row: 0,
+        pos: 0,
+        tag: Tag::Rec,
+    };
 }
 
 #[test]
 fn rows_appended_at_the_end_are_announced() {
     let mut v = Inbox::new(3);
-    let mut w = World::<Soft>::new(IW, IH, 4);
+    let mut w = World::<_, Soft>::new(IW, IH, 4);
     w.mount(&v);
     let mut ax = Ax::new();
     ax.update(&w, &v);
@@ -373,9 +517,17 @@ fn dump() {
     let (s, w) = mounted(100);
     let mut ax = Ax::new();
     ax.update(&w, &s);
-    println!("{}", ax.tree().dump().lines().take(60).collect::<Vec<_>>().join("\n"));
+    println!(
+        "{}",
+        ax.tree()
+            .dump()
+            .lines()
+            .take(60)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
     let v = Inbox::new(5);
-    let mut w = World::<Soft>::new(IW, IH, 4);
+    let mut w = World::<_, Soft>::new(IW, IH, 4);
     w.mount(&v);
     let mut ax = Ax::new();
     ax.update(&w, &v);
@@ -393,7 +545,12 @@ impl View for Title {
         &self.u
     }
     fn view<S: Sink<Self>>(&self, s: &mut S) {
-        s.row(|| ([Rect::new(0, 0, 200, 40)], Label(self.title, Kc::<0xff000000>)));
+        s.row(|| {
+            (
+                [Rect::new(0, 0, 200, 40)],
+                Label(self.title, Kc::<0xff000000>),
+            )
+        });
     }
 }
 
@@ -401,8 +558,11 @@ impl View for Title {
 /// tree: the update compares the world's publication revision, which the re-description moved.
 #[test]
 fn opaque_state_redescribed_reaches_the_tree() {
-    let mut v = Title { u: U::default(), title: Txt::new("Inbox") };
-    let mut w = World::<Soft>::new(400, 300, 1);
+    let mut v = Title {
+        u: U::default(),
+        title: Txt::new("Inbox"),
+    };
+    let mut w = World::<_, Soft>::new(400, 300, 1);
     w.mount(&v);
     let mut ax = Ax::new();
     ax.update(&w, &v);
@@ -411,7 +571,10 @@ fn opaque_state_redescribed_reaches_the_tree() {
     w.redescribe(&v);
     let up = ax.update(&w, &v);
     assert_eq!(up.changed.len(), 1);
-    assert_eq!(ax.tree().one(|n| n.role == Role::StaticText).name, "Archive");
+    assert_eq!(
+        ax.tree().one(|n| n.role == Role::StaticText).name,
+        "Archive"
+    );
     // and a re-description that changed nothing is nothing to the tree
     w.redescribe(&v);
     assert!(ax.update(&w, &v).is_empty());
@@ -441,7 +604,16 @@ impl View for Hovering {
         &self.u
     }
     fn view<S: Sink<Self>>(&self, s: &mut S) {
-        s.row(|| ([Rect::new(0, 0, 200, 40), Rect::new(0, 0, 200, 40)], (Fill(Choose::<_, 0xffeeeeee, 0xffffffff>(PickIs(rec(0)))).on_click(|_: &mut Hovering| {}), Label(Txt::new("Open"), Kc::<0xff000000>))));
+        s.row(|| {
+            (
+                [Rect::new(0, 0, 200, 40), Rect::new(0, 0, 200, 40)],
+                (
+                    Fill(Choose::<_, 0xffeeeeee, 0xffffffff>(PickIs(rec(0))))
+                        .on_click(|_: &mut Hovering| {}),
+                    Label(Txt::new("Open"), Kc::<0xff000000>),
+                ),
+            )
+        });
     }
 }
 
@@ -450,7 +622,7 @@ impl View for Hovering {
 #[test]
 fn a_hover_look_is_not_a_selection() {
     let v = Hovering { u: U::default() };
-    let mut w = World::<Soft>::new(400, 300, 1);
+    let mut w = World::<_, Soft>::new(400, 300, 1);
     w.mount(&v);
     let mut ax = Ax::new();
     ax.update(&w, &v);

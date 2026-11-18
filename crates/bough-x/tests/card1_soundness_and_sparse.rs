@@ -55,7 +55,7 @@ fn sparse_multiword_slope_and_damage_oracle() {
             columns,
             many: false,
         };
-        let mut w = World::<Soft>::new(96, 32, 48);
+        let mut w = World::<_, Soft>::new(96, 32, 48);
         w.mount(&v);
         w.tiles.clear();
         v.u.w[0] = 1;
@@ -76,7 +76,7 @@ fn seventy_two_thousand_incidences() {
         columns: 1500,
         many: true,
     };
-    let mut w = World::<Soft>::new(96, 32, 48);
+    let mut w = World::<_, Soft>::new(96, 32, 48);
     w.mount(&v);
     w.tiles.clear();
     v.u.w[47] = 1;
@@ -92,12 +92,12 @@ fn seventy_two_thousand_incidences() {
 #[test]
 #[should_panic(expected = "place record exceeds 20-bit capacity")]
 fn place_rejects_record_spill() {
-    World::<Soft>::new(32, 32, 0).place(&Path::default(), 0, 1 << 20);
+    World::<Matrix, Soft>::new(32, 32, 0).place(&Path::default(), 0, 1 << 20);
 }
 #[test]
 #[should_panic(expected = "place column exceeds 12-bit capacity")]
 fn place_rejects_column_spill() {
-    World::<Soft>::new(32, 32, 0).place(&Path::default(), 4096, 0);
+    World::<Matrix, Soft>::new(32, 32, 0).place(&Path::default(), 4096, 0);
 }
 
 #[path = "../scenes/sheet_el.rs"]
@@ -121,4 +121,287 @@ fn sheet_el_retained_ledger() {
     );
     assert!(records < 860);
     assert!(bytes < 320 * 1024);
+}
+
+mod padded_closure {
+    use bough_x::el::prelude::*;
+    use bough_x::reflect::Reflect;
+    use bough_x::soft::{Immediate, Soft};
+    use std::num::NonZeroU32;
+
+    struct PaddedView {
+        look: Signal<u32>,
+        capture: (bool, u8, u32),
+        nz: NonZeroU32,
+    }
+    impl View for PaddedView {
+        fn view(&self) -> impl Element<Self> + '_ {
+            let capture = self.capture;
+            let nz = self.nz;
+            let label: &'static str = "capture";
+            div()
+                .w(32.0)
+                .h(32.0)
+                .bg(sig!(self.look).map(move |look: &u32| {
+                    let tuple = std::hint::black_box(capture);
+                    rgb(*look
+                        ^ tuple.2
+                        ^ (tuple.0 as u32)
+                        ^ tuple.1 as u32
+                        ^ nz.get()
+                        ^ label.len() as u32)
+                }))
+        }
+    }
+    #[test]
+    fn padded_and_nonzero_captures_are_typed_cpu_records() {
+        for once in [false, true] {
+            let mut app = App::<_, Soft>::new(
+                PaddedView {
+                    look: Signal::new(7),
+                    capture: (true, 11, 0xaabbcc),
+                    nz: NonZeroU32::new(19).unwrap(),
+                },
+                32,
+                32,
+                1.0,
+            );
+            app.once = once;
+            for i in 0..5 {
+                app.turn(|v| {
+                    v.look.set(i);
+                });
+                app.v.capture = (false, 27, 0x334455 + i);
+                app.world.redescribe(&app.v);
+                let mut full = Soft::new(32, 32);
+                app.world.paint(&mut full);
+                let mut now = Soft::new(32, 32);
+                bough_x::sink::View::view(&app.v, &mut Immediate::new(&mut now, &app.world.shown));
+                assert_eq!(full.px, now.px);
+                let reflection = Reflect::learn(&app.world, &app.v);
+                let items = reflection.items(app.world.root(), &app.world.shown);
+                assert!(!items.is_empty());
+                for item in items {
+                    assert!(item.words().is_empty());
+                    let _ = item.snap();
+                }
+            }
+        }
+    }
+}
+
+mod safe_clients {
+    use bough_x::el::{self, prelude::*};
+    use bough_x::expr::{APP_WORDS, Expr, Lens, Slot, U, Un};
+    use bough_x::soft::Soft;
+    use bough_x::store::Path;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    #[repr(C)]
+    struct Padded {
+        first: u8,
+        next: Signal<u32>,
+    }
+    impl View for Padded {
+        fn view(&self) -> impl Element<Self> + '_ {
+            div()
+                .w(32.0)
+                .h(32.0)
+                .bg(sig!(self.next).map(|v: &u32| rgb(*v)))
+        }
+    }
+    #[test]
+    fn arbitrary_nominal_offset_reads_only_the_safe_projection() {
+        const OFF: usize = usize::MAX;
+        let p = Padded {
+            first: 17,
+            next: Signal::new(0xaabbcc),
+        };
+        let _ = el::prove::<Padded, _, OFF>(&p.next, |v| &v.next).get();
+        let mut slots = Vec::new();
+        <Un<el::At<Padded, u32, OFF>> as Expr>::slots(&mut |s| slots.push(s));
+        let mut out = U::default();
+        let out = bough_x::sink::View::gathered(&p, &slots, &mut out);
+        assert_eq!(out.w[<el::At<Padded, u32, OFF> as Lens>::SLOT], 0xaabbcc);
+    }
+    #[test]
+    fn foreign_gathered_owner_is_refused_before_reader_execution() {
+        let p = Padded {
+            first: 1,
+            next: Signal::new(2),
+        };
+        let slot = Slot::typed::<u32, ()>(0, 0, |_| panic!("foreign reader executed"));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut out = U::default();
+            bough_x::sink::View::gathered(&p, &[slot], &mut out);
+        }));
+        assert!(result.is_err());
+    }
+    #[test]
+    #[should_panic(expected = "field slot outside application block")]
+    fn out_of_block_slot_is_refused() {
+        let _ = Slot::typed::<u32, ()>(APP_WORDS, 0, |v| *v);
+    }
+    struct Collision {
+        a: Signal<u32>,
+        b: Signal<u32>,
+    }
+    impl View for Collision {
+        fn view(&self) -> impl Element<Self> + '_ {
+            column((
+                div()
+                    .w(32.0)
+                    .h(32.0)
+                    .bg(el::prove::<Self, _, 0>(&self.a, |v| &v.a).map(|v: &u32| rgb(*v))),
+                div()
+                    .w(32.0)
+                    .h(32.0)
+                    .bg(el::prove::<Self, _, 192>(&self.b, |v| &v.b).map(|v: &u32| rgb(*v))),
+            ))
+        }
+    }
+    #[test]
+    #[should_panic(expected = "two fields of the view share word")]
+    fn distinct_projections_cannot_alias_a_slot() {
+        let _ = App::<_, Soft>::new(
+            Collision {
+                a: Signal::new(1),
+                b: Signal::new(2),
+            },
+            32,
+            64,
+            1.0,
+        );
+    }
+    struct Counted {
+        look: Signal<u32>,
+        calls: Arc<AtomicUsize>,
+    }
+    impl View for Counted {
+        fn view(&self) -> impl Element<Self> + '_ {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            div()
+                .w(32.0)
+                .h(32.0)
+                .bg(sig!(self.look).map(|v: &u32| rgb(*v)))
+        }
+    }
+    #[test]
+    fn worlds_are_isolated_and_foreign_tokens_are_refused() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut a = App::<_, Soft>::new(
+            Counted {
+                look: Signal::new(1),
+                calls: calls.clone(),
+            },
+            32,
+            32,
+            1.0,
+        )
+        .once();
+        let baseline = calls.load(Ordering::Relaxed);
+        let retables = a.world.retables;
+        let mut b = App::<_, Soft>::new(
+            Counted {
+                look: Signal::new(1),
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+            32,
+            32,
+            1.0,
+        )
+        .once();
+        b.turn(|v| {
+            v.look.set(2);
+        });
+        a.settle();
+        assert_eq!(calls.load(Ordering::Relaxed), baseline);
+        assert_eq!(a.world.retables, retables);
+        let token = a.world.place_token(&Path::default(), 0, 0).unwrap();
+        assert!(b.world.at_token(token).is_none());
+        assert!(!b.world.accept_pick(&mut b.v, token).consumed);
+        let reflection = bough_x::reflect::Reflect::learn(&a.world, &a.v);
+        assert!(!reflection.current(b.world.root()));
+        let after_reflection = calls.load(Ordering::Relaxed);
+        // External writes are still tracked after App and Signal have moved.
+        a.v.look.set(3);
+        a.settle();
+        assert_eq!(calls.load(Ordering::Relaxed), after_reflection);
+        assert_ne!(a.world.shown, b.world.shown);
+    }
+}
+
+#[test]
+fn unrelated_relation_edits_do_not_describe_or_retable() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    struct Related {
+        u: U,
+        rows: Rel<u32>,
+        calls: Arc<AtomicUsize>,
+    }
+    impl View for Related {
+        fn block(&self) -> &U {
+            &self.u
+        }
+        fn view<S: Sink<Self>>(&self, s: &mut S) {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            s.list(
+                &List {
+                    n: self.rows.len() as u32,
+                    row_h: 10,
+                    x: 0,
+                    y: 0,
+                    shape: &[Rect::new(0, 0, 32, 10)],
+                    edits: &self.rows.journal,
+                },
+                |i| Fill(rec(Color(0xff000000 | *self.rows.get(i)))),
+            );
+        }
+    }
+    let make = || Related {
+        u: U::default(),
+        rows: Rel::new(vec![1, 2, 3]),
+        calls: Arc::new(AtomicUsize::new(0)),
+    };
+    let a = make();
+    let mut b = make();
+    let mut wa = World::<Related, Soft>::new(32, 32, 0);
+    let mut wb = World::<Related, Soft>::new(32, 32, 0);
+    wa.mount(&a);
+    wb.mount(&b);
+    let before = a.calls.load(Ordering::Relaxed);
+    let retables = wa.retables;
+    *b.rows.edit(0) = 9;
+    wb.settle(&b);
+    wa.settle(&a);
+    assert_eq!(a.calls.load(Ordering::Relaxed), before);
+    assert_eq!(wa.retables, retables);
+    assert_eq!(*b.rows.get(0), 9);
+}
+
+#[test]
+fn signal_into_inner_moves_and_drops_exactly_once() {
+    let value = std::sync::Arc::new(());
+    let signal = bough_x::el::Signal::new(value.clone());
+    let extracted = signal.into_inner();
+    assert_eq!(std::sync::Arc::strong_count(&value), 2);
+    drop(extracted);
+    assert_eq!(std::sync::Arc::strong_count(&value), 1);
+}
+
+#[test]
+#[should_panic(expected = "world column capacity exceeds 4096")]
+fn excess_columns_are_refused_at_admission() {
+    let v = Matrix {
+        u: U::default(),
+        columns: 4097,
+        many: false,
+    };
+    World::<Matrix, Soft>::new(96, 32, 48).mount(&v);
 }
