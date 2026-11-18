@@ -9,6 +9,9 @@
 //!   named after a leaf function and live with those functions (`bough-paint`). [`Map`] is the combinator for
 //!   an arbitrary Rust function: it has no GPU code, so it is evaluated on the CPU.
 #![no_std]
+#![feature(specialization)]
+#![allow(incomplete_features)]
+use core::any::TypeId;
 use core::marker::PhantomData;
 
 /// Words in a uniform block. One `u64` names any subset.
@@ -154,15 +157,134 @@ pub trait Lens: Copy + 'static {
     const SLOT: usize;
     /// Where the word comes from when the block is gathered from the application's own state: the field's byte
     /// offset in the root view and its size. `None`: the application declares a block and writes it itself.
-    const AT: Option<(usize, usize)> = None;
+    fn field() -> Option<Slot> {
+        None
+    }
 }
 
 /// A word of the block and the field of the root view it is gathered from.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// A sealed safe typed reader; raw offsets confer no read authority.
+///
+/// ```compile_fail
+/// use bough_expr::Slot;
+/// let forged = Slot { slot: 0, bytes: 4, off: u32::MAX };
+/// ```
+#[derive(Clone, Copy)]
 pub struct Slot {
-    pub slot: u8,
-    pub bytes: u8,
-    pub off: u32,
+    slot: usize,
+    off: usize,
+    owner: TypeId,
+    projection: TypeId,
+    // Sealed constructor pairs these erased function pointers with the exact
+    // trampoline that restores their signatures. No data pointer is forged.
+    first: fn(),
+    second: fn(),
+    reader: unsafe fn(*const (), fn(), fn()) -> u32,
+}
+fn unused_slot_function() {}
+impl Slot {
+    /// Construct only a typed safe reader. There is no raw-offset constructor.
+    pub fn typed<V: 'static, P: 'static>(slot: usize, off: usize, read: fn(&V) -> u32) -> Self {
+        assert!(slot < APP_WORDS, "field slot outside application block");
+        unsafe fn invoke<V>(v: *const (), first: fn(), _: fn()) -> u32 {
+            // SAFETY: typed::<V,P> erased exactly fn(&V)->u32; read checked
+            // owner TypeId before passing a pointer to a live V.
+            let read: fn(&V) -> u32 = unsafe { core::mem::transmute(first) };
+            // SAFETY: Slot::read admitted V and v is its still-live shared reference.
+            read(unsafe { &*v.cast::<V>() })
+        }
+        // SAFETY: erasing a function pointer preserves its address and provenance;
+        // invoke::<V> restores this exact signature before any invocation.
+        let first: fn() = unsafe { core::mem::transmute(read) };
+        Self {
+            slot,
+            off,
+            owner: TypeId::of::<V>(),
+            projection: TypeId::of::<P>(),
+            first,
+            second: unused_slot_function,
+            reader: invoke::<V>,
+        }
+    }
+    /// Compose a typed reference projection and typed word conversion without a
+    /// heap-allocated closure. Both function pointers are restored only by their
+    /// matching V/T trampoline, after owner admission.
+    pub fn projected<V: 'static, T: 'static, P: 'static>(
+        slot: usize,
+        off: usize,
+        project: fn(&V) -> &T,
+        word: fn(&T) -> u32,
+    ) -> Self {
+        assert!(slot < APP_WORDS, "field slot outside application block");
+        unsafe fn invoke<V, T>(v: *const (), first: fn(), second: fn()) -> u32 {
+            // SAFETY: projected::<V,T,P> erased these precise signatures and
+            // the private trampoline cannot be substituted by a safe client.
+            let project: fn(&V) -> &T = unsafe { core::mem::transmute(first) };
+            // SAFETY: the second pointer was erased from fn(&T)->u32.
+            let word: fn(&T) -> u32 = unsafe { core::mem::transmute(second) };
+            // SAFETY: Slot::read checked V's TypeId and retained its shared borrow.
+            word(project(unsafe { &*v.cast::<V>() }))
+        }
+        // SAFETY: function-pointer erasure is reversed by invoke::<V,T>, not
+        // invoked with the erased signature; no pointer is converted to integer.
+        let first: fn() = unsafe { core::mem::transmute(project) };
+        // SAFETY: as above, restored to fn(&T)->u32 before invocation.
+        let second: fn() = unsafe { core::mem::transmute(word) };
+        Self {
+            slot,
+            off,
+            owner: TypeId::of::<V>(),
+            projection: TypeId::of::<P>(),
+            first,
+            second,
+            reader: invoke::<V, T>,
+        }
+    }
+    pub fn index(self) -> usize {
+        self.slot
+    }
+    pub fn offset(self) -> usize {
+        self.off
+    }
+    pub fn owner(self) -> TypeId {
+        self.owner
+    }
+    pub fn read<V: 'static>(self, v: &V) -> u32 {
+        assert_eq!(self.owner, TypeId::of::<V>(), "field reader owner mismatch");
+        assert!(
+            self.slot < APP_WORDS,
+            "field slot outside application block"
+        );
+        // SAFETY: owner TypeId and index were checked above. The private
+        // constructor paired the trampoline and erased function signatures;
+        // v points to a live V for this call. It never denotes an offset address.
+        unsafe { (self.reader)((v as *const V).cast(), self.first, self.second) }
+    }
+}
+impl PartialEq for Slot {
+    fn eq(&self, other: &Self) -> bool {
+        (self.slot, self.off, self.owner, self.projection)
+            == (other.slot, other.off, other.owner, other.projection)
+            && core::ptr::fn_addr_eq(self.reader, other.reader)
+            && core::ptr::fn_addr_eq(self.first, other.first)
+            && core::ptr::fn_addr_eq(self.second, other.second)
+    }
+}
+impl Eq for Slot {}
+impl core::fmt::Debug for Slot {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Slot")
+            .field("slot", &self.slot)
+            .field("owner", &self.owner)
+            .field("projection", &self.projection)
+            .finish()
+    }
+}
+/// A zero-sized typed projection reads through safe Rust, never through its nominal offset.
+pub trait FieldProj<V>: 'static {
+    type T: Word;
+    const NOMINAL_OFF: usize;
+    fn read(v: &V) -> Self::T;
 }
 /// The name of a run of words of the block (an array field).
 pub trait LensArr: Copy + 'static {
@@ -210,22 +332,47 @@ pub struct Rect {
 }
 impl Rect {
     /// A box no record leaves: what an unbounded motion sweeps (cut to the space's clip by whoever marks it).
-    pub const EVERYWHERE: Rect = Rect { x0: -(1 << 28), y0: -(1 << 28), x1: 1 << 28, y1: 1 << 28 };
+    pub const EVERYWHERE: Rect = Rect {
+        x0: -(1 << 28),
+        y0: -(1 << 28),
+        x1: 1 << 28,
+        y1: 1 << 28,
+    };
     #[inline(always)]
     pub const fn new(x: i32, y: i32, w: i32, h: i32) -> Rect {
-        Rect { x0: x, y0: y, x1: x + w, y1: y + h }
+        Rect {
+            x0: x,
+            y0: y,
+            x1: x + w,
+            y1: y + h,
+        }
     }
     #[inline(always)]
     pub fn shift(self, d: (i32, i32)) -> Rect {
-        Rect { x0: self.x0 + d.0, y0: self.y0 + d.1, x1: self.x1 + d.0, y1: self.y1 + d.1 }
+        Rect {
+            x0: self.x0 + d.0,
+            y0: self.y0 + d.1,
+            x1: self.x1 + d.0,
+            y1: self.y1 + d.1,
+        }
     }
     #[inline(always)]
     pub fn and(self, o: Rect) -> Rect {
-        Rect { x0: self.x0.max(o.x0), y0: self.y0.max(o.y0), x1: self.x1.min(o.x1), y1: self.y1.min(o.y1) }
+        Rect {
+            x0: self.x0.max(o.x0),
+            y0: self.y0.max(o.y0),
+            x1: self.x1.min(o.x1),
+            y1: self.y1.min(o.y1),
+        }
     }
     #[inline(always)]
     pub fn or(self, o: Rect) -> Rect {
-        Rect { x0: self.x0.min(o.x0), y0: self.y0.min(o.y0), x1: self.x1.max(o.x1), y1: self.y1.max(o.y1) }
+        Rect {
+            x0: self.x0.min(o.x0),
+            y0: self.y0.min(o.y0),
+            x1: self.x1.max(o.x1),
+            y1: self.y1.max(o.y1),
+        }
     }
     #[inline(always)]
     pub fn empty(self) -> bool {
@@ -315,8 +462,17 @@ pub unsafe trait Words: Copy + 'static {
     fn words(&self) -> &[u32] {
         // SAFETY: the trait's contract: `N` whole words, alignment at most 4 (and at least 1; a zero-sized value
         // gives an empty slice at a dangling but aligned-enough address only when N == 0, handled below).
-        const { assert!(size_of::<Self>() == 0 || (align_of::<Self>() == 4 && size_of::<Self>() % 4 == 0), "Words: a non-empty record type is whole words at alignment 4") };
-        if Self::N == 0 { &[] } else { unsafe { core::slice::from_raw_parts(self as *const Self as *const u32, Self::N) } }
+        const {
+            assert!(
+                size_of::<Self>() == 0 || (align_of::<Self>() == 4 && size_of::<Self>() % 4 == 0),
+                "Words: a non-empty record type is whole words at alignment 4"
+            )
+        };
+        if Self::N == 0 {
+            &[]
+        } else {
+            unsafe { core::slice::from_raw_parts(self as *const Self as *const u32, Self::N) }
+        }
     }
     /// Equality of records is equality of their words.
     #[inline(always)]
@@ -343,6 +499,32 @@ unsafe impl<A: Words, B: Words> Words for (A, B) {}
 unsafe impl<A: Words, B: Words, C: Words> Words for (A, B, C) {}
 // SAFETY: as pairs.
 unsafe impl<A: Words, B: Words, C: Words, D: Words> Words for (A, B, C, D) {}
+
+/// CPU record storage accepts arbitrary Copy values, including padded closures.
+/// Only the Words specialization exposes representation bytes.
+pub trait Record: Copy + 'static {
+    const WORD_LAYOUT: bool;
+    fn record_words(&self) -> &[u32];
+    fn same_record(&self, other: &Self) -> bool;
+}
+impl<T: Copy + 'static> Record for T {
+    default const WORD_LAYOUT: bool = false;
+    default fn record_words(&self) -> &[u32] {
+        &[]
+    }
+    default fn same_record(&self, _: &Self) -> bool {
+        false
+    }
+}
+impl<T: Words> Record for T {
+    const WORD_LAYOUT: bool = true;
+    fn record_words(&self) -> &[u32] {
+        self.words()
+    }
+    fn same_record(&self, other: &Self) -> bool {
+        self.same(other)
+    }
+}
 
 // ---- stages ------------------------------------------------------------------------------------------------
 
@@ -479,7 +661,7 @@ impl<'a> Cx<'a> {
     }
 }
 
-pub trait Expr: Words {
+pub trait Expr: Record {
     type Out: Copy + PartialEq;
     type Stage: Stage;
     const STAGE: StageId = <Self::Stage as Stage>::ID;
@@ -502,7 +684,11 @@ pub trait Expr: Words {
     /// they stop.
     #[inline(always)]
     fn until(&self, _cx: &Cx) -> u32 {
-        if Self::READS >> U_TIME & 1 != 0 { u32::MAX } else { 0 }
+        if Self::READS >> U_TIME & 1 != 0 {
+            u32::MAX
+        } else {
+            0
+        }
     }
 
     /// The fields of the root view this expression's block words are gathered from. A combinator forwards to
@@ -512,7 +698,7 @@ pub trait Expr: Words {
     /// The same operands as `o`, state words aside. Only asked when `STATE`.
     #[inline(always)]
     fn eq_ops(&self, o: &Self) -> bool {
-        self.same(o)
+        self.same_record(o)
     }
     /// `self` (operands just described, or the same record under a new block) takes over from `was`, which
     /// was showing under `old`: a transition starts from what `was` showed, now. Only called when `STATE`.
@@ -522,7 +708,10 @@ pub trait Expr: Words {
     /// Apply a Rust function that captures nothing. What varies per record belongs in a `Rec` operand. The
     /// result is CPU stage: it is re-evaluated for exposed records when a word it reads changes.
     #[inline(always)]
-    fn map<O: Copy + PartialEq, F: Fn(Self::Out) -> O + Copy + 'static>(self, f: F) -> Map<F, Self> {
+    fn map<O: Copy + PartialEq, F: Fn(Self::Out) -> O + Copy + 'static>(
+        self,
+        f: F,
+    ) -> Map<F, Self> {
         let _ = f;
         Map(self, PhantomData)
     }
@@ -570,8 +759,8 @@ impl<L: Lens> Expr for Un<L> {
     }
     #[inline]
     fn slots(f: &mut dyn FnMut(Slot)) {
-        if let Some((off, bytes)) = L::AT {
-            f(Slot { slot: L::SLOT as u8, bytes: bytes as u8, off: off as u32 })
+        if let Some(slot) = L::field() {
+            f(slot);
         }
     }
 }
@@ -724,7 +913,12 @@ where
     const CODE: &'static Code = &Code::Cpu(&[A::CODE]);
     #[inline(always)]
     fn eval(&self, cx: &Cx) -> O {
-        const { assert!(size_of::<F>() == 0, "a mapped function must capture nothing: put per-record data in a Rec operand") };
+        const {
+            assert!(
+                size_of::<F>() == 0,
+                "a mapped function must capture nothing: put per-record data in a Rec operand"
+            )
+        };
         // SAFETY: `F` is zero-sized (asserted above) and `Copy`, and a `Map<F, _>` is only built by `Expr::map`,
         // which was handed a value of `F`: the type is inhabited and copying that value is what this is.
         let f: F = unsafe { core::mem::zeroed() };
@@ -802,7 +996,11 @@ where
     }
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
-        latest(latest(self.0.until(cx), self.1.until(cx), cx.u.w[U_TIME]), self.2.until(cx), cx.u.w[U_TIME])
+        latest(
+            latest(self.0.until(cx), self.1.until(cx), cx.u.w[U_TIME]),
+            self.2.until(cx),
+            cx.u.w[U_TIME],
+        )
     }
 }
 

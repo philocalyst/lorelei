@@ -7,8 +7,8 @@ use crate::expr::U;
 use crate::kinds::{FillArch, LabelArch, NumArch, OutlineArch};
 use crate::sink::{Leaf, List, Row, ScopeOf, Sink, exposed};
 use crate::store::Hov;
-use core::any::TypeId;
 use crate::store::{Arch, Backend, ColRef, Live, Page, Rect, Space, Tiles};
+use core::any::TypeId;
 use core::marker::PhantomData;
 
 pub struct Soft {
@@ -57,7 +57,13 @@ fn glyph(b: u8) -> [u8; 5] {
         // any other byte: a pattern of its own, so different text is different pixels
         _ => {
             let h = (b as u32).wrapping_mul(0x9E37_79B9);
-            [(h >> 3) as u8 & 7 | 4, (h >> 8) as u8 & 7 | 1, (h >> 13) as u8 & 7, (h >> 18) as u8 & 7 | 4, (h >> 23) as u8 & 7 | 1]
+            [
+                (h >> 3) as u8 & 7 | 4,
+                (h >> 8) as u8 & 7 | 1,
+                (h >> 13) as u8 & 7,
+                (h >> 18) as u8 & 7 | 4,
+                (h >> 23) as u8 & 7 | 1,
+            ]
         }
     }
 }
@@ -93,10 +99,27 @@ pub fn format_num(n: i32, d: u8, out: &mut [u8; 24]) -> usize {
 
 impl Soft {
     pub fn new(w: i32, h: i32) -> Soft {
-        Soft { w, h, px: vec![0; (w * h) as usize], clip: Rect { x0: 0, y0: 0, x1: w, y1: h }, records: 0, text: None }
+        Soft {
+            w,
+            h,
+            px: vec![0; (w * h) as usize],
+            clip: Rect {
+                x0: 0,
+                y0: 0,
+                x1: w,
+                y1: h,
+            },
+            records: 0,
+            text: None,
+        }
     }
     pub fn rect(&mut self, r: Rect, c: u32) {
-        let r = r.and(self.clip).and(Rect { x0: 0, y0: 0, x1: self.w, y1: self.h });
+        let r = r.and(self.clip).and(Rect {
+            x0: 0,
+            y0: 0,
+            x1: self.w,
+            y1: self.h,
+        });
         if r.empty() {
             return;
         }
@@ -112,13 +135,19 @@ impl Soft {
         let row = &mut self.px[(y * self.w + x) as usize..][..cov.len()];
         for (d, &a) in row.iter_mut().zip(cov) {
             let a = a as u32;
-            let ch = |sh: u32| (((c >> sh & 255) * a + (*d >> sh & 255) * (255 - a) + 127) / 255) << sh;
+            let ch =
+                |sh: u32| (((c >> sh & 255) * a + (*d >> sh & 255) * (255 - a) + 127) / 255) << sh;
             *d = ch(16) | ch(8) | ch(0);
         }
     }
     /// With real text: where painting is allowed for a record's rect (its space's clip, the tile, the frame).
     fn cut(&self, clip: Rect) -> Rect {
-        clip.and(self.clip).and(Rect { x0: 0, y0: 0, x1: self.w, y1: self.h })
+        clip.and(self.clip).and(Rect {
+            x0: 0,
+            y0: 0,
+            x1: self.w,
+            y1: self.h,
+        })
     }
     /// Text in a box (screen coordinates), cut to `cut`.
     fn text(&mut self, r: Rect, cut: Rect, bytes: &[u8], c: u32) {
@@ -129,7 +158,12 @@ impl Soft {
             for (gy, row) in g.iter().enumerate() {
                 for gx in 0..3 {
                     if row & (4 >> gx) != 0 {
-                        let px = Rect::new(x + k as i32 * ADVANCE + gx * GLYPH_SCALE, y + gy as i32 * GLYPH_SCALE, GLYPH_SCALE, GLYPH_SCALE);
+                        let px = Rect::new(
+                            x + k as i32 * ADVANCE + gx * GLYPH_SCALE,
+                            y + gy as i32 * GLYPH_SCALE,
+                            GLYPH_SCALE,
+                            GLYPH_SCALE,
+                        );
                         self.rect(px.and(cut), c);
                     }
                 }
@@ -186,7 +220,13 @@ impl Backend for Soft {
             if let Some(t) = &text {
                 let g = t.glyphs.borrow();
                 let cut = self.cut(r.and(clip));
-                crate::text::TextCx { faces: t.faces, glyphs: &g }.num(a.value(u), a.decimals(), A::PAD, r, cut, |x, y, cov| self.cover(x, y, cov, a.color(u).0));
+                crate::text::TextCx {
+                    faces: t.faces,
+                    glyphs: &g,
+                }
+                .num(a.value(u), a.decimals(), A::PAD, r, cut, |x, y, cov| {
+                    self.cover(x, y, cov, a.color(u).0)
+                });
                 return;
             }
             let mut buf = [0u8; 24];
@@ -197,13 +237,18 @@ impl Backend for Soft {
     fn line<A: crate::text::LineArch>(&mut self, col: ColRef<'_, A>, u: &U) {
         let Some(t) = self.text.clone() else { return };
         let g = t.glyphs.borrow();
-        let cx = crate::text::TextCx { faces: t.faces, glyphs: &g };
+        let cx = crate::text::TextCx {
+            faces: t.faces,
+            glyphs: &g,
+        };
         let (org, clip) = (col.space.origin(u), col.space.clip);
         col.each(|r, a| {
             self.records += 1;
             let r = r.shift(org);
             let cut = self.cut(r.and(clip));
-            cx.line(a.run(), r, cut, |x, y, cov| self.cover(x, y, cov, a.color(u).0));
+            cx.line(a.run(), r, cut, |x, y, cov| {
+                self.cover(x, y, cov, a.color(u).0)
+            });
         });
     }
     fn label<A: LabelArch>(&mut self, col: ColRef<'_, A>, u: &U) {
@@ -220,7 +265,12 @@ impl Backend for Soft {
             self.records += 1;
             let r = r.shift(org).shift(a.offset(u));
             let (w, c) = (a.width(u), a.color(u).0);
-            for e in [Rect { y1: r.y0 + w, ..r }, Rect { y0: r.y1 - w, ..r }, Rect { x1: r.x0 + w, ..r }, Rect { x0: r.x1 - w, ..r }] {
+            for e in [
+                Rect { y1: r.y0 + w, ..r },
+                Rect { y0: r.y1 - w, ..r },
+                Rect { x1: r.x0 + w, ..r },
+                Rect { x0: r.x1 - w, ..r },
+            ] {
                 self.rect(e.and(clip), c);
             }
         });
@@ -237,16 +287,33 @@ pub struct Immediate<'s, V> {
 impl<'s, V> Immediate<'s, V> {
     pub fn new(soft: &'s mut Soft, u: &'s U) -> Self {
         let space = Space::root(soft.w, soft.h);
-        Immediate { soft, u, space, _p: PhantomData }
+        Immediate {
+            soft,
+            u,
+            space,
+            _p: PhantomData,
+        }
     }
     fn one<A: Arch>(&mut self, r: Rect, a: &A) {
-        // SAFETY: a page is plain data; every record type is valid as zero bytes or is overwritten before use
-        // (only slot 0 is read: the live mask below names it alone).
+        // SAFETY: Page holds integer rect lanes, MaybeUninit records and an integer initialized mask.
+        // All are valid zeroed; set_record initializes slot 0 before its live bit is published.
         let mut pg: Box<Page<A>> = unsafe { Box::new_zeroed().assume_init() };
         pg.set_rect(0, r);
-        pg.rec[0] = *a;
+        pg.set_record(0, *a);
         let rows = [1u64];
-        A::paint(self.soft, ColRef { pages: core::slice::from_ref(&*pg), space: &self.space, live: Live { cap: 1, rows: &rows, nrec: 1 } }, self.u);
+        A::paint(
+            self.soft,
+            ColRef {
+                pages: core::slice::from_ref(&*pg),
+                space: &self.space,
+                live: Live {
+                    cap: 1,
+                    rows: &rows,
+                    nrec: 1,
+                },
+            },
+            self.u,
+        );
     }
 }
 struct Now<'a, 'r, 's, V> {
@@ -259,7 +326,12 @@ struct Rects(Vec<Rect>);
 impl bough_lay::Out for Rects {
     #[inline]
     fn put(&mut self, k: usize, r: [i32; 4]) {
-        self.0[k] = Rect { x0: r[0], y0: r[1], x1: r[2], y1: r[3] };
+        self.0[k] = Rect {
+            x0: r[0],
+            y0: r[1],
+            x1: r[2],
+            y1: r[3],
+        };
     }
 }
 impl<V> Leaf<V> for Now<'_, '_, '_, V> {
@@ -277,16 +349,39 @@ impl<'r, 's, V> ScopeOf<'r, V> for Immediate<'s, V> {
 impl<'s, V> Sink<V> for Immediate<'s, V> {
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, f: F) {
         let (rects, row) = f();
-        row.visit(&mut Now { im: self, rects: rects.as_ref(), at: (0, 0), k: 0 });
+        row.visit(&mut Now {
+            im: self,
+            rects: rects.as_ref(),
+            at: (0, 0),
+            k: 0,
+        });
     }
-    fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(&mut self, space: Space, f: F) {
-        let mut sub = Immediate { soft: &mut *self.soft, u: self.u, space, _p: PhantomData };
+    fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(
+        &mut self,
+        space: Space,
+        f: F,
+    ) {
+        let mut sub = Immediate {
+            soft: &mut *self.soft,
+            u: self.u,
+            space,
+            _p: PhantomData,
+        };
         f(&mut sub);
     }
     fn env(&self) -> crate::sink::Env<'_> {
-        crate::sink::Env { scale: f32::from_bits(self.u.w[crate::expr::U_SCALE]), size: [self.soft.w as f32, self.soft.h as f32], u: self.u }
+        crate::sink::Env {
+            scale: f32::from_bits(self.u.w[crate::expr::U_SCALE]),
+            size: [self.soft.w as f32, self.soft.h as f32],
+            u: self.u,
+        }
     }
-    fn rows<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(&mut self, n: u32, geo: Option<crate::sink::Geo>, mut f: F) -> i32 {
+    fn rows<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
+        &mut self,
+        n: u32,
+        geo: Option<crate::sink::Geo>,
+        mut f: F,
+    ) -> i32 {
         let g = geo.expect("the immediate sink lays out");
         if n == 0 {
             return 0;
@@ -298,19 +393,36 @@ impl<'s, V> Sink<V> for Immediate<'s, V> {
         if row_h == 0 {
             return 0;
         }
-        let l = List { n, row_h, x: g.x, y: g.y, shape: &[], edits: &crate::sink::FIXED };
+        let l = List {
+            n,
+            row_h,
+            x: g.x,
+            y: g.y,
+            shape: &[],
+            edits: &crate::sink::FIXED,
+        };
         let (lo, hi) = exposed(&l, self.space.origin(self.u), self.space.clip);
         for r in lo..hi {
             let row = f(r as usize);
             bough_lay::shape::place(&row, scale, self.u, g.w as f32, &mut rects);
-            row.visit(&mut Now { im: self, rects: &rects.0, at: (g.x, g.y + r as i32 * row_h), k: 0 });
+            row.visit(&mut Now {
+                im: self,
+                rects: &rects.0,
+                at: (g.x, g.y + r as i32 * row_h),
+                k: 0,
+            });
         }
         n as i32 * row_h
     }
     fn list<R: Row<V>, F: FnMut(usize) -> R>(&mut self, l: &List<'_>, mut f: F) {
         let (lo, hi) = exposed(l, self.space.origin(self.u), self.space.clip);
         for r in lo..hi {
-            f(r as usize).visit(&mut Now { im: self, rects: l.shape, at: (l.x, l.y + r as i32 * l.row_h), k: 0 });
+            f(r as usize).visit(&mut Now {
+                im: self,
+                rects: l.shape,
+                at: (l.x, l.y + r as i32 * l.row_h),
+                k: 0,
+            });
         }
     }
 }

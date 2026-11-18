@@ -34,7 +34,7 @@ pub trait Model: View + 'static {
 
 pub struct Scene<V: Model> {
     pub v: V,
-    pub world: World<Spans<'static>>,
+    pub world: World<V, Spans<'static>>,
     pub geo: Geo,
     mask: TileSet,
     scroll_acc: f64,
@@ -45,13 +45,25 @@ pub struct Scene<V: Model> {
 }
 
 fn image(k: i32) -> &'static bough_glyph::Image {
-    if k >= 2 { &bough_glyph::DEJAVU_SANS_28 } else { &bough_glyph::DEJAVU_SANS_14 }
+    if k >= 2 {
+        &bough_glyph::DEJAVU_SANS_28
+    } else {
+        &bough_glyph::DEJAVU_SANS_14
+    }
 }
 
 impl<V: Model> Scene<V> {
     /// A scene that has no size yet: [`App::resize`] mounts it.
     pub fn new(v: V) -> Scene<V> {
-        Scene { v, world: World::new(1, 1, V::NWORDS), geo: Geo::new(0, 0, 1), mask: TileSet::new(1, 1), scroll_acc: 0.0, ms: 0, last: Default::default() }
+        Scene {
+            v,
+            world: World::new(1, 1, V::NWORDS),
+            geo: Geo::new(0, 0, 1),
+            mask: TileSet::new(1, 1),
+            scroll_acc: 0.0,
+            ms: 0,
+            last: Default::default(),
+        }
     }
     fn after(&mut self) {
         // content may have moved under a still pointer: the pick follows the state, not the last motion event
@@ -125,8 +137,14 @@ impl<V: Model> App for Scene<V> {
             Event::Leave => {
                 w.pointer(v, -1, -1);
             }
-            Event::Button { x, y, button, pressed } => {
-                let b = [Button::Primary, Button::Secondary, Button::Middle][button.min(2) as usize];
+            Event::Button {
+                x,
+                y,
+                button,
+                pressed,
+            } => {
+                let b =
+                    [Button::Primary, Button::Secondary, Button::Middle][button.min(2) as usize];
                 if pressed {
                     w.pointer_down(v, x as i32, y as i32, b);
                 } else {
@@ -144,8 +162,17 @@ impl<V: Model> App for Scene<V> {
                     return;
                 }
             }
-            Event::Key { sym, pressed: true, mods } => {
-                let m = Mods { shift: mods.shift, ctrl: mods.ctrl, alt: mods.alt, cmd: mods.logo };
+            Event::Key {
+                sym,
+                pressed: true,
+                mods,
+            } => {
+                let m = Mods {
+                    shift: mods.shift,
+                    ctrl: mods.ctrl,
+                    alt: mods.alt,
+                    cmd: mods.logo,
+                };
                 match bough_host_typed(sym, mods) {
                     Some(c) => {
                         let mut b = [0u8; 4];
@@ -183,7 +210,12 @@ impl<V: Model> App for Scene<V> {
     fn settle(&mut self) -> TilesRef<'_> {
         self.after();
         let t = &self.world.tiles;
-        TilesRef { bits: &t.bits, stride: t.stride, lo: t.lo, hi: t.hi }
+        TilesRef {
+            bits: &t.bits,
+            stride: t.stride,
+            lo: t.lo,
+            hi: t.hi,
+        }
     }
     unsafe fn paint(&mut self, px: *mut u32, stride: usize, repair: Option<TilesRef<'_>>) {
         let (w, h) = (self.geo.w, self.geo.h);

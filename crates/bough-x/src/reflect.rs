@@ -86,23 +86,32 @@ pub struct ColInfo {
     pub on: Option<Hov>,
     /// The store's sites that share the column, in the order of their record bases.
     pub sites: Vec<u32>,
+    words: for<'a> unsafe fn(*const u8, &'a U) -> &'a [u32],
     val: unsafe fn(*const u8, usize, &U) -> Val,
     changed: unsafe fn(*const u8, &U, &U) -> bool,
     offset: unsafe fn(*const u8, &U) -> (i32, i32),
 }
 /// SAFETY (all three): `p` points at a record of type `A`.
 unsafe fn val_of<A: Arch>(p: *const u8, op: usize, u: &U) -> Val {
+    // SAFETY: caller supplied a live A record, checked at column admission.
     unsafe { (*(p as *const A)).val(op, u) }
 }
 unsafe fn changed_of<A: Arch>(p: *const u8, old: &U, new: &U) -> bool {
+    // SAFETY: caller supplied a live A record, checked at column admission.
     unsafe { (*(p as *const A)).changed(old, new) }
 }
 unsafe fn offset_of<A: Arch>(p: *const u8, u: &U) -> (i32, i32) {
+    // SAFETY: caller supplied a live A record, checked at column admission.
     unsafe { (*(p as *const A)).offset(u) }
+}
+unsafe fn words_of<'a, A: Arch>(p: *const u8, _: &'a U) -> &'a [u32] {
+    // SAFETY: the caller keeps the initialized A slot alive for the supplied lifetime.
+    unsafe { (&*p.cast::<A>()).record_words() }
 }
 impl ColInfo {
     fn of<A: Arch>(on: Option<Hov>) -> ColInfo {
         ColInfo {
+            words: words_of::<A>,
             arch: TypeId::of::<A>(),
             kind: A::NAME,
             ty: core::any::type_name::<A>(),
@@ -170,9 +179,23 @@ pub struct StoreInfo {
 }
 impl StoreInfo {
     fn new(kind: Kind, loc: Option<&'static Location<'static>>) -> StoreInfo {
-        StoreInfo { kind, seq: Vec::new(), loc, sites: Vec::new(), cols: Vec::new(), subs: Vec::new(), refused: 0 }
+        StoreInfo {
+            kind,
+            seq: Vec::new(),
+            loc,
+            sites: Vec::new(),
+            cols: Vec::new(),
+            subs: Vec::new(),
+            refused: 0,
+        }
     }
-    fn child(&mut self, q: usize, st: &Store, kind: Kind, loc: &'static Location<'static>) -> &mut StoreInfo {
+    fn child(
+        &mut self,
+        q: usize,
+        st: &Store,
+        kind: Kind,
+        loc: &'static Location<'static>,
+    ) -> &mut StoreInfo {
         while self.subs.len() <= q {
             self.subs.push(StoreInfo::new(Kind::Scope, None));
         }
@@ -215,6 +238,7 @@ impl StoreInfo {
 /// The reflecting sink. It writes nothing and allocates nothing in the world; it walks the stores in step with
 /// the view (the same counters the writing sink keeps) and, at every record, keeps what the record's type says.
 pub struct Learn<'a> {
+    u: &'a U,
     st: &'a Store,
     out: &'a mut StoreInfo,
     rowc: u32,
@@ -239,8 +263,15 @@ impl<V> Leaf<V> for LearnLeaf<'_> {
         self.site += 1;
         let pos = self.pos;
         self.pos += 1;
-        let Some(s) = self.st.sites.get(k) else { return };
-        self.out.sites[k] = Some(SiteInfo { col: s.col, row: self.row, pos, loc: self.loc });
+        let Some(s) = self.st.sites.get(k) else {
+            return;
+        };
+        self.out.sites[k] = Some(SiteInfo {
+            col: s.col,
+            row: self.row,
+            pos,
+            loc: self.loc,
+        });
         // The readers are installed only for a column made for this very record type. A record whose type holds
         // a closure is another type in each sink's instantiation of `view` (the closure's type carries the sink),
         // so its column is not readable through this sink: it is skipped, never read as another type.
@@ -258,15 +289,34 @@ impl<'r, 'a, V> ScopeOf<'r, V> for Learn<'a> {
     type Scope = Learn<'r>;
 }
 impl<'a, V> Sink<V> for Learn<'a> {
+    fn env(&self) -> crate::sink::Env<'_> {
+        let scale = f32::from_bits(self.u.w[crate::expr::U_SCALE]);
+        let r = self.st.space.clip;
+        crate::sink::Env {
+            u: self.u,
+            scale: if scale > 0.0 { scale } else { 1.0 },
+            size: [(r.x1 - r.x0) as f32, (r.y1 - r.y0) as f32],
+        }
+    }
+
     #[track_caller]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, f: F) {
         let loc = Location::caller();
         let k = self.rowc;
         self.rowc += 1;
         self.out.seq.push(Part::Row(k));
-        let Some(&(_, p0)) = self.st.rows.get(k as usize) else { return };
+        let Some(&(_, p0)) = self.st.rows.get(k as usize) else {
+            return;
+        };
         let (_, row) = f();
-        row.visit(&mut LearnLeaf { st: self.st, out: self.out, site: p0, row: k, pos: 0, loc });
+        row.visit(&mut LearnLeaf {
+            st: self.st,
+            out: self.out,
+            site: p0,
+            row: k,
+            pos: 0,
+            loc,
+        });
     }
     #[track_caller]
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(&mut self, _: Space, f: F) {
@@ -274,9 +324,17 @@ impl<'a, V> Sink<V> for Learn<'a> {
         let q = self.sub as usize;
         self.sub += 1;
         self.out.seq.push(Part::Sub(q as u32));
-        let Some(st) = self.st.subs.get(q) else { return };
+        let Some(st) = self.st.subs.get(q) else {
+            return;
+        };
         let out = self.out.child(q, st, Kind::Scope, loc);
-        f(&mut Learn { st, out, rowc: 0, sub: 0 });
+        f(&mut Learn {
+            u: self.u,
+            st,
+            out,
+            rowc: 0,
+            sub: 0,
+        });
     }
     #[track_caller]
     fn list<R: Row<V>, F: FnMut(usize) -> R>(&mut self, l: &List<'_>, mut f: F) {
@@ -284,13 +342,28 @@ impl<'a, V> Sink<V> for Learn<'a> {
         let q = self.sub as usize;
         self.sub += 1;
         self.out.seq.push(Part::Sub(q as u32));
-        let Some(st) = self.st.subs.get(q) else { return };
-        let info = ListInfo { n: l.n, row_h: l.row_h, x: l.x, y: l.y, shape: l.shape.to_vec() };
+        let Some(st) = self.st.subs.get(q) else {
+            return;
+        };
+        let info = ListInfo {
+            n: l.n,
+            row_h: l.row_h,
+            x: l.x,
+            y: l.y,
+            shape: l.shape.to_vec(),
+        };
         let out = self.out.child(q, st, Kind::List(info), loc);
         if !st.sites.is_empty() && l.n > 0 {
             // any row will do: every row of a list has the type the columns were made for
             let r = if st.hi > st.lo { st.lo } else { 0 };
-            f(r as usize).visit(&mut LearnLeaf { st, out, site: 0, row: 0, pos: 0, loc });
+            f(r as usize).visit(&mut LearnLeaf {
+                st,
+                out,
+                site: 0,
+                row: 0,
+                pos: 0,
+                loc,
+            });
         }
     }
 }
@@ -352,27 +425,33 @@ impl<'w> Item<'w> {
     }
     /// The record's words as stored.
     pub fn words(&self) -> &'w [u32] {
-        // SAFETY: `ptr` is a live record of the column, whose size is a whole number of words (`Words`).
-        unsafe { core::slice::from_raw_parts(self.ptr as *const u32, self.rec_words()) }
-    }
-    fn rec_words(&self) -> usize {
-        self.info.ops.iter().map(|o| (o.word + o.words) as usize).max().unwrap_or(0)
+        // SAFETY: ptr is a live record of the checked archetype; self keeps its store borrowed.
+        // The typed reader exposes bytes only for Words, otherwise an empty slice.
+        unsafe { (self.info.words)(self.ptr, self.u) }
     }
     pub fn ops(&self) -> impl Iterator<Item = Operand<'w>> + '_ {
         let words = self.words();
-        self.info.ops.iter().enumerate().map(move |(i, op)| Operand {
-            op,
-            // SAFETY: `ptr` is a record of the archetype `val` was instantiated for.
-            val: unsafe { (self.info.val)(self.ptr, i, self.u) },
-            words: &words[op.word as usize..(op.word + op.words) as usize],
-        })
+        self.info
+            .ops
+            .iter()
+            .enumerate()
+            .map(move |(i, op)| Operand {
+                op,
+                // SAFETY: `ptr` is a record of the archetype `val` was instantiated for.
+                val: unsafe { (self.info.val)(self.ptr, i, self.u) },
+                words: words
+                    .get(op.word as usize..(op.word + op.words) as usize)
+                    .unwrap_or(&[]),
+            })
     }
     pub fn get(&self, name: &str) -> Option<Operand<'w>> {
         self.ops().find(|o| o.op.name == name)
     }
     /// The first operand that is content (a text or a number), as text.
     pub fn text(&self) -> Option<String> {
-        self.ops().find(|o| o.val.is_content()).map(|o| o.val.text())
+        self.ops()
+            .find(|o| o.val.is_content())
+            .map(|o| o.val.text())
     }
     /// The record shows something else under `new` than under `old` (the core's own derivative).
     pub fn changed(&self, old: &U, new: &U) -> bool {
@@ -385,8 +464,22 @@ impl<'w> Item<'w> {
     /// An owned description of the record.
     pub fn snap(&self) -> Snap {
         // SAFETY: `ptr` is a record of the column's archetype.
-        let off = if self.info.moves { unsafe { (self.info.offset)(self.ptr, self.u) } } else { (0, 0) };
-        Snap { ent: self.ent, kind: self.info.kind, on: self.info.on, words: self.words().to_vec(), loc: self.site.loc, rect: self.rect, off, ops: self.info.ops, vals: self.ops().map(|o| o.val).collect() }
+        let off = if self.info.moves {
+            unsafe { (self.info.offset)(self.ptr, self.u) }
+        } else {
+            (0, 0)
+        };
+        Snap {
+            ent: self.ent,
+            kind: self.info.kind,
+            on: self.info.on,
+            words: self.words().to_vec(),
+            loc: self.site.loc,
+            rect: self.rect,
+            off,
+            ops: self.info.ops,
+            vals: self.ops().map(|o| o.val).collect(),
+        }
     }
 }
 
@@ -414,7 +507,10 @@ impl PartialEq for Op {
 }
 impl Snap {
     pub fn get(&self, name: &str) -> Option<Val> {
-        self.ops.iter().position(|o| o.name == name).map(|i| self.vals[i])
+        self.ops
+            .iter()
+            .position(|o| o.name == name)
+            .map(|i| self.vals[i])
     }
     pub fn text(&self) -> Option<String> {
         self.vals.iter().find(|v| v.is_content()).map(|v| v.text())
@@ -424,21 +520,36 @@ impl Snap {
 /// Reflection of one world: what the view's types said, kept beside the stores (not in them). It is tied to the
 /// store tree it was learned from: every use checks it is that tree, with the columns it learned, of the record
 /// types it learned (admission, per column; never per record), and refuses anything else.
-pub struct Reflect {
+pub struct Reflect<V, B> {
+    world: crate::world::WorldId,
+    _owner: core::marker::PhantomData<fn(V, B) -> (V, B)>,
     pub root: StoreInfo,
     store: *const Store,
 }
 
-impl Reflect {
+impl<V: View, B: crate::store::Backend> Reflect<V, B> {
     /// Describe the view once with the reflecting sink. Run it again after the store tree grows (a list that
     /// was empty got rows); [`Reflect::current`] says whether it has.
-    pub fn learn<V: View>(root: &Store, v: &V) -> Reflect {
+    pub fn learn(world: &crate::world::World<V, B>, v: &V) -> Self {
+        let root = world.root();
+        let u = &world.shown;
         let mut out = StoreInfo::new(Kind::Root, None);
         out.sites.resize_with(root.sites.len(), || None);
         out.cols.resize_with(root.cols.len(), || None);
-        v.view(&mut Learn { st: root, out: &mut out, rowc: 0, sub: 0 });
+        v.view(&mut Learn {
+            u,
+            st: root,
+            out: &mut out,
+            rowc: 0,
+            sub: 0,
+        });
         out.finish();
-        Reflect { root: out, store: root }
+        Reflect {
+            root: out,
+            store: root,
+            world: world.id(),
+            _owner: core::marker::PhantomData,
+        }
     }
 
     /// Whether this reflection applies to `root`: the tree it was learned from, every column and site known,
@@ -448,10 +559,13 @@ impl Reflect {
             i.cols.len() == s.cols.len()
                 && i.sites.len() == s.sites.len()
                 && i.subs.len() == s.subs.len()
-                && i.cols.iter().zip(&s.cols).all(|(a, c)| a.as_ref().is_none_or(|a| a.arch == c.arch))
+                && i.cols
+                    .iter()
+                    .zip(&s.cols)
+                    .all(|(a, c)| a.as_ref().is_none_or(|a| a.arch == c.arch))
                 && i.subs.iter().zip(&s.subs).all(|(a, b)| same(a, b))
         }
-        core::ptr::eq(self.store, root) && same(&self.root, root)
+        root.world == Some(self.world) && core::ptr::eq(self.store, root) && same(&self.root, root)
     }
     /// Records the view described whose columns were not made for their type (closures inside `view`).
     pub fn refused(&self) -> u32 {
@@ -463,7 +577,11 @@ impl Reflect {
 
     /// Every list of the view: its store path, what it was described with, where.
     pub fn lists(&self) -> Vec<(Path, &ListInfo, &'static Location<'static>)> {
-        fn go<'a>(s: &'a StoreInfo, p: &mut Path, out: &mut Vec<(Path, &'a ListInfo, &'static Location<'static>)>) {
+        fn go<'a>(
+            s: &'a StoreInfo,
+            p: &mut Path,
+            out: &mut Vec<(Path, &'a ListInfo, &'static Location<'static>)>,
+        ) {
             if let (Kind::List(l), Some(loc)) = (&s.kind, s.loc) {
                 out.push((*p, l, loc));
             }
@@ -484,7 +602,10 @@ impl Reflect {
     /// Every live record in paint order (the order the stores paint: a column as a whole, child stores where
     /// the view described them).
     pub fn each<'w>(&'w self, root: &'w Store, u: &'w U, mut f: impl FnMut(&Item<'w>)) {
-        assert!(self.current(root), "reflection used on a store tree it was not learned from (or that changed shape): learn again");
+        assert!(
+            self.current(root),
+            "reflection used on a store tree it was not learned from (or that changed shape): learn again"
+        );
         walk(&self.root, root, u, &mut Path::default(), &mut f);
     }
 
@@ -493,7 +614,10 @@ impl Reflect {
     /// Panics if `root` is not the tree this reflection was learned from, or has changed shape since: its typed
     /// readers would read other records as their types.
     pub fn items<'w>(&'w self, root: &'w Store, u: &'w U) -> Vec<Item<'w>> {
-        assert!(self.current(root), "reflection used on a store tree it was not learned from (or that changed shape): learn again");
+        assert!(
+            self.current(root),
+            "reflection used on a store tree it was not learned from (or that changed shape): learn again"
+        );
         let mut v = Vec::new();
         walk_owned(&self.root, root, u, &mut Path::default(), &mut v);
         v
@@ -501,7 +625,18 @@ impl Reflect {
 
     /// The records under device point (x, y), topmost first: any record, with a handler or not.
     pub fn stack<'w>(&'w self, root: &'w Store, u: &'w U, x: i32, y: i32) -> Vec<Item<'w>> {
-        let mut v: Vec<Item<'w>> = self.items(root, u).into_iter().filter(|it| it.screen.and(it.clip).hits(Rect { x0: x, y0: y, x1: x + 1, y1: y + 1 })).collect();
+        let mut v: Vec<Item<'w>> = self
+            .items(root, u)
+            .into_iter()
+            .filter(|it| {
+                it.screen.and(it.clip).hits(Rect {
+                    x0: x,
+                    y0: y,
+                    x1: x + 1,
+                    y1: y + 1,
+                })
+            })
+            .collect();
         v.reverse();
         v
     }
@@ -513,15 +648,28 @@ impl Reflect {
 
     /// Rows `rows` of the list at `path`, described from the view's row function: whether or not they are
     /// materialised, with nothing written and nothing scrolled. The rects are in the list's store space.
-    pub fn rows<V: View>(v: &V, u: &U, path: &Path, rows: Range<u32>) -> Vec<Snap> {
+    pub fn rows(v: &V, u: &U, path: &Path, rows: Range<u32>) -> Vec<Snap> {
         let mut out = Vec::new();
-        let mut d = Detach { at: Path::default(), want: path, rows, u, out: &mut out, sub: 0 };
+        let mut d = Detach {
+            at: Path::default(),
+            want: path,
+            rows,
+            u,
+            out: &mut out,
+            sub: 0,
+        };
         v.view(&mut d);
         out
     }
 }
 
-fn walk<'w>(info: &'w StoreInfo, st: &'w Store, u: &'w U, path: &mut Path, f: &mut impl FnMut(&Item<'w>)) {
+fn walk<'w>(
+    info: &'w StoreInfo,
+    st: &'w Store,
+    u: &'w U,
+    path: &mut Path,
+    f: &mut impl FnMut(&Item<'w>),
+) {
     let mut v = Vec::new();
     walk_owned(info, st, u, path, &mut v);
     for it in &v {
@@ -529,13 +677,25 @@ fn walk<'w>(info: &'w StoreInfo, st: &'w Store, u: &'w U, path: &mut Path, f: &m
     }
 }
 
-fn walk_owned<'w>(info: &'w StoreInfo, st: &'w Store, u: &'w U, path: &mut Path, out: &mut Vec<Item<'w>>) {
+fn walk_owned<'w>(
+    info: &'w StoreInfo,
+    st: &'w Store,
+    u: &'w U,
+    path: &mut Path,
+    out: &mut Vec<Item<'w>>,
+) {
     let org = st.space.origin(u);
     for p in &st.order {
         match *p {
             Pass::Col(j) => {
-                let (c, Some(Some(ci))) = (&st.cols[j as usize], info.cols.get(j as usize)) else { continue };
-                let live = Live { cap: st.cap, rows: &st.row_live, nrec: c.nrec };
+                let (c, Some(Some(ci))) = (&st.cols[j as usize], info.cols.get(j as usize)) else {
+                    continue;
+                };
+                let live = Live {
+                    cap: st.cap,
+                    rows: &st.row_live,
+                    nrec: c.nrec,
+                };
                 for pg in 0..c.npages {
                     let mut m = live.page(pg as usize);
                     while m != 0 {
@@ -543,8 +703,12 @@ fn walk_owned<'w>(info: &'w StoreInfo, st: &'w Store, u: &'w U, path: &mut Path,
                         m &= m - 1;
                         let rec = pg * 64 + i;
                         let (k, slot) = (rec / st.cap, rec % st.cap);
-                        let Some(&si) = ci.sites.get(k as usize) else { continue };
-                        let Some(Some(site)) = info.sites.get(si as usize) else { continue };
+                        let Some(&si) = ci.sites.get(k as usize) else {
+                            continue;
+                        };
+                        let Some(Some(site)) = info.sites.get(si as usize) else {
+                            continue;
+                        };
                         let row = if st.cap == 1 {
                             site.row
                         } else if cfg!(feature = "mutant_reflect") {
@@ -557,15 +721,40 @@ fn walk_owned<'w>(info: &'w StoreInfo, st: &'w Store, u: &'w U, path: &mut Path,
                         // SAFETY: a site of this store, `slot` under its capacity, pointers current.
                         let rect = unsafe { st.sites[si as usize].rect(slot) };
                         // SAFETY: `ptr` is a record of the column's archetype.
-                        let off = if ci.moves { unsafe { (ci.offset)(ptr, u) } } else { (0, 0) };
+                        let off = if ci.moves {
+                            unsafe { (ci.offset)(ptr, u) }
+                        } else {
+                            (0, 0)
+                        };
                         let screen = rect.shift(org).shift(off);
-                        out.push(Item { ent: Ent { path: *path, row, pos: site.pos }, col: j, rec, rect, screen, clip: st.space.clip, info: ci, site, ptr, u });
+                        out.push(Item {
+                            ent: Ent {
+                                path: *path,
+                                row,
+                                pos: site.pos,
+                            },
+                            col: j,
+                            rec,
+                            rect,
+                            screen,
+                            clip: st.space.clip,
+                            info: ci,
+                            site,
+                            ptr,
+                            u,
+                        });
                     }
                 }
             }
             Pass::Sub(q) => {
-                let (Some(si), Some(ss)) = (info.subs.get(q as usize), st.subs.get(q as usize)) else { continue };
-                assert!((path.n as usize) < path.at.len(), "stores nest at most six deep");
+                let (Some(si), Some(ss)) = (info.subs.get(q as usize), st.subs.get(q as usize))
+                else {
+                    continue;
+                };
+                assert!(
+                    (path.n as usize) < path.at.len(),
+                    "stores nest at most six deep"
+                );
                 path.at[path.n as usize] = q as u16;
                 path.n += 1;
                 walk_owned(si, ss, u, path, out);
@@ -615,7 +804,20 @@ impl<V> Leaf<V> for DLeaf<'_> {
         let k = self.ent.pos as usize;
         let vals = (0..A::OPS.len()).map(|i| a.val(i, self.u)).collect();
         let off = if A::MOVES { a.offset(self.u) } else { (0, 0) };
-        self.out.push(Snap { ent: self.ent, kind: A::NAME, on: hov, words: a.words().to_vec(), loc: self.loc, rect: self.shape.get(k).map_or(Rect::default(), |r| r.shift(self.at)), off, ops: A::OPS, vals });
+        self.out.push(Snap {
+            ent: self.ent,
+            kind: A::NAME,
+            on: hov,
+            words: a.record_words().to_vec(),
+            loc: self.loc,
+            rect: self
+                .shape
+                .get(k)
+                .map_or(Rect::default(), |r| r.shift(self.at)),
+            off,
+            ops: A::OPS,
+            vals,
+        });
         self.ent.pos += 1;
     }
 }
@@ -629,7 +831,14 @@ impl<'a, V> Sink<V> for Detach<'a> {
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(&mut self, _: Space, f: F) {
         let (p, under) = self.next();
         if under {
-            f(&mut Detach { at: p, want: self.want, rows: self.rows.clone(), u: self.u, out: self.out, sub: 0 });
+            f(&mut Detach {
+                at: p,
+                want: self.want,
+                rows: self.rows.clone(),
+                u: self.u,
+                out: self.out,
+                sub: 0,
+            });
         }
     }
     #[track_caller]
@@ -641,7 +850,18 @@ impl<'a, V> Sink<V> for Detach<'a> {
         }
         for r in self.rows.start..self.rows.end.min(l.n) {
             let at = (l.x, l.y + r as i32 * l.row_h);
-            f(r as usize).visit(&mut DLeaf { ent: Ent { path: p, row: r, pos: 0 }, loc, shape: l.shape, at, u: self.u, out: self.out });
+            f(r as usize).visit(&mut DLeaf {
+                ent: Ent {
+                    path: p,
+                    row: r,
+                    pos: 0,
+                },
+                loc,
+                shape: l.shape,
+                at,
+                u: self.u,
+                out: self.out,
+            });
         }
     }
 }

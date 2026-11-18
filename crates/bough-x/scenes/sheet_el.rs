@@ -50,13 +50,25 @@ fn fill(look: u32, col: u32, row: u32) -> Color {
 }
 /// The page right of the cells (a hovered column never reaches it).
 fn page(look: u32) -> Color {
-    if look & DARK != 0 { rgb(0x15171c) } else { rgb(0xffffff) }
+    if look & DARK != 0 {
+        rgb(0x15171c)
+    } else {
+        rgb(0xffffff)
+    }
 }
 fn ink(look: u32) -> Color {
-    if look & DARK != 0 { rgb(0xe6e9ef) } else { rgb(0x1d2129) }
+    if look & DARK != 0 {
+        rgb(0xe6e9ef)
+    } else {
+        rgb(0x1d2129)
+    }
 }
 fn chrome(look: u32) -> Color {
-    if look & DARK != 0 { rgb(0x23262d) } else { rgb(0xeceef2) }
+    if look & DARK != 0 {
+        rgb(0x23262d)
+    } else {
+        rgb(0xeceef2)
+    }
 }
 
 const VALUE: NumFmt = NumFmt::new("", Some(2), "");
@@ -70,14 +82,24 @@ impl Sheet {
     /// A sheet of `rows` rows (1 to `MAX_ROWS`). Boxed: the cells are 400 KB of the owner.
     pub fn with_rows(rows: usize) -> Box<Sheet> {
         let rows = rows.clamp(1, MAX_ROWS);
-        let mut s: Box<Sheet> = {
-            // SAFETY: every field is a `Signal` of a plain number (or a `usize`): zero bytes are a valid `Sheet`.
-            unsafe { Box::<Sheet>::new_zeroed().assume_init() }
+        let mut storage = Box::<Sheet>::new_uninit();
+        let p = storage.as_mut_ptr();
+        // SAFETY: every field is initialized exactly once before assume_init.
+        // Each array element is written in bounds; no reference to Sheet exists yet.
+        let mut s = unsafe {
+            for i in 0..CELLS {
+                (&raw mut (*p).cells)
+                    .cast::<Signal<f32>>()
+                    .add(i)
+                    .write(Signal::new(value(i / COLS, i % COLS)));
+            }
+            (&raw mut (*p).sums).write(std::array::from_fn(|_| Signal::new(0.0)));
+            (&raw mut (*p).rows).write(rows);
+            (&raw mut (*p).look).write(Signal::new(NO_HOVER));
+            (&raw mut (*p).sel).write(Signal::new(0));
+            (&raw mut (*p).scroll).write(Signal::new(0.0));
+            storage.assume_init()
         };
-        s.rows = rows;
-        for i in 0..CELLS {
-            s.cells[i] = Signal::new(value(i / COLS, i % COLS));
-        }
         let mut sums = [0.0f32; COLS];
         for (i, c) in s.cells.iter().enumerate().take(rows * COLS) {
             sums[i % COLS] += **c;
@@ -89,7 +111,13 @@ impl Sheet {
 
     pub fn hover_header(&mut self, col: u32, on: bool) {
         let look = *self.look;
-        let next = if on { (look & !0xff) | col } else if look & 0xff == col { (look & !0xff) | NO_HOVER } else { look };
+        let next = if on {
+            (look & !0xff) | col
+        } else if look & 0xff == col {
+            (look & !0xff) | NO_HOVER
+        } else {
+            look
+        };
         self.look.set(next);
     }
     pub fn toggle_theme(&mut self) {
@@ -126,8 +154,18 @@ impl View for Sheet {
                 .w(CELL_W)
                 .h(HEADER)
                 .px(6.0)
-                .bg(sig!(self.look).map(move |l: &u32| if l & 0xff == col { rgb(0x9db8f0) } else { chrome(*l) }))
-                .child(text(COLUMN_NAMES[c]).font(12.0, HEADER).color(sig!(self.look).map(|l: &u32| ink(*l))))
+                .bg(sig!(self.look).map(move |l: &u32| {
+                    if l & 0xff == col {
+                        rgb(0x9db8f0)
+                    } else {
+                        chrome(*l)
+                    }
+                }))
+                .child(
+                    text(COLUMN_NAMES[c])
+                        .font(12.0, HEADER)
+                        .color(sig!(self.look).map(|l: &u32| ink(*l))),
+                )
                 .on_hover(move |s: &mut Sheet, e: &Ev| s.hover_header(col, e.on))
         };
         let cell = move |r: usize, c: usize| {
@@ -137,35 +175,74 @@ impl View for Sheet {
                 .h(CELL_H)
                 .px(6.0)
                 .bg(sig!(self.look).map(move |l: &u32| fill(*l, col, row)))
-                .child(text(sig!(self.cells).at(r * COLS + c).num(|v: &f32| *v, VALUE)).font(12.0, CELL_H).color(sig!(self.look).map(|l: &u32| ink(*l))))
+                .child(
+                    text(sig!(self.cells).at(r * COLS + c).num(|v: &f32| *v, VALUE))
+                        .font(12.0, CELL_H)
+                        .color(sig!(self.look).map(|l: &u32| ink(*l))),
+                )
         };
         let data_row = move |r: usize| {
             row((
-                div().w(GUTTER).h(CELL_H).px(6.0).bg(sig!(self.look).map(|l: &u32| chrome(*l))).child(text(format!("{}", r + 1)).font(11.0, CELL_H).color(rgb(0x7a808c))),
+                div()
+                    .w(GUTTER)
+                    .h(CELL_H)
+                    .px(6.0)
+                    .bg(sig!(self.look).map(|l: &u32| chrome(*l)))
+                    .child(
+                        text(format!("{}", r + 1))
+                            .font(11.0, CELL_H)
+                            .color(rgb(0x7a808c)),
+                    ),
                 row(std::array::from_fn::<_, COLS, _>(move |c| cell(r, c))),
             ))
         };
-        let toolbar = row((text("Sheet 1").font(14.0, 20.0), text("Σ totals").font(12.0, 20.0).color(rgb(0x7a808c))))
-            .gap(16.0)
-            .px(12.0)
-            .h(TOOLBAR)
-            .items(Align::Center)
-            .bg(sig!(self.look).map(|l: &u32| chrome(*l)));
-        let header = row((div().w(GUTTER).h(HEADER).bg(sig!(self.look).map(|l: &u32| chrome(*l))), row(std::array::from_fn::<_, COLS, _>(header_cell))));
+        let toolbar = row((
+            text("Sheet 1").font(14.0, 20.0),
+            text("Σ totals").font(12.0, 20.0).color(rgb(0x7a808c)),
+        ))
+        .gap(16.0)
+        .px(12.0)
+        .h(TOOLBAR)
+        .items(Align::Center)
+        .bg(sig!(self.look).map(|l: &u32| chrome(*l)));
+        let header = row((
+            div()
+                .w(GUTTER)
+                .h(HEADER)
+                .bg(sig!(self.look).map(|l: &u32| chrome(*l))),
+            row(std::array::from_fn::<_, COLS, _>(header_cell)),
+        ));
         let selection = block(CELL_W, CELL_H)
             .border(2.0, rgb(0x2f6bff))
             .abs(GUTTER, 0.0)
-            .translate(sig!(self.sel).map(|i: &u32| (((i % COLS as u32) as f32) * CELL_W, ((i / COLS as u32) as f32) * CELL_H)).transition(Curve::out(0.18)));
+            .translate(
+                sig!(self.sel)
+                    .map(|i: &u32| {
+                        (
+                            ((i % COLS as u32) as f32) * CELL_W,
+                            ((i / COLS as u32) as f32) * CELL_H,
+                        )
+                    })
+                    .transition(Curve::out(0.18)),
+            );
         // the outline after the rows, so it draws over its cell
         let body = column((column(each((0..self.rows).map(data_row))), selection))
             .relative()
             .grow(1.0)
             .scroll(sig!(self.scroll));
-        let footer = row((
-            div().w(GUTTER).h(CELL_H).child(text("Σ").font(12.0, CELL_H)),
-            row(std::array::from_fn::<_, COLS, _>(move |c| div().w(CELL_W).h(CELL_H).px(6.0).child(text(sig!(self.sums).at(c).num(|v: &f32| *v, VALUE)).font(12.0, CELL_H)))),
-        ))
-        .bg(sig!(self.look).map(|l: &u32| chrome(*l)));
+        let footer =
+            row((
+                div()
+                    .w(GUTTER)
+                    .h(CELL_H)
+                    .child(text("Σ").font(12.0, CELL_H)),
+                row(std::array::from_fn::<_, COLS, _>(move |c| {
+                    div().w(CELL_W).h(CELL_H).px(6.0).child(
+                        text(sig!(self.sums).at(c).num(|v: &f32| *v, VALUE)).font(12.0, CELL_H),
+                    )
+                })),
+            ))
+            .bg(sig!(self.look).map(|l: &u32| chrome(*l)));
         column((toolbar, header, body, footer))
             .w_pct(1.0)
             .h_pct(1.0)

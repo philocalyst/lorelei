@@ -22,23 +22,42 @@ impl Rng {
     }
 }
 
-fn check(tag: &str, step: usize, sheet: &Sheet, world: &mut World<Soft>, retained: &mut Soft, fresh: bool) {
+fn check(
+    tag: &str,
+    step: usize,
+    sheet: &Sheet,
+    world: &mut World<Sheet, Soft>,
+    retained: &mut Soft,
+    fresh: bool,
+) {
     retained.repair(&world.tiles, |s| world.paint(s));
     world.tiles.clear();
     let mut full = Soft::new(W, H);
     world.paint(&mut full);
-    assert!(retained.px == full.px, "{tag} step {step}: retained != full redraw ({} pixels)", diff(&retained.px, &full.px));
+    assert!(
+        retained.px == full.px,
+        "{tag} step {step}: retained != full redraw ({} pixels)",
+        diff(&retained.px, &full.px)
+    );
     let mut now = Soft::new(W, H);
     sheet.view(&mut Immediate::new(&mut now, &world.shown));
-    assert!(full.px == now.px, "{tag} step {step}: stores != immediate ({} pixels)", diff(&full.px, &now.px));
+    assert!(
+        full.px == now.px,
+        "{tag} step {step}: stores != immediate ({} pixels)",
+        diff(&full.px, &now.px)
+    );
     if fresh {
-        let mut w2 = World::<Soft>::new(W, H, NWORDS);
+        let mut w2 = World::<_, Soft>::new(W, H, NWORDS);
         // a fresh mount of the same instant
         w2.tick(world.now());
         w2.mount(sheet);
         let mut f = Soft::new(W, H);
         w2.paint(&mut f);
-        assert!(full.px == f.px, "{tag} step {step}: retained != fresh mount ({} pixels)", diff(&full.px, &f.px));
+        assert!(
+            full.px == f.px,
+            "{tag} step {step}: retained != fresh mount ({} pixels)",
+            diff(&full.px, &f.px)
+        );
     }
 }
 fn diff(a: &[u32], b: &[u32]) -> usize {
@@ -47,7 +66,7 @@ fn diff(a: &[u32], b: &[u32]) -> usize {
 
 fn script(rows: usize, steps: usize, redescribe: bool) {
     let mut sheet = Sheet::new(rows);
-    let mut world = World::<Soft>::new(W, H, NWORDS);
+    let mut world = World::<_, Soft>::new(W, H, NWORDS);
     world.mount(&sheet);
     let mut retained = Soft::new(W, H);
     let mut rng = Rng(0x5ee7 | 1);
@@ -57,7 +76,11 @@ fn script(rows: usize, steps: usize, redescribe: bool) {
     for step in 1..=steps {
         let n = sheet.rows.len();
         // a frame: time moves on, by a frame or by enough to finish any glide
-        t += if rng.below(4) == 0 { 400 } else { 16 + rng.below(40) as u32 };
+        t += if rng.below(4) == 0 {
+            400
+        } else {
+            16 + rng.below(40) as u32
+        };
         world.tick(t);
         match rng.below(10) {
             0 => {
@@ -71,13 +94,24 @@ fn script(rows: usize, steps: usize, redescribe: bool) {
             3 => {
                 // an exposed cell, or any cell
                 let top = (sheet.u.get::<Scroll>() / CELL_H) as usize;
-                let r = if rng.below(2) == 0 { (top + rng.below(30)).min(n - 1) } else { rng.below(n) };
+                let r = if rng.below(2) == 0 {
+                    (top + rng.below(30)).min(n - 1)
+                } else {
+                    rng.below(n)
+                };
                 let (c, v) = (rng.below(COLS), rng.below(1_000_000) as f32 / 100.0);
-                if redescribe { sheet.edit_opaque(r, c, v) } else { sheet.edit(r, c, v) }
+                if redescribe {
+                    sheet.edit_opaque(r, c, v)
+                } else {
+                    sheet.edit(r, c, v)
+                }
             }
             4 => {
                 let top = (sheet.u.get::<Scroll>() / CELL_H) as usize;
-                sheet.select(((top + rng.below(30)).min(n - 1) * COLS + rng.below(COLS)) as u32, world.now());
+                sheet.select(
+                    ((top + rng.below(30)).min(n - 1) * COLS + rng.below(COLS)) as u32,
+                    world.now(),
+                );
             }
             5 => sheet.scroll_by(if rng.below(2) == 0 { 132 } else { -132 }),
             6 => sheet.scroll_by(rng.below(4000) as i32 - 1500),
@@ -85,7 +119,11 @@ fn script(rows: usize, steps: usize, redescribe: bool) {
             8 => {
                 let top = (sheet.u.get::<Scroll>() / CELL_H) as usize;
                 let at = (top + rng.below(36)).min(n);
-                sheet.insert_row(at, std::array::from_fn(|c| (step * 13 + c) as f32), redescribe);
+                sheet.insert_row(
+                    at,
+                    std::array::from_fn(|c| (step * 13 + c) as f32),
+                    redescribe,
+                );
             }
             _ => {
                 if n > 3 {
@@ -119,10 +157,13 @@ fn redescribing_mode_matches_every_oracle() {
 #[test]
 fn nothing_unexposed_exists() {
     let sheet = Sheet::new(10_000);
-    let mut world = World::<Soft>::new(W, H, NWORDS);
+    let mut world = World::<_, Soft>::new(W, H, NWORDS);
     world.mount(&sheet);
     let (records, _, bytes) = world.root().stats();
     // 34 exposed rows of 22 records and under 40 fixed records
-    assert!(records < 34 * 22 + 40, "{records} records for a window of 34 rows");
+    assert!(
+        records < 34 * 22 + 40,
+        "{records} records for a window of 34 rows"
+    );
     assert!(bytes < 256 * 1024, "{bytes} bytes of columns");
 }

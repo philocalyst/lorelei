@@ -39,7 +39,15 @@ impl Meter {
         Meter { bracket, n, cold }
     }
     /// Run `step(k)` `reps` times; print the median of each counter and of the damage it left.
-    fn phase<V>(&mut self, scene: &str, name: &str, reps: usize, world: &mut World<Soft>, v: &mut V, mut step: impl FnMut(&mut World<Soft>, &mut V, usize)) {
+    fn phase<V, W: View>(
+        &mut self,
+        scene: &str,
+        name: &str,
+        reps: usize,
+        world: &mut World<W, Soft>,
+        v: &mut V,
+        mut step: impl FnMut(&mut World<W, Soft>, &mut V, usize),
+    ) {
         let mut rows: Vec<([u64; pmu::MAX], u32)> = Vec::with_capacity(reps);
         for k in 0..reps {
             if let Some(c) = &mut self.cold {
@@ -78,70 +86,163 @@ impl Meter {
 }
 
 fn env(name: &str, d: usize) -> usize {
-    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(d)
 }
 
 fn main() {
     let (n, reps) = (env("ROWS", 3_000), env("REPS", 64));
     let mut m = Meter::new();
-    let evs: Vec<&str> = pmu::sample_events().iter().skip(2).map(|e| e.name()).collect();
-    println!("# rows={n} reps={reps} cold={} window=1280x800 device px, DejaVu Sans 14 px from the prepared face", m.cold.is_some());
-    println!("scene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50{}", evs.iter().map(|e| format!("\t{e}")).collect::<String>());
+    let evs: Vec<&str> = pmu::sample_events()
+        .iter()
+        .skip(2)
+        .map(|e| e.name())
+        .collect();
+    println!(
+        "# rows={n} reps={reps} cold={} window=1280x800 device px, DejaVu Sans 14 px from the prepared face",
+        m.cold.is_some()
+    );
+    println!(
+        "scene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50{}",
+        evs.iter().map(|e| format!("\t{e}")).collect::<String>()
+    );
 
     // ---- rows ----
     {
         use rows::*;
         // mount: a fresh world and a fresh view each time (the glyph memo starts empty: nothing is shaped yet)
-        let mut scratch = World::<Soft>::new(W, H, NWORDS);
-        let mut holder: Vec<(Rows, World<Soft>)> = Vec::new();
+        let mut scratch = World::<Rows, Soft>::new(W, H, NWORDS);
+        let mut holder: Vec<(Rows, World<Rows, Soft>)> = Vec::new();
         let mut views: Vec<Rows> = (0..reps.min(16)).map(|_| Rows::new(n)).collect();
         let mut unit = ();
-        m.phase("rows", "mount", reps.min(16), &mut scratch, &mut unit, |_, _, _| {
-            let v = views.pop().unwrap();
-            let mut w = World::<Soft>::new(W, H, NWORDS);
-            w.mount(&v);
-            holder.push((v, w));
-        });
+        m.phase(
+            "rows",
+            "mount",
+            reps.min(16),
+            &mut scratch,
+            &mut unit,
+            |_, _, _| {
+                let v = views.pop().unwrap();
+                let mut w = World::<_, Soft>::new(W, H, NWORDS);
+                w.mount(&v);
+                holder.push((v, w));
+            },
+        );
         let (mut v, mut world) = holder.pop().unwrap();
-        println!("# rows mount: {} lines shaped, {} found again, {} bytes of glyph state", v.glyphs.borrow().shaped, v.glyphs.borrow().found, v.glyphs.borrow().bytes());
+        println!(
+            "# rows mount: {} lines shaped, {} found again, {} bytes of glyph state",
+            v.glyphs.borrow().shaped,
+            v.glyphs.borrow().found,
+            v.glyphs.borrow().bytes()
+        );
         world.tiles.clear();
-        m.phase("rows", "idle", reps, &mut world, &mut v, |w, v, _| w.settle(v));
+        m.phase("rows", "idle", reps, &mut world, &mut v, |w, v, _| {
+            w.settle(v)
+        });
         m.phase("rows", "hover", reps, &mut world, &mut v, |w, v, k| {
             v.hover((k % 20) as u32);
             w.settle(v);
         });
-        m.phase("rows", "tint (text colour alone, every line)", reps, &mut world, &mut v, |w, v, _| {
-            v.toggle_tint();
-            w.settle(v);
-        });
-        m.phase("rows", "scroll 3 rows", reps, &mut world, &mut v, |w, v, k| {
-            v.scroll_by(if (k / 8) % 2 == 0 { 3 * ROW_H } else { -3 * ROW_H });
-            w.settle(v);
-        });
-        m.phase("rows", "scroll a page (24 rows enter)", reps, &mut world, &mut v, |w, v, k| {
-            v.scroll_by(if (k / 4) % 2 == 0 { 24 * ROW_H } else { -24 * ROW_H });
-            w.settle(v);
-        });
+        m.phase(
+            "rows",
+            "tint (text colour alone, every line)",
+            reps,
+            &mut world,
+            &mut v,
+            |w, v, _| {
+                v.toggle_tint();
+                w.settle(v);
+            },
+        );
+        m.phase(
+            "rows",
+            "scroll 3 rows",
+            reps,
+            &mut world,
+            &mut v,
+            |w, v, k| {
+                v.scroll_by(if (k / 8) % 2 == 0 {
+                    3 * ROW_H
+                } else {
+                    -3 * ROW_H
+                });
+                w.settle(v);
+            },
+        );
+        m.phase(
+            "rows",
+            "scroll a page (24 rows enter)",
+            reps,
+            &mut world,
+            &mut v,
+            |w, v, k| {
+                v.scroll_by(if (k / 4) % 2 == 0 {
+                    24 * ROW_H
+                } else {
+                    -24 * ROW_H
+                });
+                w.settle(v);
+            },
+        );
         v.scroll_by(-(1 << 30));
         world.settle(&v);
         world.tiles.clear();
-        m.phase("rows", "label edit (toggle a suffix on an exposed row)", reps, &mut world, &mut v, |w, v, k| {
-            v.toggle_suffix(k % 16);
-            w.settle(v);
-        });
-        m.phase("rows", "value edit (an exposed row's number)", reps, &mut world, &mut v, |w, v, k| {
-            v.set_value(k % 16, k as i32 * 31);
-            w.settle(v);
-        });
-        m.phase("rows", "remove a row then insert one", reps, &mut world, &mut v, |w, v, k| {
-            if k % 2 == 0 { v.remove(5) } else { v.insert(5, 900_000 + k as u32) }
-            w.settle(v);
-        });
-        m.phase("rows", "collect the glyph memo (clear, re-describe what is exposed)", reps, &mut world, &mut v, |w, v, _| {
-            v.glyphs.borrow_mut().clear();
-            w.redescribe(v);
-        });
-        println!("# rows end: {} lines shaped, {} found again, {} bytes of glyph state", v.glyphs.borrow().shaped, v.glyphs.borrow().found, v.glyphs.borrow().bytes());
+        m.phase(
+            "rows",
+            "label edit (toggle a suffix on an exposed row)",
+            reps,
+            &mut world,
+            &mut v,
+            |w, v, k| {
+                v.toggle_suffix(k % 16);
+                w.settle(v);
+            },
+        );
+        m.phase(
+            "rows",
+            "value edit (an exposed row's number)",
+            reps,
+            &mut world,
+            &mut v,
+            |w, v, k| {
+                v.set_value(k % 16, k as i32 * 31);
+                w.settle(v);
+            },
+        );
+        m.phase(
+            "rows",
+            "remove a row then insert one",
+            reps,
+            &mut world,
+            &mut v,
+            |w, v, k| {
+                if k % 2 == 0 {
+                    v.remove(5)
+                } else {
+                    v.insert(5, 900_000 + k as u32)
+                }
+                w.settle(v);
+            },
+        );
+        m.phase(
+            "rows",
+            "collect the glyph memo (clear, re-describe what is exposed)",
+            reps,
+            &mut world,
+            &mut v,
+            |w, v, _| {
+                v.glyphs.borrow_mut().clear();
+                w.redescribe(v);
+            },
+        );
+        println!(
+            "# rows end: {} lines shaped, {} found again, {} bytes of glyph state",
+            v.glyphs.borrow().shaped,
+            v.glyphs.borrow().found,
+            v.glyphs.borrow().bytes()
+        );
     }
 
     // ---- search ----
@@ -151,7 +252,7 @@ fn main() {
             let tag = if filter { "search" } else { "typing" };
             let mut v = Search::new(n);
             v.filter = filter;
-            let mut world = World::<Soft>::new(W, H, NWORDS);
+            let mut world = World::<_, Soft>::new(W, H, NWORDS);
             world.mount(&v);
             world.click(&mut v, FIELD.x0 + 20, FIELD.y0 + 10);
             world.settle(&v);
@@ -162,16 +263,31 @@ fn main() {
                 world.settle(&v);
             }
             world.tiles.clear();
-            m.phase(tag, "type a character (event, handler, settle)", reps, &mut world, &mut v, |w, v, k| {
-                if k % 2 == 0 {
-                    w.text(v, ["s", "e", "a", "o"][(k / 2) % 4]);
-                } else {
-                    w.key_down(v, Key::Backspace, Mods::default());
-                }
-                w.settle(v);
-            });
+            m.phase(
+                tag,
+                "type a character (event, handler, settle)",
+                reps,
+                &mut world,
+                &mut v,
+                |w, v, k| {
+                    if k % 2 == 0 {
+                        w.text(v, ["s", "e", "a", "o"][(k / 2) % 4]);
+                    } else {
+                        w.key_down(v, Key::Backspace, Mods::default());
+                    }
+                    w.settle(v);
+                },
+            );
             m.phase(tag, "caret move", reps, &mut world, &mut v, |w, v, k| {
-                w.key_down(v, if (k / 4) % 2 == 0 { Key::Left } else { Key::Right }, Mods::default());
+                w.key_down(
+                    v,
+                    if (k / 4) % 2 == 0 {
+                        Key::Left
+                    } else {
+                        Key::Right
+                    },
+                    Mods::default(),
+                );
                 w.settle(v);
             });
             if filter {
@@ -182,15 +298,25 @@ fn main() {
                 world.settle(&v);
                 world.tiles.clear();
                 let before = v.glyphs.borrow().shaped;
-                m.phase(tag, "narrow by a key, widen by a backspace (24 rows re-enter)", reps, &mut world, &mut v, |w, v, k| {
-                    if k % 2 == 0 {
-                        w.text(v, "z");
-                    } else {
-                        w.key_down(v, Key::Backspace, Mods::default());
-                    }
-                    w.settle(v);
-                });
-                println!("# search re-entry: {} lines shaped during the phase", v.glyphs.borrow().shaped - before);
+                m.phase(
+                    tag,
+                    "narrow by a key, widen by a backspace (24 rows re-enter)",
+                    reps,
+                    &mut world,
+                    &mut v,
+                    |w, v, k| {
+                        if k % 2 == 0 {
+                            w.text(v, "z");
+                        } else {
+                            w.key_down(v, Key::Backspace, Mods::default());
+                        }
+                        w.settle(v);
+                    },
+                );
+                println!(
+                    "# search re-entry: {} lines shaped during the phase",
+                    v.glyphs.borrow().shaped - before
+                );
             }
             if !filter {
                 // how often a budget is reached by typing alone: keys per 256 KiB of memo
@@ -205,9 +331,17 @@ fn main() {
                 }
                 world.tiles.clear();
                 let grown = v.glyphs.borrow().bytes() - b0;
-                println!("# typing: {k} keys grew the memo by {grown} bytes: a 256 KiB budget is reached every {} keys", (256usize << 10) * k / grown.max(1));
+                println!(
+                    "# typing: {k} keys grew the memo by {grown} bytes: a 256 KiB budget is reached every {} keys",
+                    (256usize << 10) * k / grown.max(1)
+                );
             }
-            println!("# {tag} end: {} lines shaped, {} found again, {} bytes of glyph state", v.glyphs.borrow().shaped, v.glyphs.borrow().found, v.glyphs.borrow().bytes());
+            println!(
+                "# {tag} end: {} lines shaped, {} found again, {} bytes of glyph state",
+                v.glyphs.borrow().shaped,
+                v.glyphs.borrow().found,
+                v.glyphs.borrow().bytes()
+            );
         }
     }
 }

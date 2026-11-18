@@ -10,7 +10,7 @@ use sheet::*;
 #[test]
 fn table_walk_equals_tree_walk() {
     let mut sheet = Sheet::new(2_000);
-    let mut world = World::<Soft>::new(W, H, NWORDS);
+    let mut world = World::<_, Soft>::new(W, H, NWORDS);
     world.mount(&sheet);
     world.tiles.clear();
     let mut x = 0x9e37_79b9_7f4a_7c15u64;
@@ -48,7 +48,10 @@ fn table_walk_equals_tree_walk() {
         if !had_lists && rnd(1) == 0 {
             // an edit also runs the list pass; its marks are a superset
             for (a, b) in want.bits.iter().zip(&world.tiles.bits) {
-                assert!(a & !b == 0, "step {step}: the table missed damage the tree walk found");
+                assert!(
+                    a & !b == 0,
+                    "step {step}: the table missed damage the tree walk found"
+                );
             }
         }
         let key = |t: &Tiles| {

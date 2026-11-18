@@ -63,7 +63,13 @@ struct App {
     draft: Rel<Txt>,
 }
 fn fill(((sel, hot), r): ((u32, u32), u32)) -> Color {
-    Color(if sel == r { 0xffdbe8ff } else if hot == r { 0xffeeeeee } else { 0xffffffff })
+    Color(if sel == r {
+        0xffdbe8ff
+    } else if hot == r {
+        0xffeeeeee
+    } else {
+        0xffffffff
+    })
 }
 impl App {
     fn hover(&mut self, r: usize, on: bool) {
@@ -79,35 +85,75 @@ impl View for App {
         &self.u
     }
     fn view<S: Sink<Self>>(&self, s: &mut S) {
-        s.row(|| ([Rect::new(0, 0, W, H)], Fill(Kc::<0xfff6f7f9>).on_key(|a: &mut App, _: &Ev| {
-            let k = a.u.get::<Keys>() + 1;
-            a.u.set::<Keys>(k)
-        })));
-        s.list(&List { n: 1, row_h: 60, x: 1200, y: 40, shape: &FIELD, edits: &self.draft.journal }, |_| {
-            // the handler allocates nothing either, so what is counted is the event path's
-            (Fill(Kc::<0xffffffff>).on_text(|a: &mut App, t: &str| {
-                let (mut b, mut n) = a.draft.get(0).bytes();
-                if n + t.len() > 12 {
-                    n = 0;
-                }
-                b[n..n + t.len()].copy_from_slice(t.as_bytes());
-                let mut w = [0u32; 3];
-                for (i, &c) in b[..n + t.len()].iter().enumerate() {
-                    w[i / 4] |= (c as u32) << (8 * (i % 4));
-                }
-                *a.draft.edit(0) = Txt(w);
-            }), Label(*self.draft.get(0), Kc::<0xff000000>))
+        s.row(|| {
+            (
+                [Rect::new(0, 0, W, H)],
+                Fill(Kc::<0xfff6f7f9>).on_key(|a: &mut App, _: &Ev| {
+                    let k = a.u.get::<Keys>() + 1;
+                    a.u.set::<Keys>(k)
+                }),
+            )
         });
-        s.scope(Space { clip: Rect { x0: 0, y0: TOP, x1: W, y1: H }, base: (0, TOP), scroll: Scroll::SLOT as u8 }, |s| {
-            s.list(&List { n: self.items.len() as u32, row_h: ROW, x: 0, y: 0, shape: &SHAPE, edits: &self.items.journal }, |r| {
+        s.list(
+            &List {
+                n: 1,
+                row_h: 60,
+                x: 1200,
+                y: 40,
+                shape: &FIELD,
+                edits: &self.draft.journal,
+            },
+            |_| {
+                // the handler allocates nothing either, so what is counted is the event path's
                 (
-                    Fill(((un::<Sel>(), un::<Hot>()), rec(r as u32)).map(fill))
-                        .on_click(move |a: &mut App| a.u.set::<Sel>(r as u32))
-                        .on_hover(move |a: &mut App, e: &Ev| a.hover(r, e.on)),
-                    Num::<0, _, _>(rec(*self.items.get(r) as i32), Kc::<0xff1d2129>),
+                    Fill(Kc::<0xffffffff>).on_text(|a: &mut App, t: &str| {
+                        let (mut b, mut n) = a.draft.get(0).bytes();
+                        if n + t.len() > 12 {
+                            n = 0;
+                        }
+                        b[n..n + t.len()].copy_from_slice(t.as_bytes());
+                        let mut w = [0u32; 3];
+                        for (i, &c) in b[..n + t.len()].iter().enumerate() {
+                            w[i / 4] |= (c as u32) << (8 * (i % 4));
+                        }
+                        *a.draft.edit(0) = Txt(w);
+                    }),
+                    Label(*self.draft.get(0), Kc::<0xff000000>),
                 )
-            });
-        });
+            },
+        );
+        s.scope(
+            Space {
+                clip: Rect {
+                    x0: 0,
+                    y0: TOP,
+                    x1: W,
+                    y1: H,
+                },
+                base: (0, TOP),
+                scroll: Scroll::SLOT as u8,
+            },
+            |s| {
+                s.list(
+                    &List {
+                        n: self.items.len() as u32,
+                        row_h: ROW,
+                        x: 0,
+                        y: 0,
+                        shape: &SHAPE,
+                        edits: &self.items.journal,
+                    },
+                    |r| {
+                        (
+                            Fill(((un::<Sel>(), un::<Hot>()), rec(r as u32)).map(fill))
+                                .on_click(move |a: &mut App| a.u.set::<Sel>(r as u32))
+                                .on_hover(move |a: &mut App, e: &Ev| a.hover(r, e.on)),
+                            Num::<0, _, _>(rec(*self.items.get(r) as i32), Kc::<0xff1d2129>),
+                        )
+                    },
+                );
+            },
+        );
     }
 }
 
@@ -131,7 +177,11 @@ impl Meter {
             c.sort();
             *b = c[32];
         }
-        Meter { bracket, n, sweep: vec![0; 8 << 20] }
+        Meter {
+            bracket,
+            n,
+            sweep: vec![0; 8 << 20],
+        }
     }
     fn evict(&mut self) {
         for (i, x) in self.sweep.iter_mut().enumerate() {
@@ -166,79 +216,127 @@ impl Meter {
 }
 
 fn main() {
-    let reps: usize = std::env::var("REPS").ok().and_then(|s| s.parse().ok()).unwrap_or(31);
+    let reps: usize = std::env::var("REPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(31);
     let sizes: Vec<usize> = match std::env::var("ROWS").ok().and_then(|s| s.parse().ok()) {
         Some(n) => vec![n],
         None => vec![100, 10_000, 1_000_000],
     };
     let mut m = Meter::new();
-    let extra: Vec<&str> = pmu::sample_events().iter().skip(2).map(|e| e.name()).collect();
-    print!("rows\tstep\tdispatch_allocs\tdispatch_instr\tstep_instr\tstep_cycles_warm\tstep_cycles_cold\tcold_minus_warm");
+    let extra: Vec<&str> = pmu::sample_events()
+        .iter()
+        .skip(2)
+        .map(|e| e.name())
+        .collect();
+    print!(
+        "rows\tstep\tdispatch_allocs\tdispatch_instr\tstep_instr\tstep_cycles_warm\tstep_cycles_cold\tcold_minus_warm"
+    );
     for e in &extra {
         print!("\twarm:{e}\tcold:{e}");
     }
     println!();
     for n in sizes {
-        let mut a = App { u: U::default(), items: Rel::new((0..n as u32).collect()), draft: Rel::new(vec![Txt::default()]) };
+        let mut a = App {
+            u: U::default(),
+            items: Rel::new((0..n as u32).collect()),
+            draft: Rel::new(vec![Txt::default()]),
+        };
         a.u.set::<Sel>(u32::MAX);
         a.u.set::<Hot>(u32::MAX);
-        let mut w = World::<Soft>::new(W, H, 4);
+        let mut w = World::<_, Soft>::new(W, H, 4);
         w.mount(&a);
         w.tiles.clear();
         let row_y = |r: i32| TOP + r * ROW + ROW / 2;
-        let cell = |name: &str, w: &mut World<Soft>, a: &mut App, m: &mut Meter, step: &mut dyn FnMut(&mut World<Soft>, &mut App, usize, bool)| {
-            // dispatch alone, then dispatch and settle, warm and cold
-            let da = allocs(reps, |k| step(w, a, k, false));
-            let di = m.run(reps, false, |k| step(w, a, k, false))[0];
-            w.settle(a);
-            w.tiles.clear();
-            let warm = m.run(reps, false, |k| {
-                step(w, a, k, true);
-                w.tiles.clear();
-            });
-            let cold = m.run(reps, true, |k| {
-                step(w, a, k, true);
-                w.tiles.clear();
-            });
-            print!("{n}\t{name}\t{da}\t{di}\t{}\t{}\t{}\t{}", warm[0], warm[1], cold[1], cold[1].saturating_sub(warm[1]));
-            for i in 2..m.n {
-                print!("\t{}\t{}", warm[i], cold[i]);
-            }
-            println!();
-        };
-        cell("pointer_onto_row", &mut w, &mut a, &mut m, &mut |w, a, k, s| {
-            w.pointer(a, 300, row_y(3 + (k & 1) as i32));
-            if s {
+        let cell =
+            |name: &str,
+             w: &mut World<App, Soft>,
+             a: &mut App,
+             m: &mut Meter,
+             step: &mut dyn FnMut(&mut World<App, Soft>, &mut App, usize, bool)| {
+                // dispatch alone, then dispatch and settle, warm and cold
+                let da = allocs(reps, |k| step(w, a, k, false));
+                let di = m.run(reps, false, |k| step(w, a, k, false))[0];
                 w.settle(a);
-            }
-        });
-        cell("pointer_same_row", &mut w, &mut a, &mut m, &mut |w, a, k, s| {
-            w.pointer(a, 300 + (k & 1) as i32 * 7, row_y(3));
-            if s {
-                w.settle(a);
-            }
-        });
+                w.tiles.clear();
+                let warm = m.run(reps, false, |k| {
+                    step(w, a, k, true);
+                    w.tiles.clear();
+                });
+                let cold = m.run(reps, true, |k| {
+                    step(w, a, k, true);
+                    w.tiles.clear();
+                });
+                print!(
+                    "{n}\t{name}\t{da}\t{di}\t{}\t{}\t{}\t{}",
+                    warm[0],
+                    warm[1],
+                    cold[1],
+                    cold[1].saturating_sub(warm[1])
+                );
+                for i in 2..m.n {
+                    print!("\t{}\t{}", warm[i], cold[i]);
+                }
+                println!();
+            };
+        cell(
+            "pointer_onto_row",
+            &mut w,
+            &mut a,
+            &mut m,
+            &mut |w, a, k, s| {
+                w.pointer(a, 300, row_y(3 + (k & 1) as i32));
+                if s {
+                    w.settle(a);
+                }
+            },
+        );
+        cell(
+            "pointer_same_row",
+            &mut w,
+            &mut a,
+            &mut m,
+            &mut |w, a, k, s| {
+                w.pointer(a, 300 + (k & 1) as i32 * 7, row_y(3));
+                if s {
+                    w.settle(a);
+                }
+            },
+        );
         cell("click_row", &mut w, &mut a, &mut m, &mut |w, a, k, s| {
             w.click(a, 300, row_y(5 + (k & 3) as i32));
             if s {
                 w.settle(a);
             }
         });
-        cell("key_unfocused", &mut w, &mut a, &mut m, &mut |w, a, _, s| {
-            w.key_down(a, Key::Char('k'), Mods::default());
-            if s {
-                w.settle(a);
-            }
-        });
+        cell(
+            "key_unfocused",
+            &mut w,
+            &mut a,
+            &mut m,
+            &mut |w, a, _, s| {
+                w.key_down(a, Key::Char('k'), Mods::default());
+                if s {
+                    w.settle(a);
+                }
+            },
+        );
         w.click(&mut a, 1210, 50);
         w.settle(&a);
         w.tiles.clear();
-        cell("text_focused_field", &mut w, &mut a, &mut m, &mut |w, a, _, s| {
-            w.text(a, "a");
-            if s {
-                w.settle(a);
-            }
-        });
+        cell(
+            "text_focused_field",
+            &mut w,
+            &mut a,
+            &mut m,
+            &mut |w, a, _, s| {
+                w.text(a, "a");
+                if s {
+                    w.settle(a);
+                }
+            },
+        );
         let (rec, _, bytes) = w.root().stats();
         println!("# rows={n}: {rec} records, {bytes} bytes of columns");
     }

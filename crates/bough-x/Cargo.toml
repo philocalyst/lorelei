@@ -28,3 +28,6 @@ mutant_sweep = []
 mutant_line = []
 # reflection takes a list record's ring slot for its row (tests/reflect.rs must fail)
 mutant_reflect = []
+
+# Drops the second changed word from the sparse reader union.
+mutant_sparse_union = []
