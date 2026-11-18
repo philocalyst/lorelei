@@ -34,3 +34,5 @@ mutant_core = []
 mutant_cut = []
 # row replication treats a rounded box's corner rows as flat
 mutant_flat = []
+
+mutant_anim_stale_derived = []

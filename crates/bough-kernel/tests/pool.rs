@@ -7,7 +7,11 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
 #[test]
 fn run_waits_for_its_workers_when_the_caller_panics() {
     let pool = Pool::new(1);
-    let (started, release, completed) = (AtomicBool::new(false), AtomicBool::new(false), AtomicBool::new(false));
+    let (started, release, completed) = (
+        AtomicBool::new(false),
+        AtomicBool::new(false),
+        AtomicBool::new(false),
+    );
     let work = |id: usize| {
         if id == 0 {
             while !started.load(SeqCst) {
@@ -32,7 +36,10 @@ fn run_waits_for_its_workers_when_the_caller_panics() {
     };
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| pool.run(1, &work)));
     assert!(r.is_err());
-    assert!(completed.load(SeqCst), "run returned (unwound) while a worker was still inside the closure");
+    assert!(
+        completed.load(SeqCst),
+        "run returned (unwound) while a worker was still inside the closure"
+    );
 }
 
 #[test]
@@ -83,4 +90,14 @@ fn overlapping_runs_do_not_share_the_job() {
         }
     });
     assert_eq!(total.load(SeqCst), 200);
+}
+
+#[test]
+fn reentrant_run_is_a_checked_refusal() {
+    let pool = Pool::new(1);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        pool.run(1, &|_| pool.run(1, &|_| {}))
+    }));
+    assert!(r.is_err());
+    pool.run(1, &|_| {});
 }

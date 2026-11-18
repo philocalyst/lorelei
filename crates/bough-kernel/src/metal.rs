@@ -12,6 +12,11 @@ use objc2_metal::*;
 type Buf = Retained<ProtocolObject<dyn MTLBuffer>>;
 
 pub struct Gpu {
+    atlas_bytes: usize,
+    image_bytes: usize,
+    admitted_scene: Scene,
+    admitted_prog: Option<Prog>,
+    owner: std::sync::Arc<()>,
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     pso: Retained<ProtocolObject<dyn MTLComputePipelineState>>,
@@ -21,7 +26,7 @@ pub struct Gpu {
 }
 
 /// An output buffer over caller-owned memory (`Gpu::wrap`).
-pub struct Target(Buf);
+pub struct Target(Buf, std::sync::Arc<()>);
 
 /// Times of one GPU frame, in seconds.
 #[derive(Clone, Copy, Debug, Default)]
@@ -33,21 +38,73 @@ pub struct GpuTime {
 }
 
 impl Gpu {
+    fn validate_dispatch(&self, tiles: usize, out_words: usize) {
+        let p = self
+            .admitted_prog
+            .as_ref()
+            .expect("upload a program before rendering");
+        assert!(
+            (p.words[6] as usize) < self.atlas_bytes.max(1),
+            "glyph atlas bounds"
+        );
+        assert!(
+            (p.words[8] as usize) < (self.image_bytes / 4).max(1),
+            "image atlas bounds"
+        );
+        assert!(tiles <= p.tiles(), "invalid dispatch size");
+        assert!(
+            out_words >= p.validate(&self.admitted_scene),
+            "short output target"
+        );
+    }
+
     /// Compile `msl` (normally `crate::KERNEL_MSL`; the gates pass mutated text).
     pub fn new(msl: &str) -> Option<Gpu> {
+        if msl != crate::KERNEL_MSL {
+            return None;
+        }
+        // SAFETY: the built-in shader is the schema and address contract validated at dispatch.
+        unsafe { Self::new_unchecked(msl) }
+    }
+    /// Compile a custom shader.
+    ///
+    /// # Safety
+    /// The shader must obey the built-in kernel's buffer schema, workgroup layout,
+    /// and address bounds for every scene/program accepted by executor validation.
+    pub unsafe fn new_unchecked(msl: &str) -> Option<Gpu> {
         let device = MTLCreateSystemDefaultDevice()?;
         let queue = device.newCommandQueue()?;
-        let lib = device.newLibraryWithSource_options_error(&NSString::from_str(msl), None).unwrap_or_else(|e| panic!("kernel msl: {e}"));
-        let f = lib.newFunctionWithName(&NSString::from_str("fs_ktile")).expect("fs_ktile");
-        let pso = device.newComputePipelineStateWithFunction_error(&f).expect("pipeline");
-        Some(Gpu { device, queue, pso, bufs: [None, None, None, None, None, None] })
+        let lib = device
+            .newLibraryWithSource_options_error(&NSString::from_str(msl), None)
+            .unwrap_or_else(|e| panic!("kernel msl: {e}"));
+        let f = lib
+            .newFunctionWithName(&NSString::from_str("fs_ktile"))
+            .expect("fs_ktile");
+        let pso = device
+            .newComputePipelineStateWithFunction_error(&f)
+            .expect("pipeline");
+        Some(Gpu {
+            atlas_bytes: 0,
+            image_bytes: 0,
+            admitted_scene: Scene::default(),
+            admitted_prog: None,
+            owner: std::sync::Arc::new(()),
+            device,
+            queue,
+            pso,
+            bufs: [None, None, None, None, None, None],
+        })
     }
 
     fn buf(&mut self, i: usize, bytes: usize) -> &Buf {
         let need = bytes.max(16);
         if self.bufs[i].as_ref().is_none_or(|b| b.length() < need) {
             let cap = need.next_power_of_two();
-            self.bufs[i] = Some(self.device.newBufferWithLength_options(cap, MTLResourceOptions::StorageModeShared).expect("buffer"));
+            self.bufs[i] = Some(
+                self.device
+                    .newBufferWithLength_options(cap, MTLResourceOptions::StorageModeShared)
+                    .expect("buffer"),
+            );
         }
         self.bufs[i].as_ref().unwrap()
     }
@@ -56,11 +113,20 @@ impl Gpu {
         let b = self.buf(i, n);
         // SAFETY: the buffer is shared storage of at least `n` bytes; no command buffer is in flight (every
         // frame is waited for before `render` returns).
-        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr() as *const u8, b.contents().as_ptr() as *mut u8, n) };
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                data.as_ptr() as *const u8,
+                b.contents().as_ptr() as *mut u8,
+                n,
+            )
+        };
     }
 
     /// Upload the scene, both atlases and the program (in the runtime these already live in shared memory).
     pub fn upload(&mut self, scene: &Scene, atlas: &crate::cpu::Atlas, prog: &Prog) {
+        prog.validate(scene);
+        self.admitted_scene = scene.clone();
+        self.admitted_prog = Some(prog.clone());
         self.put(0, &scene.words);
         self.put(1, &prog.words);
         self.upload_atlas(atlas.px);
@@ -68,23 +134,36 @@ impl Gpu {
     }
     /// Rewrite only the program (a new damage set, or just a new `now`).
     pub fn upload_prog(&mut self, prog: &Prog) {
+        prog.validate(&self.admitted_scene);
+        self.admitted_prog = Some(prog.clone());
         self.put(1, &prog.words);
     }
 
     /// Upload this frame's commands and program only (the atlas is uploaded when it changes).
     pub fn upload_frame(&mut self, scene: &Scene, prog: &Prog) {
+        prog.validate(scene);
+        self.admitted_scene = scene.clone();
+        self.admitted_prog = Some(prog.clone());
         self.put(0, &scene.words);
         self.put(1, &prog.words);
     }
     pub fn upload_atlas(&mut self, atlas: &[u8]) {
-        let b = self.buf(2, atlas.len() + 4);
-        // SAFETY: as `put`.
-        unsafe { std::ptr::copy_nonoverlapping(atlas.as_ptr(), b.contents().as_ptr() as *mut u8, atlas.len()) };
+        self.atlas_bytes = atlas.len();
+        if atlas.is_empty() {
+            self.put(2, &[0u32]);
+        } else {
+            self.put(2, atlas);
+        }
     }
 
     /// The image atlas (premultiplied RGBA8 bytes).
     pub fn upload_images(&mut self, img: &[u8]) {
-        self.put(4, img);
+        self.image_bytes = img.len();
+        if img.len() < 4 {
+            self.put(4, &[0u32]);
+        } else {
+            self.put(4, img);
+        }
     }
 
     /// A buffer over memory the caller owns: a surface the kernel writes in place (journal E9: Metal accepts
@@ -97,10 +176,24 @@ impl Gpu {
     pub unsafe fn wrap(&self, ptr: *mut u8, len: usize) -> Option<Target> {
         let p = std::ptr::NonNull::new(ptr as *mut std::ffi::c_void)?;
         // SAFETY: the caller's contract; no deallocator (the caller owns the memory).
-        unsafe { self.device.newBufferWithBytesNoCopy_length_options_deallocator(p, len, MTLResourceOptions::StorageModeShared, None) }.map(Target)
+        unsafe {
+            self.device
+                .newBufferWithBytesNoCopy_length_options_deallocator(
+                    p,
+                    len,
+                    MTLResourceOptions::StorageModeShared,
+                    None,
+                )
+        }
+        .map(|b| Target(b, self.owner.clone()))
     }
     /// Run the uploaded program with `target` as the output (its stride is the program's).
     pub fn render_to(&mut self, tiles: usize, target: &Target) -> GpuTime {
+        assert!(
+            std::sync::Arc::ptr_eq(&self.owner, &target.1),
+            "foreign target"
+        );
+        self.validate_dispatch(tiles, target.0.length() / 4);
         self.buf(4, 16);
         self.buf(5, 16);
         self.run(tiles, Some(&target.0))
@@ -108,7 +201,8 @@ impl Gpu {
 
     /// Run the uploaded program: `tiles` threadgroups into the output buffer of `out_words` words.
     pub fn render(&mut self, tiles: usize, out_words: usize) -> GpuTime {
-        self.buf(3, out_words * 4);
+        self.validate_dispatch(tiles, out_words);
+        self.buf(3, out_words.checked_mul(4).expect("byte count overflow"));
         self.buf(4, 16);
         self.buf(5, 16);
         self.run(tiles, None)
@@ -119,23 +213,41 @@ impl Gpu {
         let enc = cmd.computeCommandEncoder().expect("encoder");
         enc.setComputePipelineState(&self.pso);
         for i in 0..6 {
-            let b = if i == 3 { target.map(|t| &**t).or(self.bufs[3].as_deref()) } else { self.bufs[i].as_deref() };
+            let b = if i == 3 {
+                target.map(|t| &**t).or(self.bufs[3].as_deref())
+            } else {
+                self.bufs[i].as_deref()
+            };
             // SAFETY: each buffer is alive for the frame and bound at the index naga's translation reads.
             unsafe { enc.setBuffer_offset_atIndex(b, 0, i) };
         }
         if tiles > 0 {
-            enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: tiles, height: 1, depth: 1 }, MTLSize { width: 16, height: 16, depth: 1 });
+            enc.dispatchThreadgroups_threadsPerThreadgroup(
+                MTLSize {
+                    width: tiles,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: 16,
+                    height: 16,
+                    depth: 1,
+                },
+            );
         }
         enc.endEncoding();
         cmd.commit();
         cmd.waitUntilCompleted();
-        GpuTime { wall: t.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }
+        GpuTime {
+            wall: t.elapsed().as_secs_f64(),
+            gpu: cmd.GPUEndTime() - cmd.GPUStartTime(),
+        }
     }
 
     /// The output buffer's first `words` words.
     pub fn out(&self, words: usize) -> &[u32] {
         let b = self.bufs[3].as_ref().expect("render first");
-        assert!(b.length() >= words * 4);
+        assert!(b.length() >= words.checked_mul(4).expect("byte count overflow"));
         // SAFETY: shared storage, at least `words` words, page aligned, and the GPU is idle.
         unsafe { std::slice::from_raw_parts(b.contents().as_ptr() as *const u32, words) }
     }
@@ -145,8 +257,14 @@ impl Gpu {
     }
     /// Zero the output (tests: tiles a frame does not schedule must stay untouched).
     pub fn clear_out(&mut self, words: usize) {
-        let b = self.buf(3, words * 4);
+        let b = self.buf(3, words.checked_mul(4).expect("byte count overflow"));
         // SAFETY: as `put`.
-        unsafe { std::ptr::write_bytes(b.contents().as_ptr() as *mut u8, 0, words * 4) };
+        unsafe {
+            std::ptr::write_bytes(
+                b.contents().as_ptr() as *mut u8,
+                0,
+                words.checked_mul(4).expect("byte count overflow"),
+            )
+        };
     }
 }

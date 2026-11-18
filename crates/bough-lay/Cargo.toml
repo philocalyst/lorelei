@@ -18,3 +18,5 @@ bough-mem = { path = "../bough-mem" }
 mutant_gap = []
 # a decision on a size that follows the available width does not narrow the validity interval
 mutant_valid = []
+
+mutant_memo_hash_only = []
