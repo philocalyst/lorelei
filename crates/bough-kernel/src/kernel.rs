@@ -660,7 +660,8 @@ pub mod km {
 
     /// Progress (Q15) of a transition started at `t0` lasting `dur` ticks (>= 1), eased (0 linear, 1 smooth).
     pub fn progress(now: u32, t0: u32, dur: u32, ease: u32) -> u32 {
-        // the clock is a wrapping word: "started" is at most 2^31 ticks after `t0` modulo 2^32
+        // Equivalent to now.wrapping_sub(t0), expressed with bounded additions for
+        // the shared WGSL/Rust grammar. "Started" is within 2^31 ticks of t0.
         let el = (now & 0x7FFFFFFFu32) + (0x7FFFFFFFu32 - (t0 & 0x7FFFFFFFu32)) + 1u32;
         let el = (el & 0x7FFFFFFFu32) | ((now ^ t0 ^ el ^ 0x80000000u32) & 0x80000000u32);
         if el == 0u32 || el >= 0x80000000u32 {
@@ -677,7 +678,7 @@ pub mod km {
         }
         t
     }
-    /// a + (b - a) t for Q8 geometry without a 64-bit product (the difference is split at bit 10).
+    /// a + (b - a) t for Q8 geometry without a 64-bit product (the difference is split at bit 15).
     pub fn mix_i(a: i32, b: i32, t: u32) -> i32 {
         let d = b - a;
         let ti = t as i32;
@@ -696,7 +697,7 @@ pub mod km {
     }
     /// The state of the transition from `a` to `b` at progress `t`. Window, core, kind and shift are `a`'s:
     /// staging gives `a` the swept window and the common core, so the tile program is the same for the whole
-    /// transition (a superset program is exact) and only `now` changes from frame to frame.
+    /// transition (a superset program is exact). At ONE every field is exactly the target.
     pub fn at(a: Cmd, b: Cmd, t: u32) -> Cmd {
         if t == ONE {
             return b;

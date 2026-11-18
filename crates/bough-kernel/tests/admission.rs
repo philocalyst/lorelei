@@ -1,5 +1,5 @@
 //! Review findings K02 and K08: an empty glyph atlas is transparent on every executor, and a transition
-//! whose derived fields the interpolation does not carry is admitted as its target state.
+//! whose derived fields change reaches the exact staged target state.
 use bough_kernel::cpu::{self, Atlas, Binner, Damage, Opt, Pool, Prog};
 use bough_kernel::stage::{self, Scene};
 
@@ -27,7 +27,7 @@ fn an_empty_atlas_is_transparent_on_the_fast_path_too() {
 }
 
 #[test]
-fn a_transition_the_interpolation_cannot_carry_shows_its_target() {
+fn changing_derived_fields_reaches_the_target() {
     let clip = stage::NO_CLIP;
     // a shadow whose blur changes: the inverse blur width is a derived field `k::at` keeps from the start
     let a = stage::shadow(20.0, 20.0, 60.0, 40.0, 6.0, 4.0, 0x8000_0000, &clip).unwrap();
@@ -131,4 +131,44 @@ fn malformed_programs_are_refused_before_execution() {
             "accepted field {at}"
         );
     }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn gpu_rejects_foreign_targets_and_short_outputs() {
+    let Some(a) = bough_kernel::gpu_executor() else {
+        return;
+    };
+    let Some(mut b) = bough_kernel::gpu_executor() else {
+        return;
+    };
+    #[repr(align(16384))]
+    struct Pages([u8; 16384]);
+    let mut pages = Box::new(Pages([0; 16384]));
+    // SAFETY: pages remains mapped, aligned and exclusively owned until after target drops.
+    let Some(target) = (unsafe { a.wrap(pages.0.as_mut_ptr(), pages.0.len()) }) else {
+        return;
+    };
+    let mut scene = Scene::default();
+    scene.add(stage::solid(0., 0., 32., 32., 0xffffffff, &stage::NO_CLIP));
+    let atlas = Atlas::new(&[], 1);
+    let mut prog = Prog::default();
+    Binner::default().bin(
+        &scene,
+        32,
+        32,
+        32,
+        &atlas,
+        0,
+        &Damage::All,
+        false,
+        &mut prog,
+    );
+    b.upload(&scene, &atlas, &prog);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.render_to(1, &target))).is_err()
+    );
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.render(1, 1))).is_err());
+    drop(target);
+    drop(pages);
 }
