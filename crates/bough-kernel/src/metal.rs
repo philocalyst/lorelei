@@ -60,6 +60,18 @@ impl Gpu {
 
     /// Compile `msl` (normally `crate::KERNEL_MSL`; the gates pass mutated text).
     pub fn new(msl: &str) -> Option<Gpu> {
+        if msl != crate::KERNEL_MSL {
+            return None;
+        }
+        // SAFETY: the built-in shader is the schema and address contract validated at dispatch.
+        unsafe { Self::new_unchecked(msl) }
+    }
+    /// Compile a custom shader.
+    ///
+    /// # Safety
+    /// The shader must obey the built-in kernel's buffer schema, workgroup layout,
+    /// and address bounds for every scene/program accepted by executor validation.
+    pub unsafe fn new_unchecked(msl: &str) -> Option<Gpu> {
         let device = MTLCreateSystemDefaultDevice()?;
         let queue = device.newCommandQueue()?;
         let lib = device

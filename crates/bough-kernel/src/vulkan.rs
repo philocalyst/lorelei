@@ -118,6 +118,18 @@ impl Gpu {
 
     /// As `new`; a software device only when `software` allows it.
     pub fn build(spirv: &[u8], software: bool) -> Result<Gpu, String> {
+        if spirv != crate::KERNEL_SPIRV {
+            return Err("custom shader requires build_unchecked".into());
+        }
+        // SAFETY: the built-in shader obeys the validated program and buffer contract.
+        unsafe { Self::build_unchecked(spirv, software) }
+    }
+    /// Build a custom kernel pipeline.
+    ///
+    /// # Safety
+    /// The shader must obey the built-in kernel's buffer schema, workgroup layout,
+    /// and address bounds for every scene/program accepted by executor validation.
+    pub unsafe fn build_unchecked(spirv: &[u8], software: bool) -> Result<Gpu, String> {
         let d = Device::new(software, Needs::default(), "kernel")?;
         let dev = &d.device;
         let b: Vec<vk::DescriptorSetLayoutBinding> = (0..5)

@@ -169,6 +169,15 @@ fn gpu_rejects_foreign_targets_and_short_outputs() {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.render_to(1, &target))).is_err()
     );
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.render(1, 1))).is_err());
+    eprintln!("foreign target and short output checked before dispatch");
     drop(target);
     drop(pages);
+}
+
+#[test]
+fn safe_gpu_constructors_refuse_custom_programs() {
+    #[cfg(target_os = "macos")]
+    assert!(bough_kernel::metal::Gpu::new("invalid custom shader").is_none());
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    assert!(bough_kernel::vulkan::Gpu::new(&[0; 4]).is_none());
 }
