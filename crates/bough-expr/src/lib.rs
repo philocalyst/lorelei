@@ -11,9 +11,7 @@
 #![no_std]
 #![feature(specialization)]
 #![allow(incomplete_features)]
-extern crate alloc;
-use alloc::boxed::Box;
-use core::any::{Any, TypeId};
+use core::any::TypeId;
 use core::marker::PhantomData;
 
 /// Words in a uniform block. One `u64` names any subset.
@@ -177,25 +175,69 @@ pub struct Slot {
     off: usize,
     owner: TypeId,
     projection: TypeId,
-    reader: &'static (dyn Fn(&dyn Any) -> u32 + Send + Sync),
+    // Sealed constructor pairs these erased function pointers with the exact
+    // trampoline that restores their signatures. No data pointer is forged.
+    first: fn(),
+    second: fn(),
+    reader: unsafe fn(*const (), fn(), fn()) -> u32,
 }
+fn unused_slot_function() {}
 impl Slot {
     /// Construct only a typed safe reader. There is no raw-offset constructor.
-    pub fn typed<V: 'static, P: 'static>(
-        slot: usize,
-        off: usize,
-        read: impl Fn(&V) -> u32 + Send + Sync + 'static,
-    ) -> Self {
+    pub fn typed<V: 'static, P: 'static>(slot: usize, off: usize, read: fn(&V) -> u32) -> Self {
         assert!(slot < APP_WORDS, "field slot outside application block");
-        let reader = Box::leak(Box::new(move |v: &dyn Any| {
-            read(v.downcast_ref::<V>().expect("field reader owner mismatch"))
-        }));
+        unsafe fn invoke<V>(v: *const (), first: fn(), _: fn()) -> u32 {
+            // SAFETY: typed::<V,P> erased exactly fn(&V)->u32; read checked
+            // owner TypeId before passing a pointer to a live V.
+            let read: fn(&V) -> u32 = unsafe { core::mem::transmute(first) };
+            // SAFETY: Slot::read admitted V and v is its still-live shared reference.
+            read(unsafe { &*v.cast::<V>() })
+        }
+        // SAFETY: erasing a function pointer preserves its address and provenance;
+        // invoke::<V> restores this exact signature before any invocation.
+        let first: fn() = unsafe { core::mem::transmute(read) };
         Self {
             slot,
             off,
             owner: TypeId::of::<V>(),
             projection: TypeId::of::<P>(),
-            reader,
+            first,
+            second: unused_slot_function,
+            reader: invoke::<V>,
+        }
+    }
+    /// Compose a typed reference projection and typed word conversion without a
+    /// heap-allocated closure. Both function pointers are restored only by their
+    /// matching V/T trampoline, after owner admission.
+    pub fn projected<V: 'static, T: 'static, P: 'static>(
+        slot: usize,
+        off: usize,
+        project: fn(&V) -> &T,
+        word: fn(&T) -> u32,
+    ) -> Self {
+        assert!(slot < APP_WORDS, "field slot outside application block");
+        unsafe fn invoke<V, T>(v: *const (), first: fn(), second: fn()) -> u32 {
+            // SAFETY: projected::<V,T,P> erased these precise signatures and
+            // the private trampoline cannot be substituted by a safe client.
+            let project: fn(&V) -> &T = unsafe { core::mem::transmute(first) };
+            // SAFETY: the second pointer was erased from fn(&T)->u32.
+            let word: fn(&T) -> u32 = unsafe { core::mem::transmute(second) };
+            // SAFETY: Slot::read checked V's TypeId and retained its shared borrow.
+            word(project(unsafe { &*v.cast::<V>() }))
+        }
+        // SAFETY: function-pointer erasure is reversed by invoke::<V,T>, not
+        // invoked with the erased signature; no pointer is converted to integer.
+        let first: fn() = unsafe { core::mem::transmute(project) };
+        // SAFETY: as above, restored to fn(&T)->u32 before invocation.
+        let second: fn() = unsafe { core::mem::transmute(word) };
+        Self {
+            slot,
+            off,
+            owner: TypeId::of::<V>(),
+            projection: TypeId::of::<P>(),
+            first,
+            second,
+            reader: invoke::<V, T>,
         }
     }
     pub fn index(self) -> usize {
@@ -213,14 +255,19 @@ impl Slot {
             self.slot < APP_WORDS,
             "field slot outside application block"
         );
-        (self.reader)(v)
+        // SAFETY: owner TypeId and index were checked above. The private
+        // constructor paired the trampoline and erased function signatures;
+        // v points to a live V for this call. It never denotes an offset address.
+        unsafe { (self.reader)((v as *const V).cast(), self.first, self.second) }
     }
 }
 impl PartialEq for Slot {
     fn eq(&self, other: &Self) -> bool {
         (self.slot, self.off, self.owner, self.projection)
             == (other.slot, other.off, other.owner, other.projection)
-            && core::ptr::eq(self.reader, other.reader)
+            && core::ptr::fn_addr_eq(self.reader, other.reader)
+            && core::ptr::fn_addr_eq(self.first, other.first)
+            && core::ptr::fn_addr_eq(self.second, other.second)
     }
 }
 impl Eq for Slot {}

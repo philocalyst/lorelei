@@ -4,6 +4,60 @@ use bough_x::prelude::*;
 use bough_x::soft::Soft;
 use bough_x::store::{Path, Tiles};
 
+mod allocations {
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+    thread_local! {
+        static ENABLED: Cell<bool> = const { Cell::new(false) };
+        static COUNT: Cell<usize> = const { Cell::new(0) };
+    }
+    pub struct Counting;
+    fn allocated() {
+        if ENABLED.try_with(Cell::get).unwrap_or(false) {
+            COUNT.with(|n| n.set(n.get() + 1));
+        }
+    }
+    // SAFETY: all allocation operations delegate the same arguments and results
+    // to System. The thread-local integer accounting never allocates.
+    unsafe impl GlobalAlloc for Counting {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            allocated();
+            // SAFETY: forwarding the caller's valid Layout to System.
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            allocated();
+            // SAFETY: forwarding the caller's valid Layout to System.
+            unsafe { System.alloc_zeroed(layout) }
+        }
+        unsafe fn realloc(&self, p: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+            allocated();
+            // SAFETY: caller's pointer/layout/size contract is forwarded unchanged.
+            unsafe { System.realloc(p, layout, size) }
+        }
+        unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
+            // SAFETY: caller's live allocation and matching layout are forwarded.
+            unsafe { System.dealloc(p, layout) }
+        }
+    }
+    pub fn count(f: impl FnOnce()) -> usize {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                ENABLED.with(|v| v.set(false));
+            }
+        }
+        COUNT.with(|v| v.set(0));
+        ENABLED.with(|v| assert!(!v.replace(true)));
+        let reset = Reset;
+        f();
+        drop(reset);
+        COUNT.with(Cell::get)
+    }
+}
+#[global_allocator]
+static ALLOCATOR: allocations::Counting = allocations::Counting;
+
 #[derive(Clone, Copy)]
 struct Many;
 // SAFETY: zero-sized, no padding or invalid stored bits.
@@ -105,6 +159,7 @@ mod sheet_el;
 
 #[test]
 fn sheet_el_retained_ledger() {
+    assert!(!core::mem::needs_drop::<sheet_el::Sheet>());
     let app = bough_x::el::App::<sheet_el::Sheet, Soft>::new(
         *sheet_el::Sheet::with_rows(10_000),
         2560,
@@ -290,6 +345,97 @@ mod safe_clients {
         }
     }
     #[test]
+    fn single_owner_steady_state_allocates_nothing_and_signal_has_no_drop() {
+        assert!(!core::mem::needs_drop::<Signal<u32>>());
+        assert!(!core::mem::needs_drop::<Signal<f32>>());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut app = App::<_, Soft>::new(
+            Counted {
+                look: Signal::new(1),
+                calls: calls.clone(),
+            },
+            32,
+            32,
+            1.0,
+        )
+        .once();
+        let baseline = calls.load(Ordering::Relaxed);
+        let retables = app.world.retables;
+        let allocations = super::allocations::count(|| {
+            for value in 2..1002 {
+                assert!(app.v.look.set(value));
+                assert_eq!(*app.v.look, value);
+                app.settle();
+            }
+        });
+        assert_eq!(
+            allocations, 0,
+            "steady signal writes, reads and settles allocated"
+        );
+        assert_eq!(calls.load(Ordering::Relaxed), baseline);
+        assert_eq!(app.world.retables, retables);
+    }
+
+    #[test]
+    fn shared_signal_notifies_its_worlds_but_not_an_unrelated_app() {
+        use bough_x::world::World;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut unrelated = App::<_, Soft>::new(
+            Counted {
+                look: Signal::new(1),
+                calls: calls.clone(),
+            },
+            32,
+            32,
+            1.0,
+        )
+        .once();
+        let mut shared = Counted {
+            look: Signal::new(1),
+            calls: Arc::new(AtomicUsize::new(0)),
+        };
+        let mut a = World::<Counted, Soft>::new(32, 32, APP_WORDS);
+        let mut b = World::<Counted, Soft>::new(32, 32, APP_WORDS);
+        a.mount(&shared);
+        b.mount(&shared);
+        // The third world observes an already-shared sentinel, not a single-owner token.
+        let mut c = World::<Counted, Soft>::new(32, 32, APP_WORDS);
+        c.mount(&shared);
+        let before = [a.input_revision(), b.input_revision(), c.input_revision()];
+        let own = unrelated.world.input_revision();
+        let descriptions = calls.load(Ordering::Relaxed);
+        let retables = unrelated.world.retables;
+        shared.look.set(2);
+        for (world, before) in [a, b, c].iter().zip(before) {
+            assert!(world.input_revision() > before);
+        }
+        unrelated.settle();
+        assert_eq!(unrelated.world.input_revision(), own);
+        assert_eq!(calls.load(Ordering::Relaxed), descriptions);
+        assert_eq!(unrelated.world.retables, retables);
+    }
+
+    #[test]
+    fn stale_signal_token_is_inert_until_observed_by_a_new_world() {
+        use bough_x::world::World;
+        let mut model = Counted {
+            look: Signal::new(1),
+            calls: Arc::new(AtomicUsize::new(0)),
+        };
+        let mut old = World::<Counted, Soft>::new(32, 32, APP_WORDS);
+        old.mount(&model);
+        drop(old);
+        let mut new = World::<Counted, Soft>::new(32, 32, APP_WORDS);
+        let before = new.input_revision();
+        model.look.set(2);
+        assert_eq!(new.input_revision(), before);
+        new.mount(&model);
+        let before = new.input_revision();
+        model.look.set(3);
+        assert_eq!(new.input_revision(), before + 1);
+    }
+
+    #[test]
     fn worlds_are_isolated_and_foreign_tokens_are_refused() {
         let calls = Arc::new(AtomicUsize::new(0));
         let mut a = App::<_, Soft>::new(
@@ -404,4 +550,27 @@ fn excess_columns_are_refused_at_admission() {
         many: false,
     };
     World::<Matrix, Soft>::new(96, 32, 48).mount(&v);
+}
+
+#[test]
+fn typed_slot_construction_and_projected_reads_allocate_nothing() {
+    use bough_x::expr::Slot;
+    #[repr(C, align(64))]
+    struct Padded {
+        first: u8,
+        next: u32,
+    }
+    let v = Padded { first: 3, next: 42 };
+    let count = allocations::count(|| {
+        for _ in 0..1000 {
+            let direct = Slot::typed::<Padded, ()>(0, usize::MAX, |v| v.next);
+            let projected =
+                Slot::projected::<Padded, u32, u32>(1, usize::MAX, |v| &v.next, |word| *word);
+            assert_eq!(direct.read(&v), 42);
+            assert_eq!(projected.read(&v), 42);
+        }
+    });
+    assert_eq!(count, 0);
+    let projected = Slot::projected::<Padded, u32, ()>(1, 0, |v| &v.next, |word| *word);
+    assert!(std::panic::catch_unwind(|| projected.read(&42u32)).is_err());
 }

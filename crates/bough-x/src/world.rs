@@ -85,7 +85,7 @@ pub struct DeltaStats {
 /// ```
 pub struct World<V, B> {
     id: WorldId,
-    inputs: std::sync::Arc<core::sync::atomic::AtomicU64>,
+    inputs: crate::el::InputToken,
     /// Boxed: the column table points into the tree, and the world itself may be moved. Private (review C01):
     /// its columns' descriptors were made for `B` and for the view mounted; outside code reads it through
     /// [`World::root`] and changes it only through the world's own passes.
@@ -155,7 +155,7 @@ impl<V: View, B: Backend> World<V, B> {
         shown.w[U_SCALE] = 1f32.to_bits();
         World {
             id,
-            inputs: Default::default(),
+            inputs: crate::el::InputToken::new(),
             root: Box::new(root),
             shown,
             tiles: Tiles::new(w, h),
@@ -215,7 +215,7 @@ impl<V: View, B: Backend> World<V, B> {
         walk(&self.root, &mut self.relations);
     }
     pub fn input_revision(&self) -> u64 {
-        self.inputs.load(Ordering::Relaxed)
+        self.inputs.revision()
     }
     pub fn id(&self) -> WorldId {
         self.id

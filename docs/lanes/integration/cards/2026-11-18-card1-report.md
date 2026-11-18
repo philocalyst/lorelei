@@ -1,3 +1,11 @@
+## Lock-free follow-up candidate
+
+The source includes the coordinator's lock-free signal and allocation-free slot
+reader cleanup. Focused verification passes: three slab/TLS unit tests and
+eighteen Card 1 integration probes. The earlier full-suite results below belong
+to the preceding candidate; final replay results will be recorded after the
+new frozen source is tested.
+
 # Card 1: typed admission, opaque CPU records and sparse delta
 
 Status: **GATED for the tests below; performance prediction not established.**
@@ -39,10 +47,16 @@ hardware-GPU performance or scanout measurements.
 - Store structure counters are local to each tree. Relation journals expose
   owned revision watches, so moving the model cannot invalidate a raw journal
   pointer. A world observes only its own relations.
-- Signals retain stable identities and weak subscriptions to worlds that
-  described their reads. Setter notifications update those worlds' input
-  counters. Signal moves preserve identity; clones create independent state.
-  No process-global SETS, SHAPE or REL_EPOCH counter decides invalidation.
+- Signals carry packed slab tokens with no destructor or per-signal allocation.
+  The 4,096-slot static slab retires exhausted generations. Generation, shared
+  marker and revision are combined in one AtomicU64 (20/1/43 bits), so stale
+  updates racing slot reuse cannot increment or mark a replacement world.
+  Scalar TLS saves/restores the current token, including nested unwinding.
+  Shared signals use the fallback revision only for worlds marked as observers;
+  unrelated single-owner worlds remain isolated. Clones detach.
+- Slot constructors store typed function pointers in sealed erased form and
+  restore their exact signatures after owner TypeId admission. They allocate
+  nothing and never derive a read address from a nominal offset.
 - Column admission checks the 4,096-column limit before insertion. Record
   capacity/count and packed-place construction check the 20-bit record limit.
   at_place checks bounds and liveness.
@@ -129,11 +143,23 @@ The sparse mutant fails the damage comparison at 64 columns: actual tile bits
 
 ## Costs and limits
 
-The frozen card's zero-steady-state-tax prediction is **not established**.
-Signal now contains a four-byte identity in addition to its value, uses a
-registry mutex for subscriptions/notifications, and is Clone rather than Copy.
-This is a public trait and storage change even though the required author syntax
-is preserved. Exact model, registry, incidence scratch, code-size and total
+The requested lock-free follow-up removes the signal watch mutex, hash map,
+Arc/Weak subscriptions and Signal's Drop implementation. A thread-local counting
+allocator observes zero allocations across 1,000 set/deref/once-settle steps,
+and across 1,000 typed/projected Slot constructions and reads. Signal<u32>,
+Signal<f32> and the numeric sheet owner need no drop. These are scoped operation
+gates, not proof that all framework operations allocate nothing or a CPU timing
+comparison against the predecessor. Signal remains Clone rather than Copy and
+contains a four-byte token in addition to its value.
+
+Each world has at most 2^43-1 local input revisions before checked refusal.
+World slot generations never wrap: the terminal generation is retired and never
+issued, including the combination that would equal the shared-signal sentinel.
+If all slots are occupied or retired, world construction refuses cleanly.
+The existing cold field-admission registry still uses a mutex/map; no signal
+setter, observer, dereference, or ordinary gathered slot read consults it.
+
+Exact model, static slab, field-registry, incidence scratch, code-size and total
 retained-memory costs were not measured. The column ledger excludes them.
 
 The field-reader registry retains one canonical reader per admitted nominal

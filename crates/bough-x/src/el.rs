@@ -31,52 +31,146 @@ use bough_lay::flex::{Dim, Spec};
 use bough_lay::shape::{Flat, K_BOX, K_LINE, Nd, Sink as LSink};
 use bough_lay::{Chain, Hk, LBox, Lay, Rec1, Shape};
 use core::marker::PhantomData;
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::iter::TrustedRandomAccessNoCoerce;
-use std::sync::{Arc, Mutex, Weak};
 
 pub use bough_lay::{Align, Flex, Justify, block, column, div, row};
 
 // ---- state ---------------------------------------------------------------------------------------------------
 
-thread_local! {
-    static INPUT_OWNER: std::cell::RefCell<Vec<Arc<AtomicU64>>> = const { std::cell::RefCell::new(Vec::new()) };
+// The generation and revision share one atomic word. Checking generation in a
+// separate load before incrementing a revision would let a stale setter race
+// slot release/reuse and increment the new world's counter.
+const INPUT_GEN_BITS: u32 = 20;
+const INPUT_GEN_MAX: u32 = (1 << INPUT_GEN_BITS) - 1;
+const INPUT_REV_BITS: u32 = 43;
+const INPUT_REV_MASK: u64 = (1 << INPUT_REV_BITS) - 1;
+const INPUT_SHARED: u64 = 1 << INPUT_REV_BITS;
+const INPUT_GEN_SHIFT: u32 = INPUT_REV_BITS + 1;
+const MULTI_WORLD: u32 = u32::MAX;
+
+struct WorldInputSlot {
+    state: AtomicU64,
+    busy: AtomicBool,
 }
-pub(crate) fn track_inputs<R>(owner: &Arc<AtomicU64>, f: impl FnOnce() -> R) -> R {
-    INPUT_OWNER.with(|s| s.borrow_mut().push(owner.clone()));
-    struct Pop;
-    impl Drop for Pop {
-        fn drop(&mut self) {
-            INPUT_OWNER.with(|s| {
-                s.borrow_mut().pop();
-            });
+impl WorldInputSlot {
+    const fn new() -> Self {
+        Self {
+            state: AtomicU64::new(1 << INPUT_GEN_SHIFT),
+            busy: AtomicBool::new(false),
         }
     }
-    let _pop = Pop;
+    fn claim(&self, index: u32) -> Option<u32> {
+        self.busy
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .ok()?;
+        let generation = (self.state.load(Ordering::Relaxed) >> INPUT_GEN_SHIFT) as u32;
+        debug_assert!(generation > 0 && generation < INPUT_GEN_MAX);
+        self.state
+            .store((generation as u64) << INPUT_GEN_SHIFT, Ordering::Release);
+        Some((index << INPUT_GEN_BITS) | generation)
+    }
+    fn live(&self, token: u32) -> bool {
+        self.busy.load(Ordering::Acquire)
+            && self.state.load(Ordering::Acquire) >> INPUT_GEN_SHIFT
+                == (token & INPUT_GEN_MAX) as u64
+    }
+    fn update(&self, token: u32, shared: bool) {
+        let generation = (token & INPUT_GEN_MAX) as u64;
+        let mut state = self.state.load(Ordering::Relaxed);
+        loop {
+            if state >> INPUT_GEN_SHIFT != generation {
+                return;
+            }
+            let next = if shared {
+                state | INPUT_SHARED
+            } else {
+                assert!(
+                    state & INPUT_REV_MASK < INPUT_REV_MASK,
+                    "input revision exhausted"
+                );
+                state + 1
+            };
+            match self.state.compare_exchange_weak(
+                state,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(current) => state = current,
+            }
+        }
+    }
+    fn release(&self, token: u32) {
+        let generation = token & INPUT_GEN_MAX;
+        // Generation replacement invalidates in-flight CAS operations from the
+        // old owner before another allocator can claim this slot.
+        self.state.store(
+            ((generation + 1) as u64) << INPUT_GEN_SHIFT,
+            Ordering::Release,
+        );
+        if generation + 1 < INPUT_GEN_MAX {
+            self.busy.store(false, Ordering::Release);
+        }
+        // The terminal generation stays busy forever. It is never issued, so
+        // neither stale tokens nor MULTI_WORLD can alias a future allocation.
+    }
+}
+static WORLD_INPUTS: [WorldInputSlot; 4096] = [const { WorldInputSlot::new() }; 4096];
+static MULTI_WORLD_REV: AtomicU64 = AtomicU64::new(0);
+
+/// Owning slab reservation: automatically released when its World is dropped,
+/// including unwinding during world construction.
+pub(crate) struct InputToken(u32);
+impl InputToken {
+    pub(crate) fn new() -> Self {
+        for (i, slot) in WORLD_INPUTS.iter().enumerate() {
+            if let Some(token) = slot.claim(i as u32) {
+                return Self(token);
+            }
+        }
+        panic!("all 4096 world input slots are occupied or retired");
+    }
+    pub(crate) fn revision(&self) -> u64 {
+        let state = input_slot(self.0).state.load(Ordering::Relaxed);
+        let shared = if state & INPUT_SHARED != 0 {
+            MULTI_WORLD_REV.load(Ordering::Relaxed)
+        } else {
+            0
+        };
+        (state & INPUT_REV_MASK)
+            .checked_add(shared)
+            .expect("combined input revision exhausted")
+    }
+}
+impl Drop for InputToken {
+    fn drop(&mut self) {
+        input_slot(self.0).release(self.0);
+    }
+}
+fn input_slot(token: u32) -> &'static WorldInputSlot {
+    &WORLD_INPUTS[(token >> INPUT_GEN_BITS) as usize]
+}
+thread_local! {
+    static INPUT_TOKEN: core::cell::Cell<u32> = const { core::cell::Cell::new(0) };
+}
+pub(crate) fn track_inputs<R>(owner: &InputToken, f: impl FnOnce() -> R) -> R {
+    struct Pop(u32);
+    impl Drop for Pop {
+        fn drop(&mut self) {
+            INPUT_TOKEN.with(|s| s.set(self.0));
+        }
+    }
+    let _pop = Pop(INPUT_TOKEN.with(|s| s.replace(owner.0)));
     f()
 }
 
-/// State with weak subscriptions to the worlds that described a read of it.
-/// Moving a signal preserves its identity; cloning creates independent state.
+/// State with a packed, generation-checked world input token.
+/// Moving preserves identity; cloning creates independent, unobserved state.
+/// There is no signal destructor or per-signal allocation.
 #[derive(Debug)]
 pub struct Signal<T>(T, AtomicU32);
-#[derive(Default)]
-struct Watches {
-    next: u32,
-    by_signal: std::collections::HashMap<u32, Vec<Weak<AtomicU64>>>,
-}
-fn watches() -> &'static Mutex<Watches> {
-    static WATCHES: std::sync::OnceLock<Mutex<Watches>> = std::sync::OnceLock::new();
-    WATCHES.get_or_init(Default::default)
-}
-impl<T> Drop for Signal<T> {
-    fn drop(&mut self) {
-        let id = *self.1.get_mut();
-        if id != 0 {
-            watches().lock().unwrap().by_signal.remove(&id);
-        }
-    }
-}
 impl<T: Clone> Clone for Signal<T> {
     fn clone(&self) -> Self {
         Self::new(self.0.clone())
@@ -92,36 +186,38 @@ impl<T> Signal<T> {
         Self(v, AtomicU32::new(0))
     }
     pub fn into_inner(self) -> T {
-        let mut this = core::mem::ManuallyDrop::new(self);
-        let id = *this.1.get_mut();
-        if id != 0 {
-            watches().lock().unwrap().by_signal.remove(&id);
-        }
-        // SAFETY: ManuallyDrop prevents a second drop; value is moved out exactly once.
-        unsafe { core::ptr::read(&this.0) }
+        self.0
     }
     fn observe(&self) {
-        INPUT_OWNER.with(|s| {
-            let stack = s.borrow();
-            let Some(owner) = stack.last() else {
+        let token = INPUT_TOKEN.with(core::cell::Cell::get);
+        if token == 0 {
+            return;
+        }
+        let mut current = self.1.load(Ordering::Relaxed);
+        loop {
+            if current == token {
                 return;
-            };
-            let mut registry = watches().lock().unwrap();
-            let mut id = self.1.load(Ordering::Relaxed);
-            if id == 0 {
-                registry.next = registry
-                    .next
-                    .checked_add(1)
-                    .expect("signal identity space exhausted");
-                id = registry.next;
-                self.1.store(id, Ordering::Relaxed);
             }
-            let watchers = registry.by_signal.entry(id).or_default();
-            watchers.retain(|w| w.strong_count() != 0);
-            if !watchers.iter().any(|w| w.ptr_eq(&Arc::downgrade(owner))) {
-                watchers.push(Arc::downgrade(owner));
+            if current == MULTI_WORLD {
+                input_slot(token).update(token, true);
+                return;
             }
-        });
+            let shared = current != 0 && input_slot(current).live(current);
+            let next = if shared { MULTI_WORLD } else { token };
+            match self
+                .1
+                .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+            {
+                Ok(_) => {
+                    if shared {
+                        input_slot(current).update(current, true);
+                        input_slot(token).update(token, true);
+                    }
+                    return;
+                }
+                Err(actual) => current = actual,
+            }
+        }
     }
     pub fn set_silent(&mut self, v: T) {
         self.0 = v;
@@ -133,20 +229,14 @@ impl<T: PartialEq> Signal<T> {
             return false;
         }
         self.0 = v;
-        let id = *self.1.get_mut();
-        let mut registry = watches().lock().unwrap();
-        let Some(watchers) = registry.by_signal.get_mut(&id) else {
-            return true;
-        };
-        watchers.retain(|w| {
-            let Some(owner) = w.upgrade() else {
-                return false;
-            };
-            owner
+        let token = *self.1.get_mut();
+        if token == MULTI_WORLD {
+            MULTI_WORLD_REV
                 .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
-                .expect("input revision exhausted");
-            true
-        });
+                .expect("shared input revision exhausted");
+        } else if token != 0 {
+            input_slot(token).update(token, false);
+        }
         true
     }
 }
@@ -253,9 +343,12 @@ impl<'a, V: 'static, X: Word, const OFF: usize> Sig<'a, V, Signal<X>, OFF> {
                 .entry(core::any::TypeId::of::<At<V, X, OFF>>())
                 .or_insert_with(|| {
                     let p = self.projection;
-                    Slot::typed::<V, At<V, X, OFF>>(<At<V, X, OFF> as Lens>::SLOT, OFF, move |v| {
-                        p(v).0.to_word()
-                    })
+                    Slot::projected::<V, Signal<X>, At<V, X, OFF>>(
+                        <At<V, X, OFF> as Lens>::SLOT,
+                        OFF,
+                        p,
+                        |s| s.0.to_word(),
+                    )
                 })
         };
         let slot = if let Some(cache) = self.cache {
@@ -1727,4 +1820,63 @@ pub mod prelude {
     pub use crate::event::{Ev, Key};
     pub use crate::expr::Color;
     pub use crate::sig;
+}
+
+#[cfg(test)]
+mod input_slot_tests {
+    use super::*;
+
+    #[test]
+    fn stale_generation_cannot_increment_or_mark_a_reused_slot() {
+        let slot = WorldInputSlot::new();
+        let old = slot.claim(0).unwrap();
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                for _ in 0..10_000 {
+                    slot.update(old, false);
+                    slot.update(old, true);
+                }
+            });
+            slot.release(old);
+            let next = slot.claim(0).unwrap();
+            assert_ne!(old, next);
+        });
+        let state = slot.state.load(Ordering::Relaxed);
+        assert_eq!(state & (INPUT_REV_MASK | INPUT_SHARED), 0);
+    }
+
+    #[test]
+    fn terminal_generation_retires_without_issuing_sentinel() {
+        let slot = WorldInputSlot::new();
+        slot.state.store(
+            ((INPUT_GEN_MAX - 1) as u64) << INPUT_GEN_SHIFT,
+            Ordering::Relaxed,
+        );
+        let last = slot.claim(4095).unwrap();
+        assert_ne!(last, MULTI_WORLD);
+        slot.release(last);
+        let retired = slot.state.load(Ordering::Relaxed);
+        slot.update(last, false);
+        slot.update(last, true);
+        assert_eq!(slot.state.load(Ordering::Relaxed), retired);
+        assert!(slot.claim(4095).is_none());
+    }
+
+    #[test]
+    fn input_scope_restores_nested_and_unwound_tokens() {
+        let a = InputToken::new();
+        let b = InputToken::new();
+        assert_eq!(INPUT_TOKEN.with(core::cell::Cell::get), 0);
+        track_inputs(&a, || {
+            assert_eq!(INPUT_TOKEN.with(core::cell::Cell::get), a.0);
+            let _ = std::panic::catch_unwind(|| {
+                track_inputs(&b, || {
+                    assert_eq!(INPUT_TOKEN.with(core::cell::Cell::get), b.0);
+                    panic!("probe");
+                })
+            });
+            assert_eq!(INPUT_TOKEN.with(core::cell::Cell::get), a.0);
+        });
+        assert_eq!(INPUT_TOKEN.with(core::cell::Cell::get), 0);
+    }
 }
