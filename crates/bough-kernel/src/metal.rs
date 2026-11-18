@@ -43,8 +43,14 @@ impl Gpu {
             .admitted_prog
             .as_ref()
             .expect("upload a program before rendering");
-        assert!(p.words[6] as usize < self.atlas_bytes.max(1), "glyph atlas bounds");
-        assert!(p.words[8] as usize < (self.image_bytes / 4).max(1), "image atlas bounds");
+        assert!(
+            (p.words[6] as usize) < self.atlas_bytes.max(1),
+            "glyph atlas bounds"
+        );
+        assert!(
+            (p.words[8] as usize) < (self.image_bytes / 4).max(1),
+            "image atlas bounds"
+        );
         assert!(tiles <= p.tiles(), "invalid dispatch size");
         assert!(
             out_words >= p.validate(&self.admitted_scene),
