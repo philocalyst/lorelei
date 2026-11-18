@@ -597,16 +597,31 @@ pub fn tree<T: Shape>(t: &T) -> Node {
     Flat::of(t).root().tree()
 }
 
-fn canonical<T: Shape>(t: &T) -> Vec<Nd> {
-    struct Words(Vec<Nd>);
-    impl<'a> Sink<'a> for Words {
-        fn node(&mut self, n: Nd) {
-            self.0.push(n);
-        }
+struct SaveSink<'s>(&'s mut Vec<Nd>);
+impl<'a> Sink<'a> for SaveSink<'_> {
+    fn node(&mut self, n: Nd) {
+        self.0.push(n);
     }
-    let mut w = Words(Vec::new());
-    t.emit(&mut w);
-    w.0
+}
+struct MatchSink<'s> {
+    exp: &'s [Nd],
+    idx: usize,
+    eq: bool,
+}
+impl<'a> Sink<'a> for MatchSink<'_> {
+    fn node(&mut self, n: Nd) {
+        self.eq &= self.exp.get(self.idx).is_some_and(|e| *e == n);
+        self.idx += 1;
+    }
+}
+fn matches<T: Shape>(t: &T, exp: &[Nd]) -> bool {
+    let mut ms = MatchSink {
+        exp,
+        idx: 0,
+        eq: true,
+    };
+    t.emit(&mut ms);
+    ms.eq && ms.idx == exp.len()
 }
 
 /// The rects of the last shape a list laid out, with the widths they hold over. A row of the same shape at a
@@ -615,7 +630,7 @@ pub struct Memo {
     hash: u64,
     canonical: Vec<Nd>,
     scale: u32,
-    inputs: Vec<u32>,
+    inputs: [u32; bough_expr::WORDS],
     valid: Valid,
     h: i32,
     rects: Vec<[i32; 4]>,
@@ -633,7 +648,7 @@ impl Memo {
             hash: 0,
             canonical: Vec::new(),
             scale: 0,
-            inputs: Vec::new(),
+            inputs: [0; bough_expr::WORDS],
             valid: Valid {
                 lo: [1.0; 2],
                 hi: [0.0; 2],
@@ -662,9 +677,10 @@ impl Memo {
     /// Lay `t` out into the memo.
     #[inline(never)]
     pub fn lay<T: Shape>(&mut self, t: &T, hash: u64, s: f32, u: &U, width: f32) {
-        self.canonical = canonical(t);
+        self.canonical.clear();
+        t.emit(&mut SaveSink(&mut self.canonical));
         self.scale = s.to_bits();
-        self.inputs = u.w.to_vec();
+        self.inputs = u.w;
         self.rects.clear();
         self.rects.resize(T::LEAVES, [0; 4]);
         let (h, v) = place(t, s, u, width, &mut self.rects[..]);
@@ -686,7 +702,7 @@ impl Memo {
         let hash = hash(t);
         if !self.holds(hash, width)
             || (!cfg!(feature = "mutant_memo_hash_only")
-                && (self.canonical != canonical(t)
+                && (!matches(t, &self.canonical)
                     || self.scale != s.to_bits()
                     || self.inputs != u.w))
         {
@@ -774,6 +790,37 @@ pub fn reflect<T: Shape>(t: &T) -> Vec<Reflected> {
 #[cfg(test)]
 mod memo_tests {
     use super::*;
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+    thread_local! { static ALLOCS: Cell<Option<usize>> = const { Cell::new(None) }; }
+    struct CountAlloc;
+    #[global_allocator]
+    static ALLOCATOR: CountAlloc = CountAlloc;
+    fn count_alloc() {
+        let _ = ALLOCS.try_with(|c| {
+            if let Some(n) = c.get() {
+                c.set(Some(n + 1));
+            }
+        });
+    }
+    // SAFETY: every allocation operation forwards the unchanged pointer/layout to System.
+    // The memo hit test below exercises allocation, deallocation and reallocation forwarding.
+    unsafe impl GlobalAlloc for CountAlloc {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            count_alloc();
+            // SAFETY: GlobalAlloc's caller supplies a valid allocation layout.
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            // SAFETY: the pointer/layout pair came from this forwarding allocator.
+            unsafe { System.dealloc(ptr, layout) }
+        }
+        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+            count_alloc();
+            // SAFETY: the caller supplies a live pointer/layout and a valid new size.
+            unsafe { System.realloc(ptr, layout, size) }
+        }
+    }
     struct Leaf(f32);
     impl Shape for Leaf {
         const LEAVES: usize = 1;
@@ -788,6 +835,56 @@ mod memo_tests {
             };
             s.node(Nd::pack(&sp, K_LINE, true, 0, self.0, 10.0, [0; 2]));
         }
+    }
+    #[test]
+    fn memo_hits_reuse_storage_and_inputs_invalidate() {
+        let mut u = U::default();
+        let mut m = Memo::new();
+        let t = Leaf(10.0);
+        let mut got = [[0; 4]; 1];
+        m.row(&t, 1.0, &u, 100.0, (0, 0), &mut got[..]);
+        let storage = (
+            m.canonical.as_ptr(),
+            m.canonical.capacity(),
+            m.rects.as_ptr(),
+            m.rects.capacity(),
+        );
+        ALLOCS.with(|c| c.set(Some(0)));
+        for _ in 0..1000 {
+            m.row(&t, 1.0, &u, 100.0, (0, 0), &mut got[..]);
+            assert_eq!(
+                storage,
+                (
+                    m.canonical.as_ptr(),
+                    m.canonical.capacity(),
+                    m.rects.as_ptr(),
+                    m.rects.capacity()
+                )
+            );
+        }
+        let allocations = ALLOCS.with(|c| c.replace(None).unwrap());
+        assert_eq!(allocations, 0, "memo hits allocated temporary storage");
+        assert_eq!((m.hits, m.misses), (1000, 1));
+        u.w[0] = 1;
+        m.row(&t, 1.0, &u, 100.0, (0, 0), &mut got[..]);
+        assert_eq!(m.misses, 2);
+        assert_eq!(m.inputs, u.w);
+        assert_eq!(
+            storage,
+            (
+                m.canonical.as_ptr(),
+                m.canonical.capacity(),
+                m.rects.as_ptr(),
+                m.rects.capacity()
+            )
+        );
+        // The visitor must detect both shorter and longer streams, as well as unequal words.
+        let mut nodes = Vec::new();
+        t.emit(&mut SaveSink(&mut nodes));
+        assert!(matches(&t, &nodes));
+        assert!(!matches(&t, &[]));
+        nodes.push(nodes[0]);
+        assert!(!matches(&t, &nodes));
     }
     #[test]
     fn memo_collision_and_scale_match_uncached() {
