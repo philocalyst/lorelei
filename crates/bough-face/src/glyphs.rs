@@ -119,7 +119,7 @@ struct RunSlot {
     start: u32,
     n_face: u32,
     epoch: u32,
-    gen: u8,
+    r#gen: u8,
 }
 
 pub struct Glyphs {
@@ -148,9 +148,11 @@ impl Default for Glyphs {
 
 impl Glyphs {
     pub fn new() -> Glyphs {
-        let store_id = NEXT_STORE.try_update(Ordering::Relaxed, Ordering::Relaxed, |id| {
-            (id < 4096).then_some(id + 1)
-        }).expect("glyph store identity space exhausted");
+        let store_id = NEXT_STORE
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| {
+                (id < 4096).then_some(id + 1)
+            })
+            .expect("glyph store identity space exhausted");
         Glyphs {
             table: vec![EMPTY; 64],
             used: 0,
@@ -176,9 +178,15 @@ impl Glyphs {
     /// has none: it draws nothing rather than someone else's glyphs.
     #[inline(always)]
     pub fn of(&self, r: Run) -> (&[u16], &[i32]) {
-        if r.g0 >> SLOT_BITS != self.store_id { return (&[], &[]); }
-        let Some(e) = self.runs.get((r.g0 & SLOT_MASK) as usize) else { return (&[], &[]); };
-        if e.epoch != self.epoch || e.n_face != r.n_face { return (&[], &[]); }
+        if r.g0 >> SLOT_BITS != self.store_id {
+            return (&[], &[]);
+        }
+        let Some(e) = self.runs.get((r.g0 & SLOT_MASK) as usize) else {
+            return (&[], &[]);
+        };
+        if e.epoch != self.epoch || e.n_face != r.n_face {
+            return (&[], &[]);
+        }
         let a = e.start as usize;
         let Some(b) = a.checked_add(r.len()) else {
             return (&[], &[]);
@@ -212,7 +220,10 @@ impl Glyphs {
     /// [`Glyphs::over`] does next.
     pub fn clear(&mut self) {
         // Descriptor invalidation is O(1); dead slots retain their generation history.
-        self.epoch = self.epoch.checked_add(1).expect("glyph epoch space exhausted");
+        self.epoch = self
+            .epoch
+            .checked_add(1)
+            .expect("glyph epoch space exhausted");
         self.next_slot = self.min_unretired_slot;
         self.table.clear();
         self.table.resize(64, EMPTY);
@@ -384,19 +395,24 @@ impl Glyphs {
             let slot = self.next_slot;
             assert!(slot < 1 << SLOT_BITS, "glyph run slot space exhausted");
             if slot == self.runs.len() {
-                self.runs.push(RunSlot { start, n_face: 0, epoch: 0, gen: 0 });
+                self.runs.push(RunSlot {
+                    start,
+                    n_face: 0,
+                    epoch: 0,
+                    r#gen: 0,
+                });
             }
             let e = &mut self.runs[slot];
             self.next_slot += 1;
-            if e.gen == u8::MAX {
+            if e.r#gen == u8::MAX {
                 // Slots are visited in order; earlier retired slots form a prefix.
                 // Never reuse an 8-bit generation, even after arbitrarily many clears.
                 self.min_unretired_slot = slot + 1;
                 continue;
             }
-            e.gen += 1;
+            e.r#gen += 1;
             e.start = start;
-            e.n_face = n_face | (e.gen as u32) << 24;
+            e.n_face = n_face | (e.r#gen as u32) << 24;
             e.epoch = self.epoch;
             return ((self.store_id << SLOT_BITS) | slot as u32, e.n_face);
         }
@@ -449,11 +465,11 @@ mod handle_tests {
         assert!(g.of(Run::default()).0.is_empty());
         let ptr = g.runs.as_ptr();
         let cap = g.runs.capacity();
-        for gen in 2..=255 {
+        for generation in 2..=255 {
             g.clear();
             let current = line(&mut g);
             assert_eq!(current.g0, first.g0);
-            assert_eq!(current.generation(), gen as u8);
+            assert_eq!(current.generation(), generation as u8);
             assert_eq!(g.get(1, 0, b"x").unwrap().0, current);
             assert!(g.of(first).0.is_empty());
             assert_eq!((g.runs.as_ptr(), g.runs.capacity()), (ptr, cap));
