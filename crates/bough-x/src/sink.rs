@@ -1747,10 +1747,12 @@ fn list_plan(
         cx.tiles.mark(space.clip);
         from = u32::MAX;
     }
-    // rows entered, left or became other rows: what a reader of the stores sees moved (rows only compared
-    // count where `replace` stores one)
-    cx.changed += ((lo != olo) | (hi != ohi) | (from != u32::MAX) | rigid) as u32;
-    cx.moved += ((lo != olo) | (hi != ohi) | (from != u32::MAX) | rigid) as u32;
+    // A changed window or rigid edit moves what a reader sees. Ordinary updates
+    // count only where the record patch stores a value.
+    if (lo != olo) | (hi != ohi) | (from != u32::MAX) | rigid {
+        cx.changed += 1;
+        cx.moved += 1;
+    }
     if (lo == olo) & (hi == ohi) & (from == u32::MAX) & !rigid {
         if all {
             // Every currently exposed record is compared. With the same window and no

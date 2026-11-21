@@ -1066,9 +1066,7 @@ impl<V: View, B: Backend> World<V, B> {
     // Re-learning can drive another description. Keep its stack frame off idle settles.
     #[inline(never)]
     fn settle_changed(&mut self, v: &V, ch: u64, journals: bool) {
-        if self.pass_open {
-            self.redescribe(v);
-        } else if self.changed(v, ch, journals) {
+        if self.changed(v, ch, journals) {
             self.learn(v);
         }
     }
@@ -1081,6 +1079,10 @@ impl<V: View, B: Backend> World<V, B> {
             self.delta(u, ch);
             // `block` kept the current surface, raster and derived words. A word-only delta leaves them alone.
             self.shown.w[..APP_WORDS].copy_from_slice(&u.w[..APP_WORDS]);
+            return false;
+        }
+        if self.pass_open {
+            self.redescribe(v);
             return false;
         }
         if ch != 0 {
@@ -2164,8 +2166,8 @@ impl<V: View, B: Backend> World<V, B> {
     /// the focused row does. If its item was removed, or the edits are more than the journal kept, nothing
     /// is pressed any more (a release then activates nothing): a press is on an item, and the row that
     /// later has its index, or its slot, was not pressed.
-    fn rehold(&mut self) {
-        let Some(mut h) = self.held else { return };
+    #[inline(never)]
+    fn rehold(&mut self, mut h: Held) {
         let Some(mut w) = h.what else { return };
         self.columns();
         let Some(st) = self.root.at(&w.path) else {
@@ -2205,8 +2207,11 @@ impl<V: View, B: Backend> World<V, B> {
         }
         self.held = Some(h);
     }
+    #[inline]
     fn refocus(&mut self) {
-        self.rehold();
+        if let Some(h) = self.held {
+            self.rehold(h);
+        }
         let Some(mut f) = self.focus else { return };
         self.columns();
         let Some(st) = self.root.at(&f.path) else {
