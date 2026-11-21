@@ -101,3 +101,11 @@ The unpatched debug replay independently matched the release walk and sweep coun
 ## Prefix design
 
 The design under review is in the shared `fixes/tile-prefix-checkpoints.md`. It keeps exact 4×Q15 restart state before each chosen paint key alongside the existing BGRA8 layer samples. Incremental ordered memberships and a halo index give a tile the relevant cuts in draw order. The first restored prefix starts the chain. Higher cuts replay the interval from the preceding cut after the preceding reader's halo stages complete. The design includes invalidation, budget fallback, and required mutants.
+
+
+## Open verification
+
+- A matched heavy-effects ranking requires common gradients and shadows, image decoding and upload boundaries, motion cadence, and GPU completion timing. The native-PNG reference suite and the staged paint adapter currently exercise different scenes. The warm-cache startup distributions record each adapter's own boundary.
+- The reduced staged cells leave retained resize, PNG image paint, paths, rounded clips, alpha masks, subtree filter groups, and author shader registration open. The glass control uses synthetic NV12 and the predecoded arm retains the 120 frames in process memory.
+- The layer tests verify CPU and staged Metal pixels on the direct paint path. The combined backdrop/video/spring oracle and the video ownership regressions exercise CPU. In-flight Metal media reclamation, hardware presentation cadence, and quiet paired GPU timing remain open.
+- The Gaussian gate measures a discrete opaque step at seven radii and multiple grid phases. Image-wide perceptual quality and bounds across all admitted radii remain open.
