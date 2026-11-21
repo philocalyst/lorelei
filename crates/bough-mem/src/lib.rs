@@ -153,9 +153,11 @@ impl Region {
     /// Reserve `bytes` raw bytes (aligned to `align`, at least [`COL_ALIGN`]); returns their offset.
     pub fn reserve(&mut self, bytes: usize, align: usize) -> usize {
         let a = align.max(COL_ALIGN);
-        let off = self.next.next_multiple_of(a);
-        assert!(off + bytes <= self.inner.len, "bough-mem: region of {} bytes is full (need {} more at {off})", self.inner.len, bytes);
-        self.next = off + bytes;
+        // checked: release builds wrap on overflow, and a wrapped end would pass the bound (soundness review S10)
+        let off = self.next.checked_next_multiple_of(a).expect("bough-mem: region offset overflow");
+        let end = off.checked_add(bytes).expect("bough-mem: region offset overflow");
+        assert!(end <= self.inner.len, "bough-mem: region of {} bytes is full (need {} more at {off})", self.inner.len, bytes);
+        self.next = end;
         off
     }
 
@@ -177,7 +179,7 @@ impl Region {
         // page). Beyond that the address itself is aligned: reserve room for the slack and start where the
         // address is a multiple of `align`.
         let off = if align > vm_page() {
-            let slack = self.reserve(bytes + align, vm_page());
+            let slack = self.reserve(bytes.checked_add(align).expect("column size"), vm_page());
             let base = self.inner.base.as_ptr() as usize;
             (base + slack).next_multiple_of(align) - base
         } else {
@@ -315,8 +317,9 @@ impl<T: Copy> Col<T> {
     /// Insert `count` copies of `v` at `at` (the tail shifts up).
     pub fn insert_n(&mut self, at: usize, count: usize, v: T) {
         assert!(at <= self.len, "column `{}`: insert index {at} out of range {}", self.name, self.len);
-        if self.len + count > self.cap {
-            self.grow_to(self.len + count);
+        let want = self.len.checked_add(count).expect("column length overflow");
+        if want > self.cap {
+            self.grow_to(want);
         }
         // SAFETY: len + count <= cap; the tail [at, len) moves up by `count` (overlapping copy).
         unsafe {
@@ -371,8 +374,9 @@ impl<T: Copy> Col<T> {
         self.len = src.len();
     }
     pub fn extend_from_slice(&mut self, src: &[T]) {
-        if self.len + src.len() > self.cap {
-            self.grow_to(self.len + src.len());
+        let want = self.len.checked_add(src.len()).expect("column length overflow");
+        if want > self.cap {
+            self.grow_to(want);
         }
         // SAFETY: room checked; src is not inside this column's spare capacity (it is a live slice).
         unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), self.ptr.as_ptr().add(self.len), src.len()) };
@@ -424,7 +428,13 @@ impl ColMem {
 
 /// The VM page size (16 KB on Apple silicon).
 pub fn vm_page() -> usize {
-    #[cfg(unix)]
+    // Miri has no `getpagesize`: the interpreter's page is Apple silicon's, so the carving arithmetic runs
+    // under it unchanged (soundness review: Miri coverage of `Region::carve*`).
+    #[cfg(miri)]
+    {
+        16384
+    }
+    #[cfg(all(unix, not(miri)))]
     {
         unsafe extern "C" {
             fn getpagesize() -> i32;
@@ -432,7 +442,7 @@ pub fn vm_page() -> usize {
         // SAFETY: no arguments, no preconditions.
         (unsafe { getpagesize() }) as usize
     }
-    #[cfg(not(unix))]
+    #[cfg(all(not(unix), not(miri)))]
     {
         4096
     }
