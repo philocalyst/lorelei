@@ -15,6 +15,54 @@ struct Shape {
     shift: u32,
 }
 
+/// Index the two outside runs, skipping the interval where the axis is separable.
+/// Empty or touching intervals describe the entire axis.
+#[derive(Clone, Copy)]
+struct Axis {
+    origin: i64,
+    len: usize,
+    left: usize,
+    right: usize,
+}
+
+impl Axis {
+    fn new(start: i32, end: i32, reach: i64, margin: i64) -> Option<Self> {
+        let (start, end) = (i64::from(start), i64::from(end));
+        let origin = (start - margin).div_euclid(256);
+        let end_px = (end + margin + 255).div_euclid(256);
+        let len = usize::try_from(end_px - origin).ok()?;
+        // The CPU corner test uses the midpoint rounded down to Q8. The
+        // right boundary can therefore lie one Q8 unit inside `end`.
+        let core_end = start + 2 * ((end - start) >> 1) - reach;
+        let left =
+            ((start + reach - 129).div_euclid(256) + 1 - origin).clamp(0, len as i64) as usize;
+        let right =
+            ((core_end - 128).div_euclid(256) + 1 - origin).clamp(left as i64, len as i64) as usize;
+        Some(Self {
+            origin,
+            len,
+            left,
+            right,
+        })
+    }
+
+    fn samples(self) -> usize {
+        self.left + self.len - self.right
+    }
+
+    #[inline]
+    fn index(self, point: i32) -> Option<usize> {
+        let pixel = (i64::from(point >> 8) - self.origin) as usize;
+        if pixel < self.left {
+            Some(pixel)
+        } else if pixel >= self.right && pixel < self.len {
+            Some(pixel - self.right + self.left)
+        } else {
+            None
+        }
+    }
+}
+
 pub(super) struct ShadowCache {
     enabled: bool,
     shapes: HashMap<Shape, Box<[u16]>>,
@@ -37,19 +85,12 @@ impl ShadowCache {
             return None;
         }
         let (x, y) = (command.b.x, command.b.y);
-        let bw = i64::from(command.rad.y);
-        let margin = bw + bw / 2 + 256;
-        let lo = [
-            (i64::from(x) - margin).div_euclid(256),
-            (i64::from(y) - margin).div_euclid(256),
-        ];
-        let hi = [
-            (i64::from(command.b.z) + margin + 255).div_euclid(256),
-            (i64::from(command.b.w) + margin + 255).div_euclid(256),
-        ];
-        let stride = usize::try_from(hi[0] - lo[0]).ok()?;
-        let height = usize::try_from(hi[1] - lo[1]).ok()?;
-        let size = stride.checked_mul(height)?;
+        let blur = i64::from(command.rad.y);
+        let reach = i64::from(command.rad.x) + blur + (blur >> 1);
+        let margin = blur + (blur >> 1) + 256;
+        let x_axis = Axis::new(x, command.b.z, reach, margin)?;
+        let y_axis = Axis::new(y, command.b.w, reach, margin)?;
+        let size = x_axis.samples().checked_mul(y_axis.samples())?;
         if size == 0 || size > MAX_SHAPE {
             return None;
         }
@@ -71,29 +112,41 @@ impl ShadowCache {
         };
         Some(Coverage {
             samples,
-            origin: [i32::try_from(lo[0]).ok()?, i32::try_from(lo[1]).ok()?],
-            stride,
-            height,
+            x: x_axis,
+            y: y_axis,
         })
     }
 }
 
 pub(super) struct Coverage<'a> {
     samples: &'a mut [u16],
-    origin: [i32; 2],
-    stride: usize,
-    height: usize,
+    x: Axis,
+    y: Axis,
 }
 
 impl Coverage<'_> {
+    pub(super) fn row(&mut self, cy: i32) -> Option<CoverageRow<'_>> {
+        let row = self.y.index(cy)?;
+        let stride = self.x.samples();
+        Some(CoverageRow {
+            samples: &mut self.samples[row * stride..(row + 1) * stride],
+            x: self.x,
+        })
+    }
+}
+
+pub(super) struct CoverageRow<'a> {
+    samples: &'a mut [u16],
+    x: Axis,
+}
+
+impl CoverageRow<'_> {
     #[inline]
     pub(super) fn sample(&mut self, command: Cmd, cx: i32, cy: i32) -> u16 {
-        let x = ((cx >> 8) - self.origin[0]) as usize;
-        let y = ((cy >> 8) - self.origin[1]) as usize;
-        if x >= self.stride || y >= self.height {
+        let Some(x) = self.x.index(cx) else {
             return k::shadow(command, cx, cy) as u16;
-        }
-        let slot = &mut self.samples[y * self.stride + x];
+        };
+        let slot = &mut self.samples[x];
         if *slot == EMPTY {
             *slot = k::shadow(command, cx, cy) as u16;
         }

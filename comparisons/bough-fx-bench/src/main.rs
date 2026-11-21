@@ -50,7 +50,7 @@ fn pointer(step: usize) -> (f32, f32) {
 fn update(a: &mut App<Scene>, cell: &str, step: usize, mutant: bool) {
     match cell {
         "one" | "many" => {
-            if step % 40 == 0 || step % 40 == 12 {
+            if matches!(step % 40, 0 | 12) {
                 let target = if step.is_multiple_of(40) { 1 } else { -1 };
                 a.turn(|s| {
                     s.foreground.set(target as f32 * 10.0);

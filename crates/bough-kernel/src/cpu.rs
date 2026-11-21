@@ -855,12 +855,13 @@ fn shade_tile(
                         simd::scale_row(&sx[i0..i0 + n], sy, &mut cov[..n]);
                         if zone_y {
                             // the corner corrections: the kernel, pixel by pixel, where a corner is in reach
+                            let mut coverage_row = shadow.as_mut().and_then(|c| c.row(cy));
                             let mut m = (zone_x >> i0) & (u32::MAX >> (32 - n));
                             while m != 0 {
                                 let i = m.trailing_zeros() as usize;
                                 m &= m - 1;
                                 let cx = cxa + i as i32 * 256;
-                                cov[i] = match &mut shadow {
+                                cov[i] = match &mut coverage_row {
                                     Some(coverage) => coverage.sample(*c, cx, cy),
                                     None => k::shadow(*c, cx, cy) as u16,
                                 };

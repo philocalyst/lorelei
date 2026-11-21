@@ -3,6 +3,7 @@
 set -eu
 : "${CARGO_TARGET_DIR:?Set the isolated target directory}"
 lock=${BOUGH_BENCH_LOCK:-$HOME/work/locks/bench.lock}
+samples=${BOUGH_FX_SAMPLES:-240}
 bin=$CARGO_TARGET_DIR/release/bough-fx-bench
 out=${1:?Pass a directory for logs}
 mkdir -p "$out"
@@ -13,7 +14,7 @@ for n in 200 1000 5000; do
     for cell in startup idle one many hover theme scroll resize video; do
         stem=$out/$n-$cell
         if "$bin" check "$n" "$cell" 20 > "$stem.gate" 2>&1; then
-            count=20
+            count=$samples
             if [ "$cell" = idle ]; then count=1; fi
             if lockf -k "$lock" sh -c 'uptime; "$@"; r=$?; uptime; exit "$r"' sh \
                     "$bin" measure "$n" "$cell" "$count" > "$stem.csv" 2>&1; then
