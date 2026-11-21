@@ -91,3 +91,13 @@ The reviewed gaps are representation gaps, not constant factors:
 - **Hot patch**: recompiling and restarting is a fallback, not the answer. The reformulation is to make the
   view's variable text cross one **hot-call boundary** (an atomic function pointer) so new code can be a
   replacement at that boundary, keeping the process and world; everything else stays on the restart path.
+
+## Amendment 1 (2026-11-21, during TASK 1)
+
+The card said a node id would include the **store's creation generation**. That cannot be a process-global
+counter: the canonical golden and the record->replay comparison both describe two worlds in one process, so a
+counter makes the bytes depend on test order and makes a replayed app's ids differ. Amended, before the gate
+was measured: the generation is the **host's world generation** (`Program::generation`, 0 for a fresh app, +1
+on a remount), carried in `AppInfo`; the store path in the id supplies the rest of the scope. This keeps
+"generation" in the id while making the description deterministic; the cost is that two independent apps of the
+same kind describe the same ids, which is what replay wants. No other part of the card changed.

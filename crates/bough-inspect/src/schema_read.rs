@@ -39,6 +39,17 @@ fn b(v: &J, k: &str) -> bool {
 fn arr<'a>(v: &'a J, k: &str) -> &'a [J] {
     v.get(k).map(J::arr).unwrap_or(&[])
 }
+/// A stable id is written as sixteen hex digits: a JSON number would lose bits in a client.
+fn id(v: &J, k: &str) -> Result<u64, String> {
+    match v.get(k) {
+        Some(J::Str(s)) => u64::from_str_radix(s, 16).map_err(|e| format!("{k}: {e}")),
+        Some(x) => x
+            .as_i64()
+            .and_then(|n| u64::try_from(n).ok())
+            .ok_or_else(|| format!("missing id {k}")),
+        None => Ok(0),
+    }
+}
 
 impl R {
     pub fn from_json(v: &J) -> Result<R, String> {
@@ -114,6 +125,7 @@ fn reads(v: &J) -> Vec<u32> {
 impl Prop {
     fn from_json(v: &J) -> Result<Prop, String> {
         Ok(Prop {
+            id: id(v, "id")?,
             name: stat(&s(v, "name")?),
             word: u(v, "word")?,
             words: u(v, "words")?,
@@ -232,6 +244,8 @@ impl Node {
         let off = arr(v, "offset");
         Ok(Node {
             key: Key::from_json(v.get("key").ok_or("node key")?)?,
+            id: id(v, "id")?,
+            kind_id: id(v, "kind_id")?,
             store: i(v, "store")? as usize,
             kind: stat(&s(v, "kind")?),
             ty: stat(&s(v, "ty")?),
@@ -328,6 +342,7 @@ impl AppInfo {
         Ok(AppInfo {
             name: s(v, "name")?,
             view: stat(&s(v, "view")?),
+            generation: v.get("generation").and_then(J::as_i64).unwrap_or(0) as u64,
             world: v.get("world").and_then(J::as_i64).unwrap_or(0) as u64,
             w: i(v, "w")? as i32,
             h: i(v, "h")? as i32,

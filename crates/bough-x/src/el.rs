@@ -795,6 +795,7 @@ impl<V, C: Expr<Out = Color> + Rooted<V>, T: Motion + Rooted<V>> Paints<V> for B
 /// The façade's calls on a box that are paint, not layout.
 pub trait Deco<P, C, H>: Sized {
     /// A border of `w` points. (First cut: a bordered box has no fill.)
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     fn border<Cl>(self, w: f32, c: Cl) -> LBox<Rec1<Bord<Cl, Still>>, C, H>;
     /// Positioned by its parent's layout as usual. (The façade's marker for an `abs` child's container.)
     fn relative(self) -> Self {
@@ -802,24 +803,42 @@ pub trait Deco<P, C, H>: Sized {
     }
 }
 impl<P, C, H> Deco<P, C, H> for LBox<P, C, H> {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     fn border<Cl>(self, w: f32, c: Cl) -> LBox<Rec1<Bord<Cl, Still>>, C, H> {
-        self.bg(Bord { w, c, t: Still })
+        #[cfg(feature = "inspect-metadata")]
+        {
+            return self.bg_at(Bord { w, c, t: Still }, core::panic::Location::caller());
+        }
+        #[cfg(not(feature = "inspect-metadata"))]
+        {
+            self.bg(Bord { w, c, t: Still })
+        }
     }
 }
 /// `.translate(offset in points)` on a bordered box: it moves without layout.
 pub trait Translate<Cl, C, H> {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     fn translate<E: Expr<Out = (f32, f32)>>(self, e: E) -> LBox<Rec1<Bord<Cl, Px<E>>>, C, H>;
 }
 impl<Cl: Copy, C, H> Translate<Cl, C, H> for LBox<Rec1<Bord<Cl, Still>>, C, H> {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     fn translate<E: Expr<Out = (f32, f32)>>(self, e: E) -> LBox<Rec1<Bord<Cl, Px<E>>>, C, H> {
         let b = self.paint.0;
-        self.bg(Bord {
+        let painted = Bord {
             w: b.w,
             c: b.c,
             t: Px(e),
-        })
+        };
+        #[cfg(feature = "inspect-metadata")]
+        {
+            return self.bg_at(painted, core::panic::Location::caller());
+        }
+        #[cfg(not(feature = "inspect-metadata"))]
+        {
+            self.bg(painted)
+        }
     }
 }
 
@@ -1186,8 +1205,12 @@ pub struct Text<K, C> {
     c: C,
     /// Line height in points (0: the content's).
     line: f32,
+    /// Where the `text(..)` call was written: cold, and only for the inspector.
+    #[cfg(feature = "inspect-metadata")]
+    loc: &'static core::panic::Location<'static>,
 }
 /// `text("label")`, `text(format!(..))`, `text(sig!(self.cells).at(i).num(|v| *v, FMT))`.
+#[cfg_attr(feature = "inspect-metadata", track_caller)]
 #[inline(always)]
 pub fn text<T: IntoContent>(t: T) -> Text<T::K, Color> {
     Text {
@@ -1195,6 +1218,8 @@ pub fn text<T: IntoContent>(t: T) -> Text<T::K, Color> {
         k: t.content(),
         c: Color(0),
         line: 0.0,
+        #[cfg(feature = "inspect-metadata")]
+        loc: core::panic::Location::caller(),
     }
 }
 impl<K, C> Text<K, C> {
@@ -1211,6 +1236,8 @@ impl<K, C> Text<K, C> {
             k: self.k,
             c,
             line: self.line,
+            #[cfg(feature = "inspect-metadata")]
+            loc: self.loc,
         }
     }
 }
@@ -1243,6 +1270,8 @@ impl<V, K: Content, C: Expr<Out = Color> + Rooted<V>> Row<V> for Text<K, C> {
     const LEAVES: u32 = 1;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
+        #[cfg(feature = "inspect-metadata")]
+        l.at(self.loc);
         <K::A<C> as Row<V>>::visit(&self.k.arch(self.c), l)
     }
     #[inline(always)]
@@ -1313,6 +1342,8 @@ impl<V, P: Paints<V>, C: Row<V>, H> Row<V> for LBox<Rec1<P>, C, H> {
     const LEAVES: u32 = 1 + C::LEAVES;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
+        #[cfg(feature = "inspect-metadata")]
+        l.at(self.loc);
         <P::A as Row<V>>::visit(&self.paint.0.arch(), l);
         self.kids.visit(l)
     }
@@ -1462,12 +1493,17 @@ pub struct Scroll<P, C> {
     pub content: C,
     /// The block word of the scroll offset (an `f32` of points).
     pub word: u8,
+    /// Where `.scroll(..)` was written: cold, and only for the inspector.
+    #[cfg(feature = "inspect-metadata")]
+    loc: &'static core::panic::Location<'static>,
 }
 /// `.scroll(sig!(self.y))` on a box: its children scroll by the field's value (points).
 pub trait Scrolls<P, C>: Sized {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     fn scroll<V: 'static, const OFF: usize>(self, y: Sig<'_, V, Signal<f32>, OFF>) -> Scroll<P, C>;
 }
 impl<P, C, H> Scrolls<P, C> for LBox<P, C, H> {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     fn scroll<V: 'static, const OFF: usize>(self, y: Sig<'_, V, Signal<f32>, OFF>) -> Scroll<P, C> {
         Scroll {
@@ -1475,6 +1511,8 @@ impl<P, C, H> Scrolls<P, C> for LBox<P, C, H> {
             paint: self.paint,
             content: self.kids,
             word: y.word(),
+            #[cfg(feature = "inspect-metadata")]
+            loc: core::panic::Location::caller(),
         }
     }
 }
@@ -1513,6 +1551,8 @@ impl<V, P: Paints<V>, C> Row<V> for Scroll<Rec1<P>, C> {
     const LEAVES: u32 = 2;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
+        #[cfg(feature = "inspect-metadata")]
+        l.at(self.loc);
         <P::A as Row<V>>::visit(&self.paint.0.arch(), l);
         l.hole()
     }

@@ -8,7 +8,9 @@
 //! until a `shutdown` request or the client leaves. Without it, it paints one frame and prints its digest (the
 //! zero-cost build's self-check).
 use bough_guibench_x::{rows, search, spinner, table};
-use bough_inspect_app::{Lab, Scenario};
+use bough_inspect_app::Lab;
+#[cfg(not(feature = "inspect"))]
+use bough_inspect_app::Scenario;
 
 struct Args {
     scenario: String,
@@ -18,6 +20,8 @@ struct Args {
     h: i32,
     scale: i32,
     filter: bool,
+    /// Mount the inspector panel beside the app (`bough-inspect` builds only).
+    overlay: bool,
 }
 
 fn parse() -> Result<Args, String> {
@@ -29,6 +33,7 @@ fn parse() -> Result<Args, String> {
         h: 600,
         scale: 1,
         filter: true,
+        overlay: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(k) = it.next() {
@@ -41,9 +46,10 @@ fn parse() -> Result<Args, String> {
             "--h" => a.h = val()?.parse().map_err(|_| "h: a number")?,
             "--scale" => a.scale = val()?.parse().map_err(|_| "scale: a number")?,
             "--no-filter" => a.filter = false,
+            "--overlay" => a.overlay = true,
             "--help" | "-h" => {
                 println!(
-                    "usage: bough-inspect-app [--scenario rows|table|search|spinner] [--rows N] [--socket PATH] [--w W] [--h H] [--scale K] [--no-filter]"
+                    "usage: bough-inspect-app [--scenario rows|table|search|spinner] [--rows N] [--socket PATH] [--w W] [--h H] [--scale K] [--no-filter] [--overlay]"
                 );
                 std::process::exit(0);
             }
@@ -76,9 +82,21 @@ fn main() {
 #[cfg(feature = "inspect")]
 fn run<V: bough_inspect_app::Fields>(v: V, a: &Args) -> ! {
     use bough_inspect::session::Session;
-    use bough_inspect::socket::Server;
+    use bough_inspect_app::WithOverlay;
     let lab = Lab::new(v, a.w, a.h, a.scale);
-    let mut session = Session::new(lab);
+    if a.overlay {
+        serve(Session::new(WithOverlay::new(lab, true)), a)
+    } else {
+        serve(Session::new(lab), a)
+    }
+}
+
+#[cfg(feature = "inspect")]
+fn serve<P: bough_inspect::session::Program>(
+    mut session: bough_inspect::session::Session<P>,
+    a: &Args,
+) -> ! {
+    use bough_inspect::socket::Server;
     // a first frame, so the world's damage is consumed as a host would after presenting
     let _ = session.shot();
     match &a.socket {
@@ -103,7 +121,7 @@ fn run<V: bough_inspect_app::Fields>(v: V, a: &Args) -> ! {
             let f = session.shot();
             println!(
                 "{} {}x{} digest {:016x}",
-                <V as Scenario>::NAME,
+                session.app().name(),
                 f.w,
                 f.h,
                 f.digest()

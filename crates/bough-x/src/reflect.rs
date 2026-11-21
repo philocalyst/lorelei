@@ -250,19 +250,32 @@ struct LearnLeaf<'a> {
     site: u32,
     row: u32,
     pos: u32,
+    /// Where the row (or list) was described: the site of a leaf the element layer did not name.
     loc: &'static Location<'static>,
+    /// Where the next leaf was written, when the element layer said so.
+    cur: &'static Location<'static>,
 }
 impl<V> Leaf<V> for LearnLeaf<'_> {
+    fn at(&mut self, loc: &'static Location<'static>) {
+        #[cfg(feature = "mutant_same_site")]
+        let _ = loc;
+        #[cfg(not(feature = "mutant_same_site"))]
+        {
+            self.cur = loc;
+        }
+    }
     fn hole(&mut self) {
         // a position of the row that is not a record (an element's scrolled child): it has a site, and no info
         self.site += 1;
         self.pos += 1;
+        self.cur = self.loc;
     }
     fn leaf<A: Arch>(&mut self, _: &A, _: TypeId, hov: Option<Hov>) {
         let k = self.site as usize;
         self.site += 1;
         let pos = self.pos;
         self.pos += 1;
+        let loc = core::mem::replace(&mut self.cur, self.loc);
         let Some(s) = self.st.sites.get(k) else {
             return;
         };
@@ -270,7 +283,7 @@ impl<V> Leaf<V> for LearnLeaf<'_> {
             col: s.col,
             row: self.row,
             pos,
-            loc: self.loc,
+            loc,
         });
         // The readers are installed only for a column made for this very record type. A record whose type holds
         // a closure is another type in each sink's instantiation of `view` (the closure's type carries the sink),
@@ -316,6 +329,7 @@ impl<'a, V> Sink<V> for Learn<'a> {
             row: k,
             pos: 0,
             loc,
+            cur: loc,
         });
     }
     #[track_caller]
@@ -376,6 +390,7 @@ impl<'a, V> Sink<V> for Learn<'a> {
                 row: 0,
                 pos: 0,
                 loc,
+                cur: loc,
             });
         }
         (n as i32).saturating_mul(st.geo.2)
@@ -407,6 +422,7 @@ impl<'a, V> Sink<V> for Learn<'a> {
                 row: 0,
                 pos: 0,
                 loc,
+                cur: loc,
             });
         }
     }
@@ -835,17 +851,23 @@ impl Detach<'_> {
 struct DLeaf<'a> {
     ent: Ent,
     loc: &'static Location<'static>,
+    cur: &'static Location<'static>,
     shape: &'a [Rect],
     at: (i32, i32),
     u: &'a U,
     out: &'a mut Vec<Snap>,
 }
 impl<V> Leaf<V> for DLeaf<'_> {
+    fn at(&mut self, loc: &'static Location<'static>) {
+        self.cur = loc;
+    }
     fn hole(&mut self) {
         self.ent.pos += 1;
+        self.cur = self.loc;
     }
     fn leaf<A: Arch>(&mut self, a: &A, _: TypeId, hov: Option<Hov>) {
         let k = self.ent.pos as usize;
+        let loc = core::mem::replace(&mut self.cur, self.loc);
         let vals = (0..A::OPS.len()).map(|i| a.val(i, self.u)).collect();
         let off = if A::MOVES { a.offset(self.u) } else { (0, 0) };
         self.out.push(Snap {
@@ -853,7 +875,7 @@ impl<V> Leaf<V> for DLeaf<'_> {
             kind: A::NAME,
             on: hov,
             words: a.record_words().to_vec(),
-            loc: self.loc,
+            loc,
             rect: self
                 .shape
                 .get(k)
@@ -901,6 +923,7 @@ impl<'a, V> Sink<V> for Detach<'a> {
                     pos: 0,
                 },
                 loc,
+                cur: loc,
                 shape: l.shape,
                 at,
                 u: self.u,

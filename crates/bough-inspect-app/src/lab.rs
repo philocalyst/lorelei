@@ -36,6 +36,9 @@ pub struct Lab<V: Scenario> {
     pub scene: Scene<V>,
     #[cfg(feature = "inspect")]
     initial_geometry: (i32, i32, i32),
+    /// Which world is mounted: 0 for the first, one more for every remount (a resize here).
+    #[cfg(feature = "inspect")]
+    pub generation: u64,
 }
 impl<V: Scenario> Lab<V> {
     pub fn new(v: V, w: i32, h: i32, scale: i32) -> Lab<V> {
@@ -46,6 +49,8 @@ impl<V: Scenario> Lab<V> {
             scene,
             #[cfg(feature = "inspect")]
             initial_geometry: (w, h, scale),
+            #[cfg(feature = "inspect")]
+            generation: 0,
         }
     }
     pub fn size(&self) -> (i32, i32) {
@@ -62,6 +67,10 @@ impl<V: Scenario> Lab<V> {
     }
     pub fn resize(&mut self, w: i32, h: i32, scale: i32) {
         App::resize(&mut self.scene, w, h, scale.max(1));
+        #[cfg(feature = "inspect")]
+        {
+            self.generation += 1;
+        }
     }
     pub fn shot(&mut self) -> Shot {
         Shot {
