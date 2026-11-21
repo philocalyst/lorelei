@@ -1112,13 +1112,23 @@ impl Scene {
         &self.plan
     }
     /// The weight of what is due in the layers before anything is repaired (the tiles events touched, and
-    /// the whole of a fresh layer): the chooser's estimate of layer work, O(due).
-    pub fn due_weight(&self) -> u64 {
-        self.lay_todo.iter().map(|&lid| {
+    /// the whole of a fresh layer): the chooser's estimate of layer work, O(due), cut short once it passes
+    /// `enough` (the chooser needs to know only on which side of its threshold the sum falls).
+    pub fn due_weight(&self, enough: u64) -> u64 {
+        let mut w = 0;
+        for &lid in &self.lay_todo {
             let l = &self.layers.list[lid as usize];
-            let fresh = if l.fresh { ((l.lv[0].r[2] - l.lv[0].r[0]) as u64 * (l.lv[0].r[3] - l.lv[0].r[1]) as u64) >> 10 } else { 0 };
-            l.pending.iter().map(|&t| self.tile_weight(t) as u64).sum::<u64>() + fresh * 8
-        }).sum()
+            if l.fresh {
+                w += (((l.lv[0].r[2] - l.lv[0].r[0]) as u64 * (l.lv[0].r[3] - l.lv[0].r[1]) as u64) >> 10) * 8;
+            }
+            for &t in &l.pending {
+                if w > enough {
+                    return w;
+                }
+                w += self.tile_weight(t) as u64;
+            }
+        }
+        w
     }
     /// `update`, then `plan_eager`: for an executor that needs the whole schedule up front.
     pub fn update_eager(&mut self, u: &U) -> FrameStats {

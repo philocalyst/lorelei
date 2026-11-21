@@ -61,7 +61,7 @@ impl Mixed {
         let mut fs = scene.update(u);
         let mut tiles = std::mem::take(&mut self.tiles);
         scene.damage.tiles(&mut tiles);
-        let due = scene.due_weight();
+        let due = scene.due_weight(GPU_FRAME_INSTR / CPU_INSTR_PER_WEIGHT);
         let idle = tiles.is_empty() && !scene.plan.full && due == 0;
         let ran = if idle {
             Ran::Idle
@@ -71,10 +71,18 @@ impl Mixed {
             // a broad change never touches the CPU painter, and nothing is computed to decide so
             Ran::Gpu
         } else {
-            // the damage's weight before any repair: the tiles to shade and the layer tiles that are due
-            let w: u64 = tiles.iter().map(|&t| scene.tile_weight(t) as u64).sum::<u64>() + due;
+            // the damage's weight before any repair: the layer tiles that are due and the tiles to shade,
+            // summed only until the CPU's side of the comparison is lost (the sum is then not needed)
+            let limit = GPU_FRAME_INSTR / CPU_INSTR_PER_WEIGHT;
+            let mut w = due;
+            for &t in &tiles {
+                if w > limit {
+                    break;
+                }
+                w += scene.tile_weight(t) as u64;
+            }
             self.last_weight = w;
-            if w * CPU_INSTR_PER_WEIGHT <= GPU_FRAME_INSTR { Ran::Cpu } else { Ran::Gpu }
+            if w <= limit { Ran::Cpu } else { Ran::Gpu }
         };
         // the CPU kernel repairs the layers first and lets damage stop where nothing changed; Metal needs
         // the whole schedule before it runs. Either way the output damage is complete only now.
