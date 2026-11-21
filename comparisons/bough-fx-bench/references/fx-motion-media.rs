@@ -464,3 +464,69 @@ fn a_storm_between_draws_holds_a_bounded_number_of_slots() {
     let (slots, _) = p.stats();
     assert!(slots <= 4, "a 50-frame storm per draw grew the pool to {slots} slots (a shown frame, a pending one and one being written need 3)");
 }
+
+#[test]
+fn backdrop_over_video_over_spring_matches_full_replay() {
+    type Pane = Backdrop<Lane, Ki<3072>, Ki<1536>, Filt<K<256>, K<256>, K<256>>>;
+    type Back = Solid<Lane, Pm<K<0xff14_2638>>>;
+    const VIDEO_RECT: [i32; 4] = [33 * 256, 5 * 256, 97 * 256, 53 * 256];
+    const GLASS_RECT: [i32; 4] = [21 * 256, 22 * 256, 109 * 256, 71 * 256];
+
+    fn publish(s: &mut Scene, old: Option<u32>, seq: u32, y: u8) -> u32 {
+        let lease = s.media.lease(VW, VH).expect("video lease");
+        let (luma, chroma, _, _) = s.media.planes(&lease);
+        luma.fill(y);
+        chroma.fill(128);
+        s.media.publish(lease, seq, old)
+    }
+
+    let mount = || {
+        let mut s = Scene::new(FW, FH, 1 << 16);
+        s.media = Media::new(1 << 14);
+        let (b, d, v, g) = (s.column::<Back>(1), s.column::<ADot>(1), s.column::<AVideo>(1), s.column::<Pane>(1));
+        s.push(b, [0, 0, FW as i32 * 256, FH as i32 * 256], Solid { b: Lane, c: Pm { c: K } });
+        s.push(d, DOT_RECT, dot(&Spring::rest(0), &Spring::rest(0)));
+        let slot = publish(&mut s, None, 0, 16);
+        s.push(v, VIDEO_RECT, vid(slot, VW, VH));
+        s.push(g, GLASS_RECT, Backdrop { b: Lane, r: Ki, blur: Ki, f: V3 { a: K, b: K, c: K } });
+        (s, d, v, slot)
+    };
+    let mut worlds = [mount(), mount()];
+    let words = (FW * FH) as usize;
+    let mut surfaces = [vec![0; words], vec![0; words]];
+    let pool = Workers::new(1);
+    let (mut u, mut spring) = (U::default(), Spring::rest(0));
+    let mut gray = 0;
+    let mut prefix_jobs = 0;
+    for tick in 0..96_u32 {
+        let now = tick * 1000 / 120;
+        u.w[U_TIME] = now;
+        if tick % 24 == 1 || tick % 24 == 12 {
+            let target = if tick % 24 == 1 { 23 * 256 } else { -8 * 256 };
+            spring.retarget(KS, now, target);
+        }
+        for (i, (s, d, v, slot)) in worlds.iter_mut().enumerate() {
+            if tick % 24 == 1 || tick % 24 == 12 {
+                s.set(*d, 0, DOT_RECT, dot(&spring, &Spring::rest(0)));
+            }
+            if tick > 0 && tick % 4 == 0 {
+                gray = if tick % 8 == 4 { 255 } else { 0 };
+                let luma = if gray == 255 { 235 } else { 16 };
+                *slot = publish(s, Some(*slot), tick / 4, luma);
+                s.set(*v, 0, VIDEO_RECT, vid(*slot, VW, VH));
+            }
+            if i == 1 {
+                s.invalidate();
+            }
+            let stats = s.frame(&u, &mut surfaces[i], FW as usize, &pool, 0);
+            s.media.reclaim();
+            if i == 0 && tick > 0 {
+                prefix_jobs += stats.prefix_tiles;
+            }
+        }
+        assert!(surfaces[0] == surfaces[1], "layered media differs at tick {tick}");
+        // This pixel sees only the video. Neutral BT.709 black and white have exact byte values.
+        assert_eq!(surfaces[0][10 * FW as usize + 82], 0xff00_0000 | gray * 0x0001_0101, "video witness at tick {tick}");
+    }
+    assert!(prefix_jobs > 0, "the motion and video must reach the backdrop");
+}
