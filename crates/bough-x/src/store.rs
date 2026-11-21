@@ -1146,10 +1146,13 @@ pub struct Store {
     /// someone holds by its place (the hovered set) is still the record they were given exactly while its
     /// slot's stamp is the one they saw: a row described again in place (an edit) keeps it, a row written
     /// over another does not.
+    pub(crate) stamps_observed: core::sync::atomic::AtomicBool,
     pub(crate) row_stamp: Vec<u32>,
     pub(crate) stamp: u32,
     /// The relation version this window was last brought up to.
     pub seen: u32,
+    /// Changes when the source relation is rebound, independently of its version.
+    pub(crate) journal_binding: u64,
     /// The rows of the shape: the type of each row value described here and its first site.
     pub rows: Vec<(TypeId, u32)>,
     /// A list's rows: where they are described, how many records a row has, a row's size (`sink::list_sync`).
@@ -1251,6 +1254,7 @@ impl Store {
             lo: 0,
             hi: 0,
             seen: 0,
+            journal_binding: 0,
             rows: Vec::new(),
             src: None,
             n: 0,
@@ -1268,6 +1272,7 @@ impl Store {
             memo: bough_lay::Memo::new(),
             spill: false,
             bias: 0,
+            stamps_observed: core::sync::atomic::AtomicBool::new(false),
             row_stamp: Vec::new(),
             stamp: 0,
         }

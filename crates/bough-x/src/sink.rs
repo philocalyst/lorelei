@@ -1119,10 +1119,39 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
     let st = &mut parent.subs[q];
     let org = space.origin(cx.u);
     let (lo, hi) = exposed(l, org, space.clip);
-    if (lo == st.lo) & (hi == st.hi) & (st.seen == l.edits.ver) & !cx.all
-        && l.edits.follows(&st.journal)
-    {
-        return;
+    if (lo == st.lo) & (hi == st.hi) & !cx.all && l.edits.follows(&st.journal) {
+        let pending = l.edits.ver.wrapping_sub(st.seen);
+        if pending == 0 {
+            return;
+        }
+        #[cfg(not(feature = "mutant_journal"))]
+        if pending == 1
+            && let Edit::Update(row) = l.edits.log[st.seen as usize & 7]
+            && st.geo == (l.x, l.y, l.row_h)
+            && st.space == space
+            && st.n == l.n
+            && st.rows.first().is_some_and(|row| row.0 == tid::<R>())
+            && st.src.is_some_and(|src| {
+                src.1 == R::LEAVES && src.2 == size_of::<R>() as u32
+                    && (core::ptr::eq(src.0, at) || *src.0 == *at)
+            })
+            && same_template(&st.tmpl, l.shape)
+        {
+            st.moved.clear();
+            st.moved_ok = true;
+            st.moved_from = st.seen;
+            if (row >= lo) & (row < hi) {
+                let mk = Mk { org, clip: space.clip };
+                // SAFETY: the source, shape and exposure checks above certify
+                // this row's sites and physical slot. `patch` checks initialization.
+                unsafe { f(row as usize).patch(st.sites.as_ptr(), st.slot_of(row), &mk, cx) };
+            }
+            st.seen = l.edits.ver;
+            if st.timed {
+                st.resweep(cx.u, cx.tiles);
+            }
+            return;
+        }
     }
     if lo < hi
         && !st.rows.is_empty()
@@ -1405,7 +1434,7 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     admit(n, row_h.max(1));
     if n == 0 || row_h == 0 {
         if edits.follow(&mut st.journal) {
-            st.bump_structure();
+            publish_binding_change(st);
         }
         edits.win.store(0, Ordering::Relaxed);
         st.moved_from = st.seen;
@@ -1636,10 +1665,12 @@ fn list_reset(st: &mut Store, cx: &mut Cx<'_>, window: u32) {
     let structure = st.structure.clone();
     let column_count = st.column_count.clone();
     let journal = st.journal.clone();
+    let journal_binding = st.journal_binding;
     *st = Store::new(cap, space);
     st.structure = structure;
     st.column_count = column_count;
     st.journal = journal;
+    st.journal_binding = journal_binding;
     st.seen = seen;
     // slots are stamped on from where the old columns stopped: a place held from before is never taken for
     // a row of the new ones
@@ -1692,6 +1723,13 @@ fn template_comparison_checks_a_later_changed_lane() {
     assert!(!same_template(&original, &original[..21]));
 }
 
+#[cold]
+#[inline(never)]
+fn publish_binding_change(st: &mut Store) {
+    st.bump_structure();
+    st.journal_binding = st.structure_revision();
+}
+
 /// Decide what a list pass does, and do everything that does not need the row's type: replay the relation's
 /// journal, move the window, lay out rows that entered (their rects are the shape's, shifted), damage rows that
 /// entered, left or are other rows than before, and leave in `st.plan` the rows whose operands the caller must
@@ -1712,7 +1750,7 @@ fn list_plan(
     let all = how.all;
     let rebound = l.edits.follow(&mut st.journal);
     if rebound {
-        st.bump_structure();
+        publish_binding_change(st);
     }
     let (from, upd, nupd) = if rebound {
         // Version numbers certify edits only within the same journal. A replacement
@@ -1769,7 +1807,6 @@ fn list_plan(
     };
     // The owner may mutate the template in place. Compare whole rects even
     // if the template still lives at the address used on the last pass.
-    st.tmpl_at = l.shape.as_ptr() as usize;
     if st.geo != geo || !same_template(&st.tmpl, l.shape) {
         // the layout of the rows changed: every exposed row is laid out again
         st.geo = geo;
@@ -1783,76 +1820,18 @@ fn list_plan(
         cx.moved += 1;
         (olo, ohi) = (0, 0);
     }
-    // Inserts and removes as rigid moves. A row that stays exposed across an insert or a remove elsewhere is
-    // the same records at another index (and another y): its records are not described again. The window is
-    // replayed through the edits in the order they happened: an edit before the window moves every index
-    // (the bias moves the other way, so every row keeps its slot); an edit inside it moves the indices on
-    // one side, and the rows of the other side, the fewer, are the ones written again. `dirty` is that side,
-    // in the indices as they are now. Anything this does not follow exactly (a second edit inside the
-    // window, an edit after one) writes every exposed row again, which is always right.
-    let mut from = from;
-    let mut dirty = (0u32, 0u32);
-    let mut rigid = false;
-    if (how.by_item | l.edits.by_item)
+    let rigid = (how.by_item | l.edits.by_item)
         && from != u32::MAX
         && st.moved_ok
         && ohi > olo
-        && !st.moved.is_empty()
-    {
-        rigid = true;
-        let mut lost = false;
-        for i in 0..st.moved.len() {
-            if dirty.1 > dirty.0 {
-                lost = true;
-                break;
-            }
-            match st.moved[i] {
-                Edit::Insert(at) if at <= olo => {
-                    st.bias = st.bias.wrapping_sub(1);
-                    (olo, ohi) = (olo + 1, ohi + 1);
-                    shift_rows(st, leaves, (olo, ohi), l.row_h);
-                }
-                Edit::Insert(at) if at < ohi => {
-                    if at - olo <= ohi - at {
-                        // the rows above are the fewer: the rows from `at` on keep their slots
-                        st.bias = st.bias.wrapping_sub(1);
-                        shift_rows(st, leaves, (at + 1, ohi + 1), l.row_h);
-                        dirty = (olo, at + 1);
-                    } else {
-                        dirty = (at, ohi + 1);
-                    }
-                    ohi += 1;
-                }
-                Edit::Remove(at) if at < olo => {
-                    st.bias = st.bias.wrapping_add(1);
-                    (olo, ohi) = (olo - 1, ohi - 1);
-                    shift_rows(st, leaves, (olo, ohi), -l.row_h);
-                }
-                Edit::Remove(at) if at < ohi => {
-                    if at - olo <= ohi - at - 1 {
-                        st.bias = st.bias.wrapping_add(1);
-                        shift_rows(st, leaves, (at, ohi - 1), -l.row_h);
-                        dirty = (olo, at);
-                    } else {
-                        dirty = (at, ohi - 1);
-                    }
-                    ohi -= 1;
-                }
-                // past the window: nothing exposed moved
-                Edit::Insert(_) | Edit::Remove(_) => {}
-                Edit::Update(_) | Edit::Shift(_) => {
-                    unreachable!("`moves_since` keeps inserts and removes")
-                }
-            }
-        }
-        if lost {
-            (olo, ohi) = (0, 0);
-            dirty = (0, 0);
-        }
-        // everything from the first edit on is somewhere else on screen
-        cx.tiles.mark(space.clip);
-        from = u32::MAX;
-    }
+        && !st.moved.is_empty();
+    let (from, dirty) = if rigid {
+        let (old, dirty) = replay_rigid(st, cx.tiles, leaves, (olo, ohi), l.row_h);
+        (olo, ohi) = old;
+        (u32::MAX, dirty)
+    } else {
+        (from, (0, 0))
+    };
     // A changed window or rigid edit moves what a reader sees. Ordinary updates
     // count only where the record patch stores a value.
     if (lo != olo) | (hi != ohi) | (from != u32::MAX) | rigid {
@@ -1902,22 +1881,106 @@ fn list_plan(
             }
             cx.tiles.mark(row_rect(r));
             st.plan.push(r | 1 << 31 | (fresh as u32) << 30);
-            // another row is in this slot from now on
-            if st.row_stamp.len() != st.cap as usize {
-                st.row_stamp.resize(st.cap as usize, 0);
-            }
-            st.stamp = st.stamp.checked_add(1).expect("row stamp exhausted");
-            let slot = st.slot_of(r) as usize;
-            st.row_stamp[slot] = st.stamp;
         } else if all | upd[..nupd].contains(&r) {
             st.plan.push(r);
         }
+    }
+    if st.stamps_observed.load(Ordering::Relaxed) {
+        stamp_replaced_slots(st);
     }
     st.lo = lo;
     st.hi = hi;
     let slot = st.slot_of(lo) as usize;
     publish_window(&mut st.row_live, slot, (hi - lo) as usize);
     mk
+}
+
+// Inserts and removes as rigid moves. A row that stays exposed across an insert or a remove elsewhere is
+// the same records at another index (and another y): its records are not described again. The window is
+// replayed through the edits in the order they happened: an edit before the window moves every index
+// (the bias moves the other way, so every row keeps its slot); an edit inside it moves the indices on
+// one side, and the rows of the other side, the fewer, are the ones written again. `dirty` is that side,
+// in the indices as they are now. Anything this does not follow exactly (a second edit inside the
+// window, an edit after one) writes every exposed row again, which is always right.
+#[inline(never)]
+fn replay_rigid(
+    st: &mut Store,
+    tiles: &mut Tiles,
+    leaves: usize,
+    (mut olo, mut ohi): (u32, u32),
+    row_h: i32,
+) -> ((u32, u32), (u32, u32)) {
+    let mut dirty = (0, 0);
+    let mut lost = false;
+    for i in 0..st.moved.len() {
+        if dirty.1 > dirty.0 {
+            lost = true;
+            break;
+        }
+        match st.moved[i] {
+            Edit::Insert(at) if at <= olo => {
+                st.bias = st.bias.wrapping_sub(1);
+                (olo, ohi) = (olo + 1, ohi + 1);
+                shift_rows(st, leaves, (olo, ohi), row_h);
+            }
+            Edit::Insert(at) if at < ohi => {
+                if at - olo <= ohi - at {
+                    // the rows above are the fewer: the rows from `at` on keep their slots
+                    st.bias = st.bias.wrapping_sub(1);
+                    shift_rows(st, leaves, (at + 1, ohi + 1), row_h);
+                    dirty = (olo, at + 1);
+                } else {
+                    dirty = (at, ohi + 1);
+                }
+                ohi += 1;
+            }
+            Edit::Remove(at) if at < olo => {
+                st.bias = st.bias.wrapping_add(1);
+                (olo, ohi) = (olo - 1, ohi - 1);
+                shift_rows(st, leaves, (olo, ohi), -row_h);
+            }
+            Edit::Remove(at) if at < ohi => {
+                if at - olo <= ohi - at - 1 {
+                    st.bias = st.bias.wrapping_add(1);
+                    shift_rows(st, leaves, (at, ohi - 1), -row_h);
+                    dirty = (olo, at);
+                } else {
+                    dirty = (at, ohi - 1);
+                }
+                ohi -= 1;
+            }
+            // past the window: nothing exposed moved
+            Edit::Insert(_) | Edit::Remove(_) => {}
+            Edit::Update(_) | Edit::Shift(_) => {
+                unreachable!("`moves_since` keeps inserts and removes")
+            }
+        }
+    }
+    if lost {
+        (olo, ohi) = (0, 0);
+        dirty = (0, 0);
+    }
+    // everything from the first edit on is somewhere else on screen
+    tiles.mark(st.space.clip);
+    ((olo, ohi), dirty)
+}
+
+/// A token identifies its slot as well as its generation, so all slots replaced
+/// by one pass can share a stamp. Unobserved stores need no stamp storage.
+#[cold]
+#[inline(never)]
+fn stamp_replaced_slots(st: &mut Store) {
+    if !st.plan.iter().any(|&row| row >> 31 != 0) {
+        return;
+    }
+    st.row_stamp.resize(st.cap as usize, 0);
+    st.stamp = st.stamp.checked_add(1).expect("row stamp exhausted");
+    for &row in &st.plan {
+        if row >> 31 != 0 {
+            let slot = st.slot_of(row & 0x3fff_ffff) as usize;
+            st.row_stamp[slot] = st.stamp;
+        }
+    }
 }
 
 /// Rows `rows.0..rows.1` of a list (indices as they are now, slots by the store's bias as it is now) are `dy`

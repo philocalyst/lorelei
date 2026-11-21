@@ -73,6 +73,7 @@ struct Focused {
     row: u32,
     /// The list's relation version this row index is right for (inserts and removes after it remap it).
     seen: u32,
+    journal_binding: u64,
 }
 
 /// Work performed by the most recent delta.
@@ -347,11 +348,11 @@ impl<V: View, B: Backend> World<V, B> {
         Some(Place {
             world: self.id,
             packed,
-            stamp: self.stamp_at(packed),
+            stamp: self.stamp_at(packed, true),
         })
     }
     pub fn at_token(&self, place: Place) -> Option<(&Store, u32, u32)> {
-        if place.world != self.id || self.stamp_at(place.packed) != place.stamp {
+        if place.world != self.id || self.stamp_at(place.packed, false) != place.stamp {
             return None;
         }
         self.at_place(place.packed)
@@ -718,7 +719,7 @@ impl<V: View, B: Backend> World<V, B> {
     fn delta(&mut self, u: &U, ch: u64) {
         self.delta_stats = DeltaStats::default();
         self.broad_last = None;
-        if !self.columns() {
+        if self.shape == STALE && !self.columns() {
             return;
         }
         let relevant = ch & self.reads;
@@ -1484,48 +1485,8 @@ impl<V: View, B: Backend> World<V, B> {
                 stateful |= kinds & HOVER_STATE;
             }
         }
-        // Places whose slot has been given to another row since they were entered: the item that was entered
-        // is gone from under the pointer, and the slot holds another row's record and captures. It hears
-        // its leave with the record and the captures it was entered with (kept copies), topmost first, and
-        // is no longer hovered; whatever is in the slot now is entered below like any other place.
-        let (px, py) = self.ptr.map_or((-1.0, -1.0), |(x, y)| (x as f32, y as f32));
-        let mut i = self.hov_kept.len();
-        while i > 0 {
-            i -= 1;
-            if self.stamp_at(self.hov[i]) != self.hov_what[i] {
-                let k = self.hov_kept[i];
-                self.hov.remove(i);
-                self.hov_what.remove(i);
-                self.hov_kept.remove(i);
-                if let Some(o) = k.ons {
-                    let e = Event {
-                        kind: kind::HOVER,
-                        ev: Ev {
-                            on: false,
-                            ..Ev::at(px, py)
-                        },
-                        text: "",
-                    };
-                    let (rec, caps) = if k.rec == u32::MAX {
-                        let saved = &self.hov_aligned[k.caps as usize];
-                        let rec = saved.ptr.as_ptr().cast_const();
-                        // SAFETY: the capture offset is aligned and within this saved allocation.
-                        let caps = unsafe { rec.add(saved.captures) };
-                        (rec, caps)
-                    } else {
-                        let rec = self.hov_bytes[k.rec as usize..].as_ptr().cast::<u8>();
-                        let caps = if o.caps == 0 {
-                            core::ptr::without_provenance(o.caps_align as usize)
-                        } else {
-                            self.hov_bytes[k.caps as usize..].as_ptr().cast::<u8>()
-                        };
-                        (rec, caps)
-                    };
-                    // SAFETY: these are the kept, aligned copies for this handler and view type.
-                    // The handler only reads the initialized fields through their original types.
-                    unsafe { (o.call)(v as *mut V as *mut (), caps, rec, &e) };
-                }
-            }
+        if !self.hov_kept.is_empty() {
+            self.leave_replaced(v);
         }
         if next == self.hov {
             // the usual move: the hovered set is what it was
@@ -1544,7 +1505,7 @@ impl<V: View, B: Backend> World<V, B> {
         if stateful != 0 {
             self.capture_hover();
         }
-        let (x, y) = (px, py);
+        let (x, y) = self.pointer_coords();
         let mut out = Dispatch {
             kind: kind::HOVER,
             place: NONE,
@@ -1593,6 +1554,59 @@ impl<V: View, B: Backend> World<V, B> {
         self.done(old);
         out
     }
+    #[inline]
+    fn pointer_coords(&self) -> (f32, f32) {
+        self.ptr.map_or((-1.0, -1.0), |(x, y)| (x as f32, y as f32))
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn leave_replaced(&mut self, v: &mut V) {
+        // Places whose slot has been given to another row since they were entered: the item that was entered
+        // is gone from under the pointer, and the slot holds another row's record and captures. It hears
+        // its leave with the record and the captures it was entered with (kept copies), topmost first, and
+        // is no longer hovered; whatever is in the slot now is entered below like any other place.
+        let (px, py) = self.pointer_coords();
+        let mut i = self.hov_kept.len();
+        while i > 0 {
+            i -= 1;
+            if self.stamp_at(self.hov[i], false) != self.hov_what[i] {
+                let k = self.hov_kept[i];
+                self.hov.remove(i);
+                self.hov_what.remove(i);
+                self.hov_kept.remove(i);
+                if let Some(o) = k.ons {
+                    let e = Event {
+                        kind: kind::HOVER,
+                        ev: Ev {
+                            on: false,
+                            ..Ev::at(px, py)
+                        },
+                        text: "",
+                    };
+                    let (rec, caps) = if k.rec == u32::MAX {
+                        let saved = &self.hov_aligned[k.caps as usize];
+                        let rec = saved.ptr.as_ptr().cast_const();
+                        // SAFETY: the capture offset is aligned and within this saved allocation.
+                        let caps = unsafe { rec.add(saved.captures) };
+                        (rec, caps)
+                    } else {
+                        let rec = self.hov_bytes[k.rec as usize..].as_ptr().cast::<u8>();
+                        let caps = if o.caps == 0 {
+                            core::ptr::without_provenance(o.caps_align as usize)
+                        } else {
+                            self.hov_bytes[k.caps as usize..].as_ptr().cast::<u8>()
+                        };
+                        (rec, caps)
+                    };
+                    // SAFETY: these are the kept, aligned copies for this handler and view type.
+                    // The handler only reads the initialized fields through their original types.
+                    unsafe { (o.call)(v as *mut V as *mut (), caps, rec, &e) };
+                }
+            }
+        }
+    }
+
     /// Save what the hovered places denote before a write can replace them. Stateful
     /// hover records are saved on entry because their delta may write before a pass.
     #[inline(always)]
@@ -1605,16 +1619,19 @@ impl<V: View, B: Backend> World<V, B> {
     fn capture_hover_lanes(&mut self) {
         for i in 0..self.hov.len() {
             let p = self.hov[i];
-            self.hov_what.push(self.stamp_at(p));
+            self.hov_what.push(self.stamp_at(p, true));
             self.keep(p);
         }
     }
 
     /// Identity of the column allocation and of the item occupying this slot.
-    fn stamp_at(&self, place: u32) -> u64 {
+    fn stamp_at(&self, place: u32, observe: bool) -> u64 {
         let Some((st, col, rec)) = self.at_place(place) else {
             return 0;
         };
+        if observe && st.cap > 1 {
+            st.stamps_observed.store(true, Ordering::Relaxed);
+        }
         let stamp = st
             .row_stamp
             .get((rec & (st.cap - 1)) as usize)
@@ -2196,6 +2213,7 @@ impl<V: View, B: Backend> World<V, B> {
             site,
             row: row_of(st, rec),
             seen: st.seen,
+            journal_binding: st.journal_binding,
         })
     }
     /// After a pass that may have moved a window: where the focused row is now, or that it is not exposed
@@ -2211,6 +2229,13 @@ impl<V: View, B: Backend> World<V, B> {
         let Some(st) = self.root.at(&w.path) else {
             return;
         };
+        if st.journal_binding != w.journal_binding {
+            self.held = None;
+            if h.button == Button::Primary {
+                self.core_word(U_PRESS, NONE);
+            }
+            return;
+        }
         if st.src.is_none() || st.seen == w.seen {
             return;
         }
@@ -2256,6 +2281,11 @@ impl<V: View, B: Backend> World<V, B> {
             self.core_word(U_FOCUS, NONE);
             return;
         };
+        if st.journal_binding != f.journal_binding {
+            self.focus = None;
+            self.core_word(U_FOCUS, NONE);
+            return;
+        }
         // the focused row follows its item through the inserts and removes the last pass replayed
         if st.src.is_some() && st.seen != f.seen {
             if st.moved_from == f.seen && st.moved_ok {
