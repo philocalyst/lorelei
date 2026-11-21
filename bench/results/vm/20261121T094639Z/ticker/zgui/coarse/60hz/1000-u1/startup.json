@@ -1,0 +1,15 @@
+{
+  "pid": 62953,
+  "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario ticker --rows 1000 --variant coarse --updates 1 --interval-ms 16",
+  "spawned": 2873917439708,
+  "window": 1,
+  "connected_ms": 1.574663,
+  "first_surface_ms": 23.785308,
+  "toplevel_ms": 201.65568,
+  "first_buffer_ms": 186.392036,
+  "first_present_ms": 199.265233,
+  "visually_complete_ms": null,
+  "responsive_ms": null,
+  "first_input_latency_ms": null,
+  "exited_early": false
+}

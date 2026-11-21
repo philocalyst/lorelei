@@ -16,6 +16,20 @@ harness, which makes the first usable on lorelei's own hot functions:
   named function, `dot` for graphs, and a manifest of the new core's hot functions. lorelei's own
   `bench/results/r8/*` TSVs and `docs/lanes/*/JOURNAL.md` are the earlier hand-run measurements of
   the same functions; this harness reproduces them from one command.
+* **fakeland's traces and reports** (`crates/fakeland-trace`, `fakeland-bench`): every session
+  records a typed event trace and turns it into per-frame reports; this is the *behaviour* graph
+  (input → commit → latch → present, with analyzers), not a call graph. Commands:
+  `fakeland run --duration 5s --trace run.jsonl --perfetto run.json -- <app>` then
+  `fakeland bench hover-latency --report hover.json -- <app>`; `fakeland ctl shot` for a pixel.
+  The GUI runner in `bench/vm/` uses these presets.
+* **gui-bench's `plots/`**: `python3 plots/all.py results/latest` writes `<run>/plots/<scenario>/`
+  PNGs and `<run>/summary.csv` (matplotlib; Libertinus font vendored). These plot the matrix, not
+  a program's structure; the runner's JSON is the authoritative data.
+* **lorelei's own recipes**: `docs/lanes/threads/MEASURE.md` has `hot.sh`, `lines.sh` and `alloc_x`
+  (perf counters, cachegrind lines, allocation counts), `bench/results/r8/*` are the TSVs the lanes
+  published, and the journals name the disassembly each finding came from. `bench/r8/*.sh` measure
+  compile time and `__text` per component. Use those where they exist; use this harness for what
+  they do not emit: per-symbol assembly counts and the two graphs.
 
 ## Files
 

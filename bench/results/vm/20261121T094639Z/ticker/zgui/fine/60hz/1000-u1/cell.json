@@ -1,0 +1,31 @@
+{
+  "cell": {
+    "scenario": "ticker",
+    "framework": "zgui",
+    "variant": "fine",
+    "hz": 60.0,
+    "rows": 1000,
+    "updates": 1
+  },
+  "dir": "ticker/zgui/fine/60hz/1000-u1",
+  "args": [
+    "--scenario",
+    "ticker",
+    "--rows",
+    "1000",
+    "--variant",
+    "fine",
+    "--updates",
+    "1",
+    "--interval-ms",
+    "16"
+  ],
+  "done": [
+    "startup",
+    "layout",
+    "idle",
+    "pacing"
+  ],
+  "errors": [],
+  "skipped": []
+}

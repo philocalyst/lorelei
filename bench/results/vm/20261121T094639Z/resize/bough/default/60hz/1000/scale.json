@@ -1,0 +1,1945 @@
+{
+  "format_version": 1,
+  "name": "scale-switch",
+  "preset": "scale-switch",
+  "params": {
+    "iterations": 4,
+    "scales": [
+      2.0,
+      1.0
+    ],
+    "seed": null,
+    "settle": null,
+    "target": null,
+    "wait": "1s",
+    "warmup": 0,
+    "window_timeout": null
+  },
+  "environment": {
+    "gpu": "",
+    "driver": "",
+    "kernel": "7.3.0-9-generic",
+    "cpu": "",
+    "governor": "",
+    "renderer": "pixman",
+    "hostname": "lima-benchvm",
+    "fakeland_version": "0.1.0"
+  },
+  "config": {
+    "iterations": 4,
+    "warmup": 0,
+    "settle": "300ms",
+    "quiet": null,
+    "phase": null,
+    "seed": 0,
+    "variants": [],
+    "target": {
+      "type": "focused"
+    },
+    "analyzers": [
+      "resize",
+      "buffers",
+      "frame_pacing",
+      "resources",
+      "frame_cost"
+    ],
+    "outputs": [
+      {
+        "id": 1,
+        "name": "DP-1",
+        "make": "Dell Inc.",
+        "model": "DELL P2422H",
+        "serial": "7Z6X3G3",
+        "mode": {
+          "width": 1280,
+          "height": 800,
+          "refresh": 60.0
+        },
+        "modes": [
+          {
+            "width": 1280,
+            "height": 800,
+            "refresh": 60.0
+          }
+        ],
+        "scale": 1.0,
+        "transform": "normal",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "logical_size": {
+          "w": 1280,
+          "h": 800
+        },
+        "timing": {
+          "mode": {
+            "type": "fixed",
+            "refresh": 60.0
+          },
+          "latch_offset": "1ms",
+          "callbacks": {
+            "type": "at_vblank"
+          },
+          "perturbation": null,
+          "zero_copy": false
+        },
+        "enabled": true,
+        "physical_mm": [
+          353,
+          221
+        ]
+      }
+    ],
+    "lateness_threshold": "2ms"
+  },
+  "started": 3054652823760,
+  "finished": 3059871374869,
+  "iterations": [
+    {
+      "index": 0,
+      "measured": 0,
+      "variant": null,
+      "phase": null,
+      "started": 3054953373475,
+      "finished": 3055953718319,
+      "ok": true,
+      "error": null,
+      "late_wakes": 31,
+      "max_lateness": 6839107,
+      "records": 180,
+      "dropped_records": 0
+    },
+    {
+      "index": 1,
+      "measured": 1,
+      "variant": null,
+      "phase": null,
+      "started": 3056258619940,
+      "finished": 3057265219566,
+      "ok": true,
+      "error": null,
+      "late_wakes": 41,
+      "max_lateness": 7289272,
+      "records": 183,
+      "dropped_records": 0
+    },
+    {
+      "index": 2,
+      "measured": 2,
+      "variant": null,
+      "phase": null,
+      "started": 3057565965772,
+      "finished": 3058566436500,
+      "ok": true,
+      "error": null,
+      "late_wakes": 35,
+      "max_lateness": 7310935,
+      "records": 182,
+      "dropped_records": 0
+    },
+    {
+      "index": 3,
+      "measured": 3,
+      "variant": null,
+      "phase": null,
+      "started": 3058869386459,
+      "finished": 3059871230345,
+      "ok": true,
+      "error": null,
+      "late_wakes": 28,
+      "max_lateness": 7055367,
+      "records": 185,
+      "dropped_records": 0
+    }
+  ],
+  "validity": {
+    "valid": false,
+    "checks": [
+      {
+        "name": "iterations",
+        "status": "pass",
+        "message": "4 measured iterations",
+        "value": 4.0,
+        "limit": 1.0
+      },
+      {
+        "name": "iteration_errors",
+        "status": "pass",
+        "message": "every iteration finished",
+        "value": null,
+        "limit": null
+      },
+      {
+        "name": "wake_lateness",
+        "status": "fail",
+        "message": "135 of 482 output wakes later than 2.00 ms; max 7.311 ms",
+        "value": 7.310935,
+        "limit": 2.0
+      },
+      {
+        "name": "host_load",
+        "status": "pass",
+        "message": "other processes used 0.0% of 10 CPUs (all: 0.4%)",
+        "value": 0.0,
+        "limit": 0.25
+      },
+      {
+        "name": "samples.resize",
+        "status": "warn",
+        "message": "4 samples, 10 wanted",
+        "value": 4.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.buffers",
+        "status": "warn",
+        "message": "4 samples, 10 wanted",
+        "value": 4.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_pacing",
+        "status": "warn",
+        "message": "0 samples, 10 wanted",
+        "value": 0.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.resources",
+        "status": "pass",
+        "message": "81 samples, 10 wanted",
+        "value": 81.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_cost",
+        "status": "warn",
+        "message": "4 samples, 10 wanted",
+        "value": 4.0,
+        "limit": 10.0
+      }
+    ]
+  },
+  "sections": [
+    {
+      "name": "resize",
+      "metrics": [
+        {
+          "name": "configure_to_ack_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 4,
+          "mean": 2.0588815,
+          "median": 2.1213535,
+          "stddev": 0.28319685784803483,
+          "min": 1.685131,
+          "max": 2.307688,
+          "ci": {
+            "lo": 1.8254124999999999,
+            "hi": 2.2769725000000003,
+            "confidence": 0.95
+          },
+          "values": [
+            1.99645,
+            2.307688,
+            1.685131,
+            2.246257
+          ]
+        },
+        {
+          "name": "configure_to_commit_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 4,
+          "mean": 2.076799,
+          "median": 2.138445,
+          "stddev": 0.28488012183138833,
+          "min": 1.701366,
+          "max": 2.32894,
+          "ci": {
+            "lo": 1.841933,
+            "hi": 2.296287,
+            "confidence": 0.95
+          },
+          "values": [
+            2.013256,
+            2.32894,
+            1.701366,
+            2.263634
+          ]
+        },
+        {
+          "name": "configure_to_commit_p95",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 4,
+          "mean": 2.076799,
+          "median": 2.138445,
+          "stddev": 0.28488012183138833,
+          "min": 1.701366,
+          "max": 2.32894,
+          "ci": {
+            "lo": 1.841933,
+            "hi": 2.296287,
+            "confidence": 0.95
+          },
+          "values": [
+            2.013256,
+            2.32894,
+            1.701366,
+            2.263634
+          ]
+        },
+        {
+          "name": "configure_to_present_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 4,
+          "mean": 10.6531825,
+          "median": 8.963304,
+          "stddev": 5.247736474737179,
+          "min": 6.629806,
+          "max": 18.056316,
+          "ci": {
+            "lo": 6.9369845,
+            "hi": 15.35327775,
+            "confidence": 0.95
+          },
+          "values": [
+            6.629806,
+            18.056316,
+            10.682445,
+            7.244163
+          ]
+        },
+        {
+          "name": "configure_to_present_max",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 4,
+          "mean": 10.6531825,
+          "median": 8.963304,
+          "stddev": 5.247736474737179,
+          "min": 6.629806,
+          "max": 18.056316,
+          "ci": {
+            "lo": 6.9369845,
+            "hi": 15.35327775,
+            "confidence": 0.95
+          },
+          "values": [
+            6.629806,
+            18.056316,
+            10.682445,
+            7.244163
+          ]
+        },
+        {
+          "name": "mismatched_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "missed_vblanks",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "discarded",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "superseded",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": 4,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "acked": 1,
+            "configure_to_ack_ms": {
+              "count": 1,
+              "max": 1.99645,
+              "mean": 1.99645,
+              "min": 1.99645,
+              "p50": 1.99645,
+              "p90": 1.99645,
+              "p95": 1.99645,
+              "p99": 1.99645,
+              "p999": 1.99645,
+              "stddev": 0.0
+            },
+            "configure_to_commit_ms": {
+              "count": 1,
+              "max": 2.013256,
+              "mean": 2.013256,
+              "min": 2.013256,
+              "p50": 2.013256,
+              "p90": 2.013256,
+              "p95": 2.013256,
+              "p99": 2.013256,
+              "p999": 2.013256,
+              "stddev": 0.0
+            },
+            "configure_to_present_ms": {
+              "count": 1,
+              "max": 6.629806,
+              "mean": 6.629806,
+              "min": 6.629806,
+              "p50": 6.629806,
+              "p90": 6.629806,
+              "p95": 6.629806,
+              "p99": 6.629806,
+              "p999": 6.629806,
+              "stddev": 0.0
+            },
+            "configures": 1,
+            "discarded": 0,
+            "margin": [
+              0.0,
+              0.0
+            ],
+            "matched": 1,
+            "mismatched_frames": 0,
+            "missed_vblanks": 0,
+            "records": [
+              {
+                "acked": 3054955474922,
+                "buffer_size": [
+                  640.0,
+                  400.0
+                ],
+                "commit": 190,
+                "committed": 3054955491728,
+                "height": 400,
+                "presented": 3054960108278,
+                "sent": 3054953478472,
+                "serial": 1245,
+                "superseded": false,
+                "width": 640
+              }
+            ],
+            "storm_ms": 6.629806,
+            "superseded": 0
+          }
+        },
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "acked": 1,
+            "configure_to_ack_ms": {
+              "count": 1,
+              "max": 2.307688,
+              "mean": 2.307688,
+              "min": 2.307688,
+              "p50": 2.307688,
+              "p90": 2.307688,
+              "p95": 2.307688,
+              "p99": 2.307688,
+              "p999": 2.307688,
+              "stddev": 0.0
+            },
+            "configure_to_commit_ms": {
+              "count": 1,
+              "max": 2.32894,
+              "mean": 2.32894,
+              "min": 2.32894,
+              "p50": 2.32894,
+              "p90": 2.32894,
+              "p95": 2.32894,
+              "p99": 2.32894,
+              "p999": 2.32894,
+              "stddev": 0.0
+            },
+            "configure_to_present_ms": {
+              "count": 1,
+              "max": 18.056316,
+              "mean": 18.056316,
+              "min": 18.056316,
+              "p50": 18.056316,
+              "p90": 18.056316,
+              "p95": 18.056316,
+              "p99": 18.056316,
+              "p999": 18.056316,
+              "stddev": 0.0
+            },
+            "configures": 1,
+            "discarded": 0,
+            "margin": [
+              0.0,
+              0.0
+            ],
+            "matched": 1,
+            "mismatched_frames": 0,
+            "missed_vblanks": 0,
+            "records": [
+              {
+                "acked": 3056261026343,
+                "buffer_size": [
+                  1280.0,
+                  800.0
+                ],
+                "commit": 191,
+                "committed": 3056261047595,
+                "height": 800,
+                "presented": 3056276774971,
+                "sent": 3056258718655,
+                "serial": 1246,
+                "superseded": false,
+                "width": 1280
+              }
+            ],
+            "storm_ms": 18.056316,
+            "superseded": 0
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "acked": 1,
+            "configure_to_ack_ms": {
+              "count": 1,
+              "max": 1.685131,
+              "mean": 1.685131,
+              "min": 1.685131,
+              "p50": 1.685131,
+              "p90": 1.685131,
+              "p95": 1.685131,
+              "p99": 1.685131,
+              "p999": 1.685131,
+              "stddev": 0.0
+            },
+            "configure_to_commit_ms": {
+              "count": 1,
+              "max": 1.701366,
+              "mean": 1.701366,
+              "min": 1.701366,
+              "p50": 1.701366,
+              "p90": 1.701366,
+              "p95": 1.701366,
+              "p99": 1.701366,
+              "p999": 1.701366,
+              "stddev": 0.0
+            },
+            "configure_to_present_ms": {
+              "count": 1,
+              "max": 10.682445,
+              "mean": 10.682445,
+              "min": 10.682445,
+              "p50": 10.682445,
+              "p90": 10.682445,
+              "p95": 10.682445,
+              "p99": 10.682445,
+              "p999": 10.682445,
+              "stddev": 0.0
+            },
+            "configures": 1,
+            "discarded": 0,
+            "margin": [
+              0.0,
+              0.0
+            ],
+            "matched": 1,
+            "mismatched_frames": 0,
+            "missed_vblanks": 0,
+            "records": [
+              {
+                "acked": 3057567777683,
+                "buffer_size": [
+                  640.0,
+                  400.0
+                ],
+                "commit": 192,
+                "committed": 3057567793918,
+                "height": 400,
+                "presented": 3057576774997,
+                "sent": 3057566092552,
+                "serial": 1247,
+                "superseded": false,
+                "width": 640
+              }
+            ],
+            "storm_ms": 10.682445,
+            "superseded": 0
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "acked": 1,
+            "configure_to_ack_ms": {
+              "count": 1,
+              "max": 2.246257,
+              "mean": 2.246257,
+              "min": 2.246257,
+              "p50": 2.246257,
+              "p90": 2.246257,
+              "p95": 2.246257,
+              "p99": 2.246257,
+              "p999": 2.246257,
+              "stddev": 0.0
+            },
+            "configure_to_commit_ms": {
+              "count": 1,
+              "max": 2.263634,
+              "mean": 2.263634,
+              "min": 2.263634,
+              "p50": 2.263634,
+              "p90": 2.263634,
+              "p95": 2.263634,
+              "p99": 2.263634,
+              "p999": 2.263634,
+              "stddev": 0.0
+            },
+            "configure_to_present_ms": {
+              "count": 1,
+              "max": 7.244163,
+              "mean": 7.244163,
+              "min": 7.244163,
+              "p50": 7.244163,
+              "p90": 7.244163,
+              "p95": 7.244163,
+              "p99": 7.244163,
+              "p999": 7.244163,
+              "stddev": 0.0
+            },
+            "configures": 1,
+            "discarded": 0,
+            "margin": [
+              0.0,
+              0.0
+            ],
+            "matched": 1,
+            "mismatched_frames": 0,
+            "missed_vblanks": 0,
+            "records": [
+              {
+                "acked": 3058871777117,
+                "buffer_size": [
+                  1280.0,
+                  800.0
+                ],
+                "commit": 193,
+                "committed": 3058871794494,
+                "height": 800,
+                "presented": 3058876775023,
+                "sent": 3058869530860,
+                "serial": 1248,
+                "superseded": false,
+                "width": 1280
+              }
+            ],
+            "storm_ms": 7.244163,
+            "superseded": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "buffers",
+      "metrics": [
+        {
+          "name": "distinct_buffers",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 4,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "in_flight_mean",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 4,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "max_in_flight",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 4,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "upscaled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.5,
+          "median": 0.5,
+          "stddev": 0.5773502691896257,
+          "min": 0.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            0.0,
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "name": "oversampled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": 4,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "buffer_commits": 1,
+            "churn_per_s": null,
+            "distinct_buffers": 1,
+            "distinct_sizes": 1,
+            "formats": [
+              {
+                "count": 1,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "kinds": {
+              "shm": 1
+            },
+            "late_allocations": 0,
+            "max_in_flight": 1,
+            "scale": {
+              "native": 0,
+              "oversampled": 0,
+              "upscaled": 1
+            },
+            "sync": {
+              "none": 1
+            }
+          }
+        },
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "buffer_commits": 1,
+            "churn_per_s": null,
+            "distinct_buffers": 1,
+            "distinct_sizes": 1,
+            "formats": [
+              {
+                "count": 1,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "kinds": {
+              "shm": 1
+            },
+            "late_allocations": 0,
+            "max_in_flight": 1,
+            "scale": {
+              "native": 1,
+              "oversampled": 0,
+              "upscaled": 0
+            },
+            "sync": {
+              "none": 1
+            }
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "buffer_commits": 1,
+            "churn_per_s": null,
+            "distinct_buffers": 1,
+            "distinct_sizes": 1,
+            "formats": [
+              {
+                "count": 1,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "kinds": {
+              "shm": 1
+            },
+            "late_allocations": 0,
+            "max_in_flight": 1,
+            "scale": {
+              "native": 0,
+              "oversampled": 0,
+              "upscaled": 1
+            },
+            "sync": {
+              "none": 1
+            }
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "buffer_commits": 1,
+            "churn_per_s": null,
+            "distinct_buffers": 1,
+            "distinct_sizes": 1,
+            "formats": [
+              {
+                "count": 1,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "kinds": {
+              "shm": 1
+            },
+            "late_allocations": 0,
+            "max_in_flight": 1,
+            "scale": {
+              "native": 1,
+              "oversampled": 0,
+              "upscaled": 0
+            },
+            "sync": {
+              "none": 1
+            }
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_pacing",
+      "metrics": [
+        {
+          "name": "jank_count",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "jank_fraction",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "missed_vblanks",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "discarded",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 4,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": 0,
+      "pooled": [
+        {
+          "variant": null,
+          "samples": 0,
+          "metrics": [
+            {
+              "name": "jank_count",
+              "value": 0.0,
+              "unit": "count",
+              "better": "lower"
+            },
+            {
+              "name": "jank_fraction",
+              "value": 0.0,
+              "unit": "fraction",
+              "better": "lower"
+            },
+            {
+              "name": "missed_vblanks",
+              "value": 0.0,
+              "unit": "count",
+              "better": "lower"
+            },
+            {
+              "name": "discarded",
+              "value": 0.0,
+              "unit": "count",
+              "better": "neither"
+            }
+          ],
+          "report": {
+            "cadence": {
+              "commit_rate_hz": null,
+              "commits_per_refresh": null,
+              "present_rate_hz": null,
+              "presents_per_refresh": null,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 4,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 0.0,
+            "fps": null,
+            "fps_series": [],
+            "interval_ms": null,
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 0.0,
+              "threshold_ms": 0.0
+            },
+            "jitter_ms": null,
+            "lows": null,
+            "missed_vblanks": 0,
+            "mode": "vsync",
+            "pacing_error_ms": null,
+            "pending": 0,
+            "presented": 4,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": null,
+              "commits_per_refresh": null,
+              "present_rate_hz": null,
+              "presents_per_refresh": null,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 1,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 0.0,
+            "fps": null,
+            "fps_series": [],
+            "interval_ms": null,
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 0.0,
+              "threshold_ms": 0.0
+            },
+            "jitter_ms": null,
+            "lows": null,
+            "missed_vblanks": 0,
+            "mode": "unknown",
+            "pacing_error_ms": null,
+            "pending": 0,
+            "presented": 1,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        },
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": null,
+              "commits_per_refresh": null,
+              "present_rate_hz": null,
+              "presents_per_refresh": null,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 1,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 0.0,
+            "fps": null,
+            "fps_series": [],
+            "interval_ms": null,
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 0.0,
+              "threshold_ms": 0.0
+            },
+            "jitter_ms": null,
+            "lows": null,
+            "missed_vblanks": 0,
+            "mode": "unknown",
+            "pacing_error_ms": null,
+            "pending": 0,
+            "presented": 1,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": null,
+              "commits_per_refresh": null,
+              "present_rate_hz": null,
+              "presents_per_refresh": null,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 1,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 0.0,
+            "fps": null,
+            "fps_series": [],
+            "interval_ms": null,
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 0.0,
+              "threshold_ms": 0.0
+            },
+            "jitter_ms": null,
+            "lows": null,
+            "missed_vblanks": 0,
+            "mode": "unknown",
+            "pacing_error_ms": null,
+            "pending": 0,
+            "presented": 1,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": null,
+              "commits_per_refresh": null,
+              "present_rate_hz": null,
+              "presents_per_refresh": null,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 1,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 0.0,
+            "fps": null,
+            "fps_series": [],
+            "interval_ms": null,
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 0.0,
+              "threshold_ms": 0.0
+            },
+            "jitter_ms": null,
+            "lows": null,
+            "missed_vblanks": 0,
+            "mode": "unknown",
+            "pacing_error_ms": null,
+            "pending": 0,
+            "presented": 1,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "resources",
+      "metrics": [
+        {
+          "name": "cpu_percent_mean",
+          "variant": null,
+          "unit": "percent",
+          "better": "lower",
+          "n": 4,
+          "mean": 0.38654738334518735,
+          "median": 0.37134958064042844,
+          "stddev": 0.1501925029253888,
+          "min": 0.236447429993681,
+          "max": 0.5670429421062115,
+          "ci": {
+            "lo": 0.2650031735562018,
+            "hi": 0.508091593134173,
+            "confidence": 0.95
+          },
+          "values": [
+            0.2935589171187226,
+            0.5670429421062115,
+            0.236447429993681,
+            0.4491402441621343
+          ]
+        },
+        {
+          "name": "rss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 4,
+          "mean": 29452288.0,
+          "median": 29196288.0,
+          "stddev": 2111030.0803162423,
+          "min": 27660288.0,
+          "max": 31756288.0,
+          "ci": {
+            "lo": 27660288.0,
+            "hi": 31244288.0,
+            "confidence": 0.95
+          },
+          "values": [
+            27660288.0,
+            31756288.0,
+            27660288.0,
+            30732288.0
+          ]
+        },
+        {
+          "name": "threads_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 4,
+          "mean": 6.0,
+          "median": 6.0,
+          "stddev": 0.0,
+          "min": 6.0,
+          "max": 6.0,
+          "ci": {
+            "lo": 6.0,
+            "hi": 6.0,
+            "confidence": 0.95
+          },
+          "values": [
+            6.0,
+            6.0,
+            6.0,
+            6.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_s",
+          "variant": null,
+          "unit": "ms_per_s",
+          "better": "lower",
+          "n": 4,
+          "mean": 1.1292443292245464,
+          "median": 0.07581677162032328,
+          "stddev": 2.1585834840857383,
+          "min": 0.0,
+          "max": 4.365343773657539,
+          "ci": {
+            "lo": 0.0,
+            "hi": 3.3119162160533158,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.15163354324064657,
+            0.0,
+            4.365343773657539
+          ]
+        },
+        {
+          "name": "cpu_ms",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 4,
+          "mean": 1.1276775,
+          "median": 0.0720005,
+          "stddev": 2.1604210702744195,
+          "min": 0.0,
+          "max": 4.366709,
+          "ci": {
+            "lo": 0.0,
+            "hi": 3.27503175,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.144001,
+            0.0,
+            4.366709
+          ]
+        },
+        {
+          "name": "wakeups_per_s",
+          "variant": null,
+          "unit": "per_s",
+          "better": "lower",
+          "n": 4,
+          "mean": 2.7757982527108505,
+          "median": 1.0530034044252927,
+          "stddev": 4.264754798471009,
+          "min": 0.0,
+          "max": 8.997186201992816,
+          "ci": {
+            "lo": 0.0,
+            "hi": 6.747889651494612,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            2.1060068088505854,
+            0.0,
+            8.997186201992816
+          ]
+        },
+        {
+          "name": "pss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 4,
+          "mean": 27725824.0,
+          "median": 27469824.0,
+          "stddev": 2111030.0803162423,
+          "min": 25933824.0,
+          "max": 30029824.0,
+          "ci": {
+            "lo": 25933824.0,
+            "hi": 29517824.0,
+            "confidence": 0.95
+          },
+          "values": [
+            25933824.0,
+            30029824.0,
+            25933824.0,
+            29005824.0
+          ]
+        },
+        {
+          "name": "private_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 4,
+          "mean": 27469824.0,
+          "median": 27213824.0,
+          "stddev": 2111030.0803162423,
+          "min": 25677824.0,
+          "max": 29773824.0,
+          "ci": {
+            "lo": 25677824.0,
+            "hi": 29261824.0,
+            "confidence": 0.95
+          },
+          "values": [
+            25677824.0,
+            29773824.0,
+            25677824.0,
+            28749824.0
+          ]
+        }
+      ],
+      "samples": 81,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario rows --rows 1000",
+                "cpu_ms": 0.0,
+                "cpu_ms_per_s": 0.0,
+                "cpu_percent": {
+                  "count": 20,
+                  "max": 5.871178342374452,
+                  "mean": 0.2935589171187226,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p90": 0.0,
+                  "p95": 0.2935589171187268,
+                  "p99": 4.755654457323298,
+                  "p999": 5.759625953869347,
+                  "stddev": 1.3128353881573809
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 35688448,
+                "pid": 63465,
+                "private_max_bytes": 25677824,
+                "pss_max_bytes": 25933824,
+                "rss_max_bytes": 27660288,
+                "rss_mean_bytes": 27660288.0,
+                "samples": 20,
+                "swap_max_bytes": 0,
+                "threads_max": 6,
+                "wakeups_per_s": 0.0
+              }
+            ],
+            "selected": [
+              63465
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario rows --rows 1000",
+                "cpu_ms": 0.144001,
+                "cpu_ms_per_s": 0.15163354324064657,
+                "cpu_percent": {
+                  "count": 20,
+                  "max": 11.05260275591448,
+                  "mean": 0.5670429421062115,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p90": 0.028825608620975454,
+                  "p95": 0.8264734196949945,
+                  "p99": 9.007376888670567,
+                  "p999": 10.848080169190107,
+                  "stddev": 2.468883886841817
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 35688448,
+                "pid": 63465,
+                "private_max_bytes": 29773824,
+                "pss_max_bytes": 30029824,
+                "rss_max_bytes": 31756288,
+                "rss_mean_bytes": 30783488.0,
+                "samples": 20,
+                "swap_max_bytes": 0,
+                "threads_max": 6,
+                "wakeups_per_s": 2.1060068088505854
+              }
+            ],
+            "selected": [
+              63465
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario rows --rows 1000",
+                "cpu_ms": 0.0,
+                "cpu_ms_per_s": 0.0,
+                "cpu_percent": {
+                  "count": 20,
+                  "max": 4.72894859987362,
+                  "mean": 0.236447429993681,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p90": 0.0,
+                  "p95": 0.23644742999368437,
+                  "p99": 3.830448365897626,
+                  "p999": 4.639098576476029,
+                  "stddev": 1.0574250531419869
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 35688448,
+                "pid": 63465,
+                "private_max_bytes": 25677824,
+                "pss_max_bytes": 25933824,
+                "rss_max_bytes": 27660288,
+                "rss_mean_bytes": 27660288.0,
+                "samples": 20,
+                "swap_max_bytes": 0,
+                "threads_max": 6,
+                "wakeups_per_s": 0.0
+              }
+            ],
+            "selected": [
+              63465
+            ]
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario rows --rows 1000",
+                "cpu_ms": 4.366709,
+                "cpu_ms_per_s": 4.365343773657539,
+                "cpu_percent": {
+                  "count": 21,
+                  "max": 8.695743863625719,
+                  "mean": 0.4491402441621343,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p90": 0.0,
+                  "p95": 0.7362012637791003,
+                  "p99": 7.1038353436564,
+                  "p999": 8.536553011628818,
+                  "stddev": 1.8963344576462224
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 35688448,
+                "pid": 63465,
+                "private_max_bytes": 28749824,
+                "pss_max_bytes": 29005824,
+                "rss_max_bytes": 30732288,
+                "rss_mean_bytes": 30586002.285714287,
+                "samples": 21,
+                "swap_max_bytes": 0,
+                "threads_max": 6,
+                "wakeups_per_s": 8.997186201992816
+              }
+            ],
+            "selected": [
+              63465
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_cost",
+      "metrics": [
+        {
+          "name": "frames",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 4,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "damage_fraction_p50",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 4,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "damage_fraction_mean",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 4,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "full_damage_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 4,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_frame",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 2.255355,
+          "median": 2.2553549999999998,
+          "stddev": 2.985905461770684,
+          "min": 0.144001,
+          "max": 4.366709,
+          "ci": null,
+          "values": [
+            0.144001,
+            4.366709
+          ]
+        }
+      ],
+      "samples": 4,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "commits": 1,
+            "cpu_frames": 0,
+            "cpu_ms": 0.0,
+            "cpu_ms_per_frame": null,
+            "damage_fraction": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 1,
+            "full_damage_frames": 1,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 1000.344844
+          }
+        },
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "commits": 1,
+            "cpu_frames": 1,
+            "cpu_ms": 0.144001,
+            "cpu_ms_per_frame": 0.144001,
+            "damage_fraction": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 1,
+            "full_damage_frames": 1,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 1006.5996260000001
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "commits": 1,
+            "cpu_frames": 0,
+            "cpu_ms": 0.0,
+            "cpu_ms_per_frame": null,
+            "damage_fraction": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 1,
+            "full_damage_frames": 1,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 1000.470728
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "commits": 1,
+            "cpu_frames": 1,
+            "cpu_ms": 4.366709,
+            "cpu_ms_per_frame": 4.366709,
+            "damage_fraction": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 1,
+            "full_damage_frames": 1,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 1001.8438860000001
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

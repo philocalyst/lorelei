@@ -1,0 +1,1759 @@
+{
+  "format_version": 1,
+  "name": "typing",
+  "preset": "typing",
+  "params": {
+    "clear": [
+      "ctrl+a",
+      "BackSpace"
+    ],
+    "hold": "20ms",
+    "iterations": 2,
+    "jitter": 0.2,
+    "seed": null,
+    "settle": null,
+    "tail": "500ms",
+    "target": null,
+    "text": "the quick brown fox jumps over the lazy dog",
+    "warmup": 1,
+    "window_timeout": null,
+    "wpm": 120.0
+  },
+  "environment": {
+    "gpu": "",
+    "driver": "",
+    "kernel": "7.3.0-9-generic",
+    "cpu": "",
+    "governor": "",
+    "renderer": "pixman",
+    "hostname": "lima-benchvm",
+    "fakeland_version": "0.1.0"
+  },
+  "config": {
+    "iterations": 2,
+    "warmup": 1,
+    "settle": "300ms",
+    "quiet": null,
+    "phase": null,
+    "seed": 0,
+    "variants": [],
+    "target": {
+      "type": "focused"
+    },
+    "analyzers": [
+      "typing",
+      "input_coalescing",
+      "resources",
+      "frame_cost"
+    ],
+    "outputs": [
+      {
+        "id": 1,
+        "name": "DP-1",
+        "make": "Dell Inc.",
+        "model": "DELL P2422H",
+        "serial": "7Z6X3G3",
+        "mode": {
+          "width": 1280,
+          "height": 800,
+          "refresh": 60.0
+        },
+        "modes": [
+          {
+            "width": 1280,
+            "height": 800,
+            "refresh": 60.0
+          }
+        ],
+        "scale": 1.0,
+        "transform": "normal",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "logical_size": {
+          "w": 1280,
+          "h": 800
+        },
+        "timing": {
+          "mode": {
+            "type": "fixed",
+            "refresh": 60.0
+          },
+          "latch_offset": "1ms",
+          "callbacks": {
+            "type": "at_vblank"
+          },
+          "perturbation": null,
+          "zero_copy": false
+        },
+        "enabled": true,
+        "physical_mm": [
+          353,
+          221
+        ]
+      }
+    ],
+    "lateness_threshold": "2ms"
+  },
+  "started": 2979967929817,
+  "finished": 2995270326206,
+  "iterations": [
+    {
+      "index": 0,
+      "measured": null,
+      "variant": null,
+      "phase": null,
+      "started": 2980268465954,
+      "finished": 2985061108327,
+      "ok": true,
+      "error": null,
+      "late_wakes": 160,
+      "max_lateness": 7466998,
+      "records": 0,
+      "dropped_records": 0
+    },
+    {
+      "index": 1,
+      "measured": 0,
+      "variant": null,
+      "phase": null,
+      "started": 2985361873491,
+      "finished": 2990170151454,
+      "ok": true,
+      "error": null,
+      "late_wakes": 125,
+      "max_lateness": 7224170,
+      "records": 2123,
+      "dropped_records": 0
+    },
+    {
+      "index": 2,
+      "measured": 1,
+      "variant": null,
+      "phase": null,
+      "started": 2990472095380,
+      "finished": 2995269961044,
+      "ok": true,
+      "error": null,
+      "late_wakes": 149,
+      "max_lateness": 7214770,
+      "records": 2127,
+      "dropped_records": 0
+    }
+  ],
+  "validity": {
+    "valid": false,
+    "checks": [
+      {
+        "name": "iterations",
+        "status": "pass",
+        "message": "2 measured iterations",
+        "value": 2.0,
+        "limit": 1.0
+      },
+      {
+        "name": "iteration_errors",
+        "status": "pass",
+        "message": "every iteration finished",
+        "value": null,
+        "limit": null
+      },
+      {
+        "name": "wake_lateness",
+        "status": "fail",
+        "message": "274 of 1322 output wakes later than 2.00 ms; max 7.224 ms",
+        "value": 7.22417,
+        "limit": 2.0
+      },
+      {
+        "name": "host_load",
+        "status": "pass",
+        "message": "other processes used 0.0% of 10 CPUs (all: 1.6%)",
+        "value": 0.00019447685725398678,
+        "limit": 0.25
+      },
+      {
+        "name": "samples.typing",
+        "status": "pass",
+        "message": "90 samples, 10 wanted",
+        "value": 90.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.input_coalescing",
+        "status": "pass",
+        "message": "92 samples, 10 wanted",
+        "value": 92.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.resources",
+        "status": "pass",
+        "message": "192 samples, 10 wanted",
+        "value": 192.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_cost",
+        "status": "pass",
+        "message": "92 samples, 10 wanted",
+        "value": 92.0,
+        "limit": 10.0
+      }
+    ]
+  },
+  "sections": [
+    {
+      "name": "typing",
+      "metrics": [
+        {
+          "name": "latency_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 11.7448655,
+          "median": 11.7448655,
+          "stddev": 0.6391856393196739,
+          "min": 11.292893,
+          "max": 12.196838,
+          "ci": null,
+          "values": [
+            12.196838,
+            11.292893
+          ]
+        },
+        {
+          "name": "latency_p95",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 17.981063499999998,
+          "median": 17.981063499999998,
+          "stddev": 0.6177297568367737,
+          "min": 17.5442626,
+          "max": 18.4178644,
+          "ci": null,
+          "values": [
+            17.5442626,
+            18.4178644
+          ]
+        },
+        {
+          "name": "latency_max",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 22.6196975,
+          "median": 22.6196975,
+          "stddev": 0.28860916827519584,
+          "min": 22.41562,
+          "max": 22.823775,
+          "ci": null,
+          "values": [
+            22.41562,
+            22.823775
+          ]
+        },
+        {
+          "name": "handling_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 2.5004815000000002,
+          "median": 2.5004815000000002,
+          "stddev": 0.02034558341508033,
+          "min": 2.486095,
+          "max": 2.514868,
+          "ci": null,
+          "values": [
+            2.486095,
+            2.514868
+          ]
+        },
+        {
+          "name": "max_backlog",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "latency_slope",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.026041147233201584,
+          "median": 0.026041147233201584,
+          "stddev": 0.04302011207777798,
+          "min": -0.0043786657444005155,
+          "max": 0.056460960210803685,
+          "ci": null,
+          "values": [
+            -0.0043786657444005155,
+            0.056460960210803685
+          ]
+        },
+        {
+          "name": "unpresented",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "keys_per_s",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 9.219733529245136,
+          "median": 9.219733529245136,
+          "stddev": 0.014512224278663046,
+          "min": 9.209471837047593,
+          "max": 9.229995221442678,
+          "ci": null,
+          "values": [
+            9.209471837047593,
+            9.229995221442678
+          ]
+        }
+      ],
+      "samples": 90,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "handled": 45,
+            "handling_ms": {
+              "count": 45,
+              "max": 9.577286,
+              "mean": 2.641205355555556,
+              "min": 2.270754,
+              "p50": 2.486095,
+              "p90": 2.560262,
+              "p95": 2.7298541999999997,
+              "p99": 6.724266160000015,
+              "p999": 9.291984016000022,
+              "stddev": 1.0647518996056644
+            },
+            "keys": 45,
+            "keys_per_s": 9.209471837047593,
+            "latency_ms": {
+              "count": 45,
+              "max": 22.41562,
+              "mean": 12.067752533333334,
+              "min": 3.869363,
+              "p50": 12.196838,
+              "p90": 17.1066048,
+              "p95": 17.5442626,
+              "p99": 20.72853108000001,
+              "p999": 22.246911108000013,
+              "stddev": 4.385082906212522
+            },
+            "latency_slope_ms_per_key": -0.0043786657444005155,
+            "max_backlog": 0,
+            "mean_backlog": 0.0,
+            "per_key": [
+              {
+                "backlog": 0,
+                "handled_by": 140,
+                "handling_ms": 3.09315,
+                "input": 94,
+                "key": "t",
+                "latency_ms": 16.772028,
+                "sent": 2985362105438
+              },
+              {
+                "backlog": 0,
+                "handled_by": 143,
+                "handling_ms": 2.423165,
+                "input": 96,
+                "key": "h",
+                "latency_ms": 13.493824,
+                "sent": 2985465383644
+              },
+              {
+                "backlog": 0,
+                "handled_by": 146,
+                "handling_ms": 2.285428,
+                "input": 98,
+                "key": "e",
+                "latency_ms": 10.482792,
+                "sent": 2985568394678
+              },
+              {
+                "backlog": 0,
+                "handled_by": 149,
+                "handling_ms": 2.270754,
+                "input": 100,
+                "key": "space",
+                "latency_ms": 7.250459,
+                "sent": 2985671627013
+              },
+              {
+                "backlog": 0,
+                "handled_by": 152,
+                "handling_ms": 2.321271,
+                "input": 102,
+                "key": "q",
+                "latency_ms": 17.586301,
+                "sent": 2985761291173
+              },
+              {
+                "backlog": 0,
+                "handled_by": 155,
+                "handling_ms": 2.331176,
+                "input": 104,
+                "key": "u",
+                "latency_ms": 17.103042,
+                "sent": 2985861774434
+              },
+              {
+                "backlog": 0,
+                "handled_by": 158,
+                "handling_ms": 2.449308,
+                "input": 106,
+                "key": "i",
+                "latency_ms": 11.100303,
+                "sent": 2985967777175
+              },
+              {
+                "backlog": 0,
+                "handled_by": 161,
+                "handling_ms": 2.430852,
+                "input": 108,
+                "key": "c",
+                "latency_ms": 7.137317,
+                "sent": 2986071740163
+              },
+              {
+                "backlog": 0,
+                "handled_by": 164,
+                "handling_ms": 2.407711,
+                "input": 110,
+                "key": "k",
+                "latency_ms": 16.228303,
+                "sent": 2986162649179
+              },
+              {
+                "backlog": 0,
+                "handled_by": 166,
+                "handling_ms": 2.768927,
+                "input": 112,
+                "key": "space",
+                "latency_ms": 4.27421,
+                "sent": 2986257936607
+              },
+              {
+                "backlog": 0,
+                "handled_by": 169,
+                "handling_ms": 2.393654,
+                "input": 114,
+                "key": "b",
+                "latency_ms": 10.453105,
+                "sent": 2986368424381
+              },
+              {
+                "backlog": 0,
+                "handled_by": 172,
+                "handling_ms": 2.428633,
+                "input": 116,
+                "key": "r",
+                "latency_ms": 18.581327,
+                "sent": 2986460296161
+              },
+              {
+                "backlog": 0,
+                "handled_by": 174,
+                "handling_ms": 2.47364,
+                "input": 118,
+                "key": "o",
+                "latency_ms": 14.589486,
+                "sent": 2986564288004
+              },
+              {
+                "backlog": 0,
+                "handled_by": 177,
+                "handling_ms": 2.489753,
+                "input": 120,
+                "key": "w",
+                "latency_ms": 14.644106,
+                "sent": 2986664233386
+              },
+              {
+                "backlog": 0,
+                "handled_by": 179,
+                "handling_ms": 2.431633,
+                "input": 122,
+                "key": "n",
+                "latency_ms": 16.000839,
+                "sent": 2986762876655
+              },
+              {
+                "backlog": 0,
+                "handled_by": 182,
+                "handling_ms": 2.535131,
+                "input": 124,
+                "key": "space",
+                "latency_ms": 17.376109,
+                "sent": 2986861501387
+              },
+              {
+                "backlog": 0,
+                "handled_by": 184,
+                "handling_ms": 2.36706,
+                "input": 126,
+                "key": "f",
+                "latency_ms": 6.666298,
+                "sent": 2986955544533
+              },
+              {
+                "backlog": 0,
+                "handled_by": 187,
+                "handling_ms": 2.538789,
+                "input": 128,
+                "key": "o",
+                "latency_ms": 11.607489,
+                "sent": 2987067270011
+              },
+              {
+                "backlog": 0,
+                "handled_by": 190,
+                "handling_ms": 2.499536,
+                "input": 130,
+                "key": "x",
+                "latency_ms": 10.260033,
+                "sent": 2987168617469
+              },
+              {
+                "backlog": 0,
+                "handled_by": 193,
+                "handling_ms": 2.478737,
+                "input": 132,
+                "key": "space",
+                "latency_ms": 12.256169,
+                "sent": 2987266621335
+              },
+              {
+                "backlog": 0,
+                "handled_by": 196,
+                "handling_ms": 2.569288,
+                "input": 134,
+                "key": "j",
+                "latency_ms": 8.696777,
+                "sent": 2987370180729
+              },
+              {
+                "backlog": 0,
+                "handled_by": 199,
+                "handling_ms": 2.530117,
+                "input": 136,
+                "key": "u",
+                "latency_ms": 7.642553,
+                "sent": 2987454568288
+              },
+              {
+                "backlog": 0,
+                "handled_by": 202,
+                "handling_ms": 2.486835,
+                "input": 138,
+                "key": "m",
+                "latency_ms": 8.407603,
+                "sent": 2987553803240
+              },
+              {
+                "backlog": 0,
+                "handled_by": 205,
+                "handling_ms": 2.403765,
+                "input": 140,
+                "key": "p",
+                "latency_ms": 16.787828,
+                "sent": 2987662089684
+              },
+              {
+                "backlog": 0,
+                "handled_by": 208,
+                "handling_ms": 2.500358,
+                "input": 142,
+                "key": "s",
+                "latency_ms": 6.394554,
+                "sent": 2987755816293
+              },
+              {
+                "backlog": 0,
+                "handled_by": 211,
+                "handling_ms": 2.442978,
+                "input": 144,
+                "key": "space",
+                "latency_ms": 3.869363,
+                "sent": 2987858341486
+              },
+              {
+                "backlog": 0,
+                "handled_by": 214,
+                "handling_ms": 2.573563,
+                "input": 146,
+                "key": "o",
+                "latency_ms": 8.735664,
+                "sent": 2987953475187
+              },
+              {
+                "backlog": 0,
+                "handled_by": 217,
+                "handling_ms": 2.493206,
+                "input": 148,
+                "key": "v",
+                "latency_ms": 16.409241,
+                "sent": 2988062468279
+              },
+              {
+                "backlog": 0,
+                "handled_by": 219,
+                "handling_ms": 2.495179,
+                "input": 150,
+                "key": "e",
+                "latency_ms": 12.413619,
+                "sent": 2988166463903
+              },
+              {
+                "backlog": 0,
+                "handled_by": 222,
+                "handling_ms": 2.532501,
+                "input": 152,
+                "key": "r",
+                "latency_ms": 9.132539,
+                "sent": 2988253078318
+              },
+              {
+                "backlog": 0,
+                "handled_by": 225,
+                "handling_ms": 2.45387,
+                "input": 154,
+                "key": "space",
+                "latency_ms": 6.737357,
+                "sent": 2988372140169
+              },
+              {
+                "backlog": 0,
+                "handled_by": 228,
+                "handling_ms": 2.521813,
+                "input": 156,
+                "key": "t",
+                "latency_ms": 14.475754,
+                "sent": 2988464401774
+              },
+              {
+                "backlog": 0,
+                "handled_by": 231,
+                "handling_ms": 2.486095,
+                "input": 158,
+                "key": "h",
+                "latency_ms": 15.016339,
+                "sent": 2988563861191
+              },
+              {
+                "backlog": 0,
+                "handled_by": 234,
+                "handling_ms": 2.519183,
+                "input": 160,
+                "key": "e",
+                "latency_ms": 14.433528,
+                "sent": 2988664444004
+              },
+              {
+                "backlog": 0,
+                "handled_by": 237,
+                "handling_ms": 2.519224,
+                "input": 162,
+                "key": "space",
+                "latency_ms": 17.10898,
+                "sent": 2988761768554
+              },
+              {
+                "backlog": 0,
+                "handled_by": 240,
+                "handling_ms": 2.499001,
+                "input": 164,
+                "key": "l",
+                "latency_ms": 4.236022,
+                "sent": 2988857974847
+              },
+              {
+                "backlog": 0,
+                "handled_by": 243,
+                "handling_ms": 2.515813,
+                "input": 166,
+                "key": "a",
+                "latency_ms": 16.112951,
+                "sent": 2988962764587
+              },
+              {
+                "backlog": 0,
+                "handled_by": 246,
+                "handling_ms": 2.440676,
+                "input": 168,
+                "key": "z",
+                "latency_ms": 15.796202,
+                "sent": 2989063081338
+              },
+              {
+                "backlog": 0,
+                "handled_by": 249,
+                "handling_ms": 2.473312,
+                "input": 170,
+                "key": "y",
+                "latency_ms": 10.781176,
+                "sent": 2989168096366
+              },
+              {
+                "backlog": 0,
+                "handled_by": 252,
+                "handling_ms": 2.476231,
+                "input": 172,
+                "key": "space",
+                "latency_ms": 10.138642,
+                "sent": 2989268738902
+              },
+              {
+                "backlog": 0,
+                "handled_by": 255,
+                "handling_ms": 2.505866,
+                "input": 174,
+                "key": "d",
+                "latency_ms": 12.33228,
+                "sent": 2989366545266
+              },
+              {
+                "backlog": 0,
+                "handled_by": 258,
+                "handling_ms": 2.546723,
+                "input": 176,
+                "key": "o",
+                "latency_ms": 7.679251,
+                "sent": 2989471198297
+              },
+              {
+                "backlog": 0,
+                "handled_by": 261,
+                "handling_ms": 2.451281,
+                "input": 178,
+                "key": "g",
+                "latency_ms": 11.234643,
+                "sent": 2989567642907
+              },
+              {
+                "backlog": 0,
+                "handled_by": 266,
+                "handling_ms": 2.421769,
+                "input": 181,
+                "key": "a",
+                "latency_ms": 12.196838,
+                "sent": 2990100014056
+              },
+              {
+                "backlog": 0,
+                "handled_by": 268,
+                "handling_ms": 9.577286,
+                "input": 184,
+                "key": "BackSpace",
+                "latency_ms": 22.41562,
+                "sent": 2990139795275
+              }
+            ],
+            "presented": 45
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "handled": 45,
+            "handling_ms": {
+              "count": 45,
+              "max": 9.785269,
+              "mean": 2.6977909111111114,
+              "min": 2.312475,
+              "p50": 2.514868,
+              "p90": 2.6691608000000002,
+              "p95": 2.7122455999999997,
+              "p99": 6.874574840000015,
+              "p999": 9.49419958400002,
+              "stddev": 1.0883568164624016
+            },
+            "keys": 45,
+            "keys_per_s": 9.229995221442678,
+            "latency_ms": {
+              "count": 45,
+              "max": 22.823775,
+              "mean": 11.7680998,
+              "min": 4.420058,
+              "p50": 11.292893,
+              "p90": 18.0136642,
+              "p95": 18.4178644,
+              "p99": 20.97016016000001,
+              "p999": 22.638413516000014,
+              "stddev": 4.598774366721473
+            },
+            "latency_slope_ms_per_key": 0.056460960210803685,
+            "max_backlog": 0,
+            "mean_backlog": 0.0,
+            "per_key": [
+              {
+                "backlog": 0,
+                "handled_by": 271,
+                "handling_ms": 3.170055,
+                "input": 186,
+                "key": "t",
+                "latency_ms": 6.556736,
+                "sent": 2990472320832
+              },
+              {
+                "backlog": 0,
+                "handled_by": 274,
+                "handling_ms": 2.41959,
+                "input": 188,
+                "key": "h",
+                "latency_ms": 16.147414,
+                "sent": 2990579396823
+              },
+              {
+                "backlog": 0,
+                "handled_by": 276,
+                "handling_ms": 2.312475,
+                "input": 190,
+                "key": "e",
+                "latency_ms": 16.659925,
+                "sent": 2990678884314
+              },
+              {
+                "backlog": 0,
+                "handled_by": 279,
+                "handling_ms": 2.348769,
+                "input": 192,
+                "key": "space",
+                "latency_ms": 4.568013,
+                "sent": 2990774309561
+              },
+              {
+                "backlog": 0,
+                "handled_by": 282,
+                "handling_ms": 2.47993,
+                "input": 194,
+                "key": "q",
+                "latency_ms": 12.979888,
+                "sent": 2990882564355
+              },
+              {
+                "backlog": 0,
+                "handled_by": 285,
+                "handling_ms": 2.39316,
+                "input": 196,
+                "key": "u",
+                "latency_ms": 9.992573,
+                "sent": 2990968885005
+              },
+              {
+                "backlog": 0,
+                "handled_by": 288,
+                "handling_ms": 2.499001,
+                "input": 198,
+                "key": "i",
+                "latency_ms": 9.536073,
+                "sent": 2991069341507
+              },
+              {
+                "backlog": 0,
+                "handled_by": 291,
+                "handling_ms": 2.481943,
+                "input": 200,
+                "key": "c",
+                "latency_ms": 18.429761,
+                "sent": 2991177114488
+              },
+              {
+                "backlog": 0,
+                "handled_by": 294,
+                "handling_ms": 2.378527,
+                "input": 202,
+                "key": "k",
+                "latency_ms": 18.370278,
+                "sent": 2991277173973
+              },
+              {
+                "backlog": 0,
+                "handled_by": 296,
+                "handling_ms": 2.556135,
+                "input": 204,
+                "key": "space",
+                "latency_ms": 11.292893,
+                "sent": 2991367584693
+              },
+              {
+                "backlog": 0,
+                "handled_by": 299,
+                "handling_ms": 2.65096,
+                "input": 206,
+                "key": "b",
+                "latency_ms": 17.599084,
+                "sent": 2991477945171
+              },
+              {
+                "backlog": 0,
+                "handled_by": 302,
+                "handling_ms": 2.397887,
+                "input": 208,
+                "key": "r",
+                "latency_ms": 7.177736,
+                "sent": 2991571699854
+              },
+              {
+                "backlog": 0,
+                "handled_by": 305,
+                "handling_ms": 2.67143,
+                "input": 210,
+                "key": "o",
+                "latency_ms": 7.596614,
+                "sent": 2991671280978
+              },
+              {
+                "backlog": 0,
+                "handled_by": 308,
+                "handling_ms": 2.506688,
+                "input": 212,
+                "key": "w",
+                "latency_ms": 5.000849,
+                "sent": 2991773876745
+              },
+              {
+                "backlog": 0,
+                "handled_by": 311,
+                "handling_ms": 2.441703,
+                "input": 214,
+                "key": "n",
+                "latency_ms": 5.762158,
+                "sent": 2991873115438
+              },
+              {
+                "backlog": 0,
+                "handled_by": 314,
+                "handling_ms": 2.533981,
+                "input": 216,
+                "key": "space",
+                "latency_ms": 14.348805,
+                "sent": 2991981195460
+              },
+              {
+                "backlog": 0,
+                "handled_by": 317,
+                "handling_ms": 2.563123,
+                "input": 218,
+                "key": "f",
+                "latency_ms": 10.839601,
+                "sent": 2992068037999
+              },
+              {
+                "backlog": 0,
+                "handled_by": 320,
+                "handling_ms": 2.568795,
+                "input": 220,
+                "key": "o",
+                "latency_ms": 12.129582,
+                "sent": 2992166748020
+              },
+              {
+                "backlog": 0,
+                "handled_by": 323,
+                "handling_ms": 2.490904,
+                "input": 222,
+                "key": "x",
+                "latency_ms": 9.205401,
+                "sent": 2992269672203
+              },
+              {
+                "backlog": 0,
+                "handled_by": 326,
+                "handling_ms": 2.611706,
+                "input": 224,
+                "key": "space",
+                "latency_ms": 7.360717,
+                "sent": 2992371516889
+              },
+              {
+                "backlog": 0,
+                "handled_by": 329,
+                "handling_ms": 2.497193,
+                "input": 226,
+                "key": "j",
+                "latency_ms": 12.317323,
+                "sent": 2992466560285
+              },
+              {
+                "backlog": 0,
+                "handled_by": 332,
+                "handling_ms": 2.55297,
+                "input": 228,
+                "key": "u",
+                "latency_ms": 15.066637,
+                "sent": 2992563810973
+              },
+              {
+                "backlog": 0,
+                "handled_by": 335,
+                "handling_ms": 2.482807,
+                "input": 230,
+                "key": "m",
+                "latency_ms": 4.719109,
+                "sent": 2992674158503
+              },
+              {
+                "backlog": 0,
+                "handled_by": 338,
+                "handling_ms": 2.481121,
+                "input": 232,
+                "key": "p",
+                "latency_ms": 8.885543,
+                "sent": 2992769992071
+              },
+              {
+                "backlog": 0,
+                "handled_by": 341,
+                "handling_ms": 2.609282,
+                "input": 234,
+                "key": "s",
+                "latency_ms": 7.724861,
+                "sent": 2992871152755
+              },
+              {
+                "backlog": 0,
+                "handled_by": 344,
+                "handling_ms": 2.46616,
+                "input": 236,
+                "key": "space",
+                "latency_ms": 14.689939,
+                "sent": 2992980854346
+              },
+              {
+                "backlog": 0,
+                "handled_by": 347,
+                "handling_ms": 2.504468,
+                "input": 238,
+                "key": "o",
+                "latency_ms": 18.290051,
+                "sent": 2993077254236
+              },
+              {
+                "backlog": 0,
+                "handled_by": 350,
+                "handling_ms": 2.721905,
+                "input": 240,
+                "key": "v",
+                "latency_ms": 5.703625,
+                "sent": 2993173173997
+              },
+              {
+                "backlog": 0,
+                "handled_by": 353,
+                "handling_ms": 2.665757,
+                "input": 242,
+                "key": "e",
+                "latency_ms": 18.611014,
+                "sent": 2993276933277
+              },
+              {
+                "backlog": 0,
+                "handled_by": 355,
+                "handling_ms": 2.673608,
+                "input": 244,
+                "key": "r",
+                "latency_ms": 14.499153,
+                "sent": 2993364378473
+              },
+              {
+                "backlog": 0,
+                "handled_by": 357,
+                "handling_ms": 2.514868,
+                "input": 246,
+                "key": "space",
+                "latency_ms": 10.245855,
+                "sent": 2993468631773
+              },
+              {
+                "backlog": 0,
+                "handled_by": 360,
+                "handling_ms": 2.512155,
+                "input": 248,
+                "key": "t",
+                "latency_ms": 15.705975,
+                "sent": 2993579838322
+              },
+              {
+                "backlog": 0,
+                "handled_by": 363,
+                "handling_ms": 2.50044,
+                "input": 250,
+                "key": "h",
+                "latency_ms": 4.420058,
+                "sent": 2993674457574
+              },
+              {
+                "backlog": 0,
+                "handled_by": 366,
+                "handling_ms": 2.559177,
+                "input": 252,
+                "key": "e",
+                "latency_ms": 10.709111,
+                "sent": 2993768168523
+              },
+              {
+                "backlog": 0,
+                "handled_by": 369,
+                "handling_ms": 2.519717,
+                "input": 254,
+                "key": "space",
+                "latency_ms": 6.76047,
+                "sent": 2993872117166
+              },
+              {
+                "backlog": 0,
+                "handled_by": 372,
+                "handling_ms": 2.447006,
+                "input": 256,
+                "key": "l",
+                "latency_ms": 15.510379,
+                "sent": 2993980033926
+              },
+              {
+                "backlog": 0,
+                "handled_by": 375,
+                "handling_ms": 2.500358,
+                "input": 258,
+                "key": "a",
+                "latency_ms": 9.152138,
+                "sent": 2994069725502
+              },
+              {
+                "backlog": 0,
+                "handled_by": 378,
+                "handling_ms": 2.567644,
+                "input": 260,
+                "key": "z",
+                "latency_ms": 10.575746,
+                "sent": 2994168301896
+              },
+              {
+                "backlog": 0,
+                "handled_by": 381,
+                "handling_ms": 2.612035,
+                "input": 262,
+                "key": "y",
+                "latency_ms": 16.27217,
+                "sent": 2994262605474
+              },
+              {
+                "backlog": 0,
+                "handled_by": 384,
+                "handling_ms": 2.566863,
+                "input": 264,
+                "key": "space",
+                "latency_ms": 10.402892,
+                "sent": 2994385141421
+              },
+              {
+                "backlog": 0,
+                "handled_by": 387,
+                "handling_ms": 2.543599,
+                "input": 266,
+                "key": "d",
+                "latency_ms": 12.04476,
+                "sent": 2994466832888
+              },
+              {
+                "backlog": 0,
+                "handled_by": 390,
+                "handling_ms": 2.466653,
+                "input": 268,
+                "key": "o",
+                "latency_ms": 16.323241,
+                "sent": 2994579221076
+              },
+              {
+                "backlog": 0,
+                "handled_by": 392,
+                "handling_ms": 2.553422,
+                "input": 270,
+                "key": "g",
+                "latency_ms": 11.706261,
+                "sent": 2994667171391
+              },
+              {
+                "backlog": 0,
+                "handled_by": 397,
+                "handling_ms": 2.619352,
+                "input": 273,
+                "key": "a",
+                "latency_ms": 14.850304,
+                "sent": 2995197360692
+              },
+              {
+                "backlog": 0,
+                "handled_by": 400,
+                "handling_ms": 9.785269,
+                "input": 276,
+                "key": "BackSpace",
+                "latency_ms": 22.823775,
+                "sent": 2995239387222
+              }
+            ],
+            "presented": 45
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "input_coalescing",
+      "metrics": [
+        {
+          "name": "inputs_per_frame_mean",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 1.9782608695652173,
+          "median": 1.9782608695652173,
+          "stddev": 0.0,
+          "min": 1.9782608695652173,
+          "max": 1.9782608695652173,
+          "ci": null,
+          "values": [
+            1.9782608695652173,
+            1.9782608695652173
+          ]
+        },
+        {
+          "name": "inputs_per_frame_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 3.0,
+          "median": 3.0,
+          "stddev": 0.0,
+          "min": 3.0,
+          "max": 3.0,
+          "ci": null,
+          "values": [
+            3.0,
+            3.0
+          ]
+        },
+        {
+          "name": "input_rate",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 18.94806801183167,
+          "median": 18.94806801183167,
+          "stddev": 0.02871900713857426,
+          "min": 18.92776060713504,
+          "max": 18.9683754165283,
+          "ci": null,
+          "values": [
+            18.92776060713504,
+            18.9683754165283
+          ]
+        },
+        {
+          "name": "unpresented_inputs",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "samples": 92,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "by_kind": {
+              "key": 92
+            },
+            "frame_rate_hz": 9.567878988222107,
+            "frames": 46,
+            "input_rate_hz": 18.92776060713504,
+            "inputs": 92,
+            "max_per_frame": 3,
+            "per_frame": {
+              "count": 46,
+              "max": 3.0,
+              "mean": 1.9782608695652173,
+              "min": 1.0,
+              "p50": 2.0,
+              "p90": 2.0,
+              "p95": 2.0,
+              "p99": 2.549999999999997,
+              "p999": 2.9550000000000054,
+              "stddev": 0.2572616856028645
+            },
+            "presented_inputs": 91
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "by_kind": {
+              "key": 92
+            },
+            "frame_rate_hz": 9.588409551212107,
+            "frames": 46,
+            "input_rate_hz": 18.9683754165283,
+            "inputs": 92,
+            "max_per_frame": 3,
+            "per_frame": {
+              "count": 46,
+              "max": 3.0,
+              "mean": 1.9782608695652173,
+              "min": 1.0,
+              "p50": 2.0,
+              "p90": 2.0,
+              "p95": 2.0,
+              "p99": 2.549999999999997,
+              "p999": 2.9550000000000054,
+              "stddev": 0.2572616856028645
+            },
+            "presented_inputs": 91
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "resources",
+      "metrics": [
+        {
+          "name": "cpu_percent_mean",
+          "variant": null,
+          "unit": "percent",
+          "better": "lower",
+          "n": 2,
+          "mean": 9.082369936178313,
+          "median": 9.082369936178313,
+          "stddev": 0.16965153970074212,
+          "min": 8.96240818201718,
+          "max": 9.202331690339447,
+          "ci": null,
+          "values": [
+            8.96240818201718,
+            9.202331690339447
+          ]
+        },
+        {
+          "name": "rss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 267849728.0,
+          "median": 267849728.0,
+          "stddev": 0.0,
+          "min": 267849728.0,
+          "max": 267849728.0,
+          "ci": null,
+          "values": [
+            267849728.0,
+            267849728.0
+          ]
+        },
+        {
+          "name": "threads_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 33.0,
+          "median": 33.0,
+          "stddev": 0.0,
+          "min": 33.0,
+          "max": 33.0,
+          "ci": null,
+          "values": [
+            33.0,
+            33.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_s",
+          "variant": null,
+          "unit": "ms_per_s",
+          "better": "lower",
+          "n": 2,
+          "mean": 90.44506731423306,
+          "median": 90.44506731423306,
+          "stddev": 0.4437874050309694,
+          "min": 90.13126223073047,
+          "max": 90.75887239773563,
+          "ci": null,
+          "values": [
+            90.13126223073047,
+            90.75887239773563
+          ]
+        },
+        {
+          "name": "cpu_ms",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 429.334508,
+          "median": 429.334508,
+          "stddev": 2.530286864167393,
+          "min": 427.545325,
+          "max": 431.123691,
+          "ci": null,
+          "values": [
+            427.545325,
+            431.123691
+          ]
+        },
+        {
+          "name": "wakeups_per_s",
+          "variant": null,
+          "unit": "per_s",
+          "better": "lower",
+          "n": 2,
+          "mean": 592.1765401907494,
+          "median": 592.1765401907494,
+          "stddev": 0.5843698111745466,
+          "min": 591.7633283345472,
+          "max": 592.5897520469516,
+          "ci": null,
+          "values": [
+            592.5897520469516,
+            591.7633283345472
+          ]
+        },
+        {
+          "name": "pss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 256306176.0,
+          "median": 256306176.0,
+          "stddev": 0.0,
+          "min": 256306176.0,
+          "max": 256306176.0,
+          "ci": null,
+          "values": [
+            256306176.0,
+            256306176.0
+          ]
+        },
+        {
+          "name": "private_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 246689792.0,
+          "median": 246689792.0,
+          "stddev": 0.0,
+          "min": 246689792.0,
+          "max": 246689792.0,
+          "ci": null,
+          "values": [
+            246689792.0,
+            246689792.0
+          ]
+        }
+      ],
+      "samples": 192,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario typing --rows 1000",
+                "cpu_ms": 427.545325,
+                "cpu_ms_per_s": 90.13126223073047,
+                "cpu_percent": {
+                  "count": 96,
+                  "max": 29.962625650855834,
+                  "mean": 8.96240818201718,
+                  "min": 0.0,
+                  "p50": 0.17617440546883278,
+                  "p90": 20.08994644644852,
+                  "p95": 21.41037688151613,
+                  "p99": 24.463006642503885,
+                  "p999": 29.41266375002073,
+                  "stddev": 9.584293557836832
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 267849728,
+                "pid": 63282,
+                "private_max_bytes": 246689792,
+                "pss_max_bytes": 256306176,
+                "rss_max_bytes": 267849728,
+                "rss_mean_bytes": 267849728.0,
+                "samples": 96,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 592.5897520469516
+              }
+            ],
+            "selected": [
+              63282
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario typing --rows 1000",
+                "cpu_ms": 431.123691,
+                "cpu_ms_per_s": 90.75887239773563,
+                "cpu_percent": {
+                  "count": 96,
+                  "max": 27.197886005465726,
+                  "mean": 9.202331690339447,
+                  "min": 0.0,
+                  "p50": 0.6359782579581523,
+                  "p90": 20.719021277516497,
+                  "p95": 22.418738051550598,
+                  "p99": 24.778459712886537,
+                  "p999": 26.95594337620785,
+                  "stddev": 9.77681999544712
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 267849728,
+                "pid": 63282,
+                "private_max_bytes": 246689792,
+                "pss_max_bytes": 256306176,
+                "rss_max_bytes": 267849728,
+                "rss_mean_bytes": 267849728.0,
+                "samples": 96,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 591.7633283345472
+              }
+            ],
+            "selected": [
+              63282
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_cost",
+      "metrics": [
+        {
+          "name": "frames",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 46.0,
+          "median": 46.0,
+          "stddev": 0.0,
+          "min": 46.0,
+          "max": 46.0,
+          "ci": null,
+          "values": [
+            46.0,
+            46.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_frame",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 9.757602454545456,
+          "median": 9.757602454545456,
+          "stddev": 0.0575065196401686,
+          "min": 9.716939204545454,
+          "max": 9.798265704545456,
+          "ci": null,
+          "values": [
+            9.716939204545454,
+            9.798265704545456
+          ]
+        },
+        {
+          "name": "damage_fraction_p50",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "damage_fraction_mean",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "full_damage_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 46.0,
+          "median": 46.0,
+          "stddev": 0.0,
+          "min": 46.0,
+          "max": 46.0,
+          "ci": null,
+          "values": [
+            46.0,
+            46.0
+          ]
+        }
+      ],
+      "samples": 92,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "commits": 46,
+            "cpu_frames": 44,
+            "cpu_ms": 427.545325,
+            "cpu_ms_per_frame": 9.716939204545454,
+            "damage_fraction": {
+              "count": 46,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 46,
+            "full_damage_frames": 46,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 4808.277963
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "commits": 46,
+            "cpu_frames": 44,
+            "cpu_ms": 431.123691,
+            "cpu_ms_per_frame": 9.798265704545456,
+            "damage_fraction": {
+              "count": 46,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 46,
+            "full_damage_frames": 46,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 4797.865664
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

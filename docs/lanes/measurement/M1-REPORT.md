@@ -97,11 +97,11 @@ baseline: wrote .../bench/baselines/macos-71ee3be/71ee3be.json and .md
 ```
 
 Commit `71ee3be0aa`, clean worktree, `rustc 1.101.0-nightly (5d8fec066 2026-10-16)`, M3 Ultra,
-macOS 26.7.3, **load 17.8-18.2 (LOADED)** because other sessions were building. Instructions are the
-primary column and are stable (spread under 1 %): `sheet_x` 1000/10000 = 21,431,517 / 24,950,404;
-`events_x` 10k = 2,323,377,774; `text_x` = 231,565,722; `anim_x` 208 = 17,910,706; `pbench canvas 1`
-= 101,908,559,588; headless mount/hover/typing at 1,000 rows = 85,765,873 / 246,686,133 /
-177,975,046; filter at 100 = 132,663,667; filter-nochange at 1,000 = 137,194,154. RSS and wall are in
+macOS 26.7.3, **load 19.2→17.2 (LOADED)** because other sessions were building. Instructions are the
+primary column and are stable (spread under 1 %): `sheet_x` 1000/10000 = 21,414,658 / 25,026,131;
+`events_x` 10k = 2,322,717,289; `text_x` = 231,553,282; `anim_x` 208 = 17,923,255; `pbench canvas 1`
+= 101,888,267,149; headless mount/hover/typing at 1,000 rows = 85,450,645 / 246,313,512 /
+177,056,885; filter at 100 = 133,014,444; filter-nochange at 1,000 = 136,573,577. RSS and wall are in
 the JSON; wall is **not usable** under this load (the markdown labels the run LOADED).
 
 ```

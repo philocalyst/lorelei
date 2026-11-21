@@ -1,0 +1,2 @@
+bough-bench: Rows { count: 1000 }
+bough: the compositor asks for scale 2; changing scale at run time is not built (the window keeps 1)

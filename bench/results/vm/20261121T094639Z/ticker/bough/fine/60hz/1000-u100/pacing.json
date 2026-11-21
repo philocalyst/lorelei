@@ -1,0 +1,1379 @@
+{
+  "format_version": 1,
+  "name": "pacing",
+  "preset": "pacing",
+  "params": {
+    "duration": "3s",
+    "iterations": 2,
+    "jank_factor": 1.5,
+    "seed": null,
+    "settle": null,
+    "target": null,
+    "warmup": 1,
+    "window_timeout": null
+  },
+  "environment": {
+    "gpu": "",
+    "driver": "",
+    "kernel": "7.3.0-9-generic",
+    "cpu": "",
+    "governor": "",
+    "renderer": "pixman",
+    "hostname": "lima-benchvm",
+    "fakeland_version": "0.1.0"
+  },
+  "config": {
+    "iterations": 2,
+    "warmup": 1,
+    "settle": "500ms",
+    "quiet": null,
+    "phase": null,
+    "seed": 0,
+    "variants": [],
+    "target": {
+      "type": "focused"
+    },
+    "analyzers": [
+      "frame_pacing",
+      "buffers",
+      "input_coalescing",
+      "resources",
+      "frame_cost"
+    ],
+    "outputs": [
+      {
+        "id": 1,
+        "name": "DP-1",
+        "make": "Dell Inc.",
+        "model": "DELL P2422H",
+        "serial": "7Z6X3G3",
+        "mode": {
+          "width": 1280,
+          "height": 800,
+          "refresh": 60.0
+        },
+        "modes": [
+          {
+            "width": 1280,
+            "height": 800,
+            "refresh": 60.0
+          }
+        ],
+        "scale": 1.0,
+        "transform": "normal",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "logical_size": {
+          "w": 1280,
+          "h": 800
+        },
+        "timing": {
+          "mode": {
+            "type": "fixed",
+            "refresh": 60.0
+          },
+          "latch_offset": "1ms",
+          "callbacks": {
+            "type": "at_vblank"
+          },
+          "perturbation": null,
+          "zero_copy": false
+        },
+        "enabled": true,
+        "physical_mm": [
+          353,
+          221
+        ]
+      }
+    ],
+    "lateness_threshold": "2ms"
+  },
+  "started": 2739771436814,
+  "finished": 2750285596415,
+  "iterations": [
+    {
+      "index": 0,
+      "measured": null,
+      "variant": null,
+      "phase": null,
+      "started": 2740272458402,
+      "finished": 2743274481933,
+      "ok": true,
+      "error": null,
+      "late_wakes": 211,
+      "max_lateness": 7115173,
+      "records": 0,
+      "dropped_records": 0
+    },
+    {
+      "index": 1,
+      "measured": 0,
+      "variant": null,
+      "phase": null,
+      "started": 2743777636303,
+      "finished": 2746778296745,
+      "ok": true,
+      "error": null,
+      "late_wakes": 152,
+      "max_lateness": 7363393,
+      "records": 1391,
+      "dropped_records": 0
+    },
+    {
+      "index": 2,
+      "measured": 1,
+      "variant": null,
+      "phase": null,
+      "started": 2747283666783,
+      "finished": 2750285126546,
+      "ok": true,
+      "error": null,
+      "late_wakes": 205,
+      "max_lateness": 6964541,
+      "records": 1392,
+      "dropped_records": 0
+    }
+  ],
+  "validity": {
+    "valid": false,
+    "checks": [
+      {
+        "name": "iterations",
+        "status": "pass",
+        "message": "2 measured iterations",
+        "value": 2.0,
+        "limit": 1.0
+      },
+      {
+        "name": "iteration_errors",
+        "status": "pass",
+        "message": "every iteration finished",
+        "value": null,
+        "limit": null
+      },
+      {
+        "name": "wake_lateness",
+        "status": "fail",
+        "message": "357 of 720 output wakes later than 2.00 ms; max 7.363 ms",
+        "value": 7.363393,
+        "limit": 2.0
+      },
+      {
+        "name": "host_load",
+        "status": "pass",
+        "message": "other processes used 0.0% of 10 CPUs (all: 1.0%)",
+        "value": 0.0,
+        "limit": 0.25
+      },
+      {
+        "name": "samples.frame_pacing",
+        "status": "pass",
+        "message": "357 samples, 10 wanted",
+        "value": 357.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.buffers",
+        "status": "pass",
+        "message": "361 samples, 10 wanted",
+        "value": 361.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.resources",
+        "status": "pass",
+        "message": "120 samples, 10 wanted",
+        "value": 120.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_cost",
+        "status": "pass",
+        "message": "361 samples, 10 wanted",
+        "value": 361.0,
+        "limit": 10.0
+      }
+    ]
+  },
+  "sections": [
+    {
+      "name": "frame_pacing",
+      "metrics": [
+        {
+          "name": "fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 2,
+          "mean": 59.99999880000002,
+          "median": 59.99999880000002,
+          "stddev": 0.0,
+          "min": 59.99999880000002,
+          "max": 59.99999880000002,
+          "ci": null,
+          "values": [
+            59.99999880000002,
+            59.99999880000002
+          ]
+        },
+        {
+          "name": "interval_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "neither",
+          "n": 2,
+          "mean": 16.666667,
+          "median": 16.666667,
+          "stddev": 0.0,
+          "min": 16.666667,
+          "max": 16.666667,
+          "ci": null,
+          "values": [
+            16.666667,
+            16.666667
+          ]
+        },
+        {
+          "name": "interval_p99",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 16.666667,
+          "median": 16.666667,
+          "stddev": 0.0,
+          "min": 16.666667,
+          "max": 16.666667,
+          "ci": null,
+          "values": [
+            16.666667,
+            16.666667
+          ]
+        },
+        {
+          "name": "interval_max",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 16.666667,
+          "median": 16.666667,
+          "stddev": 0.0,
+          "min": 16.666667,
+          "max": 16.666667,
+          "ci": null,
+          "values": [
+            16.666667,
+            16.666667
+          ]
+        },
+        {
+          "name": "jitter",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 3.2064366117018264e-14,
+          "median": 3.2064366117018264e-14,
+          "stddev": 3.5780344212662394e-19,
+          "min": 3.206411311177801e-14,
+          "max": 3.206461912225853e-14,
+          "ci": null,
+          "values": [
+            3.206461912225853e-14,
+            3.206411311177801e-14
+          ]
+        },
+        {
+          "name": "pacing_error",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "low_1pct_fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 2,
+          "mean": 59.99999880000002,
+          "median": 59.99999880000002,
+          "stddev": 0.0,
+          "min": 59.99999880000002,
+          "max": 59.99999880000002,
+          "ci": null,
+          "values": [
+            59.99999880000002,
+            59.99999880000002
+          ]
+        },
+        {
+          "name": "low_01pct_fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 2,
+          "mean": 59.99999880000002,
+          "median": 59.99999880000002,
+          "stddev": 0.0,
+          "min": 59.99999880000002,
+          "max": 59.99999880000002,
+          "ci": null,
+          "values": [
+            59.99999880000002,
+            59.99999880000002
+          ]
+        },
+        {
+          "name": "jank_count",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "jank_fraction",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "missed_vblanks",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "discarded",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "commits_per_refresh",
+          "variant": null,
+          "unit": "ratio",
+          "better": "neither",
+          "n": 2,
+          "mean": 0.9991041825765752,
+          "median": 0.9991041825765752,
+          "stddev": 0.0006827254359826996,
+          "min": 0.9986214227911033,
+          "max": 0.9995869423620471,
+          "ci": null,
+          "values": [
+            0.9986214227911033,
+            0.9995869423620471
+          ]
+        },
+        {
+          "name": "presents_per_refresh",
+          "variant": null,
+          "unit": "ratio",
+          "better": "higher",
+          "n": 2,
+          "mean": 0.9999999999999999,
+          "median": 0.9999999999999999,
+          "stddev": 0.0,
+          "min": 0.9999999999999999,
+          "max": 0.9999999999999999,
+          "ci": null,
+          "values": [
+            0.9999999999999999,
+            0.9999999999999999
+          ]
+        }
+      ],
+      "samples": 357,
+      "pooled": [
+        {
+          "variant": null,
+          "samples": 357,
+          "metrics": [
+            {
+              "name": "fps",
+              "value": 59.99999880000002,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "interval_p50",
+              "value": 16.666667,
+              "unit": "ms",
+              "better": "neither"
+            },
+            {
+              "name": "interval_p99",
+              "value": 16.666667,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "interval_max",
+              "value": 16.666667,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "jitter",
+              "value": 1.0673099838199995e-13,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "pacing_error",
+              "value": 0.0,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "low_1pct_fps",
+              "value": 59.99999880000002,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "low_01pct_fps",
+              "value": 59.99999880000002,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "jank_count",
+              "value": 0.0,
+              "unit": "count",
+              "better": "lower"
+            },
+            {
+              "name": "jank_fraction",
+              "value": 0.0,
+              "unit": "fraction",
+              "better": "lower"
+            },
+            {
+              "name": "missed_vblanks",
+              "value": 0.0,
+              "unit": "count",
+              "better": "lower"
+            },
+            {
+              "name": "discarded",
+              "value": 0.0,
+              "unit": "count",
+              "better": "neither"
+            },
+            {
+              "name": "commits_per_refresh",
+              "value": 1.0018883171500699,
+              "unit": "ratio",
+              "better": "neither"
+            },
+            {
+              "name": "presents_per_refresh",
+              "value": 0.9999999999999999,
+              "unit": "ratio",
+              "better": "higher"
+            }
+          ],
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 60.11329782673825,
+              "commits_per_refresh": 1.0018883171500699,
+              "present_rate_hz": 59.99999880000002,
+              "presents_per_refresh": 0.9999999999999999,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 361,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 5950.000119,
+            "fps": 59.99999880000002,
+            "fps_series": [],
+            "interval_ms": {
+              "count": 357,
+              "max": 16.666667,
+              "mean": 16.666667000000107,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 16.666667,
+              "p999": 16.666667,
+              "stddev": 1.0673099838199995e-13
+            },
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 1.0673099838199995e-13,
+            "lows": {
+              "avg_fps": 59.99999879999964,
+              "frames": 357,
+              "low_01pct_fps": 59.99999880000002,
+              "low_1pct_fps": 59.99999880000002,
+              "p01_fps": 59.99999880000002,
+              "p1_fps": 59.99999880000002
+            },
+            "missed_vblanks": 0,
+            "mode": "vsync",
+            "pacing_error_ms": 0.0,
+            "pending": 2,
+            "presented": 359,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        }
+      ],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 59.91728416912052,
+              "commits_per_refresh": 0.9986214227911033,
+              "present_rate_hz": 59.99999880000002,
+              "presents_per_refresh": 0.9999999999999999,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 180,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 2966.666726,
+            "fps": 59.99999880000002,
+            "fps_series": [
+              {
+                "frames": 60,
+                "second": 0
+              },
+              {
+                "frames": 60,
+                "second": 1
+              }
+            ],
+            "interval_ms": {
+              "count": 178,
+              "max": 16.666667,
+              "mean": 16.66666699999997,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 16.666667,
+              "p999": 16.666667,
+              "stddev": 3.206461912225853e-14
+            },
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 3.206461912225853e-14,
+            "lows": {
+              "avg_fps": 59.999998800000135,
+              "frames": 178,
+              "low_01pct_fps": 59.99999880000002,
+              "low_1pct_fps": 59.99999880000002,
+              "p01_fps": 59.99999880000002,
+              "p1_fps": 59.99999880000002
+            },
+            "missed_vblanks": 0,
+            "mode": "vsync",
+            "pacing_error_ms": 0.0,
+            "pending": 1,
+            "presented": 179,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 59.975215342218526,
+              "commits_per_refresh": 0.9995869423620471,
+              "present_rate_hz": 59.99999880000002,
+              "presents_per_refresh": 0.9999999999999999,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 181,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 2983.333393,
+            "fps": 59.99999880000002,
+            "fps_series": [
+              {
+                "frames": 60,
+                "second": 0
+              },
+              {
+                "frames": 60,
+                "second": 1
+              }
+            ],
+            "interval_ms": {
+              "count": 179,
+              "max": 16.666667,
+              "mean": 16.66666699999997,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 16.666667,
+              "p999": 16.666667,
+              "stddev": 3.206411311177801e-14
+            },
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 3.206411311177801e-14,
+            "lows": {
+              "avg_fps": 59.999998800000135,
+              "frames": 179,
+              "low_01pct_fps": 59.99999880000002,
+              "low_1pct_fps": 59.99999880000002,
+              "p01_fps": 59.99999880000002,
+              "p1_fps": 59.99999880000002
+            },
+            "missed_vblanks": 0,
+            "mode": "vsync",
+            "pacing_error_ms": 0.0,
+            "pending": 1,
+            "presented": 180,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "buffers",
+      "metrics": [
+        {
+          "name": "distinct_buffers",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 2.0,
+          "median": 2.0,
+          "stddev": 0.0,
+          "min": 2.0,
+          "max": 2.0,
+          "ci": null,
+          "values": [
+            2.0,
+            2.0
+          ]
+        },
+        {
+          "name": "in_flight_mean",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 1.9944597912829956,
+          "median": 1.9944597912829956,
+          "stddev": 0.000021703707218657465,
+          "min": 1.9944444444444445,
+          "max": 1.9944751381215469,
+          "ci": null,
+          "values": [
+            1.9944444444444445,
+            1.9944751381215469
+          ]
+        },
+        {
+          "name": "max_in_flight",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 2.0,
+          "median": 2.0,
+          "stddev": 0.0,
+          "min": 2.0,
+          "max": 2.0,
+          "ci": null,
+          "values": [
+            2.0,
+            2.0
+          ]
+        },
+        {
+          "name": "churn_per_s",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "upscaled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "oversampled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": 361,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "buffer_commits": 180,
+            "churn_per_s": 0.0,
+            "distinct_buffers": 2,
+            "distinct_sizes": 1,
+            "formats": [
+              {
+                "count": 180,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 180,
+              "max": 2.0,
+              "mean": 1.9944444444444445,
+              "min": 1.0,
+              "p50": 2.0,
+              "p90": 2.0,
+              "p95": 2.0,
+              "p99": 2.0,
+              "p999": 2.0,
+              "stddev": 0.07453559924999285
+            },
+            "kinds": {
+              "shm": 180
+            },
+            "late_allocations": 0,
+            "max_in_flight": 2,
+            "scale": {
+              "native": 179,
+              "oversampled": 0,
+              "upscaled": 0
+            },
+            "sync": {
+              "none": 180
+            }
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "buffer_commits": 181,
+            "churn_per_s": 0.0,
+            "distinct_buffers": 2,
+            "distinct_sizes": 1,
+            "formats": [
+              {
+                "count": 181,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 181,
+              "max": 2.0,
+              "mean": 1.9944751381215469,
+              "min": 1.0,
+              "p50": 2.0,
+              "p90": 2.0,
+              "p95": 2.0,
+              "p99": 2.0,
+              "p999": 2.0,
+              "stddev": 0.07432941462471686
+            },
+            "kinds": {
+              "shm": 181
+            },
+            "late_allocations": 0,
+            "max_in_flight": 2,
+            "scale": {
+              "native": 180,
+              "oversampled": 0,
+              "upscaled": 0
+            },
+            "sync": {
+              "none": 181
+            }
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "input_coalescing",
+      "metrics": [
+        {
+          "name": "inputs_per_frame_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "unpresented_inputs",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": null,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "by_kind": {},
+            "frame_rate_hz": null,
+            "frames": 0,
+            "input_rate_hz": null,
+            "inputs": 0,
+            "max_per_frame": 0,
+            "per_frame": null,
+            "presented_inputs": 0
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "by_kind": {},
+            "frame_rate_hz": null,
+            "frames": 0,
+            "input_rate_hz": null,
+            "inputs": 0,
+            "max_per_frame": 0,
+            "per_frame": null,
+            "presented_inputs": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "resources",
+      "metrics": [
+        {
+          "name": "cpu_percent_mean",
+          "variant": null,
+          "unit": "percent",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.4081386732019903,
+          "median": 1.4081386732019903,
+          "stddev": 0.10386366795462393,
+          "min": 1.3346959692723679,
+          "max": 1.4815813771316129,
+          "ci": null,
+          "values": [
+            1.3346959692723679,
+            1.4815813771316129
+          ]
+        },
+        {
+          "name": "rss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 30449664.0,
+          "median": 30449664.0,
+          "stddev": 0.0,
+          "min": 30449664.0,
+          "max": 30449664.0,
+          "ci": null,
+          "values": [
+            30449664.0,
+            30449664.0
+          ]
+        },
+        {
+          "name": "threads_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 6.0,
+          "median": 6.0,
+          "stddev": 0.0,
+          "min": 6.0,
+          "max": 6.0,
+          "ci": null,
+          "values": [
+            6.0,
+            6.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_s",
+          "variant": null,
+          "unit": "ms_per_s",
+          "better": "lower",
+          "n": 2,
+          "mean": 14.071155733622646,
+          "median": 14.071155733622646,
+          "stddev": 1.14029527726035,
+          "min": 13.264845210516858,
+          "max": 14.877466256728434,
+          "ci": null,
+          "values": [
+            13.264845210516858,
+            14.877466256728434
+          ]
+        },
+        {
+          "name": "cpu_ms",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 41.5102725,
+          "median": 41.5102725,
+          "stddev": 3.355430273230617,
+          "min": 39.137625,
+          "max": 43.88292,
+          "ci": null,
+          "values": [
+            39.137625,
+            43.88292
+          ]
+        },
+        {
+          "name": "wakeups_per_s",
+          "variant": null,
+          "unit": "per_s",
+          "better": "lower",
+          "n": 2,
+          "mean": 112.03172149375348,
+          "median": 112.03172149375348,
+          "stddev": 2.6136890994844313,
+          "min": 110.18356420759469,
+          "max": 113.87987877991229,
+          "ci": null,
+          "values": [
+            113.87987877991229,
+            110.18356420759469
+          ]
+        },
+        {
+          "name": "pss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 24627200.0,
+          "median": 24627200.0,
+          "stddev": 0.0,
+          "min": 24627200.0,
+          "max": 24627200.0,
+          "ci": null,
+          "values": [
+            24627200.0,
+            24627200.0
+          ]
+        },
+        {
+          "name": "private_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 20275200.0,
+          "median": 20275200.0,
+          "stddev": 0.0,
+          "min": 20275200.0,
+          "max": 20275200.0,
+          "ci": null,
+          "values": [
+            20275200.0,
+            20275200.0
+          ]
+        }
+      ],
+      "samples": 120,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario ticker --rows 1000 --variant fine --updates 100 --interval-ms 16",
+                "cpu_ms": 39.137625,
+                "cpu_ms_per_s": 13.264845210516858,
+                "cpu_percent": {
+                  "count": 60,
+                  "max": 2.2907297603994956,
+                  "mean": 1.3346959692723679,
+                  "min": 0.676467444364596,
+                  "p50": 1.3740917667543138,
+                  "p90": 1.8765092958972078,
+                  "p95": 2.068589060448758,
+                  "p99": 2.275780625771628,
+                  "p999": 2.289234846936709,
+                  "stddev": 0.4304740036906481
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 30449664,
+                "pid": 62659,
+                "private_max_bytes": 20275200,
+                "pss_max_bytes": 24627200,
+                "rss_max_bytes": 30449664,
+                "rss_mean_bytes": 30449664.0,
+                "samples": 60,
+                "swap_max_bytes": 0,
+                "threads_max": 6,
+                "wakeups_per_s": 113.87987877991229
+              }
+            ],
+            "selected": [
+              62659
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario ticker --rows 1000 --variant fine --updates 100 --interval-ms 16",
+                "cpu_ms": 43.88292,
+                "cpu_ms_per_s": 14.877466256728434,
+                "cpu_percent": {
+                  "count": 60,
+                  "max": 2.0760409128072874,
+                  "mean": 1.4815813771316129,
+                  "min": 0.7784077569491248,
+                  "p50": 1.463195622711564,
+                  "p90": 1.829695761507066,
+                  "p95": 1.884875537297394,
+                  "p99": 2.0531598521489474,
+                  "p999": 2.073752806741454,
+                  "stddev": 0.27536778188202266
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 30449664,
+                "pid": 62659,
+                "private_max_bytes": 20275200,
+                "pss_max_bytes": 24627200,
+                "rss_max_bytes": 30449664,
+                "rss_mean_bytes": 30449664.0,
+                "samples": 60,
+                "swap_max_bytes": 0,
+                "threads_max": 6,
+                "wakeups_per_s": 110.18356420759469
+              }
+            ],
+            "selected": [
+              62659
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_cost",
+      "metrics": [
+        {
+          "name": "frames",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 179.5,
+          "median": 179.5,
+          "stddev": 0.7071067811865476,
+          "min": 179.0,
+          "max": 180.0,
+          "ci": null,
+          "values": [
+            179.0,
+            180.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_frame",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.23452131355932204,
+          "median": 0.23452131355932204,
+          "stddev": 0.018957233182093882,
+          "min": 0.2211165254237288,
+          "max": 0.24792610169491525,
+          "ci": null,
+          "values": [
+            0.2211165254237288,
+            0.24792610169491525
+          ]
+        },
+        {
+          "name": "damage_fraction_p50",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.009,
+          "median": 0.009,
+          "stddev": 0.0,
+          "min": 0.009,
+          "max": 0.009,
+          "ci": null,
+          "values": [
+            0.009,
+            0.009
+          ]
+        },
+        {
+          "name": "damage_fraction_mean",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.00905257826887658,
+          "median": 0.00905257826887658,
+          "stddev": 0.000027216448852299948,
+          "min": 0.009033333333333301,
+          "max": 0.009071823204419857,
+          "ci": null,
+          "values": [
+            0.009033333333333301,
+            0.009071823204419857
+          ]
+        },
+        {
+          "name": "full_damage_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": 361,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "commits": 180,
+            "cpu_frames": 177,
+            "cpu_ms": 39.137625,
+            "cpu_ms_per_frame": 0.2211165254237288,
+            "damage_fraction": {
+              "count": 180,
+              "max": 0.01,
+              "mean": 0.009033333333333301,
+              "min": 0.009,
+              "p50": 0.009,
+              "p90": 0.009,
+              "p95": 0.009,
+              "p99": 0.01,
+              "p999": 0.01,
+              "stddev": 0.00018000620721761668
+            },
+            "frames": 179,
+            "full_damage_frames": 0,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 3000.660442
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "commits": 181,
+            "cpu_frames": 177,
+            "cpu_ms": 43.88292,
+            "cpu_ms_per_frame": 0.24792610169491525,
+            "damage_fraction": {
+              "count": 181,
+              "max": 0.013,
+              "mean": 0.009071823204419857,
+              "min": 0.009,
+              "p50": 0.009,
+              "p90": 0.009,
+              "p95": 0.009,
+              "p99": 0.012,
+              "p999": 0.01282000000000002,
+              "stddev": 0.00044762520497088895
+            },
+            "frames": 180,
+            "full_damage_frames": 0,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 3001.4597630000003
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

@@ -14,6 +14,10 @@ SCENARIOS=${SCENARIOS:-rows,spinner,search,table}
 if [ "$#" -eq 0 ]; then
   set -- --quick --frameworks "$FRAMEWORKS" --scenarios "$SCENARIOS" --out "$OUT"
 else
+  # An explicit runner argument list still gets the selected frameworks and scenarios unless it
+  # names its own, so a one-cell invocation cannot silently launch every registered app.
+  case " $* " in *" --frameworks"*) ;; *) set -- "$@" --frameworks "$FRAMEWORKS" ;; esac
+  case " $* " in *" --scenarios"*) ;; *) set -- "$@" --scenarios "$SCENARIOS" ;; esac
   set -- --out "$OUT" "$@"
 fi
 
@@ -25,7 +29,7 @@ mkdir -p "$CONTRACT"
   printf 'guest %s\n' "$(guest 'uname -srm')"
   printf 'guest-cpus %s\n' "$(guest 'nproc')"
   printf 'guest-memory %s\n' "$(guest 'free -h | sed -n 2p')"
-  printf 'vm %s\n' "$(limactl list --format '{{.Name}}|{{.VMTYPE}}|{{.Arch}}|{{.CPUs}}cpus|{{.Memory}}' | grep -E "^$VM\\|" | head -1)"
+  printf 'vm %s\n' "$(limactl list --format '{{.Name}}|{{.VMType}}|{{.Arch}}|{{.CPUs}}cpus|{{.Memory}}' | grep -E "^$VM\\|" | head -1)"
   printf 'host-macos %s\n' "$(sw_vers -productVersion 2>/dev/null || echo unknown)"
   printf 'host-cpu %s\n' "$(sysctl -n machdep.cpu.brand_string)"
   printf 'toolchain-lorelei %s\n' "$(guest "cd $LOR && rustc -V")"
@@ -42,8 +46,11 @@ mkdir -p "$CONTRACT"
 } > "$CONTRACT/CONTRACT.txt"
 
 echo "run: $OUT"
+# The batch lock: no other timed run overlaps this one on the host.
+LOCK=${BENCH_LOCK:-$HOME/work/locks/bench.lock}
+mkdir -p "$(dirname "$LOCK")" && touch "$LOCK"
 set +e
-guest "cd $GUI && env -u DISPLAY -u WAYLAND_DISPLAY VK_LOADER_DRIVERS_DISABLE= taskset -c 0-5 ./target/release/gui-bench $*"
+lockf -k "$LOCK" "$ROOT/bench/vm/guest-run.sh" "$@"
 RC=$?
 set -e
 printf 'runner-exit %s\n' "$RC" >> "$CONTRACT/CONTRACT.txt"

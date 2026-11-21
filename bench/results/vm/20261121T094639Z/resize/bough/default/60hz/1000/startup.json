@@ -1,0 +1,15 @@
+{
+  "pid": 63465,
+  "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario rows --rows 1000",
+  "spawned": 3043010756662,
+  "window": 1,
+  "connected_ms": 4.200243,
+  "first_surface_ms": 4.366672,
+  "toplevel_ms": 15.600116,
+  "first_buffer_ms": 13.070319,
+  "first_present_ms": 16.018044,
+  "visually_complete_ms": null,
+  "responsive_ms": null,
+  "first_input_latency_ms": null,
+  "exited_early": false
+}

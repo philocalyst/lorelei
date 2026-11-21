@@ -1,0 +1,3510 @@
+{
+  "format_version": 1,
+  "name": "resize-storm",
+  "preset": "resize-storm",
+  "params": {
+    "duration": "1s",
+    "from": {
+      "h": 480,
+      "w": 640
+    },
+    "iterations": 2,
+    "rate_hz": 60.0,
+    "restore": true,
+    "seed": null,
+    "settle": null,
+    "tail": "500ms",
+    "target": null,
+    "to": {
+      "h": 800,
+      "w": 1200
+    },
+    "warmup": 1,
+    "window_timeout": null
+  },
+  "environment": {
+    "gpu": "",
+    "driver": "",
+    "kernel": "7.3.0-9-generic",
+    "cpu": "",
+    "governor": "",
+    "renderer": "pixman",
+    "hostname": "lima-benchvm",
+    "fakeland_version": "0.1.0"
+  },
+  "config": {
+    "iterations": 2,
+    "warmup": 1,
+    "settle": "500ms",
+    "quiet": null,
+    "phase": null,
+    "seed": 0,
+    "variants": [],
+    "target": {
+      "type": "focused"
+    },
+    "analyzers": [
+      "resize",
+      "frame_pacing",
+      "buffers",
+      "resources",
+      "frame_cost"
+    ],
+    "outputs": [
+      {
+        "id": 1,
+        "name": "DP-1",
+        "make": "Dell Inc.",
+        "model": "DELL P2422H",
+        "serial": "7Z6X3G3",
+        "mode": {
+          "width": 1280,
+          "height": 800,
+          "refresh": 60.0
+        },
+        "modes": [
+          {
+            "width": 1280,
+            "height": 800,
+            "refresh": 60.0
+          }
+        ],
+        "scale": 1.0,
+        "transform": "normal",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "logical_size": {
+          "w": 1280,
+          "h": 800
+        },
+        "timing": {
+          "mode": {
+            "type": "fixed",
+            "refresh": 60.0
+          },
+          "latch_offset": "1ms",
+          "callbacks": {
+            "type": "at_vblank"
+          },
+          "perturbation": null,
+          "zero_copy": false
+        },
+        "enabled": true,
+        "physical_mm": [
+          353,
+          221
+        ]
+      }
+    ],
+    "lateness_threshold": "2ms"
+  },
+  "started": 3081111596465,
+  "finished": 3088620513151,
+  "iterations": [
+    {
+      "index": 0,
+      "measured": null,
+      "variant": null,
+      "phase": null,
+      "started": 3081611974007,
+      "finished": 3083613790762,
+      "ok": true,
+      "error": null,
+      "late_wakes": 61,
+      "max_lateness": 6455681,
+      "records": 0,
+      "dropped_records": 0
+    },
+    {
+      "index": 1,
+      "measured": 0,
+      "variant": null,
+      "phase": null,
+      "started": 3084114309850,
+      "finished": 3086116284957,
+      "ok": true,
+      "error": null,
+      "late_wakes": 52,
+      "max_lateness": 7233524,
+      "records": 1409,
+      "dropped_records": 0
+    },
+    {
+      "index": 2,
+      "measured": 1,
+      "variant": null,
+      "phase": null,
+      "started": 3086617282446,
+      "finished": 3088620203545,
+      "ok": true,
+      "error": null,
+      "late_wakes": 47,
+      "max_lateness": 7230706,
+      "records": 1406,
+      "dropped_records": 0
+    }
+  ],
+  "validity": {
+    "valid": false,
+    "checks": [
+      {
+        "name": "iterations",
+        "status": "pass",
+        "message": "2 measured iterations",
+        "value": 2.0,
+        "limit": 1.0
+      },
+      {
+        "name": "iteration_errors",
+        "status": "pass",
+        "message": "every iteration finished",
+        "value": null,
+        "limit": null
+      },
+      {
+        "name": "wake_lateness",
+        "status": "fail",
+        "message": "99 of 480 output wakes later than 2.00 ms; max 7.234 ms",
+        "value": 7.233524,
+        "limit": 2.0
+      },
+      {
+        "name": "host_load",
+        "status": "pass",
+        "message": "other processes used 0.0% of 10 CPUs (all: 4.5%)",
+        "value": 0.0,
+        "limit": 0.25
+      },
+      {
+        "name": "samples.resize",
+        "status": "pass",
+        "message": "124 samples, 10 wanted",
+        "value": 124.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_pacing",
+        "status": "pass",
+        "message": "119 samples, 10 wanted",
+        "value": 119.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.buffers",
+        "status": "pass",
+        "message": "126 samples, 10 wanted",
+        "value": 126.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.resources",
+        "status": "pass",
+        "message": "80 samples, 10 wanted",
+        "value": 80.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_cost",
+        "status": "pass",
+        "message": "126 samples, 10 wanted",
+        "value": 126.0,
+        "limit": 10.0
+      }
+    ]
+  },
+  "sections": [
+    {
+      "name": "resize",
+      "metrics": [
+        {
+          "name": "configure_to_ack_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.086753,
+          "median": 0.086753,
+          "stddev": 0.006850450496135284,
+          "min": 0.081909,
+          "max": 0.09159700000000001,
+          "ci": null,
+          "values": [
+            0.081909,
+            0.09159700000000001
+          ]
+        },
+        {
+          "name": "configure_to_commit_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 5.6318455,
+          "median": 5.6318455,
+          "stddev": 0.0853343534603733,
+          "min": 5.571505,
+          "max": 5.6921859999999995,
+          "ci": null,
+          "values": [
+            5.571505,
+            5.6921859999999995
+          ]
+        },
+        {
+          "name": "configure_to_commit_p95",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 8.404266199999999,
+          "median": 8.404266199999999,
+          "stddev": 0.174264627745793,
+          "min": 8.2810425,
+          "max": 8.527489899999999,
+          "ci": null,
+          "values": [
+            8.527489899999999,
+            8.2810425
+          ]
+        },
+        {
+          "name": "configure_to_present_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 11.89565925,
+          "median": 11.89565925,
+          "stddev": 2.4090608311541506,
+          "min": 10.192196,
+          "max": 13.5991225,
+          "ci": null,
+          "values": [
+            13.5991225,
+            10.192196
+          ]
+        },
+        {
+          "name": "configure_to_present_max",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 19.4702985,
+          "median": 19.4702985,
+          "stddev": 7.9358289996650315,
+          "min": 13.85882,
+          "max": 25.081777,
+          "ci": null,
+          "values": [
+            13.85882,
+            25.081777
+          ]
+        },
+        {
+          "name": "mismatched_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "missed_vblanks",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 1.4142135623730951,
+          "min": 0.0,
+          "max": 2.0,
+          "ci": null,
+          "values": [
+            0.0,
+            2.0
+          ]
+        },
+        {
+          "name": "discarded",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.5,
+          "median": 1.5,
+          "stddev": 2.1213203435596424,
+          "min": 0.0,
+          "max": 3.0,
+          "ci": null,
+          "values": [
+            0.0,
+            3.0
+          ]
+        },
+        {
+          "name": "superseded",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": 124,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "acked": 62,
+            "configure_to_ack_ms": {
+              "count": 62,
+              "max": 0.199307,
+              "mean": 0.09642211290322582,
+              "min": 0.049153,
+              "p50": 0.081909,
+              "p90": 0.1439321,
+              "p95": 0.1502654,
+              "p99": 0.18487440000000002,
+              "p999": 0.19786374000000018,
+              "stddev": 0.03465310151146782
+            },
+            "configure_to_commit_ms": {
+              "count": 62,
+              "max": 10.486393,
+              "mean": 5.998755548387096,
+              "min": 4.299407,
+              "p50": 5.571505,
+              "p90": 8.0359834,
+              "p95": 8.527489899999999,
+              "p99": 10.4398622,
+              "p999": 10.48173992,
+              "stddev": 1.3293284704427377
+            },
+            "configure_to_present_ms": {
+              "count": 62,
+              "max": 13.85882,
+              "mean": 13.487769403225808,
+              "min": 12.732643,
+              "p50": 13.5991225,
+              "p90": 13.838901799999999,
+              "p95": 13.84817485,
+              "p99": 13.85398819,
+              "p999": 13.858336819,
+              "stddev": 0.34601757701148694
+            },
+            "configures": 62,
+            "discarded": 0,
+            "margin": [
+              0.0,
+              0.0
+            ],
+            "matched": 62,
+            "mismatched_frames": 0,
+            "missed_vblanks": 0,
+            "records": [
+              {
+                "acked": 3084114544115,
+                "buffer_size": [
+                  640.0,
+                  480.0
+                ],
+                "commit": 69,
+                "committed": 3084124923022,
+                "height": 480,
+                "presented": 3084128295449,
+                "sent": 3084114436629,
+                "serial": 1513,
+                "superseded": false,
+                "width": 640
+              },
+              {
+                "acked": 3084131221898,
+                "buffer_size": [
+                  649.0,
+                  485.0
+                ],
+                "commit": 70,
+                "committed": 3084136443066,
+                "height": 485,
+                "presented": 3084144962116,
+                "sent": 3084131135257,
+                "serial": 1514,
+                "superseded": false,
+                "width": 649
+              },
+              {
+                "acked": 3084148120402,
+                "buffer_size": [
+                  659.0,
+                  491.0
+                ],
+                "commit": 71,
+                "committed": 3084153809081,
+                "height": 491,
+                "presented": 3084161628783,
+                "sent": 3084148013407,
+                "serial": 1515,
+                "superseded": false,
+                "width": 659
+              },
+              {
+                "acked": 3084164662391,
+                "buffer_size": [
+                  668.0,
+                  496.0
+                ],
+                "commit": 72,
+                "committed": 3084170116397,
+                "height": 496,
+                "presented": 3084178295450,
+                "sent": 3084164604141,
+                "serial": 1516,
+                "superseded": false,
+                "width": 668
+              },
+              {
+                "acked": 3084181601891,
+                "buffer_size": [
+                  677.0,
+                  501.0
+                ],
+                "commit": 73,
+                "committed": 3084185840233,
+                "height": 501,
+                "presented": 3084194962117,
+                "sent": 3084181540826,
+                "serial": 1517,
+                "superseded": false,
+                "width": 677
+              },
+              {
+                "acked": 3084197874371,
+                "buffer_size": [
+                  687.0,
+                  507.0
+                ],
+                "commit": 74,
+                "committed": 3084202688810,
+                "height": 507,
+                "presented": 3084211628784,
+                "sent": 3084197804822,
+                "serial": 1518,
+                "superseded": false,
+                "width": 687
+              },
+              {
+                "acked": 3084215615462,
+                "buffer_size": [
+                  696.0,
+                  512.0
+                ],
+                "commit": 75,
+                "committed": 3084220403141,
+                "height": 512,
+                "presented": 3084228295451,
+                "sent": 3084215534206,
+                "serial": 1519,
+                "superseded": false,
+                "width": 696
+              },
+              {
+                "acked": 3084232111846,
+                "buffer_size": [
+                  705.0,
+                  517.0
+                ],
+                "commit": 76,
+                "committed": 3084239509069,
+                "height": 517,
+                "presented": 3084244962118,
+                "sent": 3084232034709,
+                "serial": 1520,
+                "superseded": false,
+                "width": 705
+              },
+              {
+                "acked": 3084248378901,
+                "buffer_size": [
+                  715.0,
+                  523.0
+                ],
+                "commit": 77,
+                "committed": 3084254376533,
+                "height": 523,
+                "presented": 3084261628785,
+                "sent": 3084248314369,
+                "serial": 1521,
+                "superseded": false,
+                "width": 715
+              },
+              {
+                "acked": 3084265637267,
+                "buffer_size": [
+                  724.0,
+                  528.0
+                ],
+                "commit": 78,
+                "committed": 3084271689518,
+                "height": 528,
+                "presented": 3084278295452,
+                "sent": 3084265559192,
+                "serial": 1522,
+                "superseded": false,
+                "width": 724
+              },
+              {
+                "acked": 3084281673851,
+                "buffer_size": [
+                  733.0,
+                  533.0
+                ],
+                "commit": 79,
+                "committed": 3084287520269,
+                "height": 533,
+                "presented": 3084294962119,
+                "sent": 3084281604016,
+                "serial": 1523,
+                "superseded": false,
+                "width": 733
+              },
+              {
+                "acked": 3084297904764,
+                "buffer_size": [
+                  743.0,
+                  539.0
+                ],
+                "commit": 80,
+                "committed": 3084302741148,
+                "height": 539,
+                "presented": 3084311628786,
+                "sent": 3084297789203,
+                "serial": 1524,
+                "superseded": false,
+                "width": 743
+              },
+              {
+                "acked": 3084314500842,
+                "buffer_size": [
+                  752.0,
+                  544.0
+                ],
+                "commit": 81,
+                "committed": 3084319016770,
+                "height": 544,
+                "presented": 3084328295453,
+                "sent": 3084314444917,
+                "serial": 1525,
+                "superseded": false,
+                "width": 752
+              },
+              {
+                "acked": 3084331213298,
+                "buffer_size": [
+                  761.0,
+                  549.0
+                ],
+                "commit": 82,
+                "committed": 3084336126818,
+                "height": 549,
+                "presented": 3084344962120,
+                "sent": 3084331129349,
+                "serial": 1526,
+                "superseded": false,
+                "width": 761
+              },
+              {
+                "acked": 3084347925590,
+                "buffer_size": [
+                  771.0,
+                  555.0
+                ],
+                "commit": 83,
+                "committed": 3084356217368,
+                "height": 555,
+                "presented": 3084361628787,
+                "sent": 3084347802645,
+                "serial": 1527,
+                "superseded": false,
+                "width": 771
+              },
+              {
+                "acked": 3084365053220,
+                "buffer_size": [
+                  780.0,
+                  560.0
+                ],
+                "commit": 84,
+                "committed": 3084371401331,
+                "height": 560,
+                "presented": 3084378295454,
+                "sent": 3084364980000,
+                "serial": 1528,
+                "superseded": false,
+                "width": 780
+              },
+              {
+                "acked": 3084381655865,
+                "buffer_size": [
+                  789.0,
+                  565.0
+                ],
+                "commit": 85,
+                "committed": 3084387882785,
+                "height": 565,
+                "presented": 3084394962121,
+                "sent": 3084381590762,
+                "serial": 1529,
+                "superseded": false,
+                "width": 789
+              },
+              {
+                "acked": 3084398319616,
+                "buffer_size": [
+                  799.0,
+                  571.0
+                ],
+                "commit": 86,
+                "committed": 3084404874457,
+                "height": 571,
+                "presented": 3084411628788,
+                "sent": 3084398241949,
+                "serial": 1530,
+                "superseded": false,
+                "width": 799
+              },
+              {
+                "acked": 3084414537558,
+                "buffer_size": [
+                  808.0,
+                  576.0
+                ],
+                "commit": 87,
+                "committed": 3084419138576,
+                "height": 576,
+                "presented": 3084428295455,
+                "sent": 3084414488405,
+                "serial": 1531,
+                "superseded": false,
+                "width": 808
+              },
+              {
+                "acked": 3084432098106,
+                "buffer_size": [
+                  817.0,
+                  581.0
+                ],
+                "commit": 88,
+                "committed": 3084436872161,
+                "height": 581,
+                "presented": 3084444962122,
+                "sent": 3084432025090,
+                "serial": 1532,
+                "superseded": false,
+                "width": 817
+              },
+              {
+                "acked": 3084448058818,
+                "buffer_size": [
+                  827.0,
+                  587.0
+                ],
+                "commit": 89,
+                "committed": 3084453254289,
+                "height": 587,
+                "presented": 3084461628789,
+                "sent": 3084447923962,
+                "serial": 1533,
+                "superseded": false,
+                "width": 827
+              },
+              {
+                "acked": 3084464836051,
+                "buffer_size": [
+                  836.0,
+                  592.0
+                ],
+                "commit": 90,
+                "committed": 3084469876840,
+                "height": 592,
+                "presented": 3084478295456,
+                "sent": 3084464756222,
+                "serial": 1534,
+                "superseded": false,
+                "width": 836
+              },
+              {
+                "acked": 3084481607205,
+                "buffer_size": [
+                  845.0,
+                  597.0
+                ],
+                "commit": 91,
+                "committed": 3084486412628,
+                "height": 597,
+                "presented": 3084494962123,
+                "sent": 3084481547242,
+                "serial": 1535,
+                "superseded": false,
+                "width": 845
+              },
+              {
+                "acked": 3084498553762,
+                "buffer_size": [
+                  855.0,
+                  603.0
+                ],
+                "commit": 92,
+                "committed": 3084503422861,
+                "height": 603,
+                "presented": 3084511628790,
+                "sent": 3084498433754,
+                "serial": 1536,
+                "superseded": false,
+                "width": 855
+              },
+              {
+                "acked": 3084514654837,
+                "buffer_size": [
+                  864.0,
+                  608.0
+                ],
+                "commit": 93,
+                "committed": 3084519405681,
+                "height": 608,
+                "presented": 3084528295457,
+                "sent": 3084514598300,
+                "serial": 1537,
+                "superseded": false,
+                "width": 864
+              },
+              {
+                "acked": 3084531194337,
+                "buffer_size": [
+                  873.0,
+                  613.0
+                ],
+                "commit": 94,
+                "committed": 3084536009918,
+                "height": 613,
+                "presented": 3084544962124,
+                "sent": 3084531131518,
+                "serial": 1538,
+                "superseded": false,
+                "width": 873
+              },
+              {
+                "acked": 3084547881747,
+                "buffer_size": [
+                  883.0,
+                  619.0
+                ],
+                "commit": 95,
+                "committed": 3084553148806,
+                "height": 619,
+                "presented": 3084561628791,
+                "sent": 3084547777892,
+                "serial": 1539,
+                "superseded": false,
+                "width": 883
+              },
+              {
+                "acked": 3084564601912,
+                "buffer_size": [
+                  892.0,
+                  624.0
+                ],
+                "commit": 96,
+                "committed": 3084569796852,
+                "height": 624,
+                "presented": 3084578295458,
+                "sent": 3084564478844,
+                "serial": 1540,
+                "superseded": false,
+                "width": 892
+              },
+              {
+                "acked": 3084581340515,
+                "buffer_size": [
+                  901.0,
+                  629.0
+                ],
+                "commit": 97,
+                "committed": 3084586639187,
+                "height": 629,
+                "presented": 3084594962125,
+                "sent": 3084581262930,
+                "serial": 1541,
+                "superseded": false,
+                "width": 901
+              },
+              {
+                "acked": 3084598102572,
+                "buffer_size": [
+                  911.0,
+                  635.0
+                ],
+                "commit": 98,
+                "committed": 3084603121457,
+                "height": 635,
+                "presented": 3084611628792,
+                "sent": 3084597988438,
+                "serial": 1542,
+                "superseded": false,
+                "width": 911
+              },
+              {
+                "acked": 3084615094285,
+                "buffer_size": [
+                  920.0,
+                  640.0
+                ],
+                "commit": 99,
+                "committed": 3084620375703,
+                "height": 640,
+                "presented": 3084628295459,
+                "sent": 3084614997855,
+                "serial": 1543,
+                "superseded": false,
+                "width": 920
+              },
+              {
+                "acked": 3084632025505,
+                "buffer_size": [
+                  929.0,
+                  645.0
+                ],
+                "commit": 100,
+                "committed": 3084637040881,
+                "height": 645,
+                "presented": 3084644962126,
+                "sent": 3084631947022,
+                "serial": 1544,
+                "superseded": false,
+                "width": 929
+              },
+              {
+                "acked": 3084648199433,
+                "buffer_size": [
+                  939.0,
+                  651.0
+                ],
+                "commit": 101,
+                "committed": 3084653576384,
+                "height": 651,
+                "presented": 3084661628793,
+                "sent": 3084648023786,
+                "serial": 1545,
+                "superseded": false,
+                "width": 939
+              },
+              {
+                "acked": 3084664518334,
+                "buffer_size": [
+                  948.0,
+                  656.0
+                ],
+                "commit": 102,
+                "committed": 3084669434343,
+                "height": 656,
+                "presented": 3084678295460,
+                "sent": 3084664447235,
+                "serial": 1546,
+                "superseded": false,
+                "width": 948
+              },
+              {
+                "acked": 3084681232870,
+                "buffer_size": [
+                  957.0,
+                  661.0
+                ],
+                "commit": 103,
+                "committed": 3084686855710,
+                "height": 661,
+                "presented": 3084694962127,
+                "sent": 3084681156672,
+                "serial": 1547,
+                "superseded": false,
+                "width": 957
+              },
+              {
+                "acked": 3084698274470,
+                "buffer_size": [
+                  967.0,
+                  667.0
+                ],
+                "commit": 104,
+                "committed": 3084703496047,
+                "height": 667,
+                "presented": 3084711628794,
+                "sent": 3084698208715,
+                "serial": 1548,
+                "superseded": false,
+                "width": 967
+              },
+              {
+                "acked": 3084715618824,
+                "buffer_size": [
+                  976.0,
+                  672.0
+                ],
+                "commit": 105,
+                "committed": 3084720700405,
+                "height": 672,
+                "presented": 3084728295461,
+                "sent": 3084715562818,
+                "serial": 1549,
+                "superseded": false,
+                "width": 976
+              },
+              {
+                "acked": 3084731426120,
+                "buffer_size": [
+                  985.0,
+                  677.0
+                ],
+                "commit": 106,
+                "committed": 3084736673640,
+                "height": 677,
+                "presented": 3084744962128,
+                "sent": 3084731368890,
+                "serial": 1550,
+                "superseded": false,
+                "width": 985
+              },
+              {
+                "acked": 3084747955586,
+                "buffer_size": [
+                  995.0,
+                  683.0
+                ],
+                "commit": 107,
+                "committed": 3084753783322,
+                "height": 683,
+                "presented": 3084761628795,
+                "sent": 3084747812571,
+                "serial": 1551,
+                "superseded": false,
+                "width": 995
+              },
+              {
+                "acked": 3084765054784,
+                "buffer_size": [
+                  1004.0,
+                  688.0
+                ],
+                "commit": 108,
+                "committed": 3084770209667,
+                "height": 688,
+                "presented": 3084778295462,
+                "sent": 3084764973732,
+                "serial": 1552,
+                "superseded": false,
+                "width": 1004
+              },
+              {
+                "acked": 3084782127019,
+                "buffer_size": [
+                  1013.0,
+                  693.0
+                ],
+                "commit": 109,
+                "committed": 3084787576579,
+                "height": 693,
+                "presented": 3084794962129,
+                "sent": 3084781995916,
+                "serial": 1553,
+                "superseded": false,
+                "width": 1013
+              },
+              {
+                "acked": 3084798041759,
+                "buffer_size": [
+                  1023.0,
+                  699.0
+                ],
+                "commit": 110,
+                "committed": 3084803658237,
+                "height": 699,
+                "presented": 3084811628796,
+                "sent": 3084797963358,
+                "serial": 1554,
+                "superseded": false,
+                "width": 1023
+              },
+              {
+                "acked": 3084814660721,
+                "buffer_size": [
+                  1032.0,
+                  704.0
+                ],
+                "commit": 111,
+                "committed": 3084823306894,
+                "height": 704,
+                "presented": 3084828295463,
+                "sent": 3084814591090,
+                "serial": 1555,
+                "superseded": false,
+                "width": 1032
+              },
+              {
+                "acked": 3084832219556,
+                "buffer_size": [
+                  1041.0,
+                  709.0
+                ],
+                "commit": 112,
+                "committed": 3084839482046,
+                "height": 709,
+                "presented": 3084844962130,
+                "sent": 3084832093266,
+                "serial": 1556,
+                "superseded": false,
+                "width": 1041
+              },
+              {
+                "acked": 3084847916022,
+                "buffer_size": [
+                  1051.0,
+                  715.0
+                ],
+                "commit": 113,
+                "committed": 3084855549142,
+                "height": 715,
+                "presented": 3084861628797,
+                "sent": 3084847786224,
+                "serial": 1557,
+                "superseded": false,
+                "width": 1051
+              },
+              {
+                "acked": 3084865616729,
+                "buffer_size": [
+                  1060.0,
+                  720.0
+                ],
+                "commit": 114,
+                "committed": 3084872571122,
+                "height": 720,
+                "presented": 3084878295464,
+                "sent": 3084865529640,
+                "serial": 1558,
+                "superseded": false,
+                "width": 1060
+              },
+              {
+                "acked": 3084882105852,
+                "buffer_size": [
+                  1069.0,
+                  725.0
+                ],
+                "commit": 115,
+                "committed": 3084887531100,
+                "height": 725,
+                "presented": 3084894962131,
+                "sent": 3084881958351,
+                "serial": 1559,
+                "superseded": false,
+                "width": 1069
+              },
+              {
+                "acked": 3084897913433,
+                "buffer_size": [
+                  1079.0,
+                  731.0
+                ],
+                "commit": 116,
+                "committed": 3084903372089,
+                "height": 731,
+                "presented": 3084911628798,
+                "sent": 3084897801828,
+                "serial": 1560,
+                "superseded": false,
+                "width": 1079
+              },
+              {
+                "acked": 3084914677490,
+                "buffer_size": [
+                  1088.0,
+                  736.0
+                ],
+                "commit": 117,
+                "committed": 3084920109101,
+                "height": 736,
+                "presented": 3084928295465,
+                "sent": 3084914615895,
+                "serial": 1561,
+                "superseded": false,
+                "width": 1088
+              },
+              {
+                "acked": 3084931496085,
+                "buffer_size": [
+                  1097.0,
+                  741.0
+                ],
+                "commit": 118,
+                "committed": 3084936841667,
+                "height": 741,
+                "presented": 3084944962132,
+                "sent": 3084931413523,
+                "serial": 1562,
+                "superseded": false,
+                "width": 1097
+              },
+              {
+                "acked": 3084947906480,
+                "buffer_size": [
+                  1107.0,
+                  747.0
+                ],
+                "commit": 119,
+                "committed": 3084954032279,
+                "height": 747,
+                "presented": 3084961628799,
+                "sent": 3084947781577,
+                "serial": 1563,
+                "superseded": false,
+                "width": 1107
+              },
+              {
+                "acked": 3084964630847,
+                "buffer_size": [
+                  1116.0,
+                  752.0
+                ],
+                "commit": 120,
+                "committed": 3084970409021,
+                "height": 752,
+                "presented": 3084978295466,
+                "sent": 3084964483101,
+                "serial": 1564,
+                "superseded": false,
+                "width": 1116
+              },
+              {
+                "acked": 3084981627455,
+                "buffer_size": [
+                  1125.0,
+                  757.0
+                ],
+                "commit": 121,
+                "committed": 3084987305323,
+                "height": 757,
+                "presented": 3084994962133,
+                "sent": 3084981562760,
+                "serial": 1565,
+                "superseded": false,
+                "width": 1125
+              },
+              {
+                "acked": 3084998452821,
+                "buffer_size": [
+                  1135.0,
+                  763.0
+                ],
+                "commit": 122,
+                "committed": 3085004156184,
+                "height": 763,
+                "presented": 3085011628800,
+                "sent": 3084998302423,
+                "serial": 1566,
+                "superseded": false,
+                "width": 1135
+              },
+              {
+                "acked": 3085014855833,
+                "buffer_size": [
+                  1144.0,
+                  768.0
+                ],
+                "commit": 123,
+                "committed": 3085020549284,
+                "height": 768,
+                "presented": 3085028295467,
+                "sent": 3085014786774,
+                "serial": 1567,
+                "superseded": false,
+                "width": 1144
+              },
+              {
+                "acked": 3085031363720,
+                "buffer_size": [
+                  1153.0,
+                  773.0
+                ],
+                "commit": 124,
+                "committed": 3085041601408,
+                "height": 773,
+                "presented": 3085044962134,
+                "sent": 3085031191295,
+                "serial": 1568,
+                "superseded": false,
+                "width": 1153
+              },
+              {
+                "acked": 3085048420169,
+                "buffer_size": [
+                  1163.0,
+                  779.0
+                ],
+                "commit": 125,
+                "committed": 3085056841989,
+                "height": 779,
+                "presented": 3085061628801,
+                "sent": 3085048308564,
+                "serial": 1569,
+                "superseded": false,
+                "width": 1163
+              },
+              {
+                "acked": 3085064829749,
+                "buffer_size": [
+                  1172.0,
+                  784.0
+                ],
+                "commit": 126,
+                "committed": 3085072752039,
+                "height": 784,
+                "presented": 3085078295468,
+                "sent": 3085064685715,
+                "serial": 1570,
+                "superseded": false,
+                "width": 1172
+              },
+              {
+                "acked": 3085082134454,
+                "buffer_size": [
+                  1181.0,
+                  789.0
+                ],
+                "commit": 127,
+                "committed": 3085090221255,
+                "height": 789,
+                "presented": 3085094962135,
+                "sent": 3085082027948,
+                "serial": 1571,
+                "superseded": false,
+                "width": 1181
+              },
+              {
+                "acked": 3085098509892,
+                "buffer_size": [
+                  1191.0,
+                  795.0
+                ],
+                "commit": 128,
+                "committed": 3085104569689,
+                "height": 795,
+                "presented": 3085111628802,
+                "sent": 3085098382827,
+                "serial": 1572,
+                "superseded": false,
+                "width": 1191
+              },
+              {
+                "acked": 3085114677742,
+                "buffer_size": [
+                  1200.0,
+                  800.0
+                ],
+                "commit": 130,
+                "committed": 3085120293648,
+                "height": 800,
+                "presented": 3085128295469,
+                "sent": 3085114478435,
+                "serial": 1573,
+                "superseded": false,
+                "width": 1200
+              },
+              {
+                "acked": 3085614987897,
+                "buffer_size": [
+                  1280.0,
+                  800.0
+                ],
+                "commit": 131,
+                "committed": 3085622444349,
+                "height": 800,
+                "presented": 3085628295479,
+                "sent": 3085614863973,
+                "serial": 1574,
+                "superseded": false,
+                "width": 1280
+              }
+            ],
+            "storm_ms": 1013.85884,
+            "superseded": 0
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "acked": 62,
+            "configure_to_ack_ms": {
+              "count": 62,
+              "max": 0.176912,
+              "mean": 0.09717540322580644,
+              "min": 0.076728,
+              "p50": 0.09159700000000001,
+              "p90": 0.1184498,
+              "p95": 0.135097,
+              "p99": 0.16220612,
+              "p999": 0.17544141200000019,
+              "stddev": 0.01897551491036362
+            },
+            "configure_to_commit_ms": {
+              "count": 62,
+              "max": 12.418188,
+              "mean": 6.146814822580644,
+              "min": 4.717029,
+              "p50": 5.6921859999999995,
+              "p90": 7.8861035,
+              "p95": 8.2810425,
+              "p99": 11.258180890000002,
+              "p999": 12.302187289000013,
+              "stddev": 1.358112779394869
+            },
+            "configure_to_present_ms": {
+              "count": 59,
+              "max": 25.081777,
+              "mean": 10.262380694915256,
+              "min": 8.302141,
+              "p50": 10.192196,
+              "p90": 10.8401162,
+              "p95": 10.8501475,
+              "p99": 16.830708600000023,
+              "p999": 24.256670160000102,
+              "stddev": 2.1414864128526214
+            },
+            "configures": 62,
+            "discarded": 3,
+            "margin": [
+              0.0,
+              0.0
+            ],
+            "matched": 62,
+            "mismatched_frames": 0,
+            "missed_vblanks": 2,
+            "records": [
+              {
+                "acked": 3086617551424,
+                "buffer_size": [
+                  640.0,
+                  480.0
+                ],
+                "commit": 132,
+                "committed": 3086627936816,
+                "height": 480,
+                "presented": null,
+                "sent": 3086617420279,
+                "serial": 1575,
+                "superseded": false,
+                "width": 640
+              },
+              {
+                "acked": 3086636617702,
+                "buffer_size": [
+                  649.0,
+                  485.0
+                ],
+                "commit": 133,
+                "committed": 3086642263591,
+                "height": 485,
+                "presented": 3086644962166,
+                "sent": 3086636508749,
+                "serial": 1576,
+                "superseded": false,
+                "width": 649
+              },
+              {
+                "acked": 3086650875213,
+                "buffer_size": [
+                  659.0,
+                  491.0
+                ],
+                "commit": 134,
+                "committed": 3086656423406,
+                "height": 491,
+                "presented": 3086661628833,
+                "sent": 3086650789306,
+                "serial": 1577,
+                "superseded": false,
+                "width": 659
+              },
+              {
+                "acked": 3086667552139,
+                "buffer_size": [
+                  668.0,
+                  496.0
+                ],
+                "commit": 135,
+                "committed": 3086672990155,
+                "height": 496,
+                "presented": 3086678295500,
+                "sent": 3086667464030,
+                "serial": 1578,
+                "superseded": false,
+                "width": 668
+              },
+              {
+                "acked": 3086685311464,
+                "buffer_size": [
+                  677.0,
+                  501.0
+                ],
+                "commit": 136,
+                "committed": 3086690170609,
+                "height": 501,
+                "presented": 3086694962167,
+                "sent": 3086685213932,
+                "serial": 1579,
+                "superseded": false,
+                "width": 677
+              },
+              {
+                "acked": 3086701517943,
+                "buffer_size": [
+                  687.0,
+                  507.0
+                ],
+                "commit": 137,
+                "committed": 3086706441580,
+                "height": 507,
+                "presented": 3086711628834,
+                "sent": 3086701410785,
+                "serial": 1580,
+                "superseded": false,
+                "width": 687
+              },
+              {
+                "acked": 3086720112797,
+                "buffer_size": [
+                  696.0,
+                  512.0
+                ],
+                "commit": 138,
+                "committed": 3086724989442,
+                "height": 512,
+                "presented": 3086728295501,
+                "sent": 3086719993360,
+                "serial": 1581,
+                "superseded": false,
+                "width": 696
+              },
+              {
+                "acked": 3086735206448,
+                "buffer_size": [
+                  705.0,
+                  517.0
+                ],
+                "commit": 139,
+                "committed": 3086743388986,
+                "height": 517,
+                "presented": 3086744962168,
+                "sent": 3086735100391,
+                "serial": 1582,
+                "superseded": false,
+                "width": 705
+              },
+              {
+                "acked": 3086751100222,
+                "buffer_size": [
+                  715.0,
+                  523.0
+                ],
+                "commit": 140,
+                "committed": 3086757757123,
+                "height": 523,
+                "presented": 3086761628835,
+                "sent": 3086750923310,
+                "serial": 1583,
+                "superseded": false,
+                "width": 715
+              },
+              {
+                "acked": 3086767557609,
+                "buffer_size": [
+                  724.0,
+                  528.0
+                ],
+                "commit": 141,
+                "committed": 3086773823770,
+                "height": 528,
+                "presented": 3086778295502,
+                "sent": 3086767468154,
+                "serial": 1584,
+                "superseded": false,
+                "width": 724
+              },
+              {
+                "acked": 3086786466270,
+                "buffer_size": [
+                  733.0,
+                  533.0
+                ],
+                "commit": 142,
+                "committed": 3086792498452,
+                "height": 533,
+                "presented": 3086794962169,
+                "sent": 3086786373021,
+                "serial": 1585,
+                "superseded": false,
+                "width": 733
+              },
+              {
+                "acked": 3086801491514,
+                "buffer_size": [
+                  743.0,
+                  539.0
+                ],
+                "commit": 143,
+                "committed": 3086806231753,
+                "height": 539,
+                "presented": 3086811628836,
+                "sent": 3086801411482,
+                "serial": 1586,
+                "superseded": false,
+                "width": 743
+              },
+              {
+                "acked": 3086818735603,
+                "buffer_size": [
+                  752.0,
+                  544.0
+                ],
+                "commit": 144,
+                "committed": 3086823361137,
+                "height": 544,
+                "presented": 3086828295503,
+                "sent": 3086818644108,
+                "serial": 1587,
+                "superseded": false,
+                "width": 752
+              },
+              {
+                "acked": 3086834221749,
+                "buffer_size": [
+                  761.0,
+                  549.0
+                ],
+                "commit": 145,
+                "committed": 3086839116301,
+                "height": 549,
+                "presented": 3086844962170,
+                "sent": 3086834136658,
+                "serial": 1588,
+                "superseded": false,
+                "width": 761
+              },
+              {
+                "acked": 3086851582297,
+                "buffer_size": [
+                  771.0,
+                  555.0
+                ],
+                "commit": 146,
+                "committed": 3086859501405,
+                "height": 555,
+                "presented": 3086861628837,
+                "sent": 3086851505569,
+                "serial": 1589,
+                "superseded": false,
+                "width": 771
+              },
+              {
+                "acked": 3086870070808,
+                "buffer_size": [
+                  780.0,
+                  560.0
+                ],
+                "commit": 147,
+                "committed": 3086876453673,
+                "height": 560,
+                "presented": 3086878295504,
+                "sent": 3086869982413,
+                "serial": 1590,
+                "superseded": false,
+                "width": 780
+              },
+              {
+                "acked": 3086886136557,
+                "buffer_size": [
+                  789.0,
+                  565.0
+                ],
+                "commit": 148,
+                "committed": 3086892641593,
+                "height": 565,
+                "presented": 3086894962171,
+                "sent": 3086886047183,
+                "serial": 1591,
+                "superseded": false,
+                "width": 789
+              },
+              {
+                "acked": 3086901677037,
+                "buffer_size": [
+                  799.0,
+                  571.0
+                ],
+                "commit": 149,
+                "committed": 3086907926351,
+                "height": 571,
+                "presented": 3086911628838,
+                "sent": 3086901588887,
+                "serial": 1592,
+                "superseded": false,
+                "width": 799
+              },
+              {
+                "acked": 3086918655656,
+                "buffer_size": [
+                  808.0,
+                  576.0
+                ],
+                "commit": 150,
+                "committed": 3086923706970,
+                "height": 576,
+                "presented": 3086928295505,
+                "sent": 3086918553514,
+                "serial": 1593,
+                "superseded": false,
+                "width": 808
+              },
+              {
+                "acked": 3086934237784,
+                "buffer_size": [
+                  817.0,
+                  581.0
+                ],
+                "commit": 151,
+                "committed": 3086939422118,
+                "height": 581,
+                "presented": 3086944962172,
+                "sent": 3086934146085,
+                "serial": 1594,
+                "superseded": false,
+                "width": 817
+              },
+              {
+                "acked": 3086950850953,
+                "buffer_size": [
+                  827.0,
+                  587.0
+                ],
+                "commit": 152,
+                "committed": 3086956181524,
+                "height": 587,
+                "presented": 3086961628839,
+                "sent": 3086950773042,
+                "serial": 1595,
+                "superseded": false,
+                "width": 827
+              },
+              {
+                "acked": 3086969456616,
+                "buffer_size": [
+                  836.0,
+                  592.0
+                ],
+                "commit": 153,
+                "committed": 3086974988329,
+                "height": 592,
+                "presented": 3086978295506,
+                "sent": 3086969360512,
+                "serial": 1596,
+                "superseded": false,
+                "width": 836
+              },
+              {
+                "acked": 3086984415085,
+                "buffer_size": [
+                  845.0,
+                  597.0
+                ],
+                "commit": 154,
+                "committed": 3086989704416,
+                "height": 597,
+                "presented": 3086994962173,
+                "sent": 3086984321387,
+                "serial": 1597,
+                "superseded": false,
+                "width": 845
+              },
+              {
+                "acked": 3087000865782,
+                "buffer_size": [
+                  855.0,
+                  603.0
+                ],
+                "commit": 155,
+                "committed": 3087006180486,
+                "height": 603,
+                "presented": 3087011628840,
+                "sent": 3087000780733,
+                "serial": 1598,
+                "superseded": false,
+                "width": 855
+              },
+              {
+                "acked": 3087018375913,
+                "buffer_size": [
+                  864.0,
+                  608.0
+                ],
+                "commit": 156,
+                "committed": 3087023383987,
+                "height": 608,
+                "presented": 3087028295507,
+                "sent": 3087018286294,
+                "serial": 1599,
+                "superseded": false,
+                "width": 864
+              },
+              {
+                "acked": 3087036581249,
+                "buffer_size": [
+                  873.0,
+                  613.0
+                ],
+                "commit": 157,
+                "committed": 3087041740905,
+                "height": 613,
+                "presented": 3087044962174,
+                "sent": 3087036471684,
+                "serial": 1600,
+                "superseded": false,
+                "width": 873
+              },
+              {
+                "acked": 3087050852099,
+                "buffer_size": [
+                  883.0,
+                  619.0
+                ],
+                "commit": 158,
+                "committed": 3087056089421,
+                "height": 619,
+                "presented": 3087061628841,
+                "sent": 3087050773127,
+                "serial": 1601,
+                "superseded": false,
+                "width": 883
+              },
+              {
+                "acked": 3087067595964,
+                "buffer_size": [
+                  892.0,
+                  624.0
+                ],
+                "commit": 159,
+                "committed": 3087072897858,
+                "height": 624,
+                "presented": 3087078295508,
+                "sent": 3087067499492,
+                "serial": 1602,
+                "superseded": false,
+                "width": 892
+              },
+              {
+                "acked": 3087086060081,
+                "buffer_size": [
+                  901.0,
+                  629.0
+                ],
+                "commit": 160,
+                "committed": 3087091567890,
+                "height": 629,
+                "presented": 3087094962175,
+                "sent": 3087085924776,
+                "serial": 1603,
+                "superseded": false,
+                "width": 901
+              },
+              {
+                "acked": 3087100905394,
+                "buffer_size": [
+                  911.0,
+                  635.0
+                ],
+                "commit": 161,
+                "committed": 3087106363642,
+                "height": 635,
+                "presented": 3087111628842,
+                "sent": 3087100802070,
+                "serial": 1604,
+                "superseded": false,
+                "width": 911
+              },
+              {
+                "acked": 3087119568614,
+                "buffer_size": [
+                  920.0,
+                  640.0
+                ],
+                "commit": 162,
+                "committed": 3087124902122,
+                "height": 640,
+                "presented": 3087128295509,
+                "sent": 3087119483075,
+                "serial": 1605,
+                "superseded": false,
+                "width": 920
+              },
+              {
+                "acked": 3087136515253,
+                "buffer_size": [
+                  929.0,
+                  645.0
+                ],
+                "commit": 163,
+                "committed": 3087142062793,
+                "height": 645,
+                "presented": 3087144962176,
+                "sent": 3087136425757,
+                "serial": 1606,
+                "superseded": false,
+                "width": 929
+              },
+              {
+                "acked": 3087151069643,
+                "buffer_size": [
+                  939.0,
+                  651.0
+                ],
+                "commit": 164,
+                "committed": 3087156725402,
+                "height": 651,
+                "presented": 3087161628843,
+                "sent": 3087150961342,
+                "serial": 1607,
+                "superseded": false,
+                "width": 939
+              },
+              {
+                "acked": 3087170081016,
+                "buffer_size": [
+                  948.0,
+                  656.0
+                ],
+                "commit": 165,
+                "committed": 3087175646178,
+                "height": 656,
+                "presented": 3087178295510,
+                "sent": 3087169957011,
+                "serial": 1608,
+                "superseded": false,
+                "width": 948
+              },
+              {
+                "acked": 3087184563450,
+                "buffer_size": [
+                  957.0,
+                  661.0
+                ],
+                "commit": 166,
+                "committed": 3087189724819,
+                "height": 661,
+                "presented": 3087194962177,
+                "sent": 3087184478115,
+                "serial": 1609,
+                "superseded": false,
+                "width": 957
+              },
+              {
+                "acked": 3087201628792,
+                "buffer_size": [
+                  967.0,
+                  667.0
+                ],
+                "commit": 167,
+                "committed": 3087207297645,
+                "height": 667,
+                "presented": 3087211628844,
+                "sent": 3087201543375,
+                "serial": 1610,
+                "superseded": false,
+                "width": 967
+              },
+              {
+                "acked": 3087217888708,
+                "buffer_size": [
+                  976.0,
+                  672.0
+                ],
+                "commit": 168,
+                "committed": 3087223133128,
+                "height": 672,
+                "presented": 3087228295511,
+                "sent": 3087217807615,
+                "serial": 1611,
+                "superseded": false,
+                "width": 976
+              },
+              {
+                "acked": 3087236560372,
+                "buffer_size": [
+                  985.0,
+                  677.0
+                ],
+                "commit": 169,
+                "committed": 3087241985742,
+                "height": 677,
+                "presented": 3087244962178,
+                "sent": 3087236461983,
+                "serial": 1612,
+                "superseded": false,
+                "width": 985
+              },
+              {
+                "acked": 3087251045906,
+                "buffer_size": [
+                  995.0,
+                  683.0
+                ],
+                "commit": 170,
+                "committed": 3087256525855,
+                "height": 683,
+                "presented": 3087261628845,
+                "sent": 3087250953187,
+                "serial": 1613,
+                "superseded": false,
+                "width": 995
+              },
+              {
+                "acked": 3087268963623,
+                "buffer_size": [
+                  1004.0,
+                  688.0
+                ],
+                "commit": 171,
+                "committed": 3087274580182,
+                "height": 688,
+                "presented": 3087278295512,
+                "sent": 3087268870782,
+                "serial": 1614,
+                "superseded": false,
+                "width": 1004
+              },
+              {
+                "acked": 3087284260497,
+                "buffer_size": [
+                  1013.0,
+                  693.0
+                ],
+                "commit": 172,
+                "committed": 3087289649236,
+                "height": 693,
+                "presented": 3087294962179,
+                "sent": 3087284163087,
+                "serial": 1615,
+                "superseded": false,
+                "width": 1013
+              },
+              {
+                "acked": 3087300873952,
+                "buffer_size": [
+                  1023.0,
+                  699.0
+                ],
+                "commit": 173,
+                "committed": 3087306478600,
+                "height": 699,
+                "presented": 3087311628846,
+                "sent": 3087300786373,
+                "serial": 1616,
+                "superseded": false,
+                "width": 1023
+              },
+              {
+                "acked": 3087319397542,
+                "buffer_size": [
+                  1032.0,
+                  704.0
+                ],
+                "commit": 174,
+                "committed": 3087327827766,
+                "height": 704,
+                "presented": null,
+                "sent": 3087319310290,
+                "serial": 1617,
+                "superseded": false,
+                "width": 1032
+              },
+              {
+                "acked": 3087334722725,
+                "buffer_size": [
+                  1041.0,
+                  709.0
+                ],
+                "commit": 175,
+                "committed": 3087342094617,
+                "height": 709,
+                "presented": 3087344962180,
+                "sent": 3087334625928,
+                "serial": 1618,
+                "superseded": false,
+                "width": 1041
+              },
+              {
+                "acked": 3087351560574,
+                "buffer_size": [
+                  1051.0,
+                  715.0
+                ],
+                "commit": 176,
+                "committed": 3087358698527,
+                "height": 715,
+                "presented": 3087361628847,
+                "sent": 3087351478338,
+                "serial": 1619,
+                "superseded": false,
+                "width": 1051
+              },
+              {
+                "acked": 3087367598748,
+                "buffer_size": [
+                  1060.0,
+                  720.0
+                ],
+                "commit": 177,
+                "committed": 3087374695054,
+                "height": 720,
+                "presented": 3087378295514,
+                "sent": 3087367445985,
+                "serial": 1620,
+                "superseded": false,
+                "width": 1060
+              },
+              {
+                "acked": 3087384251200,
+                "buffer_size": [
+                  1069.0,
+                  725.0
+                ],
+                "commit": 178,
+                "committed": 3087389929843,
+                "height": 725,
+                "presented": 3087394962181,
+                "sent": 3087384156442,
+                "serial": 1621,
+                "superseded": false,
+                "width": 1069
+              },
+              {
+                "acked": 3087401546278,
+                "buffer_size": [
+                  1079.0,
+                  731.0
+                ],
+                "commit": 179,
+                "committed": 3087407237118,
+                "height": 731,
+                "presented": 3087411628848,
+                "sent": 3087401460208,
+                "serial": 1622,
+                "superseded": false,
+                "width": 1079
+              },
+              {
+                "acked": 3087419742396,
+                "buffer_size": [
+                  1088.0,
+                  736.0
+                ],
+                "commit": 180,
+                "committed": 3087425161852,
+                "height": 736,
+                "presented": 3087428295515,
+                "sent": 3087419633850,
+                "serial": 1623,
+                "superseded": false,
+                "width": 1088
+              },
+              {
+                "acked": 3087435105964,
+                "buffer_size": [
+                  1097.0,
+                  741.0
+                ],
+                "commit": 181,
+                "committed": 3087440711468,
+                "height": 741,
+                "presented": 3087444962182,
+                "sent": 3087435019323,
+                "serial": 1624,
+                "superseded": false,
+                "width": 1097
+              },
+              {
+                "acked": 3087451530310,
+                "buffer_size": [
+                  1107.0,
+                  747.0
+                ],
+                "commit": 182,
+                "committed": 3087457344136,
+                "height": 747,
+                "presented": 3087461628849,
+                "sent": 3087451436653,
+                "serial": 1625,
+                "superseded": false,
+                "width": 1107
+              },
+              {
+                "acked": 3087468583210,
+                "buffer_size": [
+                  1116.0,
+                  752.0
+                ],
+                "commit": 183,
+                "committed": 3087474201890,
+                "height": 752,
+                "presented": 3087478295516,
+                "sent": 3087468483638,
+                "serial": 1626,
+                "superseded": false,
+                "width": 1116
+              },
+              {
+                "acked": 3087484214246,
+                "buffer_size": [
+                  1125.0,
+                  757.0
+                ],
+                "commit": 184,
+                "committed": 3087489926135,
+                "height": 757,
+                "presented": 3087494962183,
+                "sent": 3087484129564,
+                "serial": 1627,
+                "superseded": false,
+                "width": 1125
+              },
+              {
+                "acked": 3087501534738,
+                "buffer_size": [
+                  1135.0,
+                  763.0
+                ],
+                "commit": 185,
+                "committed": 3087507236796,
+                "height": 763,
+                "presented": 3087511628850,
+                "sent": 3087501451442,
+                "serial": 1628,
+                "superseded": false,
+                "width": 1135
+              },
+              {
+                "acked": 3087517564469,
+                "buffer_size": [
+                  1144.0,
+                  768.0
+                ],
+                "commit": 186,
+                "committed": 3087523160551,
+                "height": 768,
+                "presented": 3087528295517,
+                "sent": 3087517470975,
+                "serial": 1629,
+                "superseded": false,
+                "width": 1144
+              },
+              {
+                "acked": 3087536534521,
+                "buffer_size": [
+                  1153.0,
+                  773.0
+                ],
+                "commit": 187,
+                "committed": 3087548862397,
+                "height": 773,
+                "presented": null,
+                "sent": 3087536444209,
+                "serial": 1630,
+                "superseded": false,
+                "width": 1153
+              },
+              {
+                "acked": 3087551075449,
+                "buffer_size": [
+                  1163.0,
+                  779.0
+                ],
+                "commit": 188,
+                "committed": 3087559135654,
+                "height": 779,
+                "presented": 3087561628851,
+                "sent": 3087550998109,
+                "serial": 1631,
+                "superseded": false,
+                "width": 1163
+              },
+              {
+                "acked": 3087567568162,
+                "buffer_size": [
+                  1172.0,
+                  784.0
+                ],
+                "commit": 189,
+                "committed": 3087575145275,
+                "height": 784,
+                "presented": 3087578295518,
+                "sent": 3087567480950,
+                "serial": 1632,
+                "superseded": false,
+                "width": 1172
+              },
+              {
+                "acked": 3087584244762,
+                "buffer_size": [
+                  1181.0,
+                  789.0
+                ],
+                "commit": 190,
+                "committed": 3087592053081,
+                "height": 789,
+                "presented": 3087594962185,
+                "sent": 3087584156694,
+                "serial": 1633,
+                "superseded": false,
+                "width": 1181
+              },
+              {
+                "acked": 3087601541635,
+                "buffer_size": [
+                  1191.0,
+                  795.0
+                ],
+                "commit": 191,
+                "committed": 3087607483995,
+                "height": 795,
+                "presented": 3087611628852,
+                "sent": 3087601450711,
+                "serial": 1634,
+                "superseded": false,
+                "width": 1191
+              },
+              {
+                "acked": 3087619146891,
+                "buffer_size": [
+                  1200.0,
+                  800.0
+                ],
+                "commit": 193,
+                "committed": 3087624796368,
+                "height": 800,
+                "presented": 3087628295519,
+                "sent": 3087619049603,
+                "serial": 1635,
+                "superseded": false,
+                "width": 1200
+              },
+              {
+                "acked": 3088120033223,
+                "buffer_size": [
+                  1280.0,
+                  800.0
+                ],
+                "commit": 194,
+                "committed": 3088127673971,
+                "height": 800,
+                "presented": 3088144962196,
+                "sent": 3088119880419,
+                "serial": 1636,
+                "superseded": false,
+                "width": 1280
+              }
+            ],
+            "storm_ms": 1010.87524,
+            "superseded": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_pacing",
+      "metrics": [
+        {
+          "name": "fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 2,
+          "mean": 39.66666587333334,
+          "median": 39.66666587333334,
+          "stddev": 1.4142135340888264,
+          "min": 38.666665893333345,
+          "max": 40.66666585333335,
+          "ci": null,
+          "values": [
+            40.66666585333335,
+            38.666665893333345
+          ]
+        },
+        {
+          "name": "interval_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "neither",
+          "n": 2,
+          "mean": 16.666667,
+          "median": 16.666667,
+          "stddev": 0.0,
+          "min": 16.666667,
+          "max": 16.666667,
+          "ci": null,
+          "values": [
+            16.666667,
+            16.666667
+          ]
+        },
+        {
+          "name": "interval_p99",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 225.58333784499962,
+          "median": 225.58333784499962,
+          "stddev": 22.038161787744396,
+          "min": 210.0000041999993,
+          "max": 241.1666714899999,
+          "ci": null,
+          "values": [
+            210.0000041999993,
+            241.1666714899999
+          ]
+        },
+        {
+          "name": "interval_max",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 508.3333435,
+          "median": 508.3333435,
+          "stddev": 11.785113255478105,
+          "min": 500.00001,
+          "max": 516.666677,
+          "ci": null,
+          "values": [
+            500.00001,
+            516.666677
+          ]
+        },
+        {
+          "name": "jitter",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 63.76629579465536,
+          "median": 63.76629579465536,
+          "stddev": 2.6612707436370617,
+          "min": 61.88449320525623,
+          "max": 65.64809838405449,
+          "ci": null,
+          "values": [
+            61.88449320525623,
+            65.64809838405449
+          ]
+        },
+        {
+          "name": "pacing_error",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 8.559449954494063,
+          "median": 8.559449954494063,
+          "stddev": 0.8993726904971944,
+          "min": 7.923497426229508,
+          "max": 9.19540248275862,
+          "ci": null,
+          "values": [
+            7.923497426229508,
+            9.19540248275862
+          ]
+        },
+        {
+          "name": "low_1pct_fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 2,
+          "mean": 1.967741896129033,
+          "median": 1.967741896129033,
+          "stddev": 0.045619791422220286,
+          "min": 1.9354838322580652,
+          "max": 1.999999960000001,
+          "ci": null,
+          "values": [
+            1.999999960000001,
+            1.9354838322580652
+          ]
+        },
+        {
+          "name": "low_01pct_fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 2,
+          "mean": 1.967741896129033,
+          "median": 1.967741896129033,
+          "stddev": 0.045619791422220286,
+          "min": 1.9354838322580652,
+          "max": 1.999999960000001,
+          "ci": null,
+          "values": [
+            1.999999960000001,
+            1.9354838322580652
+          ]
+        },
+        {
+          "name": "jank_count",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 2.0,
+          "median": 2.0,
+          "stddev": 1.4142135623730951,
+          "min": 1.0,
+          "max": 3.0,
+          "ci": null,
+          "values": [
+            1.0,
+            3.0
+          ]
+        },
+        {
+          "name": "jank_fraction",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.03405879027699265,
+          "median": 0.034058790276992656,
+          "stddev": 0.024982574236381696,
+          "min": 0.01639344262295082,
+          "max": 0.05172413793103448,
+          "ci": null,
+          "values": [
+            0.01639344262295082,
+            0.05172413793103448
+          ]
+        },
+        {
+          "name": "missed_vblanks",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 30.5,
+          "median": 30.5,
+          "stddev": 2.1213203435596424,
+          "min": 29.0,
+          "max": 32.0,
+          "ci": null,
+          "values": [
+            29.0,
+            32.0
+          ]
+        },
+        {
+          "name": "discarded",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 2.5,
+          "median": 2.5,
+          "stddev": 2.1213203435596424,
+          "min": 1.0,
+          "max": 4.0,
+          "ci": null,
+          "values": [
+            1.0,
+            4.0
+          ]
+        },
+        {
+          "name": "commits_per_refresh",
+          "variant": null,
+          "unit": "ratio",
+          "better": "neither",
+          "n": 2,
+          "mean": 0.6895193891125919,
+          "median": 0.6895193891125919,
+          "stddev": 0.0007208971836386715,
+          "min": 0.6890096378255027,
+          "max": 0.6900291403996811,
+          "ci": null,
+          "values": [
+            0.6900291403996811,
+            0.6890096378255027
+          ]
+        },
+        {
+          "name": "presents_per_refresh",
+          "variant": null,
+          "unit": "ratio",
+          "better": "higher",
+          "n": 2,
+          "mean": 0.661111111111111,
+          "median": 0.661111111111111,
+          "stddev": 0.02357022603955158,
+          "min": 0.6444444444444444,
+          "max": 0.6777777777777777,
+          "ci": null,
+          "values": [
+            0.6777777777777777,
+            0.6444444444444444
+          ]
+        }
+      ],
+      "samples": 119,
+      "pooled": [
+        {
+          "variant": null,
+          "samples": 119,
+          "metrics": [
+            {
+              "name": "fps",
+              "value": 39.66666587333335,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "interval_p50",
+              "value": 16.666667,
+              "unit": "ms",
+              "better": "neither"
+            },
+            {
+              "name": "interval_p99",
+              "value": 416.00000831999677,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "interval_max",
+              "value": 516.666677,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "jitter",
+              "value": 63.4783346217569,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "pacing_error",
+              "value": 8.543417537815126,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "low_1pct_fps",
+              "value": 1.9672130754098367,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "low_01pct_fps",
+              "value": 1.9354838322580652,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "jank_count",
+              "value": 4.0,
+              "unit": "count",
+              "better": "lower"
+            },
+            {
+              "name": "jank_fraction",
+              "value": 0.03361344537815126,
+              "unit": "fraction",
+              "better": "lower"
+            },
+            {
+              "name": "missed_vblanks",
+              "value": 61.0,
+              "unit": "count",
+              "better": "lower"
+            },
+            {
+              "name": "discarded",
+              "value": 5.0,
+              "unit": "count",
+              "better": "neither"
+            },
+            {
+              "name": "commits_per_refresh",
+              "value": 0.6950796494568064,
+              "unit": "ratio",
+              "better": "neither"
+            },
+            {
+              "name": "presents_per_refresh",
+              "value": 0.6611111111111111,
+              "unit": "ratio",
+              "better": "higher"
+            }
+          ],
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 41.70477813331283,
+              "commits_per_refresh": 0.6950796494568064,
+              "present_rate_hz": 39.66666587333335,
+              "presents_per_refresh": 0.6611111111111111,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 126,
+            "discard_fraction": 0.03968253968253968,
+            "discarded": 5,
+            "duration_ms": 3000.00006,
+            "fps": 39.66666587333335,
+            "fps_series": [],
+            "interval_ms": {
+              "count": 119,
+              "max": 516.666677,
+              "mean": 25.2100845378151,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 416.00000831999677,
+              "p999": 514.7000102940003,
+              "stddev": 63.4783346217569
+            },
+            "jank": {
+              "count": 4,
+              "factor": 1.5,
+              "fraction": 0.03361344537815126,
+              "frames": [
+                {
+                  "commit": 131,
+                  "frame_id": 128,
+                  "interval_ms": 500.00001,
+                  "presented": 3085628295479,
+                  "vblanks_missed": 29
+                },
+                {
+                  "commit": 175,
+                  "frame_id": 172,
+                  "interval_ms": 33.333334,
+                  "presented": 3087344962180,
+                  "vblanks_missed": 1
+                },
+                {
+                  "commit": 188,
+                  "frame_id": 185,
+                  "interval_ms": 33.333334,
+                  "presented": 3087561628851,
+                  "vblanks_missed": 1
+                },
+                {
+                  "commit": 194,
+                  "frame_id": 191,
+                  "interval_ms": 516.666677,
+                  "presented": 3088144962196,
+                  "vblanks_missed": 30
+                }
+              ],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 63.4783346217569,
+            "lows": {
+              "avg_fps": 39.66666587333339,
+              "frames": 119,
+              "low_01pct_fps": 1.9354838322580652,
+              "low_1pct_fps": 1.9672130754098367,
+              "p01_fps": 1.942879308334952,
+              "p1_fps": 2.4038461057692504
+            },
+            "missed_vblanks": 61,
+            "mode": "vsync",
+            "pacing_error_ms": 8.543417537815126,
+            "pending": 0,
+            "presented": 121,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 4,
+            "surface": 1
+          }
+        }
+      ],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 41.40174759594592,
+              "commits_per_refresh": 0.6900291403996811,
+              "present_rate_hz": 40.66666585333335,
+              "presents_per_refresh": 0.6777777777777777,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 63,
+            "discard_fraction": 0.015873015873015872,
+            "discarded": 1,
+            "duration_ms": 1500.00003,
+            "fps": 40.66666585333335,
+            "fps_series": [
+              {
+                "frames": 60,
+                "second": 0
+              }
+            ],
+            "interval_ms": {
+              "count": 61,
+              "max": 500.00001,
+              "mean": 24.590164426229492,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 210.0000041999993,
+              "p999": 471.0000094200023,
+              "stddev": 61.88449320525623
+            },
+            "jank": {
+              "count": 1,
+              "factor": 1.5,
+              "fraction": 0.01639344262295082,
+              "frames": [
+                {
+                  "commit": 131,
+                  "frame_id": 128,
+                  "interval_ms": 500.00001,
+                  "presented": 3085628295479,
+                  "vblanks_missed": 29
+                }
+              ],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 61.88449320525623,
+            "lows": {
+              "avg_fps": 40.66666585333338,
+              "frames": 61,
+              "low_01pct_fps": 1.999999960000001,
+              "low_1pct_fps": 1.999999960000001,
+              "p01_fps": 2.123142208067931,
+              "p1_fps": 4.761904666666685
+            },
+            "missed_vblanks": 29,
+            "mode": "vsync",
+            "pacing_error_ms": 7.923497426229508,
+            "pending": 0,
+            "presented": 62,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 1,
+            "surface": 1
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 41.34057744271862,
+              "commits_per_refresh": 0.6890096378255027,
+              "present_rate_hz": 38.666665893333345,
+              "presents_per_refresh": 0.6444444444444444,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 63,
+            "discard_fraction": 0.06349206349206349,
+            "discarded": 4,
+            "duration_ms": 1500.00003,
+            "fps": 38.666665893333345,
+            "fps_series": [
+              {
+                "frames": 58,
+                "second": 0
+              }
+            ],
+            "interval_ms": {
+              "count": 58,
+              "max": 516.666677,
+              "mean": 25.862069482758606,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 19.166667049999976,
+              "p99": 241.1666714899999,
+              "p999": 489.11667644900245,
+              "stddev": 65.64809838405449
+            },
+            "jank": {
+              "count": 3,
+              "factor": 1.5,
+              "fraction": 0.05172413793103448,
+              "frames": [
+                {
+                  "commit": 175,
+                  "frame_id": 172,
+                  "interval_ms": 33.333334,
+                  "presented": 3087344962180,
+                  "vblanks_missed": 1
+                },
+                {
+                  "commit": 188,
+                  "frame_id": 185,
+                  "interval_ms": 33.333334,
+                  "presented": 3087561628851,
+                  "vblanks_missed": 1
+                },
+                {
+                  "commit": 194,
+                  "frame_id": 191,
+                  "interval_ms": 516.666677,
+                  "presented": 3088144962196,
+                  "vblanks_missed": 30
+                }
+              ],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 65.64809838405449,
+            "lows": {
+              "avg_fps": 38.666665893333374,
+              "frames": 58,
+              "low_01pct_fps": 1.9354838322580652,
+              "low_1pct_fps": 1.9354838322580652,
+              "p01_fps": 2.0445019524993944,
+              "p1_fps": 4.146509937802353
+            },
+            "missed_vblanks": 32,
+            "mode": "mailbox",
+            "pacing_error_ms": 9.19540248275862,
+            "pending": 0,
+            "presented": 59,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 3,
+            "surface": 1
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "buffers",
+      "metrics": [
+        {
+          "name": "distinct_buffers",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 20.0,
+          "median": 20.0,
+          "stddev": 0.0,
+          "min": 20.0,
+          "max": 20.0,
+          "ci": null,
+          "values": [
+            20.0,
+            20.0
+          ]
+        },
+        {
+          "name": "in_flight_mean",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 2.015873015873016,
+          "median": 2.015873015873016,
+          "stddev": 0.022447834323382383,
+          "min": 2.0,
+          "max": 2.0317460317460316,
+          "ci": null,
+          "values": [
+            2.0,
+            2.0317460317460316
+          ]
+        },
+        {
+          "name": "max_in_flight",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 3.0,
+          "median": 3.0,
+          "stddev": 0.0,
+          "min": 3.0,
+          "max": 3.0,
+          "ci": null,
+          "values": [
+            3.0,
+            3.0
+          ]
+        },
+        {
+          "name": "churn_per_s",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "upscaled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "oversampled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 60.5,
+          "median": 60.5,
+          "stddev": 2.1213203435596424,
+          "min": 59.0,
+          "max": 62.0,
+          "ci": null,
+          "values": [
+            62.0,
+            59.0
+          ]
+        }
+      ],
+      "samples": 126,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "buffer_commits": 63,
+            "churn_per_s": 0.0,
+            "distinct_buffers": 20,
+            "distinct_sizes": 5,
+            "formats": [
+              {
+                "count": 63,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 63,
+              "max": 3.0,
+              "mean": 2.0,
+              "min": 1.0,
+              "p50": 2.0,
+              "p90": 2.0,
+              "p95": 2.0,
+              "p99": 2.3800000000000026,
+              "p999": 2.9380000000000095,
+              "stddev": 0.1796053020267749
+            },
+            "kinds": {
+              "shm": 63
+            },
+            "late_allocations": 0,
+            "max_in_flight": 3,
+            "scale": {
+              "native": 0,
+              "oversampled": 62,
+              "upscaled": 0
+            },
+            "sync": {
+              "none": 63
+            }
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "buffer_commits": 63,
+            "churn_per_s": 0.0,
+            "distinct_buffers": 20,
+            "distinct_sizes": 5,
+            "formats": [
+              {
+                "count": 63,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 63,
+              "max": 3.0,
+              "mean": 2.0317460317460316,
+              "min": 1.0,
+              "p50": 2.0,
+              "p90": 2.0,
+              "p95": 2.0,
+              "p99": 3.0,
+              "p999": 3.0,
+              "stddev": 0.2519763153394848
+            },
+            "kinds": {
+              "shm": 63
+            },
+            "late_allocations": 0,
+            "max_in_flight": 3,
+            "scale": {
+              "native": 0,
+              "oversampled": 59,
+              "upscaled": 0
+            },
+            "sync": {
+              "none": 63
+            }
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "resources",
+      "metrics": [
+        {
+          "name": "cpu_percent_mean",
+          "variant": null,
+          "unit": "percent",
+          "better": "lower",
+          "n": 2,
+          "mean": 49.61786207604749,
+          "median": 49.61786207604749,
+          "stddev": 0.022656845781433888,
+          "min": 49.60184126675514,
+          "max": 49.63388288533984,
+          "ci": null,
+          "values": [
+            49.60184126675514,
+            49.63388288533984
+          ]
+        },
+        {
+          "name": "rss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 293191680.0,
+          "median": 293191680.0,
+          "stddev": 0.0,
+          "min": 293191680.0,
+          "max": 293191680.0,
+          "ci": null,
+          "values": [
+            293191680.0,
+            293191680.0
+          ]
+        },
+        {
+          "name": "threads_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 33.0,
+          "median": 33.0,
+          "stddev": 0.0,
+          "min": 33.0,
+          "max": 33.0,
+          "ci": null,
+          "values": [
+            33.0,
+            33.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_s",
+          "variant": null,
+          "unit": "ms_per_s",
+          "better": "lower",
+          "n": 2,
+          "mean": 484.16078911166153,
+          "median": 484.16078911166153,
+          "stddev": 0.13916296777917678,
+          "min": 484.0623860334548,
+          "max": 484.2591921898682,
+          "ci": null,
+          "values": [
+            484.0623860334548,
+            484.2591921898682
+          ]
+        },
+        {
+          "name": "cpu_ms",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 945.1249275,
+          "median": 945.1249275,
+          "stddev": 1.6383204500684942,
+          "min": 943.96646,
+          "max": 946.283395,
+          "ci": null,
+          "values": [
+            943.96646,
+            946.283395
+          ]
+        },
+        {
+          "name": "wakeups_per_s",
+          "variant": null,
+          "unit": "per_s",
+          "better": "lower",
+          "n": 2,
+          "mean": 5128.329986607419,
+          "median": 5128.329986607419,
+          "stddev": 32.42977004950824,
+          "min": 5105.398676293092,
+          "max": 5151.261296921747,
+          "ci": null,
+          "values": [
+            5105.398676293092,
+            5151.261296921747
+          ]
+        },
+        {
+          "name": "pss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 289862656.0,
+          "median": 289862656.0,
+          "stddev": 0.0,
+          "min": 289862656.0,
+          "max": 289862656.0,
+          "ci": null,
+          "values": [
+            289862656.0,
+            289862656.0
+          ]
+        },
+        {
+          "name": "private_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 288468992.0,
+          "median": 288468992.0,
+          "stddev": 0.0,
+          "min": 288468992.0,
+          "max": 288468992.0,
+          "ci": null,
+          "values": [
+            288468992.0,
+            288468992.0
+          ]
+        }
+      ],
+      "samples": 80,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario rows --rows 1000",
+                "cpu_ms": 943.96646,
+                "cpu_ms_per_s": 484.0623860334548,
+                "cpu_percent": {
+                  "count": 40,
+                  "max": 145.59284020959012,
+                  "mean": 49.60184126675514,
+                  "min": 0.0,
+                  "p50": 70.19330067061846,
+                  "p90": 106.88016500874039,
+                  "p95": 118.30778839695186,
+                  "p99": 135.3899196988921,
+                  "p999": 144.57254815852048,
+                  "stddev": 48.05405866052773
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 293191680,
+                "pid": 63551,
+                "private_max_bytes": 288468992,
+                "pss_max_bytes": 289862656,
+                "rss_max_bytes": 293191680,
+                "rss_mean_bytes": 288256819.2,
+                "samples": 40,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 5105.398676293092
+              }
+            ],
+            "selected": [
+              63551
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario rows --rows 1000",
+                "cpu_ms": 946.283395,
+                "cpu_ms_per_s": 484.2591921898682,
+                "cpu_percent": {
+                  "count": 40,
+                  "max": 144.7923992788852,
+                  "mean": 49.63388288533984,
+                  "min": 0.0,
+                  "p50": 71.19221801429912,
+                  "p90": 106.8368577573536,
+                  "p95": 113.46514430193068,
+                  "p99": 133.93535143044812,
+                  "p999": 143.70669449404164,
+                  "stddev": 47.952635709221504
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 294465536,
+                "pid": 63551,
+                "private_max_bytes": 288468992,
+                "pss_max_bytes": 289862656,
+                "rss_max_bytes": 293191680,
+                "rss_mean_bytes": 288256819.2,
+                "samples": 40,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 5151.261296921747
+              }
+            ],
+            "selected": [
+              63551
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_cost",
+      "metrics": [
+        {
+          "name": "frames",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 60.5,
+          "median": 60.5,
+          "stddev": 2.1213203435596424,
+          "min": 59.0,
+          "max": 62.0,
+          "ci": null,
+          "values": [
+            62.0,
+            59.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_frame",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 16.024002640804596,
+          "median": 16.024002640804596,
+          "stddev": 0.41185902217282305,
+          "min": 15.732774333333333,
+          "max": 16.31523094827586,
+          "ci": null,
+          "values": [
+            15.732774333333333,
+            16.31523094827586
+          ]
+        },
+        {
+          "name": "damage_fraction_p50",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "damage_fraction_mean",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "full_damage_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 63.0,
+          "median": 63.0,
+          "stddev": 0.0,
+          "min": 63.0,
+          "max": 63.0,
+          "ci": null,
+          "values": [
+            63.0,
+            63.0
+          ]
+        }
+      ],
+      "samples": 126,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "commits": 63,
+            "cpu_frames": 60,
+            "cpu_ms": 943.96646,
+            "cpu_ms_per_frame": 15.732774333333333,
+            "damage_fraction": {
+              "count": 63,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 62,
+            "full_damage_frames": 63,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 2001.9751069999998
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "commits": 63,
+            "cpu_frames": 58,
+            "cpu_ms": 946.283395,
+            "cpu_ms_per_frame": 16.31523094827586,
+            "damage_fraction": {
+              "count": 63,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 59,
+            "full_damage_frames": 63,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 2002.921099
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "cell": {
+    "scenario": "resize",
+    "framework": "bough",
+    "variant": "default",
+    "hz": 60.0,
+    "rows": 1000,
+    "updates": null
+  },
+  "dir": "resize/bough/default/60hz/1000",
+  "args": [
+    "--scenario",
+    "rows",
+    "--rows",
+    "1000"
+  ],
+  "done": [
+    "startup",
+    "layout",
+    "idle",
+    "resize",
+    "scale"
+  ],
+  "errors": [],
+  "skipped": []
+}

@@ -1,0 +1,31 @@
+{
+  "cell": {
+    "scenario": "ticker",
+    "framework": "bough-x",
+    "variant": "coarse",
+    "hz": 60.0,
+    "rows": 1000,
+    "updates": 100
+  },
+  "dir": "ticker/bough-x/coarse/60hz/1000-u100",
+  "args": [
+    "--scenario",
+    "ticker",
+    "--rows",
+    "1000",
+    "--variant",
+    "coarse",
+    "--updates",
+    "100",
+    "--interval-ms",
+    "16"
+  ],
+  "done": [
+    "startup",
+    "layout",
+    "idle",
+    "pacing"
+  ],
+  "errors": [],
+  "skipped": []
+}

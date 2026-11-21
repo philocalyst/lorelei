@@ -195,7 +195,13 @@ def main():
     target = Path(a.target_dir).resolve() if a.target_dir else DEFAULT_TARGET / f"{a.name}-{commit[:10]}"
     outdir = Path(a.out).resolve() if a.out else HERE.parent / "baselines" / f"macos-{a.name}"
     outdir.mkdir(parents=True, exist_ok=True)
-    log = [f"worktree {wt}", f"commit {commit}", f"dirty {dirty}", f"rustc {rustc_v}", f"target {target}"]
+    # Paths are displayed relative to the user's home: the repository is public and the baseline
+    # JSON is committed.
+    def disp(p):
+        p = str(p)
+        home = str(Path.home())
+        return "~" + p[len(home):] if p.startswith(home) else p
+    log = [f"worktree {disp(wt)}", f"commit {commit}", f"dirty {dirty}", f"rustc {rustc_v}", f"target {disp(target)}"]
     load = os.getloadavg()
     log.append(f"load-before {load[0]:.2f} {load[1]:.2f} {load[2]:.2f}")
 

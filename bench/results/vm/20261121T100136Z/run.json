@@ -1,0 +1,60 @@
+{
+  "cells": [
+    {
+      "args": [
+        "--scenario",
+        "rows",
+        "--rows",
+        "100"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 100,
+        "scenario": "rows",
+        "updates": null,
+        "variant": "default"
+      },
+      "dir": "rows/bough/default/60hz/100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "hover",
+        "scroll"
+      ],
+      "errors": [],
+      "skipped": []
+    }
+  ],
+  "effort": {
+    "churn_cycles": 10,
+    "hover_repeats": 6,
+    "iterations": 2,
+    "op_repeats": 4
+  },
+  "format": 2,
+  "frameworks": [
+    "bough"
+  ],
+  "header_height": 40,
+  "output": {
+    "height": 800,
+    "width": 1280
+  },
+  "revisions": {
+    "fakeland": null,
+    "gui-bench": null,
+    "zgui": null
+  },
+  "row_height": 32,
+  "scenarios": [
+    "rows"
+  ],
+  "scroll": {
+    "seconds": 1.0,
+    "velocity": 800.0
+  },
+  "started_unix": 1795255309,
+  "tick_ms": 16
+}

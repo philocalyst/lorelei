@@ -1,0 +1,752 @@
+{
+  "format_version": 1,
+  "name": "idle",
+  "preset": "idle",
+  "params": {
+    "capture": true,
+    "downscale": 2,
+    "duration": "3s",
+    "iterations": 1,
+    "max_frames": 1000,
+    "seed": null,
+    "settle": null,
+    "suspend": true,
+    "target": null,
+    "warmup": null,
+    "window_timeout": null
+  },
+  "environment": {
+    "gpu": "",
+    "driver": "",
+    "kernel": "7.3.0-9-generic",
+    "cpu": "",
+    "governor": "",
+    "renderer": "pixman",
+    "hostname": "lima-benchvm",
+    "fakeland_version": "0.1.0"
+  },
+  "config": {
+    "iterations": 1,
+    "warmup": 0,
+    "settle": "500ms",
+    "quiet": null,
+    "phase": null,
+    "seed": 0,
+    "variants": [],
+    "target": {
+      "type": "focused"
+    },
+    "analyzers": [
+      "idle_efficiency",
+      "buffers",
+      "resources",
+      "frame_cost"
+    ],
+    "outputs": [
+      {
+        "id": 1,
+        "name": "DP-1",
+        "make": "Dell Inc.",
+        "model": "DELL P2422H",
+        "serial": "7Z6X3G3",
+        "mode": {
+          "width": 1280,
+          "height": 800,
+          "refresh": 60.0
+        },
+        "modes": [
+          {
+            "width": 1280,
+            "height": 800,
+            "refresh": 60.0
+          }
+        ],
+        "scale": 1.0,
+        "transform": "normal",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "logical_size": {
+          "w": 1280,
+          "h": 800
+        },
+        "timing": {
+          "mode": {
+            "type": "fixed",
+            "refresh": 60.0
+          },
+          "latch_offset": "1ms",
+          "callbacks": {
+            "type": "at_vblank"
+          },
+          "perturbation": null,
+          "zero_copy": false
+        },
+        "enabled": true,
+        "physical_mm": [
+          353,
+          221
+        ]
+      }
+    ],
+    "lateness_threshold": "2ms"
+  },
+  "started": 3077603719694,
+  "finished": 3081111113658,
+  "iterations": [
+    {
+      "index": 0,
+      "measured": 0,
+      "variant": null,
+      "phase": null,
+      "started": 3078104187874,
+      "finished": 3081110935319,
+      "ok": true,
+      "error": null,
+      "late_wakes": 68,
+      "max_lateness": 7208001,
+      "records": 522,
+      "dropped_records": 0
+    }
+  ],
+  "validity": {
+    "valid": true,
+    "checks": [
+      {
+        "name": "iterations",
+        "status": "pass",
+        "message": "1 measured iterations",
+        "value": 1.0,
+        "limit": 1.0
+      },
+      {
+        "name": "iteration_errors",
+        "status": "pass",
+        "message": "every iteration finished",
+        "value": null,
+        "limit": null
+      },
+      {
+        "name": "wake_lateness",
+        "status": "warn",
+        "message": "68 of 362 output wakes later than 2.00 ms; max 7.208 ms",
+        "value": 7.208001,
+        "limit": 2.0
+      },
+      {
+        "name": "host_load",
+        "status": "pass",
+        "message": "other processes used 0.0% of 10 CPUs (all: 0.9%)",
+        "value": 0.00028392958546280523,
+        "limit": 0.25
+      },
+      {
+        "name": "samples.buffers",
+        "status": "warn",
+        "message": "1 samples, 10 wanted",
+        "value": 1.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.resources",
+        "status": "pass",
+        "message": "60 samples, 10 wanted",
+        "value": 60.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_cost",
+        "status": "warn",
+        "message": "1 samples, 10 wanted",
+        "value": 1.0,
+        "limit": 10.0
+      }
+    ]
+  },
+  "sections": [
+    {
+      "name": "idle_efficiency",
+      "metrics": [
+        {
+          "name": "commits_per_s",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 0.33258529966090983,
+          "median": 0.33258529966090983,
+          "stddev": 0.0,
+          "min": 0.33258529966090983,
+          "max": 0.33258529966090983,
+          "ci": null,
+          "values": [
+            0.33258529966090983
+          ]
+        },
+        {
+          "name": "wasted_commits",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0
+          ]
+        },
+        {
+          "name": "wasted_fraction",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0
+          ]
+        },
+        {
+          "name": "callbacks_per_s",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 0.6651705993218197,
+          "median": 0.6651705993218197,
+          "stddev": 0.0,
+          "min": 0.6651705993218197,
+          "max": 0.6651705993218197,
+          "ci": null,
+          "values": [
+            0.6651705993218197
+          ]
+        },
+        {
+          "name": "under_damage_pixels",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0
+          ]
+        },
+        {
+          "name": "suspended_commits",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0
+          ]
+        },
+        {
+          "name": "suspended_callbacks_sent",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0
+          ]
+        }
+      ],
+      "samples": null,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "buffer_commits": 1,
+            "callbacks_per_s": 0.6651705993218197,
+            "callbacks_requested": 2,
+            "commits": 2,
+            "commits_per_s": 0.33258529966090983,
+            "damage": {
+              "frames": 0,
+              "over_damage_ratio": null,
+              "unchanged_damage_fraction": null,
+              "under_damage_pixels": 0,
+              "under_damaged_frames": 0
+            },
+            "duration_ms": 3006.747445,
+            "empty_damage_commits": 0,
+            "suspended": {
+              "callbacks_requested": 1,
+              "callbacks_sent": 1,
+              "commits": 0,
+              "duration_ms": 1002.535993
+            },
+            "unchanged_commits": 0,
+            "wasted_commits": 0,
+            "wasted_fraction": 0.0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "buffers",
+      "metrics": [
+        {
+          "name": "distinct_buffers",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "name": "in_flight_mean",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "name": "max_in_flight",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "name": "upscaled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0
+          ]
+        },
+        {
+          "name": "oversampled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0
+          ]
+        }
+      ],
+      "samples": 1,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "buffer_commits": 1,
+            "churn_per_s": null,
+            "distinct_buffers": 1,
+            "distinct_sizes": 1,
+            "formats": [
+              {
+                "count": 1,
+                "fourcc": "XR24",
+                "modifier": null
+              }
+            ],
+            "in_flight": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "kinds": {
+              "shm": 1
+            },
+            "late_allocations": 0,
+            "max_in_flight": 1,
+            "scale": {
+              "native": 1,
+              "oversampled": 0,
+              "upscaled": 0
+            },
+            "sync": {
+              "none": 1
+            }
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "resources",
+      "metrics": [
+        {
+          "name": "cpu_percent_mean",
+          "variant": null,
+          "unit": "percent",
+          "better": "lower",
+          "n": 1,
+          "mean": 3.7101309077990923,
+          "median": 3.7101309077990923,
+          "stddev": 0.0,
+          "min": 3.7101309077990923,
+          "max": 3.7101309077990923,
+          "ci": null,
+          "values": [
+            3.7101309077990923
+          ]
+        },
+        {
+          "name": "rss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 1,
+          "mean": 263884800.0,
+          "median": 263884800.0,
+          "stddev": 0.0,
+          "min": 263884800.0,
+          "max": 263884800.0,
+          "ci": null,
+          "values": [
+            263884800.0
+          ]
+        },
+        {
+          "name": "threads_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 1,
+          "mean": 33.0,
+          "median": 33.0,
+          "stddev": 0.0,
+          "min": 33.0,
+          "max": 33.0,
+          "ci": null,
+          "values": [
+            33.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_s",
+          "variant": null,
+          "unit": "ms_per_s",
+          "better": "lower",
+          "n": 1,
+          "mean": 31.203211366885537,
+          "median": 31.203211366885537,
+          "stddev": 0.0,
+          "min": 31.203211366885537,
+          "max": 31.203211366885537,
+          "ci": null,
+          "values": [
+            31.203211366885537
+          ]
+        },
+        {
+          "name": "cpu_ms",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 1,
+          "mean": 92.05408,
+          "median": 92.05408,
+          "stddev": 0.0,
+          "min": 92.05408,
+          "max": 92.05408,
+          "ci": null,
+          "values": [
+            92.05408
+          ]
+        },
+        {
+          "name": "wakeups_per_s",
+          "variant": null,
+          "unit": "per_s",
+          "better": "lower",
+          "n": 1,
+          "mean": 118.63813074238467,
+          "median": 118.63813074238467,
+          "stddev": 0.0,
+          "min": 118.63813074238467,
+          "max": 118.63813074238467,
+          "ci": null,
+          "values": [
+            118.63813074238467
+          ]
+        },
+        {
+          "name": "pss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 1,
+          "mean": 256492544.0,
+          "median": 256492544.0,
+          "stddev": 0.0,
+          "min": 256492544.0,
+          "max": 256492544.0,
+          "ci": null,
+          "values": [
+            256492544.0
+          ]
+        },
+        {
+          "name": "private_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 1,
+          "mean": 251035648.0,
+          "median": 251035648.0,
+          "stddev": 0.0,
+          "min": 251035648.0,
+          "max": 251035648.0,
+          "ci": null,
+          "values": [
+            251035648.0
+          ]
+        }
+      ],
+      "samples": 60,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario rows --rows 1000",
+                "cpu_ms": 92.05408,
+                "cpu_ms_per_s": 31.203211366885537,
+                "cpu_percent": {
+                  "count": 60,
+                  "max": 221.76266061145955,
+                  "mean": 3.7101309077990923,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p90": 0.05646238705804652,
+                  "p95": 0.08927434934602657,
+                  "p99": 91.12882137847903,
+                  "p999": 208.6992766881637,
+                  "stddev": 28.627629266905437
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 263884800,
+                "pid": 63551,
+                "private_max_bytes": 251035648,
+                "pss_max_bytes": 256492544,
+                "rss_max_bytes": 263884800,
+                "rss_mean_bytes": 261150105.6,
+                "samples": 60,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 118.63813074238467
+              }
+            ],
+            "selected": [
+              63551
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_cost",
+      "metrics": [
+        {
+          "name": "frames",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_frame",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 1,
+          "mean": 92.05408,
+          "median": 92.05408,
+          "stddev": 0.0,
+          "min": 92.05408,
+          "max": 92.05408,
+          "ci": null,
+          "values": [
+            92.05408
+          ]
+        },
+        {
+          "name": "damage_fraction_p50",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "name": "damage_fraction_mean",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "name": "full_damage_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 1,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0
+          ]
+        }
+      ],
+      "samples": 1,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 0,
+          "variant": null,
+          "report": {
+            "commits": 1,
+            "cpu_frames": 1,
+            "cpu_ms": 92.05408,
+            "cpu_ms_per_frame": 92.05408,
+            "damage_fraction": {
+              "count": 1,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 1,
+            "full_damage_frames": 1,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 3006.747445
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}
