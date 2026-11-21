@@ -93,7 +93,7 @@ builds of the same manifest.
 Every cargo child runs with `RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`, `CARGO_BUILD_RUSTFLAGS` and
 `CARGO_TARGET_*_RUSTFLAGS` removed; only `--rustflags` reaches the build. Removed variables are named
 with a sha256 prefix of their value in `MANIFEST.txt` (`ambient-flags-ignored`) and on stderr. Flags set in
-a `.cargo/config.toml` are not removed; the repository has none that change codegen.
+a `.cargo/config.toml` are not removed (the repository's own sets some); they are part of the recorded commit, so `MANIFEST.txt`'s `commit` and `dirty` fields identify them.
 
 ## Fast tests
 
