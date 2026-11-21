@@ -53,3 +53,8 @@ mutant_layer_weights = []
 mutant_settle = []
 # a rewritten record that did not move (a video showing a new frame) damages nothing
 mutant_video = []
+# a layer record's changed halo damages nothing (tests/fx.rs must fail)
+mutant_halo_damage = []
+# a moved window is not inserted in the bins of the tiles it entered (tests/fx.rs must fail; leaving a
+# stale entry behind instead cannot be seen: a record shades nothing outside its window)
+mutant_bins_stale = []

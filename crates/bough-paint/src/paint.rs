@@ -109,9 +109,9 @@ pub trait Sink {
     fn shadow(&mut self, c: Cmd);
     fn grad(&mut self, c: Cmd);
     fn glyph(&mut self, c: Cmd);
-    /// A backdrop: inside its window it replaces what is beneath by the flattened (8-bit) accumulator mixed
-    /// with the blurred prefix through its filter, so a sink that blends needs the layer, not only the
-    /// command. Outside its window it changes nothing (its halo is only where its layer keeps the prefix).
+    /// A backdrop: over the whole tiles of its halo it flattens the accumulator to 8 bits (what its layer
+    /// stores), and inside its window it mixes that with the blurred prefix through its filter, so a sink
+    /// that blends needs the layer, not only the command.
     fn backdrop(&mut self, c: Cmd);
     fn video(&mut self, c: Cmd);
     /// A user shader node (`ops::p_user`).
@@ -765,9 +765,13 @@ impl Sink for SpecSink<'_> {
     }
     #[inline(always)]
     fn backdrop(&mut self, c: Cmd) {
+        // the halo is whole tiles: wherever the record keeps a prefix, the accumulator is that prefix
+        if x::x_in(crate::layer::halo(c), self.x, self.y) {
+            self.acc = x::x_flat(self.acc);
+        }
         if x::x_in(c.win, self.x, self.y) {
             self.ink = true;
-            self.acc = x::p_bdrop(x::x_flat(self.acc), c, self.x, self.y, (self.bd)(c, self.x, self.y));
+            self.acc = x::p_bdrop(self.acc, c, self.x, self.y, (self.bd)(c, self.x, self.y));
         }
     }
     #[inline(always)]

@@ -81,10 +81,12 @@ static metal::uint4 bd_read(const device uint* POOL, const device uint* LT, uint
     return bd_bil(POOL[fx_at(LT, lid, k, x0, y0)], POOL[fx_at(LT, lid, k, x1, y0)], POOL[fx_at(LT, lid, k, x0, y1)], POOL[fx_at(LT, lid, k, x1, y1)], bd_f(x, k), bd_f(y, k));
 }
 static metal::uint4 bd_px(const device uint* POOL, const device uint* LT, const device uint* MEDIA, uint lid, metal::uint4 a, Cmd c, int x, int y) {
-    if (!x_in(c_win(c), x, y) || lid == 0xFFFFFFFFu) { return a; }
+    if (lid == 0xFFFFFFFFu) { return a; }
+    if (x_in(fx_rect(LT, lid, 0u), x, y)) { a = x_flat(a); }
+    if (!x_in(c_win(c), x, y)) { return a; }
     metal::uint4 bl = bd_read(POOL, LT, lid, c_lvl(c), x, y);
     if (c_frac(c) != 0u) { bl = x_mixv(bl, bd_read(POOL, LT, lid, c_lvl(c) + 1u, x, y), c_frac(c)); }
-    return p_bdrop(x_flat(a), c, x, y, bl);
+    return p_bdrop(a, c, x, y, bl);
 }
 static inline uint fx_byte(const device uint* M, uint i) { return (M[metal::min(i >> 2u, MEDIALIM)] >> ((i & 3u) * 8u)) & 255u; }
 static metal::uint4 vd_px(const device uint* POOL, const device uint* LT, const device uint* M, Cmd c, int px, int py) {
@@ -600,7 +602,7 @@ impl Gpu {
         self.words_mut(2)[..nz].copy_from_slice(&scene.order);
         self.buf(3, self.nz.max(1) * 16);
         self.words_mut(3)[..nz * 4].fill(0);
-        self.buf(5, (self.nt * self.cap).max(scene.bins.list.len()).max(1) * 4);
+        self.buf(5, (self.nt * self.cap).max(scene.bins.total()).max(1) * 4);
         self.buf(11, (self.nz / 32 + 1) * 4);
         self.words_mut(11).fill(0);
         self.touched.clear();
@@ -664,11 +666,12 @@ impl Gpu {
     pub fn shade_with(&mut self, scene: &Scene, u: &U, tiles: &[u32], stride: usize) -> GpuTime {
         assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
         assert!(tiles.iter().all(|&t| (t as usize) < self.nt) && tiles.len() <= self.nt);
-        self.buf(5, scene.bins.list.len().max(1) * 4);
-        self.words_mut(5)[..scene.bins.list.len()].copy_from_slice(&scene.bins.list);
+        let (list, off) = scene.bins.csr();
+        self.buf(5, list.len().max(1) * 4);
+        self.words_mut(5)[..list.len()].copy_from_slice(&list);
         let th = self.words_mut(4);
         for t in 0..scene.tx * scene.ty {
-            (th[2 * t], th[2 * t + 1]) = (scene.bins.off[t], scene.bins.off[t + 1] - scene.bins.off[t]);
+            (th[2 * t], th[2 * t + 1]) = (off[t], off[t + 1] - off[t]);
         }
         let w = self.words_mut(3);
         for z in 0..scene.win.len() {
@@ -723,15 +726,20 @@ impl Gpu {
         assert!(std::ptr::eq(self.media, scene.media.arena().ptr()), "the scene's media pool was replaced after the executor was made");
         assert!(tiles.iter().all(|&t| (t as usize) < self.nt));
         if self.seen_bins != Some(scene.bins_epoch) {
-            self.buf(5, scene.bins.list.len().max(1) * 4);
-            self.words_mut(5)[..scene.bins.list.len()].copy_from_slice(&scene.bins.list);
+            let (list, off) = scene.bins.csr();
+            self.buf(5, list.len().max(1) * 4);
+            self.words_mut(5)[..list.len()].copy_from_slice(&list);
             let th = self.words_mut(4);
             for t in 0..scene.tx * scene.ty {
-                (th[2 * t], th[2 * t + 1]) = (scene.bins.off[t], scene.bins.off[t + 1] - scene.bins.off[t]);
+                (th[2 * t], th[2 * t + 1]) = (off[t], off[t + 1] - off[t]);
             }
             let w = self.words_mut(3);
             for z in 0..scene.win.len() {
-                let (a, c) = (scene.win[z], scene.cover[z]);
+                // a layer record acts over its halo too (it flattens there): its window lane is the union
+                let h = scene.halo[z];
+                let a0 = scene.win[z];
+                let a = if h[0] >= h[2] { a0 } else if a0[0] >= a0[2] { h } else { [a0[0].min(h[0]), a0[1].min(h[1]), a0[2].max(h[2]), a0[3].max(h[3])] };
+                let c = scene.cover[z];
                 let p = |v: [i16; 4]| ((v[0] as u16 as u32) | (v[1] as u16 as u32) << 16, (v[2] as u16 as u32) | (v[3] as u16 as u32) << 16);
                 ((w[4 * z], w[4 * z + 1]), (w[4 * z + 2], w[4 * z + 3])) = (p(a), p(c));
             }
@@ -758,16 +766,43 @@ impl Gpu {
             let (from, to, init, _) = scene.seg(ti, upto);
             jobs.extend([ti, from as u32, to as u32, init, upto, 0, 0, 0]);
         };
-        for w in &scene.plan.work {
-            if !w.prefix.is_empty() {
-                stages.push((true, jobs.len(), w.prefix.len()));
-                w.prefix.iter().for_each(|&ti| seg(&mut jobs, ti, w.lid));
-                st[0] += w.prefix.len() as u32;
+        // Layers whose halos share no tile with a lower layer that also has work this frame are independent:
+        // they take the same rank and run in one dispatch per stage.
+        let work = &scene.plan.work;
+        let tiles_of = |lid: u32| scene.layers.list[lid as usize].lv[0].r;
+        let mut rank = vec![0usize; work.len()];
+        for i in 0..work.len() {
+            let a = tiles_of(work[i].lid);
+            for j in 0..i {
+                let b = tiles_of(work[j].lid);
+                if a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3] {
+                    rank[i] = rank[i].max(rank[j] + 1);
+                }
             }
-            for (k, blocks) in &w.blocks {
-                stages.push((false, jobs.len(), blocks.len()));
-                blocks.iter().for_each(|&(bx, by)| jobs.extend([w.lid, *k, bx as u32, by as u32]));
-                st[1] += blocks.len() as u32;
+        }
+        for r in 0..=rank.iter().copied().max().unwrap_or(0) {
+            let of_rank = || work.iter().zip(&rank).filter(move |(_, k)| **k == r).map(|(w, _)| w);
+            let (at, mut n) = (jobs.len(), 0);
+            for w in of_rank() {
+                w.prefix.iter().for_each(|&ti| seg(&mut jobs, ti, w.lid));
+                n += w.prefix.len();
+            }
+            if n > 0 {
+                stages.push((true, at, n));
+                st[0] += n as u32;
+            }
+            for k in 1..=crate::ops::ops::BD_LMAX {
+                let (at, mut n) = (jobs.len(), 0);
+                for w in of_rank() {
+                    for (_, blocks) in w.blocks.iter().filter(|(lv, _)| *lv == k) {
+                        blocks.iter().for_each(|&(bx, by)| jobs.extend([w.lid, k, bx as u32, by as u32]));
+                        n += blocks.len();
+                    }
+                }
+                if n > 0 {
+                    stages.push((false, at, n));
+                    st[1] += n as u32;
+                }
             }
         }
         if !tiles.is_empty() {

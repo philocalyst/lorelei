@@ -161,6 +161,8 @@ pub struct Layer {
     pub lv: [Lvl; LEVELS],
     /// Its storage holds nothing yet (new, re-allocated, or the pool was repacked).
     pub fresh: bool,
+    /// Frame tiles of level 0 that an event beneath the record touched since the last schedule.
+    pub pending: Vec<u32>,
     /// The pixels of each level that entered its window since the last frame (at most four strips).
     entered: [Vec<[i32; 4]>; LEVELS],
 }
@@ -306,11 +308,10 @@ impl Layers {
         }
     }
 
-    /// Turn this frame's events into layer `lid`'s work, and its consequences for what is above it:
-    /// `out(rect)` receives the frame-pixel rects of the record's ink whose blurred value changed.
-    /// `events`: (window, key) of every record change this frame, those of lower layers' consequences
-    /// included (the caller appends what `out` reports before the next layer).
-    pub fn schedule(&mut self, lid: u32, events: &[([i32; 4], u32)], tx: usize, plan: &mut Plan, mut out: impl FnMut([i32; 4])) {
+    /// Turn what reached layer `lid` this frame (its pending tiles, the pixels that entered its windows)
+    /// into its work, and its consequences for what is above it: `out(rect)` receives the frame-pixel rects
+    /// of the record's ink whose blurred value changed (the caller routes them to the layers above).
+    pub fn schedule(&mut self, lid: u32, tx: usize, plan: &mut Plan, mut out: impl FnMut([i32; 4])) {
         let l = &mut self.list[lid as usize];
         let d = &mut self.dirty;
         let top = l.top as usize;
@@ -318,6 +319,7 @@ impl Layers {
             d[k].over(l.lv[k].r, k as u32);
         }
         if l.lv[0].empty() {
+            l.pending.clear();
             l.fresh = false;
             l.entered.iter_mut().for_each(Vec::clear);
             return;
@@ -333,13 +335,12 @@ impl Layers {
                 }
             }
             if !cfg!(feature = "mutant_layer_event") {
-                for &(w, z) in events {
-                    if z < l.z {
-                        d[0].add_px(cut(w, l.lv[0].r));
-                    }
+                for &t in &l.pending {
+                    d[0].set((t as usize % tx) as i32, (t as usize / tx) as i32);
                 }
             }
         }
+        l.pending.clear();
         l.fresh = false;
         l.entered.iter_mut().for_each(Vec::clear);
         // a dirty block reaches the blocks one level up whose taps touch it: pixel p of a level is read by
