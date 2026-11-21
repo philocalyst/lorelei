@@ -35,10 +35,12 @@ and for rustup, and the reference checkouts under `$HOME/work/reactivity/ref` pl
 ```sh
 bench/vm/up.sh
 FRAMEWORKS=bough,bough-x,zgui bench/vm/build.sh
-FRAMEWORKS=bough,bough-x,zgui SCENARIOS=rows,table,search,spinner,ticker,typing,virtual,resize bench/vm/run.sh
+for scenario in rows table search spinner ticker typing virtual resize; do
+    FRAMEWORKS=bough,bough-x,zgui SCENARIOS="$scenario" bench/vm/run.sh || exit "$?"
+done
 ```
 
-`run.sh` takes the lock around the guest replay. Its raw output defaults to `bench/results/vm/<stamp>/`, which is ignored by Git. `CONTRACT.txt` records the guest, toolchains, renderer, timing, CPUs, load and binary hashes. `run.json` describes each cell. The audited `VALIDITY.txt` and `VALIDITY.json` name the failed or invalid reports.
+`run.sh` takes the lock around one guest runner invocation. The loop releases it between scenarios. Its raw output defaults to `bench/results/vm/<stamp>/`, which is ignored by Git. `CONTRACT.txt` records the guest, toolchains, renderer, timing, CPUs, load and binary hashes. `run.json` describes each cell. The audited `VALIDITY.txt` and `VALIDITY.json` name the failed or invalid reports.
 
 The wrapper returns the runner's nonzero exit status or the audit status. Exit 2 covers a failed or skipped phase, a missing cell or report, or a failed result transfer. With `STRICT_VALIDITY=1`, exit 4 means the run transferred successfully and has an invalid or unchecked timing report. A fixed-rate result qualifies only when Fakeland's validity check passes. Startup and retained-memory churn have no timing verdict.
 
