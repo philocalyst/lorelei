@@ -551,6 +551,8 @@ pub struct ColEnt {
 impl ColEnt {
     pub const TIMED: u32 = 1;
     pub const STATE: u32 = 2;
+    /// Set on a published entry when the world maintains a bounded delta for that column.
+    pub(crate) const FAST: u32 = 4;
     /// SAFETY: the entry is current (built since the store tree last changed shape).
     #[inline(always)]
     unsafe fn live(&self) -> Live<'_> {

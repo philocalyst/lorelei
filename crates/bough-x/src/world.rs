@@ -487,6 +487,10 @@ impl<V: View, B: Backend> World<V, B> {
             let fns = unsafe { (&(*st).cols)[j as usize].desc.fast };
             if fns.key.is_some() || fns.near.is_some() {
                 self.fast_of.push(self.fast.len() as u32);
+                #[cfg(not(feature = "mutant_fastcol"))]
+                {
+                    self.cols[self.fast_of.len() - 1].timed |= ColEnt::FAST;
+                }
                 self.fast.push(Fast {
                     fns,
                     key_valid: 0,
@@ -664,7 +668,17 @@ impl<V: View, B: Backend> World<V, B> {
             }
             self.broad_last = Some(clip);
             self.fast_stats.broad_hits += 1;
-        } else if self.fast_of[k] != u32::MAX && self.delta_fast(k, u, ch) {
+        } else if e.timed & ColEnt::FAST == 0 {
+            // the common column: no bounded delta, one entry read, no second lookup
+            // SAFETY: the table is current; `delta` was instantiated for the entry's archetype.
+            unsafe { (e.delta)(e, &self.shown, u, &mut self.tiles) };
+            if e.timed & ColEnt::TIMED != 0 {
+                let (st, j) = self.cold[k];
+                // SAFETY: as above: `st` is a store of this tree and `j` one of its columns.
+                unsafe { (*st).resweep_col(&(&(*st).cols)[j as usize], u, &mut self.tiles) };
+            }
+            return;
+        } else if self.delta_fast(k, u, ch) {
             // answered from the records the change concerns
         } else {
             let e = &self.cols[k];
