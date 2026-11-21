@@ -194,11 +194,18 @@ impl View for Clip {
             .child(block(20., 20.).abs(20., 20.).bg(rgb(0xff0000)))
     }
 }
-// Open on the typed path as on the lowered one: `clip_overflow` is not carried into the layout words, and a
-// clip is a space (a child store), which a box whose clip is a run-time flag cannot become without changing
-// its record type. Kept as the review wrote it.
 #[test]
-#[ignore = "clip_overflow is not a space on the typed path yet"]
+fn clipped_subtree_is_explicitly_refused_before_typed_paint() {
+    let cfg = Config::new(50., 50., 1., bough::ui::default_font());
+    let refused = App::new(Clip, cfg)
+        .err()
+        .expect("typed subtree clip admission");
+    assert!(refused.1.contains(&"clip_overflow needs a subtree clip"));
+}
+
+// Retain the direct typed behavior probe for when typed clip scopes are implemented.
+#[test]
+#[ignore = "typed subtree clip is refused at admission"]
 fn clip_overflow_cuts_paint_outside_the_parent() {
     let mut a = new(Clip, 50., 50., 1., 1);
     a.check().unwrap();

@@ -900,6 +900,9 @@ impl<'s, V: View, S: Sink<Ty<V>>> Up<'s, V, S> {
     /// A layout spec: one that differs is a miss.
     #[inline(always)]
     fn spec(&mut self, spec: &crate::layout::Spec) {
+        if spec.clip {
+            refuse("clip_overflow needs a subtree clip");
+        }
         match self.specs.get_mut(self.si) {
             Some(kept) if spec_same(kept, spec) => {}
             Some(kept) => {
@@ -1050,6 +1053,9 @@ fn pbox<C>(c: C, draw: bool, radius: f32, border: Option<(f32, Color)>) -> BoxP<
     })
 }
 fn tbox<E, K>(spec: &crate::layout::Spec, paint: BoxP<E>, kids: K) -> TBox<E, K> {
+    if spec.clip {
+        refuse("clip_overflow needs a subtree clip");
+    }
     let s = with(|sh| sh.scale.get());
     let mut b = bough_lay::column(kids);
     b.spec = crate::lower::lay_spec(spec, s);
@@ -1493,6 +1499,9 @@ where
         let s = with(|sh| sh.scale.get());
         let p = self.port;
         let c = self.content;
+        if p.spec.clip {
+            refuse("clip_overflow needs a subtree clip");
+        }
         Scroll::new(
             crate::lower::lay_spec(&p.spec, s),
             Rec1(pbox(p.bg.expr(), p.draw, p.radius, p.border)),
@@ -1627,6 +1636,9 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
         }
         if self_.animate.is_some() {
             refuse("list move animation");
+        }
+        if self_.spec.clip {
+            refuse("clip_overflow needs a subtree clip");
         }
         let s = with(|sh| sh.scale.get());
         let word = match &self_.scroll {

@@ -98,6 +98,7 @@ pub(crate) struct Node {
     pub focusable: bool,
     /// The pointer stops here (a painted box, or one with handlers); otherwise it falls through to what is under.
     pub solid: bool,
+    pub clip: bool,
     pub alpha: u32,
     /// Paint offset in device pixels (the layout place does not move).
     pub shift: (i32, i32),
@@ -109,6 +110,7 @@ pub(crate) struct Node {
 pub(crate) struct Doc {
     pub tree: Tree,
     pub nodes: Vec<Node>,
+    has_clip: bool,
     /// Open boxes: (node, children so far).
     stack: Vec<(usize, u32)>,
 }
@@ -196,6 +198,7 @@ impl Node {
             hover_bg: None,
             focusable: false,
             solid: false,
+            clip: false,
             alpha: 255,
             shift: (0, 0),
             scroll: None,
@@ -217,6 +220,7 @@ impl<'a> Core<'a> {
             docs: vec![Doc {
                 tree: Tree::new(),
                 nodes: Vec::new(),
+                has_clip: false,
                 stack: Vec::new(),
             }],
             cur: 0,
@@ -257,7 +261,10 @@ impl<'a> Core<'a> {
         let (parent, s) = (self.parent(), self.scale);
         let d = self.doc();
         let i = d.tree.open(lay_spec(spec, s));
-        d.nodes.push(Node::new(parent, source));
+        let mut node = Node::new(parent, source);
+        node.clip = spec.clip;
+        d.has_clip |= node.clip;
+        d.nodes.push(node);
         d.stack.push((i, 0));
         i
     }
@@ -300,6 +307,7 @@ impl<'a> Core<'a> {
         self.docs.push(Doc {
             tree: Tree::new(),
             nodes: Vec::new(),
+            has_clip: false,
             stack: Vec::new(),
         });
         self.cur = self.docs.len() - 1;
@@ -424,6 +432,22 @@ impl Emit<'_> {
     fn doc(&mut self, d: usize, space: Space, parent_hit: u32) {
         let doc = &self.docs[d];
         for (k, n) in doc.nodes.iter().enumerate() {
+            let parent = if n.parent == NO {
+                parent_hit
+            } else {
+                self.scene.index[d][n.parent as usize]
+            };
+            let space = if doc.has_clip && n.parent != NO {
+                let inherited = &self.scene.hits[parent as usize];
+                let clip = if doc.nodes[n.parent as usize].clip {
+                    inherited.clip.and(inherited.rect)
+                } else {
+                    inherited.clip
+                };
+                Space { clip, ..space }
+            } else {
+                space
+            };
             let r = self.scene.rects[d][k];
             let r = Rect {
                 x0: r[0] + n.shift.0,
@@ -492,11 +516,6 @@ impl Emit<'_> {
                 )),
             }
             let org = space.base;
-            let parent = if n.parent == NO {
-                parent_hit
-            } else {
-                self.scene.index[d][n.parent as usize]
-            };
             let at = self.scene.hits.len() as u32;
             self.scene.index[d][k] = at;
             self.scene.hits.push(Hit {

@@ -541,7 +541,6 @@ impl View for Clip {
     }
 }
 #[test]
-#[ignore = "Card 3 discards clip_overflow from the layout spec"]
 fn clip_overflow_cuts_paint_outside_the_parent() {
     let mut a = new(Clip, 50., 50., 1., 1);
     a.check().unwrap();
