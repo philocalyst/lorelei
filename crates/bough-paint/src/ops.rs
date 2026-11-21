@@ -52,6 +52,10 @@ pub mod ops {
     pub fn x_pm(c: u32) -> Vec4u {
         premul(c)
     }
+    /// Word index of slot `s` (of 256) of palette table `t`.
+    pub fn x_palix(t: u32, s: u32) -> u32 {
+        t * 256u32 + min(s, 255u32)
+    }
     /// The same with alpha forced to 255: opaque whatever the word holds.
     pub fn x_pmo(c: u32) -> Vec4u {
         premul(c | 0xFF000000u32)

@@ -936,3 +936,175 @@ fn a_pan_and_a_hover_visit_what_they_can_reach() {
     assert!(hover_recs <= hovers * 10 && pan_recs < pans * 60, "the indexes did not narrow the visits");
     assert_eq!(bad, 0);
 }
+
+// ---- slice 8: palette tables and the broad clock ----
+type PS = Pal<PalIx<Uw<4>, Rec>>;
+type PT = Pal<PalIx<Uw<5>, Rec>>;
+type PCol = MixV<Pm<PS>, Pm<PT>, Uw<6>>;
+type LCol = MixV<Pm<Rec>, Pm<Rec>, Uw<6>>;
+type PGlassF = Filt<K<256>, K<300>, K<256>>;
+/// One description of the paletted scene: a backdrop, cards whose colour is one of two slots by a hover word,
+/// two glass panes. `lit`: `None` builds it over palette slots, `Some(tables, a, b)` with every slot
+/// replaced by its colour in tables `a` and `b`.
+fn pal_scene(fw: u32, fh: u32, lit: Option<(&[[u32; 16]], usize, usize)>) -> Scene {
+    let mut s = Scene::new(fw, fh, 1 << 16);
+    let mut g = Rng(0x9a1e77e);
+    let cards: Vec<([i32; 4], u32, u32, u32)> = (0..14)
+        .map(|i| {
+            let (x, y) = (8.0 + (i % 5) as f32 * 62.5 + (g.next() % 9) as f32 * 0.5, 10.0 + (i / 5) as f32 * 74.0 + (g.next() % 7) as f32);
+            ([q(x), q(y), q(x + 56.0), q(y + 60.0)], i as u32 + 1, (g.next() % 16) as u32, (g.next() % 16) as u32)
+        })
+        .collect();
+    let panes = [([q(40.5), q(30.5), q(200.0), q(120.0)], 7.0f32, 3u32), ([q(150.0), q(100.0), q(300.5), q(215.5)], 3.0, 9)];
+    match lit {
+        None => {
+            type ABack = Solid<Lane, MixV<Pmo<PS>, Pmo<PT>, Uw<6>>>;
+            type ACardP = RRect<Lane, I<Rec>, SelV<Eq<Uw<2>, Rec>, PCol, PCol>>;
+            type AGl = Over<Backdrop<Lane, I<Rec>, I<Rec>, PGlassF>, RRect<Lane, I<Rec>, PCol>>;
+            let (back, card, glass) = (s.column::<ABack>(1), s.column::<ACardP>(16), s.column::<AGl>(2));
+            let pc = |slot: u32| -> PCol { MixV { a: Pm { c: Pal(PalIx { t: Uw, s: Rec(slot) }) }, b: Pm { c: Pal(PalIx { t: Uw, s: Rec(slot) }) }, t: Uw } };
+            s.push(back, [0, 0, q(fw as f32), q(fh as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Pal(PalIx { t: Uw, s: Rec(0) }) }, b: Pmo { c: Pal(PalIx { t: Uw, s: Rec(0) }) }, t: Uw } });
+            for (i, &(r, id, a, b)) in cards.iter().enumerate() {
+                if i == 7 {
+                    for &(pr, blur, slot) in &panes {
+                        s.push(glass, pr, Over(Backdrop { b: Lane, r: ri(q(10.0)), blur: ri(q(blur)), f: V3 { a: K, b: K, c: K } }, RRect { b: Lane, r: ri(q(10.0)), c: pc(slot) }));
+                    }
+                }
+                s.push(card, r, RRect { b: Lane, r: ri(q(6.0)), c: SelV { c: Eq { a: Uw, b: Rec(id) }, a: pc(a), b: pc(b) } });
+            }
+            s.clock(6, 7, 8);
+            s.broad = 1 << 4 | 1 << 5 | 1 << 6;
+        }
+        Some((tabs, ta, tb)) => {
+            type ABack = Solid<Lane, MixV<Pmo<Rec>, Pmo<Rec>, Uw<6>>>;
+            type ACardL = RRect<Lane, I<Rec>, SelV<Eq<Uw<2>, Rec>, LCol, LCol>>;
+            type AGl = Over<Backdrop<Lane, I<Rec>, I<Rec>, PGlassF>, RRect<Lane, I<Rec>, LCol>>;
+            let (back, card, glass) = (s.column::<ABack>(1), s.column::<ACardL>(16), s.column::<AGl>(2));
+            let lc = |slot: u32| -> LCol { MixV { a: Pm { c: Rec(tabs[ta][slot as usize]) }, b: Pm { c: Rec(tabs[tb][slot as usize]) }, t: Uw } };
+            s.push(back, [0, 0, q(fw as f32), q(fh as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Rec(tabs[ta][0]) }, b: Pmo { c: Rec(tabs[tb][0]) }, t: Uw } });
+            for (i, &(r, id, a, b)) in cards.iter().enumerate() {
+                if i == 7 {
+                    for &(pr, blur, slot) in &panes {
+                        s.push(glass, pr, Over(Backdrop { b: Lane, r: ri(q(10.0)), blur: ri(q(blur)), f: V3 { a: K, b: K, c: K } }, RRect { b: Lane, r: ri(q(10.0)), c: lc(slot) }));
+                    }
+                }
+                s.push(card, r, RRect { b: Lane, r: ri(q(6.0)), c: SelV { c: Eq { a: Uw, b: Rec(id) }, a: lc(a), b: lc(b) } });
+            }
+        }
+    }
+    s
+}
+
+/// P1 / P2 (slice 8): a scene whose colours are slots of resident palette tables, retained across table
+/// switches, timed cross-fades on the scene's derived clock word, hovers that choose between two slots, and
+/// table rewrites, equals the same scene with every slot replaced by its literal colour (drawn fresh, and by
+/// the specification); on the CPU kernel and on Metal's resident plan. A fade frame visits no record.
+#[test]
+fn palette_tables_equal_their_literal_colours() {
+    let (bad, bad_gpu, fades, switches, device) = palette_run(false);
+    eprintln!("palette tables: 4 resident tables, 90 steps, {fades} fade frames with 0 records visited, {switches} switches; {bad} failing steps on the CPU, {bad_gpu} on Metal{}", if device { "" } else { " (no device)" });
+    assert!(fades > 5 && switches > 0);
+    assert_eq!((bad, bad_gpu), (0, 0));
+    if device {
+        // the Metal read ignores which table: must be seen
+        let (_, bad_gpu, ..) = palette_run(true);
+        eprintln!("palette mutant \"the Metal read ignores the table\": {bad_gpu} failing steps");
+        assert!(bad_gpu > 0);
+    }
+}
+fn palette_run(mutate: bool) -> (usize, usize, usize, usize, bool) {
+    let (fw, fh) = (320u32, 250u32);
+    let words = (fw * fh) as usize;
+    let pool = Pool::new(2);
+    let mut g = Rng(0x5eed_9a1);
+    let ntab = 4;
+    let mut tabs: Vec<[u32; 16]> = (0..ntab).map(|_| std::array::from_fn(|_| g.next() as u32 | if g.next() % 3 == 0 { 0xff00_0000 } else { 0x4000_0000 })).collect();
+    let mut s = pal_scene(fw, fh, None);
+    let mut sg = pal_scene(fw, fh, None);
+    for (t, c) in tabs.iter().enumerate() {
+        s.set_palette(t, c);
+        sg.set_palette(t, c);
+    }
+    // SAFETY: `sg` is declared before the executor and outlives it; it is written only between its calls.
+    let mut gpu = if mutate {
+        let descs: Vec<&bough_paint::scene::Desc> = sg.cols().iter().map(|c| c.desc).collect();
+        let lays: Vec<(usize, usize)> = sg.cols().iter().map(|c| (c.base, c.desc.words)).collect();
+        let good = bough_paint::metal::source_fx(&descs, &lays, sg.tab_region().0, (fw, fh), sg.media.words().len());
+        let bad = good.replace("+ int(i)) : 0u; }", "+ int(i & 255u)) : 0u; }");
+        assert!(bad != good, "the mutation did not apply");
+        unsafe { bough_paint::metal::Gpu::with_source(&sg, words, 64, &bad) }
+    } else {
+        unsafe { bough_paint::metal::Gpu::new(&sg, words, 64) }
+    };
+    let (mut kept, mut fresh, mut spec) = (vec![0u32; words], vec![0u32; words], vec![0u32; words]);
+    let mut u = U::default();
+    (u.w[4], u.w[5], u.w[7], u.w[8]) = (0, 1, 0, 0);
+    let (mut bad, mut bad_gpu, mut fades, mut era, mut switches) = (0, 0, 0, 0u32, 0);
+    for k in 0..90 {
+        let name = match if k == 0 { 99 } else { g.next() % 8 } {
+            0 => {
+                // a cross-fade to another table, driven by the clock
+                (u.w[4], u.w[5], u.w[7], u.w[8]) = (u.w[5], (g.next() % ntab as u64) as u32, u.w[U_TIME], 40);
+                "fade starts"
+            }
+            1 => {
+                u.w[2] = (g.next() % 16) as u32;
+                "hover"
+            }
+            2 => {
+                // an instant switch of both tables
+                (u.w[4], u.w[5]) = ((g.next() % ntab as u64) as u32, (g.next() % ntab as u64) as u32);
+                switches += 1;
+                "switch"
+            }
+            3 if k % 3 == 0 => {
+                let t = (g.next() % ntab as u64) as usize;
+                tabs[t][(g.next() % 16) as usize] = g.next() as u32 | 0x2000_0000;
+                s.set_palette(t, &tabs[t]);
+                sg.set_palette(t, &tabs[t]);
+                "table rewritten"
+            }
+            99 => "mount",
+            _ => "tick",
+        };
+        u.w[U_TIME] += 8;
+        let was_animating = s.animating();
+        let fs = s.frame(&u, &mut kept, fw as usize, &pool, 0);
+        // the literal scene under the same block with the clock's word filled in by hand
+        let mut ul = u;
+        ul.w[6] = bough_paint::scene::clock_at(u.w[U_TIME], u.w[7], u.w[8]);
+        let mut lit = pal_scene(fw, fh, Some((&tabs, u.w[4] as usize, u.w[5] as usize)));
+        lit.frame(&ul, &mut fresh, fw as usize, &pool, 0);
+        lit.spec(&ul, &mut spec, fw as usize);
+        let (d1, d2) = (diff(&kept, &fresh), diff(&fresh, &spec));
+        if d1 + d2 != 0 && !mutate {
+            eprintln!("palette step {k} ({name}): retained paletted vs literal {d1} words, literal vs spec {d2}");
+        }
+        bad += (d1 + d2 != 0) as usize;
+        // a frame of a running fade is a broad fact: no record is asked
+        if name == "tick" && was_animating && fs.mask >> 6 & 1 != 0 {
+            fades += 1;
+            assert!(fs.broad && fs.recs_visited == 0, "a fade frame visited {} records", fs.recs_visited);
+        }
+        if let Some(gpu) = gpu.as_mut() {
+            sg.update(&u);
+            let mut tiles = Vec::new();
+            sg.damage.tiles(&mut tiles);
+            sg.damage.clear();
+            if !tiles.is_empty() || sg.owes_layers() {
+                let block = *sg.block();
+                era = gpu.resident(&mut sg, &block, &tiles, Some(era), fw as usize).1;
+            }
+            let d = diff(gpu.out(words), &fresh);
+            if d != 0 && !mutate {
+                eprintln!("palette step {k} ({name}): metal vs literal {d} words");
+            }
+            bad_gpu += (d != 0) as usize;
+        }
+    }
+    // a finished fade leaves nothing animating
+    u.w[U_TIME] += 400;
+    s.frame(&u, &mut kept, fw as usize, &pool, 0);
+    assert!(!s.animating(), "a finished fade still owes frames");
+    (bad, bad_gpu, fades, switches, gpu.is_some())
+}

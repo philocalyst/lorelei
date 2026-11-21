@@ -660,19 +660,60 @@ pub enum Code {
     Call(&'static str, &'static [&'static Code]),
     /// A Rust function with no GPU form: its value is computed on the CPU and reaches the GPU as a record word.
     Cpu(&'static [&'static Code]),
+    /// Word `.0` (an expression) of the table the expression is evaluated against ([`Cx::pal`]); 0 past its
+    /// end. A resident palette: which table and which slot are ordinary operands.
+    Pal(&'static Code),
 }
 
-/// What an expression is evaluated against: the block, and the record's own rect lanes (x0, y0, x1, y1).
+/// What an expression is evaluated against: the block, the record's own rect lanes (x0, y0, x1, y1), and
+/// the resident table [`Pal`] reads (empty when the evaluator keeps none).
 #[derive(Clone, Copy)]
 pub struct Cx<'a> {
     pub u: &'a U,
     pub rect: [i32; 4],
+    pub pal: &'a [u32],
 }
 impl<'a> Cx<'a> {
     /// For an expression that does not read the rect.
     #[inline(always)]
     pub fn of(u: &'a U) -> Cx<'a> {
-        Cx { u, rect: [0; 4] }
+        Cx { u, rect: [0; 4], pal: &[] }
+    }
+    /// The block and the rect, with no table.
+    #[inline(always)]
+    pub fn at(u: &'a U, rect: [i32; 4]) -> Cx<'a> {
+        Cx { u, rect, pal: &[] }
+    }
+    /// The same against table `pal`.
+    #[inline(always)]
+    pub fn with_pal(self, pal: &'a [u32]) -> Cx<'a> {
+        Cx { pal, ..self }
+    }
+}
+
+/// Word `index` of the resident table ([`Cx::pal`]): 0 past its end. The table is not part of the block, so
+/// this reads no block word of its own: a change of the table's contents is the evaluator's to announce.
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct Pal<I>(pub I);
+// SAFETY: transparent over `I: Words`.
+unsafe impl<I: Words> Words for Pal<I> {}
+impl<I: Expr<Out = u32>> Expr for Pal<I> {
+    type Out = u32;
+    type Stage = Frame;
+    const READS: u64 = I::READS;
+    const CODE: &'static Code = &Code::Pal(I::CODE);
+    #[inline(always)]
+    fn eval(&self, cx: &Cx) -> u32 {
+        cx.pal.get(self.0.eval(cx) as usize).copied().unwrap_or(0)
+    }
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        self.0.until(cx)
+    }
+    #[inline]
+    fn slots(f: &mut dyn FnMut(Slot)) {
+        I::slots(f)
     }
 }
 

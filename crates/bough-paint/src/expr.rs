@@ -12,7 +12,7 @@
 //! operands' trees. The CPU kernel is `eval` monomorphised and inlined; the GPU function is `CODE` rendered
 //! (`emit.rs`). Neither can say something the other does not.
 use crate::ops::ops as x;
-pub use bough_expr::{Code, Cx, Expr, Frame, JoinAll, K, Ki, Lens, Mount, Rec, Stage, StageId, U, U_PICK, U_PTR_X, U_PTR_Y, U_TIME, Un, Uw, Words, lens, un};
+pub use bough_expr::{Code, Cx, Expr, Pal, Frame, JoinAll, K, Ki, Lens, Mount, Rec, Stage, StageId, U, U_PICK, U_PTR_X, U_PTR_Y, U_TIME, Un, Uw, Words, lens, un};
 use wgsl_rs::std::{Vec4, Vec4i, Vec4u};
 
 /// The type of an expression's value, for generated code.
@@ -104,6 +104,8 @@ op!(Fade = x_fade(a: A: Vec4u, k: T: u32) -> Vec4u; opaque = false);
 op!(/// A looping there-and-back progress of (now + phase) over `period` ticks, Q15.
     Tri = x_tri(now: N: u32, phase: P: u32, period: D: u32) -> u32; opaque = false);
 op!(Smooth = x_smooth(t: T: u32) -> u32; opaque = false);
+op!(/// The index of slot `s` of palette table `t` (the operand of `Pal`).
+    PalIx = x_palix(t: T: u32, s: S: u32) -> u32; opaque = false);
 
 /// When a one-shot that starts at `t0` and lasts `dur` ticks stops changing, seen from `now`: 0 once it is
 /// over, its end while it runs or has yet to start (a staggered start is in the future).

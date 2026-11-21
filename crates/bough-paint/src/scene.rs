@@ -41,12 +41,21 @@ pub const VM_PAGE: usize = 16384;
 #[derive(Clone, Copy)]
 pub struct ColView<'a> {
     base: *const u32,
+    /// The scene's palette tables (`PAL_WORDS` words of its arena).
+    pal: *const u32,
     pub(crate) len: u32,
     /// Words per record.
     pub(crate) w: u32,
     _scene: PhantomData<&'a Arena>,
 }
-impl ColView<'_> {
+impl<'a> ColView<'a> {
+    /// The palette tables, for an evaluation context.
+    #[inline(always)]
+    pub(crate) fn pal(&self) -> &'a [u32] {
+        // SAFETY: `view_of` made the pointer from the arena this view borrows: `PAL_WORDS` initialised
+        // words inside it, not written while the view lives (it borrows the arena shared).
+        unsafe { std::slice::from_raw_parts(self.pal, if cfg!(feature = "mutant_pal_stale") { PAL_SLOTS } else { PAL_WORDS }) }
+    }
     #[inline(always)]
     fn page(&self, i: u32) -> *const u32 {
         // SAFETY (callers): i < len <= capacity, so the page is inside the column's allocation.
@@ -77,9 +86,9 @@ impl ColView<'_> {
 }
 
 /// A column of `arena` as a view (borrowing the arena only, so the scene's lanes can be written beside it).
-fn view_of<'a>(arena: &'a Arena, c: &Col) -> ColView<'a> {
+fn view_of<'a>(arena: &'a Arena, pal_base: usize, c: &Col) -> ColView<'a> {
     // SAFETY: `base` is inside the arena (checked at `Scene::column`).
-    ColView { base: unsafe { arena.ptr().add(c.base) }, len: c.len as u32, w: c.desc.words as u32, _scene: PhantomData }
+    ColView { base: unsafe { arena.ptr().add(c.base) }, pal: unsafe { arena.ptr().add(pal_base) }, len: c.len as u32, w: c.desc.words as u32, _scene: PhantomData }
 }
 
 /// Damaged tiles of a frame, one bit each, row-major.
@@ -250,7 +259,7 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
         // SAFETY: this function is only stored in `Desc::of::<P>()`, which a column of `P` holds; the
         // active set holds indices below the column's length (`Scene::update` keeps it so).
         let (rect, z, p) = (c.rect(i), c.z(i) as usize, unsafe { c.rec::<P>(i) });
-        let cn = Cx { u: new, rect };
+        let cn = Cx { u: new, rect, pal: c.pal() };
         if timed {
             let rests = !ahead(p.until(&cn), now);
             if cfg!(feature = "mutant_settle") && only.is_some() && rests {
@@ -288,7 +297,7 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
             moved |= ps.rebin.last() == Some(&(z as u32));
         }
         if !first {
-            let cw = p.changed_win(&Cx { u: old, rect }, &cn, mask, NO_CLIP);
+            let cw = p.changed_win(&Cx { u: old, rect, pal: c.pal() }, &cn, mask, NO_CLIP);
             if cw.x < cw.z {
                 ps.mark(i16s(cw), z as u32);
             }
@@ -299,7 +308,7 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
 fn rewin_one<P: Paint>(c: ColView, i: u32, u: &U, ps: &mut Pass) -> bool {
     // SAFETY: as `window_pass`.
     let (rect, z, p) = (c.rect(i), c.z(i) as usize, unsafe { c.rec::<P>(i) });
-    let cx = Cx { u, rect };
+    let cx = Cx { u, rect, pal: c.pal() };
     let mut ws = WinSink(EMPTY, EMPTY);
     p.paint(&cx, NO_CLIP, &mut ws);
     let w = i16s(ws.0);
@@ -327,7 +336,7 @@ fn flat_run<P: Paint>(c: ColView, zs: &[u32], order: &[u32], u: &U, t: &mut Tile
     for &z in zs {
         let i = order[z as usize] & IDX_MASK;
         // SAFETY: as `window_pass`; `order` names records of this column for these keys.
-        unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut Flat(t));
+        unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut Flat(t));
     }
 }
 fn shade_run<P: Paint>(c: ColView, zs: &[u32], first: usize, order: &[u32], u: &U, t: &mut Tile, fx: &Fx) {
@@ -336,35 +345,35 @@ fn shade_run<P: Paint>(c: ColView, zs: &[u32], first: usize, order: &[u32], u: &
         let i = order[z as usize] & IDX_MASK;
         let lid = if P::LAYER { fx.lid(z) } else { layer::NONE };
         // SAFETY: as `flat_run`.
-        unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut Shade(t, fx, lid));
+        unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut Shade(t, fx, lid));
     }
 }
 fn reach_one<P: Paint>(c: ColView, i: u32, u: &U) -> [i32; 4] {
     let mut ws = WinSink(EMPTY, EMPTY);
     // SAFETY: as `window_pass`.
-    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut ws);
+    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut ws);
     let w = crate::ops::ops::x_union(ws.0, ws.1);
     [w.x, w.y, w.z, w.w]
 }
 fn lay_one<P: Paint>(c: ColView, i: u32, u: &U) -> Option<Cmd> {
     let mut s = LaySink(None);
     // SAFETY: as `window_pass`.
-    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut s);
+    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut s);
     s.0
 }
 fn spec_one<P: Paint>(c: ColView, i: u32, u: &U, x: i32, y: i32, acc: Vec4u, atlas: &[u8], aw: u32, tabs: &[u32], bd: &dyn Fn(Cmd, i32, i32) -> Vec4u, media: &[u32]) -> (Vec4u, bool) {
     let mut s = SpecSink { x, y, acc, atlas, aw, tabs, ink: false, bd, media };
     // SAFETY: as `window_pass`.
-    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut s);
+    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut s);
     (s.acc, s.ink)
 }
 fn stage_one<P: Paint>(c: ColView, i: u32, u: &U, out: &mut bough_kernel::stage::Scene) {
     // SAFETY: as `window_pass`.
-    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut StageSink(out));
+    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut StageSink(out));
 }
 fn pick_one<P: Paint>(c: ColView, i: u32, u: &U) -> u32 {
     // SAFETY: as `window_pass`.
-    unsafe { c.rec::<P>(i) }.pick_id(&Cx { u, rect: c.rect(i) })
+    unsafe { c.rec::<P>(i) }.pick_id(&Cx { u, rect: c.rect(i), pal: c.pal() })
 }
 
 struct D<P>(PhantomData<P>);
@@ -810,6 +819,12 @@ pub struct Scene {
     /// Give memoisable layers their tables (on by default; off: every such layer takes its closed form).
     pub memoise: bool,
     tab_base: usize,
+    /// The palette tables' first word in the arena (they end where the corner tables begin).
+    pal_base: usize,
+    /// Derived clock words: (word, start word, duration word). `update` computes `word` from `Time`.
+    clocks: Vec<(usize, usize, usize)>,
+    /// The block the last `update` ran under: the host's, with the derived words filled in.
+    block: U,
     tab_used: usize,
     tab_map: std::collections::HashMap<(i32, i32), u32>,
     tab_jobs: Vec<TabJob>,
@@ -817,6 +832,21 @@ pub struct Scene {
 
 /// Words reserved for corner tables (16 MiB of address space; pages are touched only when a table is filled).
 pub const TAB_WORDS: usize = 1 << 22;
+/// Slots of a palette table, tables a scene keeps, and their words in all.
+pub const PAL_SLOTS: usize = 256;
+pub const PAL_TABLES: usize = 16;
+pub const PAL_WORDS: usize = PAL_SLOTS * PAL_TABLES;
+/// The Q15 progress of `now` from `start` over `dur` ticks (wrapping time: a start in the future is 0).
+pub fn clock_at(now: u32, start: u32, dur: u32) -> u32 {
+    let e = now.wrapping_sub(start);
+    if e >= 1 << 31 {
+        0
+    } else if dur == 0 || e >= dur {
+        32_768
+    } else {
+        ((e as u64 * 32_768) / dur as u64) as u32
+    }
+}
 /// A table to fill: its handle (word offset in the table region), key, and entries per side.
 #[derive(Clone, Copy, Debug)]
 pub struct TabJob {
@@ -845,9 +875,12 @@ impl Scene {
             fh,
             tx,
             ty,
-            arena: Arena::new(arena_words + TAB_WORDS),
+            arena: Arena::new(arena_words + PAL_WORDS + TAB_WORDS),
+            pal_base: arena_words,
+            clocks: Vec::new(),
+            block: U::default(),
             memoise: std::env::var("BOUGH_NO_TABS").is_err(),
-            tab_base: arena_words,
+            tab_base: arena_words + PAL_WORDS,
             tab_used: 0,
             tab_map: Default::default(),
             tab_jobs: Vec::new(),
@@ -891,7 +924,7 @@ impl Scene {
         let desc = Desc::of::<P>();
         let cap = cap.div_ceil(64).max(1) * 64;
         let words = cap * (LANES + desc.words);
-        assert!(self.used + words <= self.tab_base, "arena too small");
+        assert!(self.used + words <= self.pal_base, "arena too small");
         assert!(self.cols.len() < 1 << (32 - IDX_BITS) && cap <= 1 << IDX_BITS);
         self.cols.push(Col { desc, base: self.used, cap, len: 0, active: Vec::new() });
         self.scrolls.push(None);
@@ -1010,7 +1043,7 @@ impl Scene {
         }
         let zero = U::default();
         let (map, jobs, used) = (&mut self.tab_map, &mut self.tab_jobs, &mut self.tab_used);
-        p.memo(&Cx { u: &zero, rect }, &mut |r, w| {
+        p.memo(&Cx::at(&zero, rect), &mut |r, w| {
             *map.entry((r, w)).or_insert_with(|| {
                 let n = crate::ops::ops::t_n(r, w);
                 let words = 2 + (n * crate::ops::ops::t_stride(n) / 2) as usize;
@@ -1072,7 +1105,7 @@ impl Scene {
         self.tabs_filled();
     }
     pub(crate) fn view(&self, col: usize) -> ColView<'_> {
-        view_of(&self.arena, &self.cols[col])
+        view_of(&self.arena, self.pal_base, &self.cols[col])
     }
     /// The columns, in creation order (read only: the kernels' unchecked reads rest on them).
     pub fn cols(&self) -> &[Col] {
@@ -1097,6 +1130,14 @@ impl Scene {
     /// Steps 1 to 3 of a frame: the mask, the window passes, the bins; then the layers' schedule (their
     /// stages are in `self.plan`: `prepare` runs them). Leaves the output damage in `self.damage`.
     pub fn update(&mut self, u: &U) -> FrameStats {
+        // the derived words: a clock's progress is a block word the scene computes, so its readers read an
+        // ordinary (broad) word and none of them reads `Time`
+        let mut eff = *u;
+        for &(w, s, d) in &self.clocks {
+            eff.w[w] = clock_at(u.w[U_TIME], u.w[s], u.w[d]);
+        }
+        self.block = eff;
+        let u = &eff;
         let mut fs = FrameStats::default();
         if !self.tab_jobs.is_empty() {
             self.fill_tabs();
@@ -1125,7 +1166,7 @@ impl Scene {
             for &z in &touched {
                 let o = self.order[z as usize];
                 let ci = (o >> IDX_BITS) as usize;
-                let v = view_of(&self.arena, &self.cols[ci]);
+                let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
                 act.clear();
                 moved |= (self.cols[ci].desc.rewin)(v, o & IDX_MASK, u, &mut pass!());
                 // a rewritten record that now depends on the clock joins its column's active set
@@ -1135,7 +1176,7 @@ impl Scene {
                     }
                 }
                 if let Some(sc) = self.scrolls[ci].as_mut() {
-                    Self::reindex(sc, self.cols[ci].desc, view_of(&self.arena, &self.cols[ci]), o & IDX_MASK, u);
+                    Self::reindex(sc, self.cols[ci].desc, view_of(&self.arena, self.pal_base, &self.cols[ci]), o & IDX_MASK, u);
                 }
             }
         }
@@ -1211,7 +1252,7 @@ impl Scene {
             let only = if full { None } else if indexed { cand } else { Some(std::mem::take(&mut self.cols[ci].active)) };
             fs.cols_visited += 1;
             fs.recs_visited += only.as_ref().map_or(self.cols[ci].len, Vec::len) as u32;
-            let v = view_of(&self.arena, &self.cols[ci]);
+            let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
             act.clear();
             moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
             if keep_active {
@@ -1226,7 +1267,7 @@ impl Scene {
             }
             if !pan_only {
                 if let Some(sc) = self.scrolls[ci].as_mut() {
-                    let v = view_of(&self.arena, &self.cols[ci]);
+                    let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
                     match only.as_deref() {
                         Some(o) => o.iter().for_each(|&i| Self::reindex(sc, d, v, i, u)),
                         None => (0..self.cols[ci].len as u32).for_each(|i| Self::reindex(sc, d, v, i, u)),
@@ -1245,7 +1286,7 @@ impl Scene {
             for &z in &regeo {
                 let o = self.order[z as usize];
                 let ci = (o >> IDX_BITS) as usize;
-                let c = (self.cols[ci].desc.lay)(view_of(&self.arena, &self.cols[ci]), o & IDX_MASK, u);
+                let c = (self.cols[ci].desc.lay)(view_of(&self.arena, self.pal_base, &self.cols[ci]), o & IDX_MASK, u);
                 self.layers.regeo(self.layers.lid(z), c, self.fw, self.fh);
                 relaid = true;
             }
@@ -1437,7 +1478,34 @@ impl Scene {
     /// Some record still depends on the clock: the host owes the scene a frame at the output's next
     /// refresh. False: nothing moves, and no frame is owed until a block word or a record is written.
     pub fn animating(&self) -> bool {
-        self.cols.iter().any(|c| !c.active.is_empty())
+        self.cols.iter().any(|c| !c.active.is_empty()) || self.clocks.iter().any(|&(w, _, d)| self.block.w[w] < 32_768 && self.block.w[d] != 0)
+    }
+    /// Declare block word `word` derived: every `update` sets it to the Q15 progress of `Time` from word
+    /// `start` over word `dur` ticks (0 before the start, 32,768 from the end on, and at once when `dur` is
+    /// 0). Declare it broad (`Scene::broad`) when no geometry reads it: a fade is then the frame damaged
+    /// whole on every frame it runs, and no record is visited. Draw under `Scene::block`.
+    pub fn clock(&mut self, word: usize, start: usize, dur: usize) {
+        assert!(word < 64 && start < 64 && dur < 64 && word != U_TIME);
+        self.clocks.push((word, start, dur));
+        self.first = true;
+    }
+    /// The block the last `update` ran under (the host's, with the derived words): what the executors
+    /// draw the frame under.
+    pub fn block(&self) -> &U {
+        &self.block
+    }
+    /// Table `table`'s slots from 0 (packed RGBA8 words, as a colour operand holds them). The lanes are
+    /// re-mounted (a record's opaque cover may depend on a table word) and the frame is redrawn: this is a
+    /// definition, not a per-frame act; choosing between tables is a block word.
+    pub fn set_palette(&mut self, table: usize, colors: &[u32]) {
+        assert!(table < PAL_TABLES && colors.len() <= PAL_SLOTS, "palette table {table} with {} slots", colors.len());
+        let at = self.pal_base + table * PAL_SLOTS;
+        self.arena.words_mut()[at..at + colors.len()].copy_from_slice(colors);
+        self.first = true;
+    }
+    /// The palette tables (`PAL_TABLES` of `PAL_SLOTS` words).
+    pub fn palettes(&self) -> &[u32] {
+        &self.arena.words()[self.pal_base..self.pal_base + PAL_WORDS]
     }
     /// The records in motion (the size of the active sets).
     pub fn active_records(&self) -> usize {
@@ -1745,6 +1813,7 @@ impl Scene {
     /// A whole CPU frame: update, then shade what the update damaged. `out` holds the previous frame.
     pub fn frame(&mut self, u: &U, out: &mut [u32], stride: usize, pool: &Pool, extra: usize) -> FrameStats {
         let mut fs = self.update(u);
+        let u = &self.block.clone();
         let st = self.prepare(u);
         let mut tiles = std::mem::take(&mut self.tiles);
         self.damage.tiles(&mut tiles);
