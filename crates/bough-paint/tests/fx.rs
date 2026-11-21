@@ -768,7 +768,7 @@ fn a_halo_crossing_tile_edges_stays_exact() {
 
 /// B1, B2: the mixed model. Frames alternate between the CPU kernel and Metal at random on one pool and one
 /// surface and stay equal to a fresh redraw; a change of a word declared broad visits no record, rebuilds
-/// no bins, enumerates no layer, and is right. (`mutant_broad_layers` and `mutant_full_stale` must fail.)
+/// no bins, enumerates no layer, and is right. (`mutant_broad_layers` must fail.)
 #[cfg(target_os = "macos")]
 #[test]
 fn executors_alternate_and_a_broad_word_costs_nothing_to_find() {
