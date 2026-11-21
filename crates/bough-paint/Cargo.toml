@@ -40,3 +40,14 @@ mutant_hide = []
 mutant_mask = []
 # every entry of a CPU-filled corner table is one too large
 mutant_tab = []
+# Mutants for the effects gates (tests/fx.rs must fail with each):
+# a dirty pyramid block does not reach the blocks whose taps touch it from the next block over
+mutant_layer_dilate = []
+# a change beneath a layer does not dirty it
+mutant_layer_event = []
+# the pyramid's downsample is one unit off
+mutant_layer_weights = []
+# a record leaves the active set before its last frame is drawn
+mutant_settle = []
+# a rewritten record that did not move (a video showing a new frame) damages nothing
+mutant_video = []

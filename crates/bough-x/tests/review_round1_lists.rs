@@ -221,7 +221,6 @@ impl View for PointerRows {
 }
 
 #[test]
-#[ignore = "TR1-09 open"]
 fn pointer_change_without_damage_has_bounded_record_work() {
     let mut counts = Vec::new();
     for height in [32, 256] {

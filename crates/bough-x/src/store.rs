@@ -442,6 +442,38 @@ impl<'a, A> ColRef<'a, A> {
             }
         }
     }
+    /// Every live record whose rect meets `cut` (in the store's space), page by page, in the order of
+    /// [`ColRef::each`]. For a painter that draws nothing outside a record's rect and is cut to `cut`: the
+    /// records passed over are the ones it would have drawn nothing of. A page costs four compares a lane,
+    /// whatever the painter does with a record.
+    #[inline(always)]
+    pub fn each_in(&self, cut: Rect, mut f: impl FnMut(Rect, &A)) {
+        if (cut.x0 >= cut.x1) | (cut.y0 >= cut.y1) {
+            return;
+        }
+        for (pi, pg) in self.pages.iter().enumerate() {
+            let live = self.live.page(pi);
+            if live == 0 {
+                continue;
+            }
+            let mut b = [0u8; 64];
+            for i in 0..64 {
+                b[i] = ((pg.x0[i] < cut.x1)
+                    & (pg.x1[i] > cut.x0)
+                    & (pg.y0[i] < cut.y1)
+                    & (pg.y1[i] > cut.y0)) as u8;
+            }
+            #[cfg(not(feature = "mutant_each_in"))]
+            let mut m = pack(&b) & live;
+            #[cfg(feature = "mutant_each_in")]
+            let mut m = pack(&b) & live & 0x7fff_ffff_ffff_ffff;
+            while m != 0 {
+                let i = m.trailing_zeros() as usize;
+                m &= m - 1;
+                f(pg.rect(i), pg.record(i));
+            }
+        }
+    }
 }
 
 /// Which records of a column are live. Liveness is the store's: a row is live or not, for all of its records.
@@ -1361,6 +1393,22 @@ pub fn changed_sparse<A: Arch>(pg: &Page<A>, mut live: u64, old: &U, new: &U) ->
     m
 }
 
+/// For an archetype of size zero: whether its records (all the same value, having no constants) show
+/// something else under `new` than under `old`. `None` when the column has no live record. One evaluation of
+/// `changed`, whatever the column holds; the contract is the one every delta relies on, that `changed` is a
+/// function of the record and the two blocks.
+#[inline(always)]
+fn uniform_changed<A: Arch>(pages: &[Page<A>], lv: &Live<'_>, old: &U, new: &U) -> Option<bool> {
+    let (pi, live) = (0..pages.len())
+        .map(|pi| (pi, lv.page(pi)))
+        .find(|&(_, live)| live != 0)?;
+    let a = pages[pi].record(live.trailing_zeros() as usize);
+    let c = a.changed(old, new) | (A::MOVES && a.offset(old) != a.offset(new));
+    #[cfg(feature = "mutant_uniform")]
+    let c = c & false;
+    Some(c)
+}
+
 unsafe fn delta_col<A: Arch>(e: &ColEnt, old: &U, new: &U, tiles: &mut Tiles) {
     // SAFETY: the caller instantiated this for the column's archetype and the entry is current: `pages` holds
     // `npages` pages of `A`, `space` is the column's store's.
@@ -1373,12 +1421,25 @@ unsafe fn delta_col<A: Arch>(e: &ColEnt, old: &U, new: &U, tiles: &mut Tiles) {
     };
     let org = space.origin(new);
     let clip = space.clip;
+    // A record with no constants of its own is the same record as every other of its column: the derivative
+    // is one question for the column, not one per record (`uniform_changed`). Answered `false`, no page is
+    // opened; answered `true`, every live record changed and none is asked again.
+    let uniform = if core::mem::size_of::<A>() == 0 && !A::STATE {
+        match uniform_changed::<A>(pages, &lv, old, new) {
+            Some(true) => true,
+            _ => return,
+        }
+    } else {
+        false
+    };
     for (pi, pg) in pages.iter().enumerate() {
         let live = lv.page(pi);
         if live == 0 {
             continue;
         }
-        let m = if live.count_ones() <= 12 {
+        let m = if uniform {
+            live
+        } else if live.count_ones() <= 12 {
             changed_sparse(pg, live, old, new)
         } else {
             changed_mask(pg, old, new) & live

@@ -8,6 +8,7 @@
 //! Two passes per tile, both driven by the tile's entries through their archetypes: `Flat` classifies rows
 //! (a row every command agrees is the same as the row above is copied, not shaded), then `Shade` shades the
 //! rows that are left into a Q15 accumulator, which `store` writes out.
+use crate::layer::{self, Layer, Lvl};
 use crate::paint::{EMPTY, Sink};
 use bough_kernel::k;
 use bough_kernel::simd;
@@ -62,6 +63,24 @@ impl Stats {
         self.px_shadow += o.px_shadow;
         self.px_corner += o.px_corner;
         self.px_table += o.px_table;
+    }
+}
+
+/// What a tile's entries read besides their records: the layers and their pool, the media pool.
+#[derive(Clone, Copy)]
+pub struct Fx<'a> {
+    pub layers: &'a [Layer],
+    /// By paint-order key: the record's layer (`layer::NONE`: none); empty without layers.
+    pub of: &'a [u32],
+    pub pool: &'a [u32],
+    pub media: &'a [u32],
+    pub fw: u32,
+    pub fh: u32,
+}
+impl Fx<'_> {
+    #[inline(always)]
+    pub fn lid(&self, z: u32) -> u32 {
+        self.of.get(z as usize).copied().unwrap_or(layer::NONE)
     }
 }
 
@@ -150,6 +169,33 @@ impl<'a> Tile<'a> {
             m &= m - 1;
             self.acc[y * 32..y * 32 + 32].fill([0; 4]);
         }
+    }
+    /// Start from a stored prefix instead of from nothing: the tile's pixels from level 0 of a layer that
+    /// holds all of them (call after `prepare`; every row is then one to shade).
+    pub fn load(&mut self, pool: &[u32], v: &Lvl) {
+        debug_assert!(self.need == self.all);
+        let mut m = self.all;
+        while m != 0 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            for xx in 0..self.cols {
+                self.acc[(y * 32 + xx) as usize] = st(crate::ops::ops::x_unstore(pool[layer::at(v, self.ox + xx, self.oy + y)]));
+            }
+        }
+    }
+    /// Store the tile's pixels that lie in a layer's level 0 as its prefix there.
+    pub fn store_layer(&mut self, pool: &mut [u32], v: &Lvl) {
+        debug_assert!(self.need == self.all);
+        let (x0, x1) = ((v.r[0] - self.ox).max(0), (v.r[2] - self.ox).min(self.cols));
+        let mut m = self.all & rows(v.r[1] - self.oy, v.r[3] - self.oy);
+        while m != 0 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            for xx in x0..x1 {
+                pool[layer::at(v, self.ox + xx, self.oy + y)] = k::store8(ld(&self.acc[(y * 32 + xx) as usize]));
+            }
+        }
+        self.st.tiles += 1;
     }
     /// Write the tile: shaded rows from the accumulator, flat rows from the row above.
     ///
@@ -322,11 +368,73 @@ impl Sink for Flat<'_, '_> {
     fn glyph(&mut self, c: Cmd) {
         self.note(&c, false, false)
     }
+    #[inline(always)]
+    fn backdrop(&mut self, _: Cmd) {
+        // every pixel of its window reads a neighbourhood: no row is known to equal the one above
+        self.0.same = 0;
+    }
+    #[inline(always)]
+    fn video(&mut self, c: Cmd) {
+        self.note(&c, false, false)
+    }
+    #[inline(always)]
+    fn user(&mut self, c: Cmd) {
+        self.note(&c, false, false)
+    }
 }
 
 /// Pass 2: shade the rows that need it.
-pub struct Shade<'t, 'a>(pub &'t mut Tile<'a>);
-impl Sink for Shade<'_, '_> {
+pub struct Shade<'t, 'a, 'f>(pub &'t mut Tile<'a>, pub &'f Fx<'f>, pub u32);
+impl Shade<'_, '_, '_> {
+    /// A primitive with no span structure: every visible pixel of its window through `f`.
+    #[inline(always)]
+    fn each(&mut self, c: &Cmd, mut f: impl FnMut(i32, i32) -> Vec4u) {
+        let t = &mut *self.0;
+        let (x0, x1, mut m) = t.span(c);
+        if x0 >= x1 {
+            return;
+        }
+        while m != 0 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            for (a, b) in t.runs(y, x0, x1) {
+                for xx in a..b {
+                    let p = &mut t.acc[(y * 32 + xx) as usize];
+                    *p = st(k::blend(ld(p), f(t.ox + xx, t.oy + y)));
+                }
+            }
+        }
+    }
+}
+impl Sink for Shade<'_, '_, '_> {
+    #[inline(always)]
+    fn backdrop(&mut self, c: Cmd) {
+        let (t, fx) = (&mut *self.0, self.1);
+        let Some(lay) = fx.layers.get(self.2 as usize) else { return };
+        // inside its window: the accumulator flattened (what the layer's level 0 holds there), then the
+        // blurred prefix through the filter under the box's coverage
+        let (x0, x1, mut m) = t.span(&c);
+        while m != 0 && x0 < x1 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            for (a, b) in t.runs(y, x0, x1) {
+                for xx in a..b {
+                    let (gx, gy) = (t.ox + xx, t.oy + y);
+                    let p = &mut t.acc[(y * 32 + xx) as usize];
+                    *p = st(crate::ops::ops::p_bdrop(crate::ops::ops::x_flat(ld(p)), c, gx, gy, layer::sample(fx.pool, lay, fx.fw, fx.fh, c, gx, gy)));
+                }
+            }
+        }
+    }
+    #[inline(always)]
+    fn video(&mut self, c: Cmd) {
+        let m = self.1.media;
+        self.each(&c, |x, y| crate::ops::ops::p_video(c, x, y, crate::media::sample(m, c, x, y)))
+    }
+    #[inline(always)]
+    fn user(&mut self, c: Cmd) {
+        self.each(&c, |x, y| crate::ops::ops::p_user(c, x, y))
+    }
     #[inline(always)]
     fn hide(&mut self, core: Vec4i) -> Vec4i {
         let prev = self.0.hide;

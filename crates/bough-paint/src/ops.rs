@@ -395,6 +395,322 @@ pub mod ops {
         mk(K_GLYPH, 0u32, win, vec4i(0i32, 0i32, 0i32, 0i32), b, vec4i(0i32, 0i32, 0i32, 0i32), texel, pm, splat(0u32))
     }
 
+
+    // ---- layers: a backdrop record reads the flattened prefix beneath it through a pyramid --------------
+    // Level 0 is the 8-bit prefix (what `x_store` would have written with nothing above); level l + 1 is
+    // level l under a separable [1 3 3 1] / 8 tent, decimated by two, anchored to the frame's pixel grid
+    // (level-l pixel i covers frame pixels [i 2^l, (i + 1) 2^l)). A read is bilinear at one or two levels.
+
+    /// Paint kinds the generic kernel does not know.
+    pub const K_BACKDROP: u32 = 16u32;
+    pub const K_VIDEO: u32 = 17u32;
+    /// The coarsest pyramid level.
+    pub const BD_LMAX: u32 = 5u32;
+    /// Standard deviation (Q8 px) of a read at level 1; level l is 2^(l-1) times it.
+    pub const BD_SIGMA: i32 = 330i32;
+
+    /// Three words as a vector (a backdrop's filter factors).
+    pub fn x_vecf(a: u32, b: u32, c: u32) -> Vec4u {
+        vec4u(a, b, c, 0u32)
+    }
+    pub fn x_bytes(w: u32) -> Vec4u {
+        vec4u(w & 255u32, (w >> 8u32) & 255u32, (w >> 16u32) & 255u32, w >> 24u32)
+    }
+    pub fn x_word(v: Vec4u) -> u32 {
+        v.x() | (v.y() << 8u32) | (v.z() << 16u32) | (v.w() << 24u32)
+    }
+    /// A stored pixel (BGRA8, `x_store`'s word) as a premultiplied Q15 accumulator.
+    pub fn x_unstore(w: u32) -> Vec4u {
+        vec4u(q15((w >> 16u32) & 255u32), q15((w >> 8u32) & 255u32), q15(w & 255u32), q15(w >> 24u32))
+    }
+    /// The accumulator as it is after being stored and read back: what a backdrop record sees beneath it.
+    pub fn x_flat(acc: Vec4u) -> Vec4u {
+        x_unstore(store8(acc))
+    }
+    /// A backdrop: what is beneath the rounded box `b`, blurred by about `blur` (Q8 px, a standard
+    /// deviation) and passed through brightness, saturation and contrast (`f`: Q8 each, 256 = unchanged).
+    /// `rad.y` is the finer level read, `rad.z` the weight (Q15) of the next coarser one.
+    pub fn mk_backdrop(b: Vec4i, r0: i32, blur: i32, f: Vec4u, clip: Vec4i) -> Cmd {
+        let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
+        let r = radius_in(b, r0);
+        let s = max(blur, 0i32);
+        let mut lvl = 0i32;
+        let mut base = BD_SIGMA;
+        let mut fr = 0i32;
+        if s < BD_SIGMA {
+            fr = (s * 32768i32) / BD_SIGMA;
+        } else {
+            lvl = 1i32;
+            while lvl < (BD_LMAX as i32) && s >= base * 2i32 {
+                lvl += 1i32;
+                base = base * 2i32;
+            }
+            if lvl < (BD_LMAX as i32) {
+                fr = min(((s - base) * 512i32 / base) * 64i32, 32767i32);
+            }
+        }
+        mk(K_BACKDROP, shift_of(r), win, core_of(b, max(r, 128i32) + 136i32, win), b, vec4i(r, lvl, fr, 0i32), 0u32, vec4u(min(f.x(), 4096u32), min(f.y(), 4096u32), min(f.z(), 4096u32), 0u32), splat(0u32))
+    }
+    /// The coarsest level a backdrop reads.
+    pub fn bd_top(c: Cmd) -> u32 {
+        (c.rad.y() as u32) + select(0u32, 1u32, c.rad.z() != 0i32)
+    }
+    /// The level-`l` pixels a bilinear read at level `l` takes for the frame pixels of `win`.
+    pub fn bd_recon(win: Vec4i, l: u32) -> Vec4i {
+        let h = (1i32 << l) - 1i32;
+        vec4i((2i32 * win.x() - h) >> (l + 1u32), (2i32 * win.y() - h) >> (l + 1u32), ((2i32 * win.z() - 2i32 - h) >> (l + 1u32)) + 2i32, ((2i32 * win.w() - 2i32 - h) >> (l + 1u32)) + 2i32)
+    }
+    /// The level-`l` pixels (x0, y0, x1, y1, not cut to the frame) a backdrop needs: its reads, and what the
+    /// levels above are made from. Level 0 is its halo: the frame pixels whose prefix it keeps. Empty for a
+    /// level it does not have.
+    pub fn bd_rect(c: Cmd, l: u32) -> Vec4i {
+        let top = bd_top(c);
+        if l > top || c.win.x() >= c.win.z() {
+            return vec4i(0i32, 0i32, 0i32, 0i32);
+        }
+        let mut r = bd_recon(c.win, top);
+        let mut k = top;
+        while k > l {
+            k -= 1u32;
+            r = vec4i(2i32 * r.x() - 1i32, 2i32 * r.y() - 1i32, 2i32 * r.z() + 1i32, 2i32 * r.w() + 1i32);
+            if k == (c.rad.y() as u32) {
+                let q = bd_recon(c.win, k);
+                r = vec4i(min(r.x(), q.x()), min(r.y(), q.y()), max(r.z(), q.z()), max(r.w(), q.w()));
+            }
+        }
+        r
+    }
+    /// The lower of the two level-`l` pixels a read at frame pixel `x` takes, and the weight of the upper (Q8).
+    pub fn bd_i(x: i32, l: u32) -> i32 {
+        (2i32 * x + 1i32 - (1i32 << l)) >> (l + 1u32)
+    }
+    pub fn bd_f(x: i32, l: u32) -> u32 {
+        (((2i32 * x + 1i32 - (1i32 << l)) & ((1i32 << (l + 1u32)) - 1i32)) as u32) << (7u32 - l)
+    }
+    /// A level's size along an axis of `n` frame pixels.
+    pub fn bd_dim(n: u32, l: u32) -> i32 {
+        ((n + (1u32 << l) - 1u32) >> l) as i32
+    }
+    /// Pixel (x, y) (already inside the level) in a toroidal window of `cw` x `ch` words at `base`.
+    pub fn bd_addr(x: i32, y: i32, cw: u32, ch: u32, base: u32) -> u32 {
+        base + ((y as u32) % ch) * cw + ((x as u32) % cw)
+    }
+    /// Four stored pixels under bilinear weights (Q8 fractions), as Q15.
+    pub fn bd_bil(t0: u32, t1: u32, t2: u32, t3: u32, fx: u32, fy: u32) -> Vec4u {
+        let a = x_unstore(t0);
+        let b = x_unstore(t1);
+        let d = x_unstore(t2);
+        let e = x_unstore(t3);
+        let w0 = (256u32 - fx) * (256u32 - fy);
+        let w1 = fx * (256u32 - fy);
+        let w2 = (256u32 - fx) * fy;
+        let w3 = fx * fy;
+        vec4u((a.x() * w0 + b.x() * w1 + d.x() * w2 + e.x() * w3) >> 16u32, (a.y() * w0 + b.y() * w1 + d.y() * w2 + e.y() * w3) >> 16u32, (a.z() * w0 + b.z() * w1 + d.z() * w2 + e.z() * w3) >> 16u32, (a.w() * w0 + b.w() * w1 + d.w() * w2 + e.w() * w3) >> 16u32)
+    }
+    pub fn bd_ch(v: u32, a: u32, luma: i32, f: Vec4u) -> u32 {
+        let b = min((v * f.x()) >> 8u32, a) as i32;
+        let s = clamp(luma + (((b - luma) * (f.y() as i32)) >> 8u32), 0i32, a as i32);
+        let h = (a >> 1u32) as i32;
+        clamp(h + (((s - h) * (f.z() as i32)) >> 8u32), 0i32, a as i32) as u32
+    }
+    /// Brightness, then saturation about the luma, then contrast about mid grey, on a premultiplied colour.
+    pub fn bd_filter(c: Vec4u, f: Vec4u) -> Vec4u {
+        let a = c.w();
+        let l0 = (min((c.x() * f.x()) >> 8u32, a) * 54u32 + min((c.y() * f.x()) >> 8u32, a) * 183u32 + min((c.z() * f.x()) >> 8u32, a) * 19u32) >> 8u32;
+        let luma = l0 as i32;
+        vec4u(bd_ch(c.x(), a, luma, f), bd_ch(c.y(), a, luma, f), bd_ch(c.z(), a, luma, f), a)
+    }
+    /// A backdrop at one pixel: `acc` is the (flattened) accumulator, `bl` the blurred prefix there.
+    pub fn p_bdrop(acc: Vec4u, c: Cmd, x: i32, y: i32, bl: Vec4u) -> Vec4u {
+        if !inside(c.win, x, y) {
+            return acc;
+        }
+        let mut cv = ONE;
+        if !inside(c.core, x, y) {
+            cv = cov(sd(x * 256i32 + 128i32, y * 256i32 + 128i32, c.b, c.rad.x(), c.par.y()));
+        }
+        mix4u(acc, bd_filter(bl, c.pm), cv)
+    }
+    /// One row of a downsample: four stored pixels under (1, 3, 3, 1), per byte.
+    pub fn dn_row(a: u32, b: u32, c: u32, d: u32) -> Vec4u {
+        let p = x_bytes(a);
+        let q = x_bytes(b);
+        let r = x_bytes(c);
+        let s = x_bytes(d);
+        vec4u(p.x() + 3u32 * (q.x() + r.x()) + s.x(), p.y() + 3u32 * (q.y() + r.y()) + s.y(), p.z() + 3u32 * (q.z() + r.z()) + s.z(), p.w() + 3u32 * (q.w() + r.w()) + s.w())
+    }
+    /// Four such rows under (1, 3, 3, 1) / 64, rounded half up, as a stored pixel.
+    pub fn dn_fin(p: Vec4u, q: Vec4u, r: Vec4u, s: Vec4u) -> u32 {
+        x_word(vec4u((p.x() + 3u32 * (q.x() + r.x()) + s.x() + 32u32) >> 6u32, (p.y() + 3u32 * (q.y() + r.y()) + s.y() + 32u32) >> 6u32, (p.z() + 3u32 * (q.z() + r.z()) + s.z() + 32u32) >> 6u32, (p.w() + 3u32 * (q.w() + r.w()) + s.w() + 32u32) >> 6u32))
+    }
+
+    // ---- video: an NV12 frame (BT.709, limited range) scaled into a rounded box ----------------------
+
+    /// `slot`: the frame's header in the media pool (the glue reads it); `dims` = width | height << 16 of
+    /// its luma plane; `op`: opacity, Q15. `rad.z`, `rad.w`: luma texels per pixel, Q12.
+    pub fn mk_video(b: Vec4i, r0: i32, slot: u32, dims: u32, op: u32, clip: Vec4i) -> Cmd {
+        let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
+        let r = radius_in(b, r0);
+        let vw = clamp(dims & 65535u32, 2u32, 2047u32) as i32;
+        let vh = clamp(dims >> 16u32, 2u32, 2047u32) as i32;
+        let kx = min((vw << 20u32) / max(b.z() - b.x(), 1i32), 8388607i32);
+        let ky = min((vh << 20u32) / max(b.w() - b.y(), 1i32), 8388607i32);
+        mk(K_VIDEO, shift_of(r), win, core_of(b, max(r, 128i32) + 136i32, win), b, vec4i(r, 0i32, kx, ky), slot, vec4u(min(op, ONE), vw as u32, vh as u32, 0u32), splat(0u32))
+    }
+    /// The pixel's position in luma texels (Q8; texel 0's centre is 0).
+    pub fn vd_pos(c: Cmd, x: i32, y: i32) -> Vec2i {
+        let dx = clamp(x * 256i32 + 128i32 - c.b.x(), 0i32, 4194303i32);
+        let dy = clamp(y * 256i32 + 128i32 - c.b.y(), 0i32, 4194303i32);
+        vec2i(mulq16(dx, c.rad.z()) * 16i32 - 128i32, mulq16(dy, c.rad.w()) * 16i32 - 128i32)
+    }
+    /// Texel index `j` (0 or 1) of a bilinear pair at Q8 position `t`, in a plane of `n` texels.
+    pub fn vd_ix(t: i32, j: i32, n: i32) -> u32 {
+        clamp((t >> 8u32) + j, 0i32, n - 1i32) as u32
+    }
+    /// Four bytes under bilinear weights of the Q8 position (tx, ty): Q8.
+    pub fn vd_bil(a: u32, b: u32, d: u32, e: u32, tx: i32, ty: i32) -> u32 {
+        let fx = (tx & 255i32) as u32;
+        let fy = (ty & 255i32) as u32;
+        (a * (256u32 - fx) * (256u32 - fy) + b * fx * (256u32 - fy) + d * (256u32 - fx) * fy + e * fx * fy) >> 8u32
+    }
+    /// Y, Cb, Cr (Q8 of 0..255) as an opaque Q15 colour.
+    pub fn vd_rgb(y8: u32, cb8: u32, cr8: u32) -> Vec4u {
+        let y = ((((y8 as i32) - 4096i32) >> 1u32) * 38304i32) >> 15u32;
+        let cb = ((cb8 as i32) - 32768i32) >> 1u32;
+        let cr = ((cr8 as i32) - 32768i32) >> 1u32;
+        let r = y + ((cr * 58975i32) >> 15u32);
+        let g = y - ((cb * 7015i32) >> 15u32) - ((cr * 17531i32) >> 15u32);
+        let bl = y + ((cb * 69491i32) >> 15u32);
+        vec4u(clamp(r, 0i32, 32768i32) as u32, clamp(g, 0i32, 32768i32) as u32, clamp(bl, 0i32, 32768i32) as u32, ONE)
+    }
+    pub fn p_video(c: Cmd, x: i32, y: i32, rgb: Vec4u) -> Vec4u {
+        if !inside(c.win, x, y) {
+            return splat(0u32);
+        }
+        let v = scale(rgb, c.pm.x());
+        if inside(c.core, x, y) {
+            return v;
+        }
+        scale(v, cov(sd(x * 256i32 + 128i32, y * 256i32 + 128i32, c.b, c.rad.x(), c.par.y())))
+    }
+
+    // ---- author shaders: the kernel's user node as a paint -------------------------------------------
+
+    /// `id` selects the shader (`bough_kernel::fx::user_shade`), `now` is its clock, `pm` and `pm2` its two
+    /// colours. The clock rides in the command's spare word.
+    pub fn mk_user(b: Vec4i, r0: i32, id: u32, now: u32, pm: Vec4u, pm2: Vec4u, clip: Vec4i) -> Cmd {
+        let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
+        let r = radius_in(b, r0);
+        Cmd {
+            win: win,
+            core: core_of(b, max(r, 128i32) + 136i32, win),
+            b: b,
+            par: vec4u(K_USER, shift_of(r), id, now),
+            rad: vec4i(r, 0i32, 0i32, 0i32),
+            pm: pm,
+            pm2: pm2,
+            xi: vec4i(0i32, 0i32, 0i32, 0i32),
+            xk: vec4i(0i32, 0i32, 0i32, 0i32),
+            xs: 0i32,
+        }
+    }
+    pub fn p_user(c: Cmd, x: i32, y: i32) -> Vec4u {
+        if !inside(c.win, x, y) {
+            return splat(0u32);
+        }
+        if inside(c.core, x, y) {
+            return user_color(c, x * 256i32 + 128i32, y * 256i32 + 128i32, c.par.w());
+        }
+        sh_user(c, x * 256i32 + 128i32, y * 256i32 + 128i32, c.par.w())
+    }
+
+    // ---- springs: a damped oscillator in closed form, integers only ---------------------------------
+
+    /// e^(-u) for u in Q16, as Q16.
+    pub fn x_exp(u: u32) -> u32 {
+        let n = u / 45426u32;
+        if n >= 17u32 {
+            return 0u32;
+        }
+        let x = (u - n * 45426u32) >> 1u32;
+        let mut p = ONE - mul15(x, ONE) / 5u32;
+        p = ONE - mul15(x, p) / 4u32;
+        p = ONE - mul15(x, p) / 3u32;
+        p = ONE - mul15(x, p) / 2u32;
+        p = ONE - mul15(x, p);
+        (p << 1u32) >> n
+    }
+    /// sin of a phase in turns (Q24, wrapping), as Q16 in [-65536, 65536].
+    pub fn x_sin(ph: u32) -> i32 {
+        let p = ph & 0xFFFFFFu32;
+        let q = p >> 22u32;
+        let mut f = p & 0x3FFFFFu32;
+        if (q & 1u32) == 1u32 {
+            f = 0x400000u32 - f;
+        }
+        let z = f >> 7u32;
+        let z2 = mul15(z, z);
+        // sin(pi x / 2) = x (a - x^2 (b - x^2 (c - x^2 (d - x^2 e)))), coefficients in Q15 (they sum to ONE)
+        let t = 21167u32 - mul15(z2, 2611u32 - mul15(z2, 153u32 - mul15(z2, 5u32)));
+        let s = min((z * (51472u32 - mul15(z2, t))) >> 14u32, 65536u32) as i32;
+        if q >= 2u32 {
+            return -s;
+        }
+        s
+    }
+    pub fn x_cos(ph: u32) -> i32 {
+        x_sin(ph + 0x400000u32)
+    }
+    /// A spring's value (Q8) at `now`: it left for `to` at `t0` and is exactly `to` from `t0 + dur` on.
+    /// `decay`: the envelope's rate per tick (Q16 nepers). Three forms, by `omega`:
+    /// * a turn rate (Q24 turns per tick, below 2^31): `to + env (a0 cos + b0 sin)`;
+    /// * 0, critically damped: `to + env (a0 + b0 t / 1024)`;
+    /// * bit 31 set, damped beyond critical: `to + a0 env + b0 env2`, the second decay in its low 16 bits.
+    /// Before `t0` it rests where it started (`to + a0`, or `to + a0 + b0` in the last form).
+    pub fn x_spring(now: u32, t0: u32, dur: u32, to: i32, a0: i32, b0: i32, decay: u32, omega: u32) -> i32 {
+        let mut e = now - min(t0, now);
+        if now < t0 {
+            e = (0xFFFFFFFFu32 - t0) + now + 1u32;
+        }
+        if e >= 0x80000000u32 {
+            if omega >= 0x80000000u32 {
+                return to + a0 + b0;
+            }
+            return to + a0;
+        }
+        if e >= min(dur, 65535u32) {
+            return to;
+        }
+        let a = clamp(a0, -2097151i32, 2097151i32);
+        let b = clamp(b0, -2097151i32, 2097151i32);
+        let env = x_exp(min(decay, 65535u32) * e) as i32;
+        if omega == 0u32 {
+            return to + mulq16(a + mulq16(b, (e * 64u32) as i32), env);
+        }
+        if omega >= 0x80000000u32 {
+            // damped beyond critical: two decays (`decay` the slow one, `omega`'s low bits the fast one)
+            return to + mulq16(a, env) + mulq16(b, x_exp(min(omega & 65535u32, 65535u32) * e) as i32);
+        }
+        let ph = omega * e;
+        to + mulq16(mulq16(a, x_cos(ph)) + mulq16(b, x_sin(ph)), env)
+    }
+
+    /// A backdrop's finer level and the weight of the next; a video's slot and plane size (for the glue).
+    pub fn c_lvl(c: Cmd) -> u32 {
+        c.rad.y() as u32
+    }
+    pub fn c_frac(c: Cmd) -> u32 {
+        c.rad.z() as u32
+    }
+    pub fn c_slot(c: Cmd) -> u32 {
+        c.par.z()
+    }
+    pub fn c_vw(c: Cmd) -> i32 {
+        c.pm.y() as i32
+    }
+    pub fn c_vh(c: Cmd) -> i32 {
+        c.pm.z() as i32
+    }
     pub fn c_win(c: Cmd) -> Vec4i {
         c.win
     }
