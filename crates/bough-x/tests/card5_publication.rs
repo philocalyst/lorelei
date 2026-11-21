@@ -126,3 +126,25 @@ fn dropped_hover_uses_the_saved_padded_captures() {
 fn dropped_hover_uses_the_saved_overaligned_captures() {
     check_hover(Aligned(11), Aligned(22));
 }
+
+#[test]
+fn a_same_version_journal_replacement_publishes_its_new_watch() {
+    let mut v = Hover {
+        u: U::default(),
+        items: Rel::by_item(vec![Padded(1, 10), Padded(2, 20)]),
+        events: Vec::new(),
+    };
+    let mut world = World::<_, Soft>::new(32, 16, 1);
+    world.mount(&v);
+    world.pointer(&mut v, 2, 2);
+    v.items = Rel::by_item(vec![Padded(3, 30), Padded(4, 40)]);
+    world.redescribe(&v);
+    world.repick(&mut v);
+    assert_eq!(v.events, [(11, true), (11, false), (33, true)]);
+
+    // After rebinding, an edit of the new journal reaches a settle without a full description.
+    v.items.remove(0);
+    world.settle(&v);
+    world.repick(&mut v);
+    assert_eq!(&v.events[3..], &[(33, false), (44, true)]);
+}

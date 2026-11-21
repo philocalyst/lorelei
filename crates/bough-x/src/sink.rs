@@ -202,12 +202,17 @@ impl Journal {
             .get_or_init(|| std::sync::Arc::new(AtomicU32::new(self.ver)))
             .clone()
     }
+    #[inline]
+    fn follows(&self, current: &Option<std::sync::Arc<AtomicU32>>) -> bool {
+        match (self.watch.get(), current.as_ref()) {
+            (Some(watch), Some(current)) => std::sync::Arc::ptr_eq(watch, current),
+            _ => false,
+        }
+    }
     // Once a list is following this journal, its Arc already owns the revision counter.
     // Rebind only when the source journal changes.
     fn follow(&self, current: &mut Option<std::sync::Arc<AtomicU32>>) -> bool {
-        if let (Some(watch), Some(current)) = (self.watch.get(), current.as_ref())
-            && std::sync::Arc::ptr_eq(watch, current)
-        {
+        if self.follows(current) {
             return false;
         }
         *current = Some(self.watch());
@@ -1054,7 +1059,9 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
     let st = &mut parent.subs[q];
     let org = space.origin(cx.u);
     let (lo, hi) = exposed(l, org, space.clip);
-    if (lo == st.lo) & (hi == st.hi) & (st.seen == l.edits.ver) & !cx.all {
+    if (lo == st.lo) & (hi == st.hi) & (st.seen == l.edits.ver) & !cx.all
+        && l.edits.follows(&st.journal)
+    {
         return;
     }
     if lo < hi
@@ -1143,6 +1150,9 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
         // rows came, went or were rewritten: which records are in motion, and where, is to be said again
         st.resweep(cx.u, cx.tiles);
     }
+    l.edits
+        .win
+        .store((u64::from(lo) << 32) | u64::from(hi), Ordering::Relaxed);
 }
 
 /// Free rows (Integration Card 3, decision D2): store `q` of `parent` holds `n` rows of one record each, row `i`
@@ -1334,10 +1344,21 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     // a row laid out at no height is content with nothing to show (not refused, as an author's height is)
     admit(n, row_h.max(1));
     if n == 0 || row_h == 0 {
+        if edits.follow(&mut st.journal) {
+            st.bump_structure();
+        }
+        edits.win.store(0, Ordering::Relaxed);
+        st.moved_from = st.seen;
+        st.moved.clear();
+        st.moved_ok = false;
+        st.seen = edits.ver;
+        st.n = n;
         if st.hi > st.lo {
             cx.tiles.mark(space.clip);
             st.row_live.fill(0);
             (st.lo, st.hi) = (0, 0);
+            cx.changed += 1;
+            cx.moved += 1;
         }
         return 0;
     }
@@ -1354,10 +1375,7 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     };
     let all = how.all;
     let (lo, hi) = exposed(&l, org, space.clip);
-    edits
-        .win
-        .store((lo as u64) << 32 | hi as u64, Ordering::Relaxed);
-    if (lo == st.lo) & (hi == st.hi) & (st.seen == edits.ver) & !all {
+    if (lo == st.lo) & (hi == st.hi) & (st.seen == edits.ver) & !all && edits.follows(&st.journal) {
         st.row0 = row0;
         return n as i32 * row_h;
     }
@@ -1418,6 +1436,9 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     if st.timed {
         st.resweep(cx.u, cx.tiles);
     }
+    edits
+        .win
+        .store((u64::from(lo) << 32) | u64::from(hi), Ordering::Relaxed);
     n as i32 * row_h
 }
 
@@ -1629,12 +1650,21 @@ fn list_plan(
     how: RowsHow,
 ) -> Mk {
     let all = how.all;
-    if l.edits.follow(&mut st.journal) {
+    let rebound = l.edits.follow(&mut st.journal);
+    if rebound {
         st.bump_structure();
     }
-    let (from, upd, nupd) = l.edits.since(st.seen);
-    // inserts and removes since the last pass, for whoever holds a row by its index (focus, a press)
-    st.moved_ok = if l.edits.ver.wrapping_sub(st.seen) == nupd as u32 {
+    let (from, upd, nupd) = if rebound {
+        // Version numbers certify edits only within the same journal. A replacement
+        // can have the same version while every row holds another item.
+        (0, [0; 8], 0)
+    } else {
+        l.edits.since(st.seen)
+    };
+    st.moved_ok = if rebound {
+        st.moved.clear();
+        false
+    } else if l.edits.ver.wrapping_sub(st.seen) == nupd as u32 {
         // `since` found every outstanding entry, and each one is an update.
         st.moved.clear();
         true
