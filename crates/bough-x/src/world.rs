@@ -65,6 +65,34 @@ pub struct DeltaStats {
     pub dense_fallbacks: usize,
 }
 
+/// What the bounded deltas (`store::fast`) did since the world was made: the count gates read these.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FastStats {
+    /// Deltas answered from a column's key index, and the records they evaluated.
+    pub key_hits: u64,
+    pub key_records: u64,
+    /// Key indexes built (a column took the keyed path twice with no description pass between).
+    pub key_builds: u64,
+    /// Changes of only a key's word that were answered by the page scan (no index yet).
+    pub key_scans: u64,
+    /// Pointer deltas answered by reach, the records they evaluated, and page-box sets built.
+    pub near_hits: u64,
+    pub near_records: u64,
+    pub near_builds: u64,
+}
+
+/// A column's bounded deltas and what the world keeps for them. The index and the boxes are of the records as
+/// they were at description pass `valid`; any later pass (`World::wrote`) makes them nothing.
+struct Fast {
+    fns: crate::store::fast::FastFns,
+    key_valid: u64,
+    key_asked: u64,
+    keys: Vec<(u32, u32)>,
+    box_valid: u64,
+    box_asked: u64,
+    boxes: Vec<[i32; 4]>,
+}
+
 /// A world accepts only its statically branded view and backend.
 /// Wrong-owner state cannot reach a gathered reader or event trampoline.
 ///
@@ -111,6 +139,15 @@ pub struct World<V, B> {
     union_epoch: u32,
     union_seen: Vec<u32>,
     pub delta_stats: DeltaStats,
+    pub fast_stats: FastStats,
+    /// Per column with a bounded delta (`fast_of[k]`: its index here, or `u32::MAX`), what the world keeps for it.
+    fast_of: Vec<u32>,
+    fast: Vec<Fast>,
+    /// The number of the last description pass (mount, a list pass, a re-description): the only things that
+    /// write a record's operands or change which records are live.
+    wrote: u64,
+    /// Switch the bounded deltas off (every delta is the page scan): what the gates compare them against.
+    pub no_fast: bool,
     cols: Vec<ColEnt>,
     cold: Vec<(*const Store, u32)>,
     spaces: Vec<(u64, *const Store)>,
@@ -169,6 +206,11 @@ impl<V: View, B: Backend> World<V, B> {
             union_epoch: 0,
             union_seen: Vec::new(),
             delta_stats: DeltaStats::default(),
+            fast_stats: FastStats::default(),
+            fast_of: Vec::new(),
+            fast: Vec::new(),
+            wrote: 1,
+            no_fast: false,
             cols: Vec::new(),
             cold: Vec::new(),
             spaces: Vec::new(),
@@ -307,6 +349,7 @@ impl<V: View, B: Backend> World<V, B> {
         panic!("the view's fields named by its columns did not settle in 8 descriptions");
     }
     fn mount_pass(&mut self, v: &V) {
+        self.wrote += 1;
         self.root.world = Some(self.id);
         self.view = Some(crate::sink::tid::<V>());
         self.shown = self.block(v);
@@ -378,6 +421,27 @@ impl<V: View, B: Backend> World<V, B> {
         }
         self.col_reads.clear();
         self.col_reads.extend(self.cols.iter().map(|e| e.reads));
+        // the columns whose archetype declares a key or a reach (cold: read off each column's descriptor)
+        self.fast.clear();
+        self.fast_of.clear();
+        for &(st, j) in &self.cold {
+            // SAFETY: the table was just built from this tree.
+            let fns = unsafe { (&(*st).cols)[j as usize].desc.fast };
+            if fns.key.is_some() || fns.near.is_some() {
+                self.fast_of.push(self.fast.len() as u32);
+                self.fast.push(Fast {
+                    fns,
+                    key_valid: 0,
+                    key_asked: 0,
+                    keys: Vec::new(),
+                    box_valid: 0,
+                    box_asked: 0,
+                    boxes: Vec::new(),
+                });
+            } else {
+                self.fast_of.push(u32::MAX);
+            }
+        }
         assert!(
             self.cols.len() <= 1 << (32 - PLACE_REC_BITS),
             "a place names one of at most 4,096 columns"
@@ -491,13 +555,72 @@ impl<V: View, B: Backend> World<V, B> {
         if e.skip & ch != 0 {
             return;
         }
-        // SAFETY: the table is current; `delta` was instantiated for the entry's archetype.
-        unsafe { (e.delta)(e, &self.shown, u, &mut self.tiles) };
+        if self.fast_of[k] != u32::MAX && !self.no_fast && self.delta_fast(k, u, ch) {
+            // answered from the records the change concerns
+        } else {
+            let e = &self.cols[k];
+            // SAFETY: the table is current; `delta` was instantiated for the entry's archetype.
+            unsafe { (e.delta)(e, &self.shown, u, &mut self.tiles) };
+        }
+        let e = &self.cols[k];
         if e.timed != 0 {
             let (st, j) = self.cold[k];
             // SAFETY: as above: `st` is a store of this tree and `j` one of its columns.
             unsafe { (*st).resweep_col(&(&(*st).cols)[j as usize], u, &mut self.tiles) };
         }
+    }
+
+    /// The delta of column `k`, whose archetype declares a key or a reach, if this change is one its declaration
+    /// bounds (`store::fast`); `false` if the page scan must answer. An index or a set of page boxes is built
+    /// when a column comes here for the second time with no description pass between, so a change that
+    /// alternates with passes (a hover while the list scrolls) never pays for a structure it would use once.
+    #[inline(never)]
+    fn delta_fast(&mut self, k: usize, u: &U, ch: u64) -> bool {
+        const PTR: u64 = 1 << U_PTR_X | 1 << U_PTR_Y;
+        let e = &self.cols[k];
+        let f = &mut self.fast[self.fast_of[k] as usize];
+        let rd = ch & e.reads;
+        if let Some((word, build, delta)) = f.fns.key
+            && rd == 1u64 << word
+        {
+            if f.key_valid != self.wrote {
+                if f.key_asked != self.wrote {
+                    f.key_asked = self.wrote;
+                    self.fast_stats.key_scans += 1;
+                    return false;
+                }
+                // SAFETY: the table is current; the kernels are this column's archetype's.
+                unsafe { build(e, &mut f.keys) };
+                f.key_valid = self.wrote;
+                self.fast_stats.key_builds += 1;
+            }
+            // SAFETY: as above; the index is of the records as they are (no pass since it was built).
+            let n = unsafe { delta(e, &f.keys, &self.shown, u, &mut self.tiles) };
+            self.fast_stats.key_hits += 1;
+            self.fast_stats.key_records += n as u64;
+            return true;
+        }
+        if let Some((boxes, delta)) = f.fns.near
+            && rd & !PTR == 0
+        {
+            if f.box_valid != self.wrote {
+                if f.box_asked != self.wrote {
+                    f.box_asked = self.wrote;
+                } else {
+                    // SAFETY: as above.
+                    unsafe { boxes(e, &mut f.boxes) };
+                    f.box_valid = self.wrote;
+                    self.fast_stats.near_builds += 1;
+                }
+            }
+            let b = (f.box_valid == self.wrote).then_some(&f.boxes[..]);
+            // SAFETY: as above.
+            let n = unsafe { delta(e, b, &self.shown, u, &mut self.tiles) };
+            self.fast_stats.near_hits += 1;
+            self.fast_stats.near_records += n as u64;
+            return true;
+        }
+        false
     }
 
     /// A frame at time `now`. Time advancing is not a turn: nothing is compared, no record is evaluated and no
@@ -563,6 +686,8 @@ impl<V: View, B: Backend> World<V, B> {
         }
         if (epoch != self.epoch) | (ch & self.lists != 0) {
             self.epoch = epoch;
+            // a list pass may write records and move windows: what was built from them is nothing now
+            self.wrote += 1;
             let mut cx = Cx {
                 tiles: &mut self.tiles,
                 u,
@@ -604,6 +729,7 @@ impl<V: View, B: Backend> World<V, B> {
         if ch != 0 {
             self.delta(u, ch);
         }
+        self.wrote += 1;
         self.epoch = self.relation_epoch();
         let mut cx = Cx {
             tiles: &mut self.tiles,

@@ -230,10 +230,28 @@ impl Filter {
             next.windows(2).all(|w| w[0] < w[1]),
             "ids ascending, each once"
         );
-        let mut changes: Vec<Change> = Vec::new();
-        {
-            let mut i = 0usize;
-            let mut old = self.out.iter().copied().peekable();
+        // the first position that differs is the length of the common prefix
+        let common = self
+            .out
+            .iter()
+            .zip(next.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
+        let (old_n, new_n) = (self.out.len(), next.len());
+        if common == old_n && common == new_n {
+            return;
+        }
+        if old_n.abs_diff(new_n) > Log::DEFAULT_CAP / 2 {
+            // more changes than a log is asked to keep: whoever reads it recomputes, so none is listed
+            self.member.clear();
+            for &id in &next {
+                set_bit(&mut self.member, id, true);
+            }
+            self.log.reset();
+        } else {
+            let mut changes: Vec<Change> = Vec::new();
+            let mut i = common;
+            let mut old = self.out.from(common).copied().peekable();
             loop {
                 match (old.peek().copied(), next.get(i).copied()) {
                     (None, None) => break,
@@ -252,22 +270,20 @@ impl Filter {
                     (Some(_), None) => unreachable!(),
                 }
             }
-        }
-        if changes.is_empty() {
-            return;
-        }
-        for &c in &changes {
-            match c {
-                Change::Insert(id) => set_bit(&mut self.member, id, true),
-                Change::Remove(id) => set_bit(&mut self.member, id, false),
-                Change::Update(_) => {}
-            }
-        }
-        if changes.len() > Log::DEFAULT_CAP / 2 {
-            self.log.reset();
-        } else {
+            drop(old);
             for &c in &changes {
-                self.log.push(c);
+                match c {
+                    Change::Insert(id) => set_bit(&mut self.member, id, true),
+                    Change::Remove(id) => set_bit(&mut self.member, id, false),
+                    Change::Update(_) => {}
+                }
+            }
+            if changes.len() > Log::DEFAULT_CAP / 2 {
+                self.log.reset();
+            } else {
+                for &c in &changes {
+                    self.log.push(c);
+                }
             }
         }
         // the first position that differs is the length of the common prefix

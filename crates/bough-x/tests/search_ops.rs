@@ -2,9 +2,15 @@
 //! step of needle edits (append, backspace, middle edit, replacement, short and empty needles) interleaved
 //! with dataset edits, on a repetitive corpus and on one of unique strings; the journal names every position
 //! that changed; the index stays within a band of an exact one under churn. `--features mutant_tri` must fail.
+#[path = "../scenes/search.rs"]
+mod search;
+#[path = "../scenes/search_ops.rs"]
+mod search_ops;
 use bough_x::index::{Route, Substring, Trigrams, holds};
+use bough_x::prelude::*;
 use bough_x::rel::Table;
 use bough_x::sink::Edit;
+use bough_x::soft::Soft;
 
 fn rng(s: &mut u64) -> u64 {
     *s ^= *s << 13;
@@ -260,4 +266,88 @@ fn the_index_is_a_superset_and_stays_in_its_band() {
         );
     }
     assert!(tri.candidates(b"zzz").unwrap().is_empty() && tri.candidates(b"ab").is_none());
+}
+
+/// The search fixture on the operator paints what the scanning fixture paints, after the same keys, wheel
+/// steps and dataset edits; and its retained frame is its full redraw and a fresh mount's.
+#[test]
+fn the_operator_fixture_paints_what_the_scanning_fixture_paints() {
+    use search::{FIELD, H, NWORDS, W};
+    let n = 3000;
+    let (mut a, mut b) = (search::Search::new(n), search_ops::Search::new(n));
+    let (mut wa, mut wb) = (
+        World::<_, Soft>::new(W, H, NWORDS),
+        World::<_, Soft>::new(W, H, NWORDS),
+    );
+    wa.mount(&a);
+    wb.mount(&b);
+    wa.click(&mut a, FIELD.x0 + 20, FIELD.y0 + 10);
+    wb.click(&mut b, FIELD.x0 + 20, FIELD.y0 + 10);
+    let mut retained = Soft::new(W, H);
+    let mut s = 0xabcdu64;
+    let keys = [
+        "a", "m", "b", "e", "r", " ", "i", "v", "o", "q", "u", "z", "re", "st",
+    ];
+    for step in 0..500 {
+        let r = rng(&mut s);
+        match r % 10 {
+            0..=3 => {
+                let k = keys[(r >> 8) as usize % keys.len()];
+                wa.text(&mut a, k);
+                wb.text(&mut b, k);
+            }
+            4..=5 => {
+                wa.key_down(&mut a, Key::Backspace, Mods::default());
+                wb.key_down(&mut b, Key::Backspace, Mods::default());
+            }
+            6 => {
+                let k = [Key::Left, Key::Right, Key::Home, Key::End][(r >> 8) as usize % 4];
+                wa.key_down(&mut a, k, Mods::default());
+                wb.key_down(&mut b, k, Mods::default());
+            }
+            7 => {
+                let (id, label) = (
+                    (r >> 8) as u32 % n as u32,
+                    search::label((r >> 30) as u32 % 4000),
+                );
+                a.relabel(id, label.clone());
+                b.relabel(id, label);
+            }
+            _ => {
+                let dy = [40.0, -40.0, 400.0][(r >> 8) as usize % 3];
+                wa.wheel(&mut a, 300, 300, 0.0, dy);
+                wb.wheel(&mut b, 300, 300, 0.0, dy);
+            }
+        }
+        wa.settle(&a);
+        wb.settle(&b);
+        assert_eq!(
+            a.hits.items(),
+            &b.hits.ids().collect::<Vec<_>>()[..],
+            "step {step}: hits"
+        );
+        retained.repair(&wb.tiles, |s| wb.paint(s));
+        wa.tiles.clear();
+        wb.tiles.clear();
+        let (mut fa, mut fb) = (Soft::new(W, H), Soft::new(W, H));
+        wa.paint(&mut fa);
+        wb.paint(&mut fb);
+        assert!(
+            fa.px == fb.px,
+            "step {step}: the two fixtures paint different pixels"
+        );
+        assert!(retained.px == fb.px, "step {step}: retained != full redraw");
+        if step % 50 == 0 {
+            let mut w2 = World::<_, Soft>::new(W, H, NWORDS);
+            w2.mount(&b);
+            let mut f = Soft::new(W, H);
+            w2.paint(&mut f);
+            // focus is the world's: compare the body, below the header
+            let from = (search::HEADER * W) as usize;
+            assert!(
+                f.px[from..] == fb.px[from..],
+                "step {step}: retained != fresh mount"
+            );
+        }
+    }
 }

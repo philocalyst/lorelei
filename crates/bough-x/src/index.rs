@@ -222,6 +222,9 @@ pub fn holds(hay: &[u8], needle: &[u8]) -> bool {
     if n > hay.len() {
         return false;
     }
+    if n == 1 {
+        return hay.contains(&needle[0]);
+    }
     let (first, rest) = (needle[0], &needle[1..]);
     let last = hay.len() - n;
     let mut i = 0;
@@ -408,6 +411,10 @@ impl Substring {
                 let c = self.tri.candidates(new).expect("estimated");
                 self.hits.refilter(t, pred, c.into_iter());
                 self.route = Route::Index;
+            } else if new.is_empty() {
+                // everything holds nothing
+                self.hits.replace(t.ids().collect());
+                self.route = Route::Scan;
             } else {
                 self.hits.refilter(t, pred, t.ids());
                 self.route = Route::Scan;
@@ -417,10 +424,11 @@ impl Substring {
         self.needle.extend_from_slice(new);
         self.verified = self.hits.work.rows - before;
     }
-    /// Keep the current result under the current needle, within the budget (the broadest go first).
+    /// Keep the current result under the current needle, within the budget (a result of more than half the
+    /// table is not kept: it narrows little and costs most).
     fn keep(&mut self) {
         let n = self.hits.len();
-        if n == 0 || n > self.budget / 2 || self.kept.iter().any(|k| k.needle == self.needle) {
+        if n > self.budget / 2 || self.kept.iter().any(|k| k.needle == self.needle) {
             return;
         }
         self.kept.push(Kept {

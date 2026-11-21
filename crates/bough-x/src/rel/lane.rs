@@ -18,8 +18,9 @@ pub struct Lane<T> {
     /// Fenwick tree over `blocks[i].len()`, 1-based.
     fen: Vec<u32>,
     len: usize,
-    /// The block last read and the position of its first item: a hint, checked before use.
-    cursor: Cell<(u32, u32)>,
+    /// The block last read: its index, the position of its first item and its length. A read inside it needs
+    /// one compare and nothing of the tree. Every edit empties it (length 0: no position is inside).
+    cursor: Cell<(u32, u32, u32)>,
 }
 
 impl<T> Default for Lane<T> {
@@ -34,7 +35,7 @@ impl<T> Lane<T> {
             blocks: Vec::new(),
             fen: Vec::new(),
             len: 0,
-            cursor: Cell::new((0, 0)),
+            cursor: Cell::new((0, 0, 0)),
         }
     }
     /// The items of `v`, in blocks three quarters full (room for inserts before the first split).
@@ -44,12 +45,11 @@ impl<T> Lane<T> {
         let fill = CAP * 3 / 4;
         let mut it = v.into_iter();
         loop {
-            let b: Vec<T> = it.by_ref().take(fill).collect();
-            if b.is_empty() {
+            let mut blk = Vec::with_capacity(CAP);
+            blk.extend(it.by_ref().take(fill));
+            if blk.is_empty() {
                 break;
             }
-            let mut blk = Vec::with_capacity(CAP);
-            blk.extend(b);
             l.blocks.push(blk);
         }
         l.refen();
@@ -88,7 +88,7 @@ impl<T> Lane<T> {
                 self.fen[j] += self.fen[i + 1];
             }
         }
-        self.cursor.set((0, 0));
+        self.cursor.set((0, 0, 0));
     }
     #[inline(always)]
     fn fen_add(&mut self, b: usize, d: i32) {
@@ -103,16 +103,19 @@ impl<T> Lane<T> {
     #[inline]
     fn locate(&self, at: usize) -> (usize, usize) {
         debug_assert!(at <= self.len);
-        let (cb, cs) = self.cursor.get();
-        let (cb, cs) = (cb as usize, cs as usize);
-        if cb < self.blocks.len() && at >= cs {
-            let n = self.blocks[cb].len();
-            if at < cs + n {
+        let (cb, cs, cn) = self.cursor.get();
+        let (cb, cs, cn) = (cb as usize, cs as usize, cn as usize);
+        if cn != 0 && at >= cs {
+            if at < cs + cn {
                 return (cb, cs);
             }
-            if cb + 1 < self.blocks.len() && at < cs + n + self.blocks[cb + 1].len() {
-                self.cursor.set((cb as u32 + 1, (cs + n) as u32));
-                return (cb + 1, cs + n);
+            if cb + 1 < self.blocks.len() && at < cs + cn + self.blocks[cb + 1].len() {
+                self.cursor.set((
+                    cb as u32 + 1,
+                    (cs + cn) as u32,
+                    self.blocks[cb + 1].len() as u32,
+                ));
+                return (cb + 1, cs + cn);
             }
         }
         // Fenwick descent: the last block whose prefix sum is at most `at`.
@@ -137,11 +140,26 @@ impl<T> Lane<T> {
         } else {
             (pos, at - rem as usize)
         };
-        self.cursor.set((b as u32, start as u32));
+        self.cursor.set((
+            b as u32,
+            start as u32,
+            self.blocks.get(b).map_or(0, |v| v.len()) as u32,
+        ));
         (b, start)
     }
-    #[inline]
+    #[inline(always)]
     pub fn get(&self, i: usize) -> &T {
+        let (cb, cs, cn) = self.cursor.get();
+        let off = i.wrapping_sub(cs as usize);
+        if off < cn as usize {
+            // SAFETY: the cursor names block `cb`, which holds `cn` items, since the last edit (every edit
+            // empties the cursor, and `locate` sets it from the block it names); `off < cn`.
+            return unsafe { self.blocks.get_unchecked(cb as usize).get_unchecked(off) };
+        }
+        self.get_far(i)
+    }
+    #[inline(never)]
+    fn get_far(&self, i: usize) -> &T {
         assert!(i < self.len, "position {i} of a lane of {}", self.len);
         let (b, s) = self.locate(i);
         &self.blocks[b][i - s]
@@ -151,6 +169,11 @@ impl<T> Lane<T> {
         assert!(i < self.len, "position {i} of a lane of {}", self.len);
         let (b, s) = self.locate(i);
         &mut self.blocks[b][i - s]
+    }
+    /// An edit moved items or changed a block's length: the cursor names nothing.
+    #[inline(always)]
+    fn edited(&mut self) {
+        self.cursor.set((0, 0, 0));
     }
     pub fn push(&mut self, v: T) {
         self.insert(self.len, v)
@@ -166,6 +189,7 @@ impl<T> Lane<T> {
             return;
         }
         let (b, s) = self.locate(at);
+        self.edited();
         self.len += 1;
         if self.blocks[b].len() < CAP {
             self.blocks[b].insert(at - s, v);
@@ -188,6 +212,7 @@ impl<T> Lane<T> {
     pub fn remove(&mut self, at: usize) -> T {
         assert!(at < self.len, "remove at {at} from a lane of {}", self.len);
         let (b, s) = self.locate(at);
+        self.edited();
         let v = self.blocks[b].remove(at - s);
         self.len -= 1;
         if self.blocks[b].is_empty() {
