@@ -4,7 +4,7 @@ use crate::event::{
     REDUCED_MOTION_AHEAD, kind,
 };
 use crate::expr::{
-    APP_WORDS, Slot, TURN_WORDS, U, U_ENV, U_FOCUS, U_PICK, U_PRESS, U_PRESS_AT, U_PTR_X, U_PTR_Y,
+    APP_WORDS, HOT, Slot, U, U_ENV, U_FOCUS, U_PICK, U_PRESS, U_PRESS_AT, U_PTR_X, U_PTR_Y,
     U_SCALE, U_TIME,
 };
 use crate::sink::{Cx, Patch, View, Write};
@@ -218,7 +218,7 @@ impl<V: View, B: Backend> World<V, B> {
             root: StoreOwner::new(root),
             shown,
             tiles: Tiles::new(w, h),
-            nwords: nwords.min(TURN_WORDS),
+            nwords,
             lists: 0,
             reads: 0,
             col_reads: Vec::new(),
@@ -299,6 +299,7 @@ impl<V: View, B: Backend> World<V, B> {
         let mut scratch = U::default();
         self.shown
             .diff(v.gathered(&self.slots, &mut scratch), self.nwords)
+            & !HOT
     }
     /// The store tree, to read (statistics, reflection, accessibility).
     #[inline(always)]
@@ -345,6 +346,7 @@ impl<V: View, B: Backend> World<V, B> {
             if self
                 .shown
                 .diff(v.gathered(&self.slots, &mut scratch), self.nwords)
+                & !HOT
                 == 0
             {
                 return;
@@ -398,7 +400,8 @@ impl<V: View, B: Backend> World<V, B> {
             let mut scratch = U::default();
             let ch = self
                 .shown
-                .diff(v.gathered(&self.slots, &mut scratch), self.nwords);
+                .diff(v.gathered(&self.slots, &mut scratch), self.nwords)
+                & !HOT;
             if ch == 0 {
                 return;
             }
@@ -547,8 +550,8 @@ impl<V: View, B: Backend> World<V, B> {
                 }
             }
         }
-        if ch & ch.wrapping_sub(1) == 0 {
-            // ch intersects the readers, so it is nonzero. A single reader list names each column once.
+        if ch.is_power_of_two() {
+            // A single reader list contains each column at most once.
             let word = ch.trailing_zeros() as usize;
             let start = self.by_word[word] as usize;
             let end = self.by_word[word + 1] as usize;
@@ -751,7 +754,8 @@ impl<V: View, B: Backend> World<V, B> {
         let mut scratch = U::default();
         let ch = self
             .shown
-            .diff(v.gathered(&self.slots, &mut scratch), self.nwords);
+            .diff(v.gathered(&self.slots, &mut scratch), self.nwords)
+            & !HOT;
         let journals = self.relations_changed();
         if ch != 0 || journals {
             self.settle_changed(v, ch, journals);
@@ -822,7 +826,7 @@ impl<V: View, B: Backend> World<V, B> {
     pub fn redescribe(&mut self, v: &V) {
         assert!(self.mounted, "the world has not been mounted");
         let u = &self.block(v);
-        let ch = self.shown.diff(u, self.nwords);
+        let ch = self.shown.diff(u, self.nwords) & !HOT;
         if ch != 0 {
             self.delta(u, ch);
         }
