@@ -350,3 +350,21 @@ fn retext_sequences() {
     eprintln!("retext: {} cases equal; {hits} re-texted, {misses} rebuilt", t.cases);
     assert!(hits > 1000, "the label, number, log and message sequences re-text (the random one mostly rebuilds)");
 }
+
+#[test]
+fn trailing_spaces_full_width_at_fixed_wrap_width() {
+    let fonts = dejavu();
+    for text in ["2", "2 ", "2  "] {
+        Twin::new(&fonts, false).check(&Case::plain(text, SANS, 14.0, Some(300.0)));
+    }
+}
+
+#[test]
+fn trailing_spaces_with_a_missing_font_family() {
+    Twin::new(&[], true).check(&Case::plain(
+        "2  ",
+        "Bough test deliberately absent font family",
+        14.0,
+        Some(300.0),
+    ));
+}

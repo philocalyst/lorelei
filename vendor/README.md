@@ -102,6 +102,8 @@ same input.
 | parley | `src/bough/breaks.rs` (new), `src/analysis/mod.rs`, `src/shape/mod.rs`, `src/layout/data.rs` | **graft 3b**: exact UAX #14 / #29 boundaries for all covered Latin-1 text by walking ICU4X's own baked rule tables (`Baked::SINGLETON_SEGMENTER_BREAK_{LINE,WORD}_V1`) over a 256-entry property map (the iterators' `next` transcribed); graft 3 and graft 5 accept every covered Latin/Common character (digits and other emoji-property characters included) | labels, numbers and log lines take the fused path |
 | parley | `src/layout/layout.rs` (`Layout::retext`), `src/layout/data.rs` (`FastKey`), `src/shape/mod.rs` (`retext_simple`) | **graft 6**: retained re-text. A layout the fused path built from one style on one font keeps that font's key; a new covered text is laid out without the builder, style resolution or font query (boundaries, table shaping, clusters only) | labels, numbers, log lines, messages |
 
+The whole-run shortcuts in grafts 2, 5 and 6 require a covering first candidate from the resolved style font stack. Implicit emoji and script fallback use the per-cluster selector.
+
 ## Layout: cephal
 
 `vendor/cephal` is zortax/cephal `9e77f91` (0.2.0), copied without history (`ad79959f5d`). Its own tests
