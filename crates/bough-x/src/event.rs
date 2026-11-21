@@ -275,7 +275,8 @@ impl<V: 'static, T: Target<V>> OnsOf<V, T> {
     };
 }
 
-impl<V: 'static, T: Target<V>, H: Handler<V, T::Rec>> Row<V> for On<T, H> {
+// SAFETY (`Row`'s contract): one leaf of archetype `T::Rec` with this type's handler face; `write`/`patch` write that record and the captures of exactly this type, whose size and alignment the face records.
+unsafe impl<V: 'static, T: Target<V>, H: Handler<V, T::Rec>> Row<V> for On<T, H> {
     const LEAVES: u32 = 1;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {

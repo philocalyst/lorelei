@@ -12,6 +12,9 @@ use crate::store::{Backend, ColEnt, Path, Space, Store, Tiles};
 use core::marker::PhantomData;
 use core::sync::atomic::Ordering;
 
+/// A `shape` no store tree has: structure revisions count up from 0 with a checked add.
+const STALE: u64 = u64::MAX;
+
 /// Non-reusable identity of one world instance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WorldId(u64);
@@ -342,6 +345,7 @@ impl<V: View, B: Backend> World<V, B> {
             {
                 return;
             }
+            self.shape = STALE;
             *self.root = Store::new(1, self.root.space);
             self.tiles.sweeps.clear();
         }
@@ -364,6 +368,9 @@ impl<V: View, B: Backend> World<V, B> {
             changed: 0,
             scale: f32::from_bits(self.shown.w[U_SCALE]),
         };
+        // The column table points into the tree the view is about to grow: until it is rebuilt below it names
+        // no tree (a panic in `view` must not leave it naming freed stores; soundness review S03).
+        self.shape = STALE;
         crate::el::track_inputs(&self.inputs, || {
             v.view(&mut Write::<V, B>::new(&mut self.root, &mut cx, true))
         });
@@ -395,6 +402,10 @@ impl<V: View, B: Backend> World<V, B> {
                 return;
             }
             self.changed(v, ch, self.epoch);
+        }
+        // eight rounds and the shape still moved: the table must not outlive the tree it was built from
+        if self.shape != self.root.structure_revision() {
+            self.retable();
         }
     }
 
@@ -713,6 +724,8 @@ impl<V: View, B: Backend> World<V, B> {
                 changed: 0,
                 scale: f32::from_bits(u.w[U_SCALE]),
             };
+            // as in `mount_pass`: stale while the view runs, as it was after it returns
+            let shape = core::mem::replace(&mut self.shape, STALE);
             crate::el::track_inputs(&self.inputs, || {
                 v.view(&mut Patch::<V, B> {
                     st: &mut self.root,
@@ -721,6 +734,7 @@ impl<V: View, B: Backend> World<V, B> {
                     _p: PhantomData,
                 })
             });
+            self.shape = shape;
             self.lists |= cx.lists;
             self.revision = self.revision.wrapping_add(cx.changed);
             if ch != 0 {
@@ -759,9 +773,11 @@ impl<V: View, B: Backend> World<V, B> {
             changed: 0,
             scale: f32::from_bits(u.w[U_SCALE]),
         };
+        let shape = core::mem::replace(&mut self.shape, STALE);
         crate::el::track_inputs(&self.inputs, || {
             v.view(&mut Write::<V, B>::new(&mut self.root, &mut cx, false))
         });
+        self.shape = shape;
         self.lists |= cx.lists;
         let regroup = cx.regroup;
         self.revision = self.revision.wrapping_add(cx.changed);
@@ -774,6 +790,7 @@ impl<V: View, B: Backend> World<V, B> {
         if regroup {
             // A fixed record moved over one of another column: the columns were grouped for an order that no
             // longer holds. The stores are made again from the view (cold: a description, as at mount).
+            self.shape = STALE;
             *self.root = Store::new(1, self.root.space);
             self.tiles.sweeps.clear();
             self.mount(v);
@@ -814,6 +831,11 @@ impl<V: View, B: Backend> World<V, B> {
     /// nothing a handler does changes this world's store tree (only a settle does). The shape counter is
     /// process-wide, so another world growing must not make this one's places unreadable.
     pub fn at_place(&self, place: u32) -> Option<(&Store, u32, u32)> {
+        // A `&self` reader cannot rebuild the table: a stale one (a pass that panicked, a tree that grew since)
+        // names nothing (soundness review S03).
+        if self.shape != self.root.structure_revision() {
+            return None;
+        }
         let &(st, col) = self.cold.get((place >> PLACE_REC_BITS) as usize)?;
         // SAFETY: the table is current (see above), so `st` is a store of this world's tree.
         let st = unsafe { &*st };
@@ -906,6 +928,11 @@ impl<V: View, B: Backend> World<V, B> {
         let c = &st.cols[col as usize];
         let Some(o) = c.hover else { return false };
         if o.kinds & e.kind == 0 {
+            return false;
+        }
+        // live, but never written (a row function panicked before reaching it): no record and no captures to
+        // run a handler on (soundness review S04)
+        if !c.rec_init(rec) {
             return false;
         }
         // SAFETY: `call` was instantiated for the record and handler type this column was created with, and for

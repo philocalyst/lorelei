@@ -144,9 +144,18 @@ impl Tiles {
         self.hi = self.hi.max(d + 1);
         let (wa, wb) = (a >> 6, b >> 6);
         let (ma, mb) = (!0u64 << (a & 63), !0u64 >> (63 - (b & 63)));
-        debug_assert!(d < self.rows && wb < self.stride);
-        // SAFETY: the rect was cut to the window, so `c..=d` are tile rows and `wa..=wb` words of a row; `bits`
-        // holds `rows * stride` words.
+        // Every field of `Tiles` is public (and so is `World::tiles`): the rect was cut to `w` x `h`, but
+        // nothing ties `w`, `h`, `stride` and `bits` together, so the bound is checked against the bitmap
+        // itself (soundness review S02; it was a `debug_assert!`). One compare per mark.
+        let end = (d + 1)
+            .checked_mul(self.stride)
+            .expect("tile damage outside its bitmap");
+        assert!(
+            wb < self.stride && end <= self.bits.len(),
+            "tile damage outside its bitmap"
+        );
+        // SAFETY: checked just above: rows `c..=d` of `stride` words end at `end <= bits.len()`, and the
+        // words written in a row are `wa..=wb < stride`. `p` advances at most to `end`, one past the last row.
         unsafe {
             let mut p = self.bits.as_mut_ptr().add(c * self.stride);
             if wa == wb {
@@ -559,6 +568,8 @@ pub struct Desc {
     pub stage: StageId,
     pub rec_size: usize,
     pub rec_off: usize,
+    /// Where a page's `initialized` mask is (a byte offset into the page).
+    pub init_off: usize,
     pub page: Layout,
     pub reads: u64,
     pub moves: bool,
@@ -579,6 +590,7 @@ impl<A: Arch, B: Backend> Holder<A, B> {
         stage: A::STAGE,
         rec_size: size_of::<A>(),
         rec_off: core::mem::offset_of!(Page<A>, rec),
+        init_off: core::mem::offset_of!(Page<A>, initialized),
         page: Layout::new::<Page<A>>(),
         reads: A::READS,
         moves: A::MOVES,
@@ -707,6 +719,23 @@ impl RawCol {
             None => core::ptr::dangling(),
         }
     }
+    /// Whether record `rec` was ever written. A row is live as a whole, but its records are written one by
+    /// one after it is published live (`sink::list_plan`), so a row function that panics, or a row a
+    /// re-description appends, leaves live records that hold no value yet (soundness review S04): whatever
+    /// reads a record through [`RawCol::rec_ptr`] asks this first.
+    pub fn rec_init(&self, rec: u32) -> bool {
+        assert!(rec < self.npages * 64);
+        // SAFETY: page `rec / 64` exists (the assert); `init_off` is the offset of the page's `u64` mask,
+        // which is aligned (the page is) and always initialised (pages are allocated zeroed and only ever
+        // copied whole).
+        let mask = unsafe {
+            self.pages
+                .add((rec as usize >> 6) * self.desc.page.size() + self.desc.init_off)
+                .cast::<u64>()
+                .read()
+        };
+        mask & (1 << (rec & 63)) != 0
+    }
     /// The constants of record `rec`, untyped (for a handler that knows the type).
     pub fn rec_ptr(&self, rec: u32) -> *const u8 {
         assert!(rec < self.npages * 64);
@@ -811,6 +840,19 @@ impl Site {
             pg.set_record((self.base + slot) as usize & 63, value);
         }
     }
+    /// Whether the record at `slot` was ever written ([`Site::write_record`]).
+    ///
+    /// # Safety
+    /// As `set_rect`, and `A` is the archetype of the site's column.
+    #[inline(always)]
+    pub unsafe fn is_init<A>(&self, slot: u32) -> bool {
+        // SAFETY: the caller's contract; the mask is read through a raw place, no reference to the page is
+        // made.
+        unsafe {
+            let pg = self.page.cast::<Page<A>>().add((slot >> 6) as usize);
+            (*pg).initialized & (1 << ((self.base + slot) as usize & 63)) != 0
+        }
+    }
     /// The record at `slot`.
     ///
     /// SAFETY: as `set_rect`, and `A` is the archetype of the site's column.
@@ -840,6 +882,15 @@ pub enum Pass {
 /// Where a list's rows are described and their shape: (call site, leaves, bytes).
 pub type RowSrc = (&'static core::panic::Location<'static>, u32, u32);
 
+///
+/// A store is made and changed only by the world that owns it (soundness review S01): its sites and column
+/// headers hold raw pointers that its safe passes dereference, so outside code may read a store
+/// ([`crate::world::World::root`]) but never own one or reach it mutably.
+///
+/// ```compile_fail,E0624
+/// use bough_x::store::{Space, Store};
+/// let _ = Store::new(1, Space::root(8, 8));
+/// ```
 pub struct Store {
     pub(crate) column_count: std::sync::Arc<core::sync::atomic::AtomicUsize>,
     pub(crate) structure: std::sync::Arc<core::sync::atomic::AtomicU64>,
@@ -912,7 +963,7 @@ impl Store {
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .expect("structure revision exhausted");
     }
-    pub fn new(cap: u32, space: Space) -> Store {
+    pub(crate) fn new(cap: u32, space: Space) -> Store {
         assert!(cap == 1 || (cap >= 64 && cap.is_power_of_two()));
         assert!(
             cap <= 1 << crate::event::PLACE_REC_BITS,
@@ -970,7 +1021,7 @@ impl Store {
     /// a later column, overlaps the new one.
     #[cold]
     #[inline(never)]
-    pub fn discover(
+    pub(crate) fn discover(
         &mut self,
         d: &'static Desc,
         rect: Rect,
@@ -1043,7 +1094,7 @@ impl Store {
     /// A position of the shape that is not a record (a child with its own space): a site that holds nothing,
     /// so the positions of a row and of its layout count alike.
     #[cold]
-    pub fn hole(&mut self) {
+    pub(crate) fn hole(&mut self) {
         self.sites.push(Site {
             page: core::ptr::null_mut(),
             page_size: 0,
@@ -1290,7 +1341,8 @@ impl Store {
         }
     }
 
-    pub fn at_mut(&mut self, path: &Path) -> Option<&mut Store> {
+    #[allow(dead_code)]
+    pub(crate) fn at_mut(&mut self, path: &Path) -> Option<&mut Store> {
         let mut s = self;
         for &q in &path.at[..path.n as usize] {
             s = s.subs.get_mut(q as usize)?;

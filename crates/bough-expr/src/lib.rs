@@ -452,9 +452,20 @@ pub const HOT: u64 = 0xf << 60;
 /// in place from a column, compared as words, and handed to the GPU.
 ///
 /// # Safety
-/// `size_of::<Self>() % 4 == 0`; `align_of::<Self>() == 4` unless the type is zero-sized (a record is read in
-/// place as `&[u32]`, so a four-byte type of alignment 1 is not `Words`; this is asserted where the words are
-/// taken); no padding; and every bit pattern (zero included) is a valid value.
+/// `size_of::<Self>() % 4 == 0`; `align_of::<Self>() == 4`, or at most 4 if the type is zero-sized (a record is
+/// read in place as `&[u32]`, so a four-byte type of alignment 1 is not `Words`, and an over-aligned zero-sized
+/// field would put padding into the tuples and arrays below; both are asserted where the words are taken); no
+/// padding; every bit pattern (zero included) is a valid value; and `N` is left at its default (soundness
+/// review S11).
+///
+/// ```compile_fail,E0080
+/// use bough_expr::Words;
+/// #[derive(Clone, Copy)]
+/// #[repr(align(8))]
+/// struct Z8;
+/// unsafe impl Words for Z8 {}
+/// let _ = Z8.words();
+/// ```
 pub unsafe trait Words: Copy + 'static {
     const N: usize = size_of::<Self>() / 4;
     /// The record as words.
@@ -466,6 +477,10 @@ pub unsafe trait Words: Copy + 'static {
             assert!(
                 size_of::<Self>() == 0 || (align_of::<Self>() == 4 && size_of::<Self>() % 4 == 0),
                 "Words: a non-empty record type is whole words at alignment 4"
+            );
+            assert!(
+                align_of::<Self>() <= 4 && Self::N == size_of::<Self>() / 4,
+                "Words: alignment at most 4 and `N` the size in words"
             )
         };
         if Self::N == 0 {
