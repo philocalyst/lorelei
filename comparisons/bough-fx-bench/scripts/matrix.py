@@ -3,6 +3,8 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
+MIN_SAMPLES = 200
+
 CELLS = ("startup", "idle", "one", "many", "hover", "theme", "scroll", "resize", "video")
 
 
@@ -18,6 +20,15 @@ def ms(ns):
     return f"{ns / 1e6:.3f}"
 
 
+def summarize(samples, count):
+    if not samples:
+        return "missing samples"
+    if len(samples) < MIN_SAMPLES:
+        return f"short run ({len(samples)} observations)"
+    timing = "/".join(ms(nearest_rank(samples, p)) for p in (50, 95, 99))
+    return f"{timing} ({count}/{len(samples)})"
+
+
 def facade(out, cards, cell):
     stem = out / f"{cards}-{cell}"
     captures = read_lines(stem.with_suffix(".csv"))
@@ -27,7 +38,7 @@ def facade(out, cards, cell):
             samples, draws = map(int, x[3:5])
             if cell == "idle":
                 return f"{draws} frames"
-            if samples < 200:
+            if samples < MIN_SAMPLES:
                 return f"short run ({samples} observations)"
             suffix = "/".join(ms(int(v)) for v in x[5:8])
             return f"{suffix} ({draws}/{samples})"
@@ -62,9 +73,61 @@ def reference(out, framework, cards, cell):
     samples = [int(r[4]) for r in records]
     if len(samples) == 1:
         return f"{ms(samples[0])} (1 observation)"
-    if len(samples) < 200:
+    if len(samples) < MIN_SAMPLES:
         return f"short run ({len(samples)} observations)"
     return "/".join(ms(nearest_rank(samples, p)) for p in (50, 95, 99)) + (f" (Δ{draws}/{len(samples)})" if framework == "zgui" else f" ({draws}/{len(samples)})")
+
+
+def core_cells(path):
+    cells = {}
+    key = None
+    measured = None
+    for line in read_lines(path):
+        if line.startswith("typed-core "):
+            _, cards, cell = line.split()
+            key = int(cards), cell
+            cells[key] = "pending"
+            measured = None
+        elif line == "check_exit=0":
+            measured = []
+        elif line.startswith("check_exit="):
+            cells[key] = "unavailable" if line == "check_exit=2" else "pixel gate failed"
+        elif measured is not None and line.startswith("core_"):
+            measured.append(line.split(","))
+        elif measured is not None and line.startswith("measure_exit="):
+            if line != "measure_exit=0":
+                cells[key] = "measurement failed"
+                continue
+            cell = key[1]
+            if cell == "idle":
+                cells[key] = "0 repairs" if any(r[0] == "core_idle" for r in measured) else "missing samples"
+            elif cell == "startup":
+                samples = [int(r[4]) for r in measured if r[0] == "core_startup"]
+                if samples:
+                    cells[key] = f"{ms(samples[0])} (1 observation)"
+            else:
+                steps = [r for r in measured if r[0] == "core_step"]
+                cells[key] = summarize([int(r[5]) for r in steps], sum(int(r[-1]) > 0 for r in steps))
+    return cells
+
+
+def startup(out, framework, cards):
+    if not out:
+        return None
+    lines = read_lines(out / f"{framework}-{cards}.out")
+    if "check_exit=0" not in lines:
+        return "pixel gate failed" if any(l.startswith("check_exit=") for l in lines) else None
+    if "measure_exit=0" not in lines:
+        return "measurement failed" if any(l.startswith("measure_exit=") for l in lines) else None
+    prefix, field, count_field = {
+        "facade": ("spawn_to_first", 2, None),
+        "core": ("core_startup", 4, None),
+        "zgui": ("zgui_sample", 4, 5),
+        "zgx": ("zgx_sample", 4, 5),
+    }[framework]
+    records = [line.split(",") for line in lines if line.startswith(prefix + ",")]
+    count = len(records) if count_field is None else sum(int(r[count_field]) for r in records)
+    return summarize([int(r[field]) for r in records], count)
 
 
 def main():
@@ -72,14 +135,27 @@ def main():
     args.add_argument("baseline", type=Path)
     args.add_argument("wave3", type=Path)
     args.add_argument("references", type=Path)
+    args.add_argument("--core", type=Path)
+    args.add_argument("--startup", type=Path)
     paths = args.parse_args()
-    print("| Cards | Cell | Lorelei baseline | Lorelei wave3 | zgui | zgx |")
-    print("|---:|---|---:|---:|---:|---:|")
+    core = core_cells(paths.core) if paths.core else None
+    columns = ["Cards", "Cell", "Lorelei baseline", "Lorelei wave3"]
+    if core is not None:
+        columns.append("Lorelei typed Soft")
+    columns.extend(("zgui", "zgx"))
+    print("| " + " | ".join(columns) + " |")
+    print("|---:|---|" + "---:|" * (len(columns) - 2))
     for cards in (200, 1000, 5000):
         for cell in CELLS:
             values = [facade(paths.baseline, cards, cell), facade(paths.wave3, cards, cell)]
+            if cell == "startup" and (fresh := startup(paths.startup, "facade", cards)):
+                values[-1] = fresh
+            if core is not None:
+                fresh = startup(paths.startup, "core", cards) if cell == "startup" else None
+                values.append(fresh or core.get((cards, cell), "pending"))
             for framework in ("zgui", "zgx"):
-                values.append(reference(paths.references, framework, cards, cell))
+                fresh = startup(paths.startup, framework, cards) if cell == "startup" else None
+                values.append(fresh or reference(paths.references, framework, cards, cell))
             print(f"| {cards:,} | {cell} | " + " | ".join(values) + " |")
 
 
