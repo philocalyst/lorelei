@@ -771,10 +771,17 @@ impl<V: View, B: Backend> World<V, B> {
     #[inline(always)]
     fn changed(&mut self, v: &V, ch: u64, journals: bool) -> bool {
         let u = &self.block(v);
+        if !journals && ch & self.lists == 0 {
+            // `settle` enters only for a changed word or journal, and `learn` only for a changed word.
+            debug_assert_ne!(ch, 0);
+            self.delta(u, ch);
+            self.shown = *u;
+            return false;
+        }
         if ch != 0 {
             self.delta(u, ch);
         }
-        if journals | (ch & self.lists != 0) {
+        {
             // a list pass may write records and move windows: what was built from them is nothing now
             self.wrote += 1;
             let mut cx = Cx {
@@ -811,11 +818,6 @@ impl<V: View, B: Backend> World<V, B> {
             // Only a description can change the set of observed relations or
             // the descriptors. Uniform-only delta stages neither.
             true
-        } else {
-            if ch != 0 {
-                self.shown = *u;
-            }
-            false
         }
     }
 
