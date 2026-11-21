@@ -76,7 +76,7 @@ Staged paint passed eight cells at each of 200 and 1,000 cards, with applicable 
 
 The seam exposes solid and gradient paints, shadow with geometry-derived spread, rectangle clips, and two built-in shader paints. The frozen PNG, cubic and even-odd path, rounded clip, alpha mask, isolated group filters and drop-shadow of a subtree's alpha require additional primitives. Author registration of all three frozen shaders is unavailable. The headless adapter uses CPU1. The stock paint replay and independent layered test cover Metal separately.
 
-The source-parity test drove the generated and predecoded glass traces together at all three sizes. At each of 241 ticks including mount, the output bytes, visible video sequence ID, and output tile count matched exactly. Each arm submitted all 241 frames. The fixture allocates 120 NV12 images at 55,296 bytes each. The measured 240-tick trace uses sequence IDs 0–60. [Exact video parity receipt](../../../../bench/results/effects/r3/staged-source-parity-7991e7bd4e.txt)
+The source-parity test drove the generated and predecoded glass traces together at all three sizes. At each of 241 ticks including mount, the output bytes, visible video sequence ID, and output tile count matched exactly. Each arm submitted all 241 frames. The fixture allocates 120 NV12 images at 55,296 bytes each. The measured 240-tick trace uses sequence IDs 0–60. [Exact video parity receipt](../../../../bench/results/effects/r3/staged-source-parity-7991e7bd4e.txt) · [Generated and predecoded timing table](../../../../bench/results/effects/r3/staged-predecoded-7991e7bd4e.md)
 
 ## Stock paint replay
 
