@@ -1187,6 +1187,24 @@ impl<V: View> App<V> {
         self.surfaces(n);
         self.world.redescribe(&self.ty);
     }
+    /// Where a typed description's instructions go, measured apart (thread instructions, bracket subtracted):
+    /// (running the view and converting its fixed part with no sink; one whole re-description; the same with
+    /// every list row's conversion and compare skipped because nothing is exposed is not measurable from here,
+    /// so the third number is a re-description of an unchanged view, for comparison with a changed one).
+    pub fn profile(&mut self) -> (u64, u64) {
+        let ot = bough_sys::perf::tinstr_overhead();
+        let t0 = bough_sys::perf::thread_instructions();
+        enter(&self.ty.sh, || {
+            self.ty.sh.row.set((0, 0, 0, 0));
+            self.ty.sh.ord.set(0);
+            let e = root_el(&self.ty.v);
+            std::hint::black_box(&e);
+        });
+        let t1 = bough_sys::perf::thread_instructions();
+        self.world.redescribe(&self.ty);
+        let t2 = bough_sys::perf::thread_instructions();
+        ((t1 - t0).saturating_sub(ot), (t2 - t1).saturating_sub(ot))
+    }
     pub fn lifecycle(&self) -> (u32, u32) {
         self.world.lifecycle()
     }
