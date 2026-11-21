@@ -1020,6 +1020,8 @@ pub struct App<V: View> {
     size_pt: (f32, f32),
     scale: f32,
     once: bool,
+    /// `signal::writes()` as of the last turn.
+    writes: u64,
     ring: Vec<(Canvas, Tiles)>,
     next: usize,
     shown: usize,
@@ -1068,6 +1070,7 @@ impl<V: View> App<V> {
             size_pt: (cfg.width_pt, cfg.height_pt),
             scale: cfg.scale,
             once: cfg.mount_once,
+            writes: 0,
             ring: Vec::new(),
             next: 0,
             shown: 0,
@@ -1076,6 +1079,7 @@ impl<V: View> App<V> {
         app.surfaces(if cfg.ring == 0 { 4 } else { cfg.ring });
         app.world.mount(&app.ty);
         count(|c| c.world_mount += 1);
+        app.writes = crate::signal::writes();
         let refused = app.ty.sh.refused.borrow().clone();
         if !refused.is_empty() {
             return Err((app.ty.v, refused));
@@ -1110,7 +1114,16 @@ impl<V: View> App<V> {
     /// under `Config::mount_once` only the block is compared.
     fn after(&mut self, ran: bool) {
         self.ty.ran.set(false);
-        if ran && !self.once {
+        let now = crate::signal::writes();
+        let sets = now.wrapping_sub(self.writes);
+        self.writes = now;
+        // The turn wrote only bound words when every signal borrowed mutably in it is a block word that
+        // changed: then the block's compare accounts for all of it and nothing is described. A signal
+        // written to the value it had, a signal that is not a block word (a `String`, a list), or author
+        // code that wrote no signal at all (plain fields are state too) each leave the counts unequal, and
+        // the view is described again, which is the façade's contract.
+        let bound = (self.world.changed_words(&self.ty) & !(1 << HOVER)).count_ones() as u64;
+        if ran && !self.once && !(sets > 0 && sets == bound) {
             self.world.redescribe(&self.ty);
             let refused = self.ty.sh.refused.borrow();
             assert!(

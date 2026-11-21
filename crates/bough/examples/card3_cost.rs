@@ -129,7 +129,10 @@ fn tinstr() -> u64 {
 /// and the bracket's own cost is subtracted (Card 4's method); turn + frame with the process counter, likewise
 /// net of its bracket (the legacy runtime may draw on other threads).
 fn cell<R: Rt>(app: &mut R, mut op: impl FnMut(&mut R, u32)) -> (u64, u64) {
-    let (ot, os) = (bough::sys::perf::tinstr_overhead(), bough::sys::perf::snap_overhead());
+    let (ot, os) = (
+        bough::sys::perf::tinstr_overhead(),
+        bough::sys::perf::snap_overhead(),
+    );
     for k in 0..10 {
         op(app, k);
         app.frame();
@@ -204,19 +207,67 @@ fn run<R: Rt>() -> Vec<(&'static str, u64, u64)> {
 fn main() {
     let tsv = std::env::args().any(|a| a == "tsv");
     let (old, low, new) = (run::<Legacy>(), run::<Lowered>(), run::<Typed>());
-    let load = std::process::Command::new("sysctl").args(["-n", "vm.loadavg"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
-    let r = |a: u64, b: u64| if a == 0 { f64::NAN } else { b as f64 / a as f64 };
+    let load = std::process::Command::new("sysctl")
+        .args(["-n", "vm.loadavg"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let r = |a: u64, b: u64| {
+        if a == 0 {
+            f64::NAN
+        } else {
+            b as f64 / a as f64
+        }
+    };
     if tsv {
-        println!("cell\tlegacy_turn\tlowered_turn\ttyped_turn\ttyped_over_legacy\tlegacy_turn_frame\tlowered_turn_frame\ttyped_turn_frame\ttyped_over_legacy_frame");
+        println!(
+            "cell\tlegacy_turn\tlowered_turn\ttyped_turn\ttyped_over_legacy\tlegacy_turn_frame\tlowered_turn_frame\ttyped_turn_frame\ttyped_over_legacy_frame"
+        );
     } else {
-        println!("legacy repair: {:?}; load average: {load}", Repair::from_env());
-        println!("{:30} {:>10} {:>10} {:>10} {:>7}   {:>10} {:>10} {:>10} {:>7}", "cell (instructions, net)", "legacy", "lowered", "typed", "t/leg", "legacy+f", "lowered+f", "typed+f", "t/leg");
+        println!(
+            "legacy repair: {:?}; load average: {load}",
+            Repair::from_env()
+        );
+        println!(
+            "{:30} {:>10} {:>10} {:>10} {:>7}   {:>10} {:>10} {:>10} {:>7}",
+            "cell (instructions, net)",
+            "legacy",
+            "lowered",
+            "typed",
+            "t/leg",
+            "legacy+f",
+            "lowered+f",
+            "typed+f",
+            "t/leg"
+        );
     }
     for ((o, l), n) in old.iter().zip(&low).zip(&new) {
         if tsv {
-            println!("{}\t{}\t{}\t{}\t{:.3}\t{}\t{}\t{}\t{:.3}", o.0, o.1, l.1, n.1, r(o.1, n.1), o.2, l.2, n.2, r(o.2, n.2));
+            println!(
+                "{}\t{}\t{}\t{}\t{:.3}\t{}\t{}\t{}\t{:.3}",
+                o.0,
+                o.1,
+                l.1,
+                n.1,
+                r(o.1, n.1),
+                o.2,
+                l.2,
+                n.2,
+                r(o.2, n.2)
+            );
         } else {
-            println!("{:30} {:>10} {:>10} {:>10} {:>6.2}x   {:>10} {:>10} {:>10} {:>6.2}x", o.0, o.1, l.1, n.1, r(o.1, n.1), o.2, l.2, n.2, r(o.2, n.2));
+            println!(
+                "{:30} {:>10} {:>10} {:>10} {:>6.2}x   {:>10} {:>10} {:>10} {:>6.2}x",
+                o.0,
+                o.1,
+                l.1,
+                n.1,
+                r(o.1, n.1),
+                o.2,
+                l.2,
+                n.2,
+                r(o.2, n.2)
+            );
         }
     }
     // where a typed re-description's instructions go: the view and its conversion alone, then a whole
@@ -226,7 +277,9 @@ fn main() {
         let mut v: Vec<(u64, u64)> = (0..41).map(|_| t.profile()).collect();
         v.sort();
         let (c, d) = v[20];
-        let line = format!("typed, thread instructions: view + conversion of the fixed part {c}; a re-description of an unchanged view {d}");
+        let line = format!(
+            "typed, thread instructions: view + conversion of the fixed part {c}; a re-description of an unchanged view {d}"
+        );
         if tsv {
             println!("# {line}");
         } else {

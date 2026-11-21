@@ -164,8 +164,20 @@ impl<T> DerefMut for Signal<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut T {
         queue(&self.head.0);
+        WRITES.with(|w| w.set(w.get().wrapping_add(1)));
         &mut self.value
     }
+}
+
+thread_local! {
+    /// Mutable borrows of signals on this thread, ever: what the typed path compares with the block words that
+    /// changed to know that a turn wrote bound words and nothing else through a signal (`typed.rs`).
+    static WRITES: Cell<u64> = const { Cell::new(0) };
+}
+/// How many times a signal on this thread was borrowed mutably (a write, or a borrow that wrote nothing).
+#[inline]
+pub fn writes() -> u64 {
+    WRITES.with(Cell::get)
 }
 
 /// Entries of a thread's write log.
