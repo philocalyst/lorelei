@@ -52,25 +52,21 @@ impl Tiles {
     /// Replace column `col`'s entry: `until == 0` means none of its records is in motion.
     #[inline]
     pub fn set_sweep(&mut self, col: u32, space: Space, (until, rect): (u32, Rect)) {
-        match self.sweeps.iter().position(|s| s.col == col) {
-            Some(i) if until == 0 => {
+        if until == 0 {
+            if let Some(i) = self.sweeps.iter().position(|s| s.col == col) {
                 self.sweeps.swap_remove(i);
             }
-            Some(i) => {
-                self.sweeps[i] = Sweep {
-                    col,
-                    until,
-                    rect,
-                    space,
-                }
-            }
-            None if until != 0 => self.sweeps.push(Sweep {
+        } else if let Some(sweep) = self.sweeps.iter_mut().find(|s| s.col == col) {
+            sweep.until = until;
+            sweep.rect = rect;
+            sweep.space = space;
+        } else {
+            self.sweeps.push(Sweep {
                 col,
                 until,
                 rect,
                 space,
-            }),
-            None => {}
+            });
         }
     }
     /// A frame at time `now` under block `u`: damage where records in motion may be. The frame in which a
