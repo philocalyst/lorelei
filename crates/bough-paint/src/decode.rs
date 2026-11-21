@@ -170,22 +170,7 @@ mod native {
     unsafe extern "C" {
         fn CFDataCreate(allocator: Ref, bytes: *const u8, len: isize) -> Ref;
         fn CFRelease(value: Ref);
-        fn CFEqual(a: Ref, b: Ref) -> bool;
-        fn CFStringCreateWithCString(
-            allocator: Ref,
-            text: *const std::ffi::c_char,
-            encoding: u32,
-        ) -> Ref;
-        fn CFNumberCreate(allocator: Ref, kind: isize, value: *const c_void) -> Ref;
-        fn CFDictionaryCreate(
-            allocator: Ref,
-            keys: *const Ref,
-            values: *const Ref,
-            count: isize,
-            key_callbacks: Ref,
-            value_callbacks: Ref,
-        ) -> Ref;
-        static kCFBooleanTrue: Ref;
+
         fn CFDictionaryGetValue(dictionary: Ref, key: Ref) -> Ref;
         fn CFGetTypeID(value: Ref) -> usize;
         fn CFNumberGetTypeID() -> usize;
@@ -196,11 +181,7 @@ mod native {
     unsafe extern "C" {
         fn CGImageSourceCreateWithData(data: Ref, options: Ref) -> Ref;
         fn CGImageSourceGetCount(source: Ref) -> usize;
-        fn CGImageSourceGetType(source: Ref) -> Ref;
-        fn CGImageSourceCreateThumbnailAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
-        static kCGImageSourceThumbnailMaxPixelSize: Ref;
-        static kCGImageSourceTypeIdentifierHint: Ref;
-        static kCGImageSourceCreateThumbnailFromImageAlways: Ref;
+
         fn CGImageSourceCopyPropertiesAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
         fn CGImageSourceCreateImageAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
         static kCGImagePropertyPixelWidth: Ref;
@@ -345,7 +326,7 @@ mod native {
             if unsafe { (CGImageGetWidth(image.0), CGImageGetHeight(image.0)) } != (width, height) {
                 return Err(DecodeError::Invalid);
             }
-            let pixels = raster(&image, width, height)?;
+            let pixels = raster(image.0, width, height)?;
             let ms = delay(props.0, bytes.starts_with(b"RIFF"));
             frames.push(ImageFrame {
                 width: width as u32,
@@ -362,7 +343,7 @@ mod native {
         })
     }
 
-    fn raster(image: &Owned, width: usize, height: usize) -> Result<Vec<u32>, DecodeError> {
+    fn raster(image: Ref, width: usize, height: usize) -> Result<Vec<u32>, DecodeError> {
         let mut pixels = vec![0u32; width * height];
         // SAFETY: kCGColorSpaceSRGB is an immutable CoreGraphics string reference.
         let colorspace =
@@ -391,7 +372,7 @@ mod native {
                     width: width as f64,
                     height: height as f64,
                 },
-                image.0,
+                image,
             );
             CGContextFlush(context.0);
         }
@@ -399,47 +380,42 @@ mod native {
         Ok(pixels)
     }
 
+    #[link(name = "AppKit", kind = "framework")]
+    unsafe extern "C" {}
+
     pub(super) fn svg(bytes: &[u8], [width, height]: [u32; 2]) -> ResultImage {
-        // SAFETY: the bounded source slice lives through CFDataCreate, which copies its bytes.
-        let data = Owned::from_created(unsafe {
-            CFDataCreate(null(), bytes.as_ptr(), bytes.len() as isize)
-        })?;
-        // SAFETY: the literal is NUL-terminated. The options dictionary borrows its
-        // string and global key until the source has consumed the type hint.
-        let image = unsafe {
-            let svg = Owned::from_created(CFStringCreateWithCString(
-                null(),
-                c"public.svg-image".as_ptr(),
-                0x0800_0100,
-            ))?;
-            let hint = kCGImageSourceTypeIdentifierHint;
-            let options =
-                Owned::from_created(CFDictionaryCreate(null(), &hint, &svg.0, 1, null(), null()))?;
-            let source = Owned::from_created(CGImageSourceCreateWithData(data.0, options.0))?;
-            let format = CGImageSourceGetType(source.0);
-            if format.is_null() || !CFEqual(format, svg.0) {
-                return Err(DecodeError::UnsupportedFormat);
-            }
-            let size = width.max(height) as i32;
-            let pixels =
-                Owned::from_created(CFNumberCreate(null(), 3, (&size as *const i32).cast()))?;
-            let keys = [
-                kCGImageSourceThumbnailMaxPixelSize,
-                kCGImageSourceCreateThumbnailFromImageAlways,
-            ];
-            let values = [pixels.0, kCFBooleanTrue];
-            // A no-callback dictionary borrows these live keys and values until thumbnail creation ends.
-            let options = Owned::from_created(CFDictionaryCreate(
-                null(),
-                keys.as_ptr(),
-                values.as_ptr(),
-                2,
-                null(),
-                null(),
-            ))?;
-            Owned::from_created(CGImageSourceCreateThumbnailAtIndex(source.0, 0, options.0))?
+        use objc2::{
+            class, msg_send,
+            rc::{Allocated, Retained, autoreleasepool},
+            runtime::AnyObject,
         };
-        let pixels = raster(&image, width as usize, height as usize)?;
+        use objc2_foundation::{NSData, NSPoint, NSRect, NSSize};
+        let text = std::str::from_utf8(bytes).map_err(|_| DecodeError::UnsupportedFormat)?;
+        if !text.contains("<svg") {
+            return Err(DecodeError::UnsupportedFormat);
+        }
+        let pixels = autoreleasepool(|_| {
+            let data = NSData::with_bytes(bytes);
+            // SAFETY: NSImage's public initializer accepts a live NSData. No shared AppKit
+            // application is needed, and these objects stay on this decoder thread.
+            let allocated: Allocated<AnyObject> = unsafe { msg_send![class!(NSImage), alloc] };
+            let image: Option<Retained<AnyObject>> =
+                unsafe { msg_send![allocated, initWithData: &*data] };
+            let image = image.ok_or(DecodeError::Invalid)?;
+            let mut bounds = NSRect::new(
+                NSPoint::new(0.0, 0.0),
+                NSSize::new(width as f64, height as f64),
+            );
+            // SAFETY: this selector belongs to NSImage. The proposed rect can be edited during the
+            // message. The borrowed CGImage stays live under the NSImage and autorelease pool.
+            let pixels: Ref = unsafe {
+                msg_send![&*image, CGImageForProposedRect: &mut bounds, context: null::<AnyObject>(), hints: null::<AnyObject>()]
+            };
+            if pixels.is_null() {
+                return Err(DecodeError::Invalid);
+            }
+            raster(pixels, width as usize, height as usize)
+        })?;
         Ok(DecodedImage {
             frames: [ImageFrame {
                 width,
