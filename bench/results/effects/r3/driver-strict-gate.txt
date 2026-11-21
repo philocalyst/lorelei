@@ -1,0 +1,16 @@
+# wave3 7991e7bd4e plus layered Driver routing patch, Metal device required
+running 3 tests
+test gpu::probe_driver_cpu_path_on_layers ... ok
+
+thread 'gpu::probe_layered_gpu_frame' panicked at crates/bough-paint/src/metal.rs:829:9:
+a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+probe: Gpu::frame on a layered scene panics: a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+
+thread 'gpu::probe_layered_gpu_frame' panicked at crates/bough-paint/src/metal.rs:829:9:
+a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+probe: Gpu::catch_up on a layered scene panics
+test gpu::probe_layered_gpu_frame ... ok
+test gpu::probe_driver_gpu_path_on_layers ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.88s
