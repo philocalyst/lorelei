@@ -1,0 +1,32 @@
+[package]
+name = "bough-fx-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+default-run = "bough-fx-bench"
+
+[workspace]
+
+[dependencies]
+bough = { path = "../../crates/bough" }
+bough-sys = { path = "../../crates/bough-sys" }
+bough-x = { path = "../../crates/bough-x", optional = true }
+
+[features]
+full-effects = []
+typed-core = ["dep:bough-x"]
+
+[[bin]]
+name = "typed-core"
+path = "src/bin/typed-core.rs"
+required-features = ["typed-core"]
+
+[patch.crates-io]
+wgpu-hal = { path = "../../vendor/wgpu-hal" }
+wgpu-types = { path = "../../vendor/wgpu-types" }
+naga = { path = "../../vendor/naga" }
+
+[patch."https://github.com/schell/wgsl-rs"]
+wgsl-rs = { path = "../../vendor/wgsl-rs/crates/wgsl-rs" }
+wgsl-rs-macros = { path = "../../vendor/wgsl-rs/crates/wgsl-rs-macros" }
+wgsl-rs-ir = { path = "../../vendor/wgsl-rs/crates/wgsl-rs-ir" }

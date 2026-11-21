@@ -60,9 +60,76 @@ fn record(c: usize, l: &Lay) -> String {
     )
 }
 
+/// The layers' and the media pool's reads (`layer::sample`, `media::sample`: the same leaves, the same
+/// order of operations), and the kernels of the staged frame: `k_seg` (a tile program over a range of its
+/// list, started from a stored prefix or from nothing, stored into the surface or into a layer's level 0)
+/// and `k_down` (one pyramid block from the level beneath).
+const FX_GLUE: &str = r#"
+// ---- layers and media (bough-paint layer.rs / media.rs) ----
+static inline uint fx_at(const device uint* LT, uint lid, uint k, int x, int y) {
+    const device uint* r = LT + lid * 32u + 4u + k * 4u;
+    return bd_addr(x, y, r[2] & 0xFFFFu, r[2] >> 16u, r[3]);
+}
+static inline metal::int4 fx_rect(const device uint* LT, uint lid, uint k) {
+    const device uint* r = LT + lid * 32u + 4u + k * 4u;
+    return metal::int4(int(r[0] << 16u) >> 16, int(r[0]) >> 16, int(r[1] << 16u) >> 16, int(r[1]) >> 16);
+}
+static metal::uint4 bd_read(const device uint* POOL, const device uint* LT, uint lid, uint k, int x, int y) {
+    int dw = bd_dim(FRAMEW, k), dh = bd_dim(FRAMEH, k);
+    int i = bd_i(x, k), j = bd_i(y, k);
+    int x0 = metal::clamp(i, 0, dw - 1), x1 = metal::clamp(i + 1, 0, dw - 1), y0 = metal::clamp(j, 0, dh - 1), y1 = metal::clamp(j + 1, 0, dh - 1);
+    return bd_bil(POOL[fx_at(LT, lid, k, x0, y0)], POOL[fx_at(LT, lid, k, x1, y0)], POOL[fx_at(LT, lid, k, x0, y1)], POOL[fx_at(LT, lid, k, x1, y1)], bd_f(x, k), bd_f(y, k));
+}
+static metal::uint4 bd_px(const device uint* POOL, const device uint* LT, const device uint* MEDIA, uint lid, metal::uint4 a, Cmd c, int x, int y) {
+    if (!x_in(c_win(c), x, y) || lid == 0xFFFFFFFFu) { return a; }
+    metal::uint4 bl = bd_read(POOL, LT, lid, c_lvl(c), x, y);
+    if (c_frac(c) != 0u) { bl = x_mixv(bl, bd_read(POOL, LT, lid, c_lvl(c) + 1u, x, y), c_frac(c)); }
+    return p_bdrop(x_flat(a), c, x, y, bl);
+}
+static inline uint fx_byte(const device uint* M, uint i) { return (M[metal::min(i >> 2u, MEDIALIM)] >> ((i & 3u) * 8u)) & 255u; }
+static metal::uint4 vd_px(const device uint* POOL, const device uint* LT, const device uint* M, Cmd c, int px, int py) {
+    uint at = metal::min(c_slot(c), MEDIALIM - 7u);
+    uint yoff = M[at + 2u], coff = M[at + 3u], ys = M[at + 4u], cs = M[at + 5u];
+    int vw = c_vw(c), vh = c_vh(c);
+    metal::int2 t = vd_pos(c, px, py);
+    uint x0 = vd_ix(t.x, 0, vw), x1 = vd_ix(t.x, 1, vw), y0 = vd_ix(t.y, 0, vh), y1 = vd_ix(t.y, 1, vh);
+    uint y = vd_bil(fx_byte(M, yoff + y0 * ys + x0), fx_byte(M, yoff + y0 * ys + x1), fx_byte(M, yoff + y1 * ys + x0), fx_byte(M, yoff + y1 * ys + x1), t.x, t.y);
+    int cw = (vw + 1) >> 1, ch = (vh + 1) >> 1, ux = (t.x - 128) >> 1, uy = (t.y - 128) >> 1;
+    uint u0 = vd_ix(ux, 0, cw), u1 = vd_ix(ux, 1, cw), v0 = vd_ix(uy, 0, ch), v1 = vd_ix(uy, 1, ch);
+    uint cb = vd_bil(fx_byte(M, coff + v0 * cs + 2u * u0), fx_byte(M, coff + v0 * cs + 2u * u1), fx_byte(M, coff + v1 * cs + 2u * u0), fx_byte(M, coff + v1 * cs + 2u * u1), ux, uy);
+    uint cr = vd_bil(fx_byte(M, coff + v0 * cs + 2u * u0 + 1u), fx_byte(M, coff + v0 * cs + 2u * u1 + 1u), fx_byte(M, coff + v1 * cs + 2u * u0 + 1u), fx_byte(M, coff + v1 * cs + 2u * u1 + 1u), ux, uy);
+    return vd_rgb(y, cb, cr);
+}
+"#;
+const FX_DOWN: &str = r#"
+// one block (32 >> k pixels a side) of level k of a layer from level k - 1: a thread per pixel
+kernel void k_down(device uint* POOL [[buffer(13)]], const device uint* LT [[buffer(14)]], const device uint* JOBS [[buffer(17)]],
+                   metal::uint3 wg [[threadgroup_position_in_grid]], metal::uint3 tp [[thread_position_in_threadgroup]]) {
+    const device uint* J = JOBS + wg.x * 4u;
+    uint lid = J[0], k = J[1], bs = 5u - k;
+    if (tp.x >= (1u << bs) || tp.y >= (1u << bs)) { return; }
+    int x = (int(J[2]) << bs) + int(tp.x), y = (int(J[3]) << bs) + int(tp.y);
+    metal::int4 r = fx_rect(LT, lid, k);
+    if (x < r.x || x >= r.z || y < r.y || y >= r.w) { return; }
+    int sw = bd_dim(FRAMEW, k - 1u), sh = bd_dim(FRAMEH, k - 1u);
+    metal::uint4 rows[4];
+    for (int j = 0; j < 4; j++) {
+        int sy = metal::clamp(2 * y - 1 + j, 0, sh - 1);
+        rows[j] = dn_row(POOL[fx_at(LT, lid, k - 1u, metal::clamp(2 * x - 1, 0, sw - 1), sy)], POOL[fx_at(LT, lid, k - 1u, metal::clamp(2 * x, 0, sw - 1), sy)],
+                         POOL[fx_at(LT, lid, k - 1u, metal::clamp(2 * x + 1, 0, sw - 1), sy)], POOL[fx_at(LT, lid, k - 1u, metal::clamp(2 * x + 2, 0, sw - 1), sy)]);
+    }
+    POOL[fx_at(LT, lid, k, x, y)] = dn_fin(rows[0], rows[1], rows[2], rows[3]);
+}
+"#;
+
 /// The whole shader: naga's MSL of the leaves, the archetypes' functions, the five kernels.
 /// `tab`: the corner tables' first word in the arena.
 pub fn source(descs: &[&Desc], lays: &[(usize, usize)], tab: usize) -> String {
+    source_fx(descs, lays, tab, (1, 1), 8)
+}
+/// As `source`, for a frame of `frame` pixels and a media pool of `media_words` words (the layer and media
+/// glue bake them in, as the column bases are).
+pub fn source_fx(descs: &[&Desc], lays: &[(usize, usize)], tab: usize, frame: (u32, u32), media_words: usize) -> String {
     let lays: Vec<Lay> = lays.iter().map(|&(base, words)| Lay { base, words }).collect();
     let mut s = String::from(emit::LEAVES_MSL);
     s.push_str("\n// ---- generated per application (bough-paint emit.rs / metal.rs) ----\n");
@@ -76,6 +143,7 @@ static inline uint tab_v(const device uint* T, uint base, uint idx) {
 }
 "#,
     );
+    s.push_str(FX_GLUE);
     for (k, d) in descs.iter().enumerate() {
         emit::archetype(emit::Lang::Msl, k, d, &mut s);
     }
@@ -124,66 +192,98 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
 "#,
     );
 
-    // ---- shade ----
-    s.push_str(
-        r#"
-kernel void k_shade(const device uint* COLS [[buffer(0)]], const device uint* META [[buffer(1)]], const device uint* ORDER [[buffer(2)]],
+    // ---- shade: `k_shade` (a whole tile program per damaged tile, into the surface) and `k_seg` (the
+    // ---- staged frame's jobs: a range of a tile's list, from a stored prefix or from nothing, into the
+    // ---- surface or into a layer's level 0) are one body ----
+    for seg in [false, true] {
+        s.push_str(if seg { "\nkernel void k_seg(" } else { "\nkernel void k_shade(" });
+        s.push_str(
+            r#"const device uint* COLS [[buffer(0)]], const device uint* META [[buffer(1)]], const device uint* ORDER [[buffer(2)]],
                     const device uint* WINS [[buffer(3)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]],
                     const device uint* TL [[buffer(6)]], device uint* OUT [[buffer(7)]], const device uint* ATLAS [[buffer(8)]],
-                    metal::uint3 wg [[threadgroup_position_in_grid]], metal::uint3 lid [[thread_position_in_threadgroup]]) {
+                    device uint* POOL [[buffer(13)]], const device uint* LT [[buffer(14)]], const device uint* MEDIA [[buffer(15)]],
+                    const device uint* LAYOF [[buffer(16)]], const device uint* JOBS [[buffer(17)]],
+                    metal::uint3 wg [[threadgroup_position_in_grid]], metal::uint3 tp [[thread_position_in_threadgroup]]) {
     uint fw = META[0], fh = META[1], stride = META[2], TX = META[3], aw = META[6], alim = META[7];
-    const device uint* TAB = COLS + TABBASE; (void)TAB;
+    const device uint* TAB = COLS + TABBASE; (void)TAB; (void)POOL; (void)LT; (void)MEDIA; (void)LAYOF; (void)JOBS; (void)TL;
 "#,
-    );
-    s.push_str(&load_u('u', M_UNEW));
-    s.push_str(
-        r#"    uint t = TL[4u + wg.x];
-    uint ux = (t % TX) * 32u + 2u * lid.x, uy = (t / TX) * 32u + 2u * lid.y;
+        );
+        s.push_str(&load_u('u', M_UNEW));
+        s.push_str(if seg {
+            r#"    const device uint* J = JOBS + wg.x * 8u;
+    uint t = J[0], from = J[1], to = J[2], init = J[3], dest = J[4];
+"#
+        } else {
+            r#"    uint t = TL[4u + wg.x], from = 0u, to = TILES[2u * t + 1u] & 0x3FFFFFFFu, init = 0xFFFFFFFFu, dest = 0xFFFFFFFFu;
+"#
+        });
+        s.push_str(
+            r#"    uint ux = (t % TX) * 32u + 2u * tp.x, uy = (t / TX) * 32u + 2u * tp.y;
     int x = int(ux), y = int(uy);
-    uint off = TILES[2u * t], n = TILES[2u * t + 1u] & 0x3FFFFFFFu;
+    uint off = TILES[2u * t];
     metal::uint4 a0 = metal::uint4(0u), a1 = metal::uint4(0u), a2 = metal::uint4(0u), a3 = metal::uint4(0u);
+    if (init != 0xFFFFFFFFu) {
+        // the stored prefix of a layer that holds this whole tile
+        if (ux < fw && uy < fh) { a0 = x_unstore(POOL[fx_at(LT, init, 0u, x, y)]); }
+        if (ux + 1u < fw && uy < fh) { a1 = x_unstore(POOL[fx_at(LT, init, 0u, x + 1, y)]); }
+        if (ux < fw && uy + 1u < fh) { a2 = x_unstore(POOL[fx_at(LT, init, 0u, x, y + 1)]); }
+        if (ux + 1u < fw && uy + 1u < fh) { a3 = x_unstore(POOL[fx_at(LT, init, 0u, x + 1, y + 1)]); }
+    }
     // the occlusion cut at pixel grain: start at the topmost entry whose opaque cover holds this 2 x 2 block
-    uint start = 0u;
-    for (uint i = n; i > 0u; i--) {
+    uint start = from;
+    for (uint i = to; i > from; i--) {
         uint z = LIST[off + i - 1u];
         metal::int4 c = unpack_win(WINS[4u * z + 2u], WINS[4u * z + 3u]);
         if (c.x <= x && c.y <= y && c.z >= x + 2 && c.w >= y + 2) { start = i - 1u; break; }
     }
-    for (uint i = start; i < n; i++) {
+    for (uint i = start; i < to; i++) {
         uint z = LIST[off + i];
         metal::int4 wn = unpack_win(WINS[4u * z], WINS[4u * z + 1u]);
         if (x + 1 < wn.x || x >= wn.z || y + 1 < wn.y || y >= wn.w) { continue; }
         uint o = ORDER[z], idx = o & IDXMASK;
         switch (o >> IDXBITS) {
 "#,
-    );
-    for (k, d) in descs.iter().enumerate() {
-        write!(s, "        case {k}u: {{ {}", record(k, &lays[k])).unwrap();
-        let (w, u) = (loads(d), unis(d, 'u'));
-        let covs: Vec<String> = [(0, 0), (1, 0), (0, 1), (1, 1)].iter().map(|(dx, dy)| if emit::has_glyph(d.code) { format!("atlas_at(ATLAS, a{k}_texel(rect, x + {dx}, y + {dy}, aw{w}{u}), alim)") } else { "0u".into() }).collect();
-        writeln!(s, "            a{k}_shade4({}a0, a1, a2, a3, rect, x, y, {}{w}{u});", if emit::has_tab(d.code) { "TAB, " } else { "" }, covs.join(", ")).unwrap();
-        s.push_str("        } break;\n");
-    }
-    s.push_str(
-        r#"        default: break;
+        );
+        for (k, d) in descs.iter().enumerate() {
+            write!(s, "        case {k}u: {{ {}", record(k, &lays[k])).unwrap();
+            let (w, u) = (loads(d), unis(d, 'u'));
+            let covs: Vec<String> = [(0, 0), (1, 0), (0, 1), (1, 1)].iter().map(|(dx, dy)| if emit::has_glyph(d.code) { format!("atlas_at(ATLAS, a{k}_texel(rect, x + {dx}, y + {dy}, aw{w}{u}), alim)") } else { "0u".into() }).collect();
+            let fx = emit::has_fx(d.code);
+            writeln!(s, "            a{k}_shade4({}{}a0, a1, a2, a3, rect, x, y, {}{}{w}{u});", if emit::has_tab(d.code) { "TAB, " } else { "" }, if fx { "POOL, LT, MEDIA, " } else { "" }, covs.join(", "), if fx { ", LAYOF[z]" } else { "" }).unwrap();
+            s.push_str("        } break;\n");
+        }
+        s.push_str(
+            r#"        default: break;
         }
     }
-    if (ux < fw && uy < fh) { OUT[uy * stride + ux] = x_store(a0); }
-    if (ux + 1u < fw && uy < fh) { OUT[uy * stride + ux + 1u] = x_store(a1); }
-    if (ux < fw && uy + 1u < fh) { OUT[(uy + 1u) * stride + ux] = x_store(a2); }
-    if (ux + 1u < fw && uy + 1u < fh) { OUT[(uy + 1u) * stride + ux + 1u] = x_store(a3); }
+    if (dest == 0xFFFFFFFFu) {
+        if (ux < fw && uy < fh) { OUT[uy * stride + ux] = x_store(a0); }
+        if (ux + 1u < fw && uy < fh) { OUT[uy * stride + ux + 1u] = x_store(a1); }
+        if (ux < fw && uy + 1u < fh) { OUT[(uy + 1u) * stride + ux] = x_store(a2); }
+        if (ux + 1u < fw && uy + 1u < fh) { OUT[(uy + 1u) * stride + ux + 1u] = x_store(a3); }
+    } else {
+        // a prefix job: the pixels of the layer's level 0 (its window is cut to the frame)
+        metal::int4 r = fx_rect(LT, dest, 0u);
+        if (x_in(r, x, y)) { POOL[fx_at(LT, dest, 0u, x, y)] = x_store(a0); }
+        if (x_in(r, x + 1, y)) { POOL[fx_at(LT, dest, 0u, x + 1, y)] = x_store(a1); }
+        if (x_in(r, x, y + 1)) { POOL[fx_at(LT, dest, 0u, x, y + 1)] = x_store(a2); }
+        if (x_in(r, x + 1, y + 1)) { POOL[fx_at(LT, dest, 0u, x + 1, y + 1)] = x_store(a3); }
+    }
 }
 "#,
-    );
+        );
+    }
+    s.push_str(FX_DOWN);
 
     // ---- pick: against the block the surface shows (the old one) ----
     s.push_str(
         r#"
 kernel void k_pick(const device uint* COLS [[buffer(0)]], device uint* META [[buffer(1)]], const device uint* ORDER [[buffer(2)]],
                    const device uint* WINS [[buffer(3)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]],
-                   const device uint* ATLAS [[buffer(8)]], device uint* PICK [[buffer(10)]]) {
+                   const device uint* ATLAS [[buffer(8)]], device uint* PICK [[buffer(10)]],
+                   const device uint* POOL [[buffer(13)]], const device uint* LT [[buffer(14)]], const device uint* MEDIA [[buffer(15)]], const device uint* LAYOF [[buffer(16)]]) {
     uint fw = META[0], fh = META[1], TX = META[3], aw = META[6], alim = META[7];
-    const device uint* TAB = COLS + TABBASE; (void)TAB;
+    const device uint* TAB = COLS + TABBASE; (void)TAB; (void)POOL; (void)LT; (void)MEDIA; (void)LAYOF;
 "#,
     );
     s.push_str(&load_u('u', M_UOLD));
@@ -206,7 +306,8 @@ kernel void k_pick(const device uint* COLS [[buffer(0)]], device uint* META [[bu
         write!(s, "            case {k}u: {{ {}", record(k, &lays[k])).unwrap();
         let (w, u) = (loads(d), unis(d, 'u'));
         let cov = if emit::has_glyph(d.code) { format!("atlas_at(ATLAS, a{k}_texel(rect, x, y, aw{w}{u}), alim)") } else { "0u".into() };
-        writeln!(s, "                if (a{k}_shade({}metal::uint4(0u), rect, x, y, {cov}{w}{u}).w != 0u) {{ found = true; id = {}; }}", if emit::has_tab(d.code) { "TAB, " } else { "" }, if d.hit { format!("a{k}_pick(rect{w}{u})") } else { "0xFFFFFFFFu".into() }).unwrap();
+        let fx = emit::has_fx(d.code);
+        writeln!(s, "                if (a{k}_shade({}{}metal::uint4(0u), rect, x, y, {cov}{}{w}{u}).w != 0u) {{ found = true; id = {}; }}", if emit::has_tab(d.code) { "TAB, " } else { "" }, if fx { "POOL, LT, MEDIA, " } else { "" }, if fx { ", LAYOF[z]" } else { "" }, if d.hit { format!("a{k}_pick(rect{w}{u})") } else { "0xFFFFFFFFu".into() }).unwrap();
         s.push_str("            } break;\n");
     }
     write!(
@@ -316,7 +417,7 @@ kernel void k_tab(device uint* COLS [[buffer(0)]], const device uint* JOB [[buff
 }
 "#,
     );
-    s.replace("IDXMASK", &format!("{IDX_MASK}u")).replace("IDXBITS", &format!("{IDX_BITS}u")).replace("TABBASE", &format!("{tab}u")).replace("TABLIM", &format!("{}u", crate::scene::TAB_WORDS - 2))
+    s.replace("FRAMEW", &format!("{}u", frame.0)).replace("FRAMEH", &format!("{}u", frame.1)).replace("MEDIALIM", &format!("{}u", media_words.max(8) - 1)).replace("IDXMASK", &format!("{IDX_MASK}u")).replace("IDXBITS", &format!("{IDX_BITS}u")).replace("TABBASE", &format!("{tab}u")).replace("TABLIM", &format!("{}u", crate::scene::TAB_WORDS - 2))
 }
 
 /// Times of one GPU frame, seconds.
@@ -336,12 +437,25 @@ pub struct Gpu {
     bin: Pso,
     compact: Pso,
     tab: Pso,
+    seg: Pso,
+    down: Pso,
     win: Vec<Pso>,
     /// The arena this executor is bound to (calls that take a scene check it is that scene).
     arena: *const u32,
     /// 0 columns (the arena, no copy), 1 meta, 2 order, 3 windows, 4 tile headers, 5 lists, 6 tile list,
-    /// 7 output, 8 atlas, 9 damage, 10 pick, 11 rewritten records (a bit per key).
-    bufs: [Option<Buf>; 13],
+    /// 7 output, 8 atlas, 9 damage, 10 pick, 11 rewritten records (a bit per key), 12 table jobs; the staged
+    /// frame's: 13 the layers' pool (this executor's own retained copy), 14 the layer table, 15 the media
+    /// pool (the scene's, no copy), 16 layer of key, 17 jobs.
+    bufs: [Option<Buf>; 18],
+    /// The scene's media pool this executor wrapped.
+    media: *const u32,
+    /// The scene's bins and layer table as last mirrored (`staged`).
+    seen_bins: Option<u64>,
+    seen_lay: Option<u64>,
+    /// The scene has layer-owning columns.
+    layered: bool,
+    /// What the last `staged` frame ran: prefix jobs, pyramid blocks, output tiles, dispatches.
+    pub staged_stats: [u32; 4],
     /// Keys rewritten since the last frame, and the columns they are in.
     touched: Vec<u32>,
     touched_cols: u64,
@@ -379,7 +493,7 @@ impl Gpu {
         let descs: Vec<&Desc> = scene.cols.iter().map(|c| c.desc).collect();
         let lays: Vec<(usize, usize)> = scene.cols.iter().map(|c| (c.base, c.desc.words)).collect();
         // SAFETY: the caller's contract is this function's.
-        unsafe { Gpu::with_source(scene, out_words, cap, &source(&descs, &lays, scene.tab_region().0)) }
+        unsafe { Gpu::with_source(scene, out_words, cap, &source_fx(&descs, &lays, scene.tab_region().0, (scene.fw, scene.fh), scene.media.words().len())) }
     }
     /// As `new` with the source given (the gates pass mutated or naga-translated text).
     ///
@@ -396,6 +510,7 @@ impl Gpu {
             device.newComputePipelineStateWithFunction_error(&f).unwrap_or_else(|e| panic!("{name}: {e}"))
         };
         let (shade, pick, bin, compact, tab) = (pso("k_shade"), pso("k_pick"), pso("k_bin"), pso("k_compact"), pso("k_tab"));
+        let (seg, down) = (pso("k_seg"), pso("k_down"));
         let win: Vec<Pso> = (0..scene.cols.len()).map(|k| pso(&format!("k_win{k}"))).collect();
         let compile_s = t.elapsed().as_secs_f64();
         let nt = scene.tx * scene.ty;
@@ -407,6 +522,13 @@ impl Gpu {
             bin,
             compact,
             tab,
+            seg,
+            down,
+            media: scene.media.arena().ptr(),
+            seen_bins: None,
+            seen_lay: None,
+            staged_stats: [0; 4],
+            layered: scene.cols.iter().any(|c| c.desc.layer),
             win,
             arena: scene.arena.ptr(),
             bufs: Default::default(),
@@ -430,6 +552,13 @@ impl Gpu {
         // caller keeps alive and does not write while a frame is in flight (every frame here is waited for).
         let cols = unsafe { g.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(scene.arena.ptr() as *mut std::ffi::c_void)?, scene.arena.bytes(), MTLResourceOptions::StorageModeShared, None) }?;
         g.bufs[0] = Some(cols);
+        // SAFETY: the media pool's arena is page aligned and whole pages; the same contract as the columns
+        // (the scene outlives the executor; a source writes only leased slots, which no record names).
+        let media = unsafe { g.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(scene.media.arena().ptr() as *mut std::ffi::c_void)?, scene.media.arena().bytes(), MTLResourceOptions::StorageModeShared, None) }?;
+        g.bufs[15] = Some(media);
+        for i in [12, 13, 14, 16, 17] {
+            g.buf(i, 64);
+        }
         g.buf(1, (M_LEN + scene.cols.len() + 16) * 4);
         g.buf(4, nt * 2 * 4);
         g.buf(6, (TL_HDR + nt) * 4);
@@ -490,7 +619,7 @@ impl Gpu {
         self.first = true;
     }
     fn bind(&self, enc: &ProtocolObject<dyn MTLComputeCommandEncoder>, out: Option<&Buf>) {
-        for i in 0..13 {
+        for i in 0..18 {
             let b = if i == 7 { out.or(self.bufs[7].as_ref()) } else { self.bufs[i].as_ref() };
             // SAFETY: each buffer is alive for the frame and bound at the index the source reads.
             unsafe { enc.setBuffer_offset_atIndex(b.map(|b| &**b), 0, i) };
@@ -568,6 +697,109 @@ impl Gpu {
         GpuTime { wall: t.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }
     }
 
+    /// A buffer at least `bytes` long that keeps what it held (the layers' pool grows when layers do).
+    fn grow_keep(&mut self, i: usize, bytes: usize) {
+        let old = self.bufs[i].clone();
+        if old.as_ref().is_some_and(|b| b.length() >= bytes) {
+            return;
+        }
+        self.bufs[i] = None;
+        self.buf(i, bytes);
+        if let Some(o) = old {
+            let n = self.bufs[i].as_ref().unwrap();
+            // SAFETY: two distinct shared buffers, the new one at least as long; no frame is in flight.
+            unsafe { std::ptr::copy_nonoverlapping(o.contents().as_ptr() as *const u8, n.contents().as_ptr() as *mut u8, o.length()) };
+        }
+    }
+    /// The staged frame: what `Scene::update` scheduled, executed here. The CPU scene decided the damage,
+    /// the bins and the layers' stages; this runs them as dispatches over the scene's own records: per
+    /// layer in paint order its prefix jobs (`k_seg` into the layer) and its pyramid blocks level by level
+    /// (`k_down`), then the output tiles (`k_seg` into the surface). The layers' pool here is this
+    /// executor's own and is retained: call this once for every `update` of the scene (each frame's stages
+    /// repair what the previous ones left), with `tiles` the output tiles to draw (the frame's damage, or
+    /// more for an older surface). This is the path for scenes with layers; `frame` refuses them.
+    pub fn staged(&mut self, scene: &Scene, u: &U, tiles: &[u32], stride: usize) -> GpuTime {
+        assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
+        assert!(std::ptr::eq(self.media, scene.media.arena().ptr()), "the scene's media pool was replaced after the executor was made");
+        assert!(tiles.iter().all(|&t| (t as usize) < self.nt));
+        if self.seen_bins != Some(scene.bins_epoch) {
+            self.buf(5, scene.bins.list.len().max(1) * 4);
+            self.words_mut(5)[..scene.bins.list.len()].copy_from_slice(&scene.bins.list);
+            let th = self.words_mut(4);
+            for t in 0..scene.tx * scene.ty {
+                (th[2 * t], th[2 * t + 1]) = (scene.bins.off[t], scene.bins.off[t + 1] - scene.bins.off[t]);
+            }
+            let w = self.words_mut(3);
+            for z in 0..scene.win.len() {
+                let (a, c) = (scene.win[z], scene.cover[z]);
+                let p = |v: [i16; 4]| ((v[0] as u16 as u32) | (v[1] as u16 as u32) << 16, (v[2] as u16 as u32) | (v[3] as u16 as u32) << 16);
+                ((w[4 * z], w[4 * z + 1]), (w[4 * z + 2], w[4 * z + 3])) = (p(a), p(c));
+            }
+            self.seen_bins = Some(scene.bins_epoch);
+        }
+        if self.seen_lay != Some(scene.layers.epoch) {
+            let mut tab = Vec::new();
+            scene.layers.table(&mut tab);
+            self.buf(14, tab.len().max(16) * 4);
+            self.words_mut(14)[..tab.len()].copy_from_slice(&tab);
+            self.buf(16, self.nz.max(16) * 4);
+            let nz = self.nz;
+            let lo = self.words_mut(16);
+            lo[..nz].fill(u32::MAX);
+            lo[..scene.layers.of.len().min(nz)].copy_from_slice(&scene.layers.of[..scene.layers.of.len().min(nz)]);
+            self.seen_lay = Some(scene.layers.epoch);
+        }
+        self.grow_keep(13, scene.layers.used.max(16) * 4);
+        // the jobs: (pipeline is seg, first word, count) per dispatch
+        let mut jobs: Vec<u32> = Vec::new();
+        let mut stages: Vec<(bool, usize, usize)> = Vec::new();
+        let mut st = [0u32; 4];
+        let seg = |jobs: &mut Vec<u32>, ti: u32, upto: u32| {
+            let (from, to, init, _) = scene.seg(ti, upto);
+            jobs.extend([ti, from as u32, to as u32, init, upto, 0, 0, 0]);
+        };
+        for w in &scene.plan.work {
+            if !w.prefix.is_empty() {
+                stages.push((true, jobs.len(), w.prefix.len()));
+                w.prefix.iter().for_each(|&ti| seg(&mut jobs, ti, w.lid));
+                st[0] += w.prefix.len() as u32;
+            }
+            for (k, blocks) in &w.blocks {
+                stages.push((false, jobs.len(), blocks.len()));
+                blocks.iter().for_each(|&(bx, by)| jobs.extend([w.lid, *k, bx as u32, by as u32]));
+                st[1] += blocks.len() as u32;
+            }
+        }
+        if !tiles.is_empty() {
+            stages.push((true, jobs.len(), tiles.len()));
+            tiles.iter().for_each(|&ti| seg(&mut jobs, ti, crate::layer::NONE));
+            st[2] = tiles.len() as u32;
+        }
+        st[3] = stages.len() as u32;
+        self.staged_stats = st;
+        self.buf(17, jobs.len().max(16) * 4);
+        self.words_mut(17)[..jobs.len()].copy_from_slice(&jobs);
+        let m = self.words_mut(1);
+        m[2] = stride as u32;
+        m[M_UNEW..M_UNEW + 64].copy_from_slice(&u.w);
+        let t = std::time::Instant::now();
+        let cmd = self.queue.commandBuffer().expect("command buffer");
+        let enc = cmd.computeCommandEncoder().expect("encoder");
+        self.bind(&enc, None);
+        for &(is_seg, at, n) in &stages {
+            enc.setComputePipelineState(if is_seg { &self.seg } else { &self.down });
+            // SAFETY: buffer 17 holds every stage's jobs; `at` words in is inside it and word aligned.
+            unsafe { enc.setBuffer_offset_atIndex(self.bufs[17].as_deref(), at * 4, 17) };
+            enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: n, height: 1, depth: 1 }, MTLSize { width: 16, height: 16, depth: 1 });
+        }
+        enc.endEncoding();
+        cmd.commit();
+        cmd.waitUntilCompleted();
+        // the resident lanes were not kept up: a later `frame` starts over
+        self.first = true;
+        GpuTime { wall: t.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }
+    }
+
     /// A GPU-resident frame. The CPU's whole part is here: store the block and the pointer, encode the fixed
     /// list of dispatches, wait. Returns the times and the pick (the id under the pointer in the frame the
     /// surface showed; `u[U_PICK]` is ignored and replaced by it).
@@ -594,6 +826,7 @@ impl Gpu {
         self.touched_cols |= 1 << col;
     }
     fn run(&mut self, u: &U, pointer: Option<(i32, i32)>, stride: usize, shade: bool) -> (GpuTime, u32) {
+        assert!(!self.layered, "a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers");
         let first = self.first;
         let mut new = *u;
         new.w[U_PICK] = self.prev.w[U_PICK];

@@ -1,0 +1,16 @@
+   Compiling bough-x v0.0.0 (crates/bough-x)
+    Finished `release` profile [optimized + debuginfo] target(s) in 3.86s
+     Running tests/anim.rs (release/build/bough-x/13bd536f5f46e948/out/anim-13bd536f5f46e948)
+
+running 2 tests
+test a_finished_transition_leaves_nothing ... ok
+test animation_matches_every_oracle ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/repair_bounds.rs (release/build/bough-x/18d21741c8ea06db/out/repair_bounds-18d21741c8ea06db)
+
+running 1 test
+test rectangular_damage_paints_once_and_holes_keep_their_pixels ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

@@ -1,0 +1,34 @@
+   Compiling bough-kernel v0.0.0 (crates/bough-kernel)
+warning: unnecessary parentheses around assigned value
+   --> crates/bough-kernel/tests/exact.rs:417:25
+    |
+417 |     let Some(mut gpu) = (unsafe { bough_kernel::vulkan::Gpu::build_unchecked(&bytes, true) }.ok())
+    |                         ^                                                                        ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+417 -     let Some(mut gpu) = (unsafe { bough_kernel::vulkan::Gpu::build_unchecked(&bytes, true) }.ok())
+417 +     let Some(mut gpu) = unsafe { bough_kernel::vulkan::Gpu::build_unchecked(&bytes, true) }.ok()
+    |
+
+warning: `bough-kernel` (test "exact") generated 1 warning (run `cargo fix --test "exact" -p bough-kernel` to apply 1 suggestion)
+    Finished `release` profile [optimized + debuginfo] target(s) in 8.66s
+     Running tests/exact.rs (release/build/bough-kernel/9a62c0778b90db33/out/exact-9a62c0778b90db33)
+
+running 6 tests
+test vulkan_writes_wrapped_memory ... ok
+test vulkan_rounding_mutant_is_caught ... ok
+test arithmetic_identities ... ok
+test translation_invariance ... ok
+test gpu_rounding_mutant_is_caught ... ok
+test executors_agree ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.18s
+
+     Running tests/shadow_cache.rs (release/build/bough-kernel/dc5c18c0dce87297/out/shadow_cache-dc5c18c0dce87297)
+
+running 1 test
+test fractional_shadow_reuse_preserves_integer_coverage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s

@@ -1192,8 +1192,13 @@ impl<V: View> App<V> {
         if let Some(c) = act.hover_bg {
             // an element's described colour moves to its cold record while a hover colour shows (the
             // colour wire writes it there: `ApplyBg` reads the flag)
-            let base = if act.node != NONE { self.rt.mod_of(act.node).color } else { act.base };
-            let new = if on { c } else { base };
+            let (base, opacity) = if act.node != NONE {
+                let style = self.rt.mod_of(act.node);
+                (style.color, style.alpha)
+            } else {
+                (act.base, 1.0)
+            };
+            let new = crate::boxops::mul_alpha(if on { c } else { base }, opacity);
             if act.node != NONE {
                 let n = &mut self.rt.hot[act.node as usize];
                 n.kind = if on { n.kind | crate::rt::NK_HOVERED } else { n.kind & !crate::rt::NK_HOVERED };

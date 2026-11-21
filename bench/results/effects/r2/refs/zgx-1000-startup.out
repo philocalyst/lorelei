@@ -1,0 +1,5 @@
+ 5:10  up 4 days,  8:02, 5 users, load averages: 25.09 21.19 21.80
+check_exit=0
+zgx_sample,1000,startup,0,53045542,1
+measure_exit=0
+ 5:10  up 4 days,  8:02, 5 users, load averages: 25.09 21.19 21.80

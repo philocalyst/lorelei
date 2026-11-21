@@ -15,6 +15,7 @@ bough-face = { path = "../bough-face" }
 bough-mem = { path = "../bough-mem" }
 
 [features]
+mutant_repair_bounds = []
 # Mutants the pixel gates (tests/sheet.rs) must fail with:
 # the derivative forgets every other record of a page
 mutant_delta = []
@@ -36,3 +37,21 @@ mutant_free_leave = []
 
 # Drops the second changed word from the sparse reader union.
 mutant_sparse_union = []
+
+# ---- the incremental-operators card (docs/lanes/core/cards/2026-11-21-incremental-operators.md) ----
+# an order lane's split leaves the block tree as it was (rel::lane tests and tests/ops.rs must fail)
+mutant_lane = []
+# a filter ignores an update of a row (tests/ops.rs must fail)
+mutant_ops = []
+# a substring query takes the index's candidates without verifying them (tests/search_ops.rs must fail)
+mutant_tri = []
+# the key index forgets the records keyed by the old value (tests/select.rs must fail)
+mutant_keyed = []
+# the pointer's reach is tested at half the declared distance (tests/select.rs must fail)
+mutant_near = []
+# a swept rect is not handed over (tests/select.rs must fail)
+mutant_swept = []
+# the column-wide derivative of a constant-free archetype answers "unchanged" (tests/uniform.rs must fail)
+mutant_uniform = []
+# the clipped column walk loses the last record of every page (tests/each_in.rs must fail)
+mutant_each_in = []

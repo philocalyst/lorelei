@@ -17,7 +17,10 @@ fn main() {
         .unwrap_or(208);
     let reps = 64;
     let mut a = Anim::new(100_000, h);
+    // NEAR=1: the glowing cells declare their reach; SWEPT=1: motion is handed over as rects
+    a.near = std::env::var("NEAR").is_ok();
     let mut world = World::<_, Soft>::new(W, h, NWORDS);
+    world.tiles.sweep_rects = std::env::var("SWEPT").is_ok();
     world.tick(1000);
     world.mount(&a);
     world.tiles.clear();
@@ -54,7 +57,7 @@ fn main() {
                     let s = pmu::sample();
                     step(world, a, k);
                     let d = pmu::sample().since(&s);
-                    let n = world.tiles.count();
+                    let n = world.tiles.count() + world.tiles.swept.len() as u32;
                     world.tiles.clear();
                     (
                         d.v[0].saturating_sub(bracket),

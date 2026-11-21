@@ -1,0 +1,25 @@
+   Compiling bough-kernel v0.0.0 (crates/bough-kernel)
+warning: bough-metal@0.0.0: no Metal compiler (install Xcode for a prebuilt metallib); shaders compile from source at startup
+   Compiling bough v0.0.0 (crates/bough)
+warning: feature `f16` is declared but not used
+ --> crates/bough/src/lib.rs:1:110
+  |
+1 | #![feature(type_info, ptr_metadata, rustc_attrs, const_trait_impl, const_cmp, arbitrary_self_types_pointers, f16)]
+  |                                                                                                              ^^^
+  |
+  = note: `#[warn(unused_features)]` (part of `#[warn(unused)]`) on by default
+
+warning: feature `stdarch_neon_f16` is declared but not used
+ --> crates/bough/src/lib.rs:2:46
+  |
+2 | #![cfg_attr(target_arch = "aarch64", feature(stdarch_neon_f16))]
+  |                                              ^^^^^^^^^^^^^^^^
+
+warning: `bough` (lib) generated 2 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 14.89s
+     Running tests/active_transitions.rs (release/build/bough/076861a7507232a0/out/active_transitions-076861a7507232a0)
+
+running 1 test
+test foreground_retargets_and_leaves_the_active_set_at_every_age ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s

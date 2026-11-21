@@ -1071,6 +1071,10 @@ impl<'a, 'b, B: Brush> FontSelector<'a, 'b, B> {
             self.variations = self.rcx.variations(style.font_variations).unwrap_or(&[]);
             self.features = self.rcx.features(style.font_features).unwrap_or(&[]);
         }
+        let requested = self
+            .rcx
+            .stack(self.styles[style_index as usize].font_family)
+            .unwrap_or(&[]);
         let mut selected_font = None;
         let (mut first, mut first_complete) = (true, false);
         self.query.matches_with(|font| {
@@ -1098,7 +1102,9 @@ impl<'a, 'b, B: Brush> FontSelector<'a, 'b, B> {
 
             match map_status {
                 Status::Complete => {
-                    first_complete = is_first;
+                    // Implicit emoji and script fallback candidates can vary between clusters.
+                    // Only a font in the resolved style stack can certify a whole run.
+                    first_complete = is_first && requested.contains(&font.family.0);
                     selected_font = Some(SelectedFont {
                         font: font.clone(),
                         attrs: self.attrs,

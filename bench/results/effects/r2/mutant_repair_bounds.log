@@ -1,0 +1,24 @@
+   Compiling bough-x v0.0.0 (crates/bough-x)
+    Finished `release` profile [optimized + debuginfo] target(s) in 3.15s
+     Running tests/repair_bounds.rs (release/build/bough-x/357170444e1fbf84/out/repair_bounds-357170444e1fbf84)
+
+running 1 test
+test rectangular_damage_paints_once_and_holes_keep_their_pixels ... FAILED
+
+failures:
+
+---- rectangular_damage_paints_once_and_holes_keep_their_pixels stdout ----
+
+thread 'rectangular_damage_paints_once_and_holes_keep_their_pixels' panicked at crates/bough-x/tests/repair_bounds.rs:30:13:
+assertion `left == right` failed: 32,0
+  left: 8943496
+ right: 2245734
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    rectangular_damage_paints_once_and_holes_keep_their_pixels
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p bough-x --test repair_bounds`

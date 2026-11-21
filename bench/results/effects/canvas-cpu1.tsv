@@ -1,0 +1,65 @@
+ 4:24  up 4 days,  7:16, 5 users, load averages: 22.27 21.19 18.80
+NO_SHADOWS=0 SIZE=.2
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	wall_us_p50	wall_us_p95	wall_us_max	allocs_per_step	footprint_mib	peak_mib
+# scene=gbcanvas model="1000 nodes in 20 frames (the gui-bench spec's canvas)" fanout=200 scene_scale=0.2 mode=redescribe render=1 device_scale=2 window=1280x800 reps=6
+# records=2380 since_exec_ms=186.2 build_ms=0.0
+gbcanvas	hover	6	2775508115	2780188714	586801783	163499.2	166775.7	166775.7	-	72.3	82.0
+gbcanvas	theme	6	2780082767	2781697665	585650116	163297.0	164745.0	164745.0	-	72.3	82.1
+gbcanvas	resize	6	2764300591	2777194934	582440539	162568.8	164334.8	164334.8	-	90.9	100.7
+ 4:24  up 4 days,  7:17, 5 users, load averages: 22.27 21.19 18.80
+NO_SHADOWS=0 SIZE=1
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	wall_us_p50	wall_us_p95	wall_us_max	allocs_per_step	footprint_mib	peak_mib
+# scene=gbcanvas model="5000 nodes in 20 frames (the gui-bench spec's canvas)" fanout=1000 scene_scale=1 mode=redescribe render=1 device_scale=2 window=1280x800 reps=6
+# records=7180 since_exec_ms=988.6 build_ms=0.0
+gbcanvas	hover	6	16471184950	16471779836	3480704841	967657.2	969914.7	969914.7	-	79.1	88.9
+gbcanvas	theme	6	16482104403	16483316534	3481546054	970927.5	974775.9	974775.9	-	79.2	88.9
+gbcanvas	resize	6	12914622701	15571624284	2723160408	758583.7	914688.3	914688.3	-	97.9	107.7
+ 4:24  up 4 days,  7:17, 5 users, load averages: 18.90 20.51 18.61
+NO_SHADOWS=1 SIZE=.2
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	wall_us_p50	wall_us_p95	wall_us_max	allocs_per_step	footprint_mib	peak_mib
+# scene=gbcanvas model="1000 nodes in 20 frames (the gui-bench spec's canvas)" fanout=200 scene_scale=0.2 mode=redescribe render=1 device_scale=2 window=1280x800 reps=6
+# records=2161 since_exec_ms=50.4 build_ms=0.0
+gbcanvas	hover	6	314740365	316925747	64340717	17995.0	18300.5	18300.5	-	72.5	82.3
+gbcanvas	theme	6	317015907	318378514	63650560	17780.1	17930.1	17930.1	-	72.6	82.3
+gbcanvas	resize	6	318079575	331259441	63000470	17619.8	19319.2	19319.2	-	91.1	100.9
+ 4:24  up 4 days,  7:17, 5 users, load averages: 18.90 20.51 18.61
+NO_SHADOWS=1 SIZE=1
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	wall_us_p50	wall_us_p95	wall_us_max	allocs_per_step	footprint_mib	peak_mib
+# scene=gbcanvas model="5000 nodes in 20 frames (the gui-bench spec's canvas)" fanout=1000 scene_scale=1 mode=redescribe render=1 device_scale=2 window=1280x800 reps=6
+# records=6161 since_exec_ms=118.8 build_ms=0.0
+gbcanvas	hover	6	1762835907	1765607700	346559694	96483.4	97213.8	97213.8	-	79.1	88.8
+gbcanvas	theme	6	1767690567	1775136500	345839807	96373.6	96714.5	96714.5	-	79.1	88.9
+gbcanvas	resize	6	1407010561	1693919031	275231802	76697.0	93523.2	93523.2	-	97.8	107.6
+ 4:24  up 4 days,  7:17, 5 users, load averages: 18.90 20.51 18.61
+NO_SHADOWS=1 SIZE=.2
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	wall_us_p50	wall_us_p95	wall_us_max	allocs_per_step	footprint_mib	peak_mib
+# scene=gbcanvas model="1000 nodes in 20 frames (the gui-bench spec's canvas)" fanout=200 scene_scale=0.2 mode=redescribe render=1 device_scale=2 window=1280x800 reps=6
+# records=2161 since_exec_ms=44.3 build_ms=0.0
+gbcanvas	hover	6	314217329	314911074	64643002	18241.0	18641.0	18641.0	-	72.3	82.0
+gbcanvas	theme	6	315170393	317230908	62457810	17360.9	18013.1	18013.1	-	72.3	82.1
+gbcanvas	resize	6	317961571	329114339	63346516	17619.8	18834.0	18834.0	-	90.8	100.6
+ 4:24  up 4 days,  7:17, 5 users, load averages: 18.90 20.51 18.61
+NO_SHADOWS=1 SIZE=1
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	wall_us_p50	wall_us_p95	wall_us_max	allocs_per_step	footprint_mib	peak_mib
+# scene=gbcanvas model="5000 nodes in 20 frames (the gui-bench spec's canvas)" fanout=1000 scene_scale=1 mode=redescribe render=1 device_scale=2 window=1280x800 reps=6
+# records=6161 since_exec_ms=126.6 build_ms=0.0
+gbcanvas	hover	6	1761714566	1762457282	345624755	96247.1	96878.5	96878.5	-	78.8	88.5
+gbcanvas	theme	6	1767444707	1774356954	346296724	96441.6	96745.1	96745.1	-	78.8	88.6
+gbcanvas	resize	6	1406909337	1691328247	274512653	76589.0	92578.3	92578.3	-	97.4	107.1
+ 4:24  up 4 days,  7:17, 5 users, load averages: 18.90 20.51 18.61
+NO_SHADOWS=0 SIZE=.2
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	wall_us_p50	wall_us_p95	wall_us_max	allocs_per_step	footprint_mib	peak_mib
+# scene=gbcanvas model="1000 nodes in 20 frames (the gui-bench spec's canvas)" fanout=200 scene_scale=0.2 mode=redescribe render=1 device_scale=2 window=1280x800 reps=6
+# records=2380 since_exec_ms=194.8 build_ms=0.0
+gbcanvas	hover	6	2776852822	2777992705	586681053	163671.9	163825.1	163825.1	-	72.5	82.3
+gbcanvas	theme	6	2781156781	2782384629	586360669	163470.4	167596.2	167596.2	-	72.6	82.4
+gbcanvas	resize	6	2764632945	2778441524	583191263	161589.3	163882.8	163882.8	-	91.2	100.9
+ 4:24  up 4 days,  7:17, 5 users, load averages: 17.95 20.29 18.54
+NO_SHADOWS=0 SIZE=1
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	wall_us_p50	wall_us_p95	wall_us_max	allocs_per_step	footprint_mib	peak_mib
+# scene=gbcanvas model="5000 nodes in 20 frames (the gui-bench spec's canvas)" fanout=1000 scene_scale=1 mode=redescribe render=1 device_scale=2 window=1280x800 reps=6
+# records=7180 since_exec_ms=1000.3 build_ms=0.0
+gbcanvas	hover	6	16470571502	16474192008	3479003382	969572.7	971524.8	971524.8	-	79.0	88.8
+gbcanvas	theme	6	16479045175	16484779882	3485788793	963172.0	970511.0	970511.0	-	79.1	88.8
+gbcanvas	resize	6	12915232575	15573731378	2728930652	756526.7	921348.0	921348.0	-	97.9	107.7
+ 4:25  up 4 days,  7:17, 5 users, load averages: 17.80 20.14 18.52

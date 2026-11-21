@@ -1,0 +1,69 @@
+ 4:13  up 4 days,  7:06, 5 users, load averages: 8.30 15.22 16.69
+
+# H=10288: 4097 records in 129 pages; sweeps 1
+scene	phase	steps	instr_p50	cycles_p50	tiles_p50
+anim_x	frame_endless	64	2059	419	10272
+anim_x	frame_endless_and_fade	64	2168	461	10304
+anim_x	fade_start_turn	64	820	161	0
+anim_x	pointer_words	64	65339	10551	110
+anim_x	scroll_3_rows	64	17988	4453	10272
+# H=208: 65 records in 17 pages; sweeps 1
+scene	phase	steps	instr_p50	cycles_p50	tiles_p50
+anim_x	frame_endless	64	169	56	192
+anim_x	frame_endless_and_fade	64	278	68	224
+anim_x	fade_start_turn	64	820	160	0
+anim_x	pointer_words	64	4215	924	82
+anim_x	scroll_3_rows	64	3870	610	192
+# rows=10000 cells=100000 reps=32 window=2560x1600 device px
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	tiles_p50
+# model built in 0.11 ms (1597428 instructions): the data, not the UI
+# mounted: 764 records in 32 pages, 43776 bytes of columns, 47.6 us wall
+sheet_x	mount	1	356768	356768	169834	4000
+sheet_x	floor	32	0	0	0	0
+sheet_x	idle	32	76	76	35	0
+sheet_x	hover	32	13504	13504	2364	329
+sheet_x	hover_move	32	14908	15047	2773	705
+sheet_x	theme	32	42286	42286	8513	4000
+sheet_x	edit_exposed	32	2902	2912	583	32
+sheet_x	edit_unexposed	32	2379	2384	410	16
+sheet_x	part_model_edit	32	58	58	41	0
+sheet_x	part_total_word	32	891	896	190	16
+sheet_x	part_delta_total	32	623	628	130	16
+sheet_x	part_diff_only	32	162	162	38	0
+sheet_x	part_journal_only	32	1774	1774	283	0
+sheet_x	part_mark_cell	32	59	63	10	16
+sheet_x	part_pointer_same	32	438	438	82	0
+sheet_x	select	32	990	990	176	0
+sheet_x	frame_in_motion	8	184	184	64	252
+sheet_x	frame_at_rest	32	10	10	0	0
+sheet_x	scroll_3_rows	32	7012	7012	1131	3600
+sheet_x	scroll_6px	32	1587	1587	307	3600
+sheet_x	scroll_page	32	34486	34486	5345	3600
+sheet_x	insert_row	32	88973	92346	27637	2390
+sheet_x	remove_row	32	88673	92317	27325	2390
+sheet_x	redescribe_idle	32	17788	17788	2669	0
+sheet_x	redescribe_edit	32	17848	18569	2756	0
+# at the end: 764 records in 32 pages, 43776 bytes of columns
+# rows=100000 reps=64 cold=false window=1280x800 device px, DejaVu Sans 14 px from the prepared face
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	tiles_p50
+rows	mount	16	121256	419150	37397	0
+# rows mount: 14 lines shaped, 37 found again, 6912 bytes of glyph state
+rows	idle	64	65	65	14	0
+rows	hover	64	4434	4434	754	120
+rows	tint (text colour alone, every line)	64	2323	2323	435	341
+rows	scroll 3 rows	64	4990	5004	845	960
+rows	scroll a page (24 rows enter)	64	19395	19395	2878	960
+rows	label edit (toggle a suffix on an exposed row)	64	2592	4244	530	28
+rows	value edit (an exposed row's number)	64	1914	1918	352	12
+rows	remove a row then insert one	64	615289	615299	191537	766
+rows	collect the glyph memo (clear, re-describe what is exposed)	64	43081	43081	6290	389
+# rows end: 922 lines shaped, 9177 found again, 9728 bytes of glyph state
+typing	type a character (event, handler, settle)	64	3012	4172	501	26
+typing	caret move	64	1630	1759	325	1
+# typing: 4000 keys grew the memo by 3584 bytes: a 256 KiB budget is reached every 292571 keys
+# typing end: 51 lines shaped, 8109 found again, 15360 bytes of glyph state
+search	type a character (event, handler, settle)	64	27645951	27660945	7288377	26
+search	caret move	64	1630	1759	324	1
+search	narrow by a key, widen by a backspace (24 rows re-enter)	64	6465205	6470054	1002822	976
+# search re-entry: 1 lines shaped during the phase
+# search end: 33 lines shaped, 1107 found again, 12288 bytes of glyph state

@@ -529,6 +529,10 @@ impl<V: View> App<V> {
     }
     /// Run the handlers of kind `kind` on node `at`; returns whether any ran.
     fn fire(&mut self, at: (u32, u32), kind: Kind, e: &Ev) -> bool {
+        // a node of a description that has since been replaced by a smaller one (a press held across turns)
+        if self.docs.get(at.0 as usize).is_none_or(|d| d.nodes.len() <= at.1 as usize) {
+            return false;
+        }
         let (a, n) = self.docs[at.0 as usize].nodes[at.1 as usize].hnd;
         let mut ran = false;
         for h in &self.handlers[a as usize..(a + n) as usize] {

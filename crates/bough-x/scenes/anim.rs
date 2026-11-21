@@ -24,7 +24,11 @@ pub struct Anim {
     pub u: U,
     pub rows: u32,
     pub h: i32,
+    /// The glowing cells declare their reach (`expr::near`): the same pixels, a bounded pointer delta.
+    pub near: bool,
 }
+/// What a glowing cell shows when the pointer is 255 or more away.
+const FAR: u32 = 0xff00_0020;
 
 fn pulse((t, phase): (u32, u32)) -> Color {
     let v = (t / 16 + phase * 37) & 0xff;
@@ -56,7 +60,7 @@ const SHAPE: [Rect; 2 * CELLS] = {
 
 impl Anim {
     pub fn new(rows: u32, h: i32) -> Anim {
-        Anim { u: U::default(), rows, h }
+        Anim { u: U::default(), rows, h, near: false }
     }
     pub fn body(&self) -> Rect {
         Rect { x0: 0, y0: BANNER, x1: W, y1: self.h }
@@ -80,7 +84,20 @@ impl View for Anim {
     fn view<S: Sink<Self>>(&self, s: &mut S) {
         s.row(|| ([Rect::new(0, 0, W, BANNER)], Fill(Tween::<200, _, _, _>(un::<FadeOn>().map(ends).map(first), un::<FadeOn>().map(ends).map(second), un::<FadeT0>()))));
         s.scope(Space { clip: self.body(), base: (0, BANNER), scroll: Scroll::SLOT as u8 }, |s| {
-            s.list(&List { n: self.rows, row_h: ROW_H, x: 0, y: 0, shape: &SHAPE, edits: &FIXED }, |r| {
+            let l = List { n: self.rows, row_h: ROW_H, x: 0, y: 0, shape: &SHAPE, edits: &FIXED };
+            if self.near {
+                s.list(&l, |r| {
+                    (
+                        std::array::from_fn::<_, CELLS, _>(|c| Fill((un::<Time>(), rec((r * CELLS + c) as u32)).map(pulse))),
+                        std::array::from_fn::<_, CELLS, _>(|c| {
+                            let at = [(CELLS + c) as i32 * CELL_W + CELL_W / 2, BANNER + r as i32 * ROW_H + ROW_H / 2];
+                            Fill(bough_x::expr::near::<255, _, _, _>(rec(at), (un::<PtrX>(), un::<PtrY>(), rec(at)).map(glow), Kc::<FAR>))
+                        }),
+                    )
+                });
+                return;
+            }
+            s.list(&l, |r| {
                 (
                     std::array::from_fn::<_, CELLS, _>(|c| Fill((un::<Time>(), rec((r * CELLS + c) as u32)).map(pulse))),
                     std::array::from_fn::<_, CELLS, _>(|c| {
