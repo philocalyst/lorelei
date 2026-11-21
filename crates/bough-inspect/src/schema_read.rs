@@ -152,11 +152,11 @@ impl Col {
             reads: reads(v),
             moves: b(v, "moves"),
             timed: b(v, "timed"),
-            npages: u(v, "pages")?,
-            nrec: u(v, "nrec")?,
+            npages: u(v, "pages").unwrap_or(0),
+            nrec: u(v, "nrec").unwrap_or(0),
             sites: arr(v, "sites").iter().filter_map(J::as_u32).collect(),
-            records: i(v, "records")? as usize,
-            bytes: i(v, "bytes")? as usize,
+            records: i(v, "records").unwrap_or(0) as usize,
+            bytes: i(v, "bytes").unwrap_or(0) as usize,
         })
     }
 }
@@ -189,7 +189,7 @@ impl Store {
                 org.get(1).and_then(J::as_i64).unwrap_or(0) as i32,
             ),
             scroll: v.get("scroll").and_then(J::as_u32),
-            cap: u(v, "cap")?,
+            cap: u(v, "cap").unwrap_or(0),
             lo: u32::try_from(win.first().and_then(J::as_i64).unwrap_or(0)).unwrap_or(0),
             hi: u32::try_from(win.get(1).and_then(J::as_i64).unwrap_or(0)).unwrap_or(0),
             n: u(v, "n")?,
@@ -200,16 +200,16 @@ impl Store {
                     i(g, "row_h").unwrap_or(0) as i32,
                 )
             }),
-            seen: u(v, "seen")?,
+            seen: u(v, "seen").unwrap_or(0),
             moved,
             moved_ok: b(v, "moved_ok"),
             cols: arr(v, "cols")
                 .iter()
                 .map(Col::from_json)
                 .collect::<Result<_, _>>()?,
-            records: i(v, "records")? as usize,
-            pages: i(v, "pages")? as usize,
-            bytes: i(v, "bytes")? as usize,
+            records: i(v, "records").unwrap_or(0) as usize,
+            pages: i(v, "pages").unwrap_or(0) as usize,
+            bytes: i(v, "bytes").unwrap_or(0) as usize,
             subs: arr(v, "subs").iter().filter_map(J::as_usize).collect(),
         })
     }
@@ -238,8 +238,8 @@ impl List {
                 .collect::<Result<_, _>>()?,
             lo: u32::try_from(win.first().and_then(J::as_i64).unwrap_or(0)).unwrap_or(0),
             hi: u32::try_from(win.get(1).and_then(J::as_i64).unwrap_or(0)).unwrap_or(0),
-            cap: u(v, "cap")?,
-            seen: u(v, "seen")?,
+            cap: u(v, "cap").unwrap_or(0),
+            seen: u(v, "seen").unwrap_or(0),
             extent: i(v, "extent")?,
             scroll: v.get("scroll").and_then(J::as_u32),
         })
@@ -371,7 +371,7 @@ impl AppInfo {
             w: i(v, "w")? as i32,
             h: i(v, "h")? as i32,
             scale: f(v, "scale")?,
-            revision: u(v, "revision")?,
+            revision: u(v, "revision").unwrap_or(0),
             input_revision: v.get("input_revision").and_then(J::as_i64).unwrap_or(0) as u64,
             shape: v.get("shape").and_then(J::as_i64).unwrap_or(0) as u64,
         })
@@ -463,8 +463,16 @@ impl Snapshot {
                 .iter()
                 .map(|v| Node::from_json(v, generation))
                 .collect::<Result<_, _>>()?,
-            damage: Damage::from_json(v.get("damage").ok_or("damage")?)?,
-            counters: Counters::from_json(v.get("counters").ok_or("counters")?)?,
+            damage: v
+                .get("damage")
+                .map(Damage::from_json)
+                .transpose()?
+                .unwrap_or_default(),
+            counters: v
+                .get("counters")
+                .map(Counters::from_json)
+                .transpose()?
+                .unwrap_or_default(),
             words: arr(v, "words")
                 .iter()
                 .map(|w| {
@@ -473,7 +481,7 @@ impl Snapshot {
                         name: opt_s(w, "name"),
                         value: u(w, "value")?,
                         kind: stat(&s(w, "kind")?),
-                        readers: u(w, "readers")?,
+                        readers: u(w, "readers").unwrap_or(0),
                     })
                 })
                 .collect::<Result<_, String>>()?,

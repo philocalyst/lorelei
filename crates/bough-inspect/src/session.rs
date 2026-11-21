@@ -214,6 +214,7 @@ pub trait Program {
     /// Which world of this program is mounted: 0 for the first, one more after a remount (a resize that
     /// replaces the world). Node ids are stable within a generation and differ across generations; a fresh
     /// application of the same kind starts at 0, so two identical programs describe the same ids.
+    /// Count host-visible world replacements only. Internal mount passes and revisions use separate counters.
     fn generation(&self) -> u64 {
         0
     }

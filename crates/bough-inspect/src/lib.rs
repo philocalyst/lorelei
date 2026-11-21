@@ -4,8 +4,8 @@
 //!
 //! * [`schema`]: the wire schema (version 1). One owned [`schema::Snapshot`] with the element tree and its source
 //!   locations, typed operands and the staged expressions they came from, the block words behind them, layout,
-//!   damage, stores and lists, focus/hover/press, the accessibility projection and counters. [`schema::Snapshot::to_json`]
-//!   is canonical, so a schema change is a byte diff in a golden.
+//!   damage, stores and lists, focus/hover/press, the accessibility projection and counters.
+//!   [`schema::Snapshot::stable_json`] provides the contract used by goldens and replay.
 //! * [`session`]: [`session::Program`] (what an application exposes) and [`session::Session`] (the commands).
 //!   Mutation is a registered typed setter, committed through the application's own settle and read back; a
 //!   record's operand is a staged expression of state and is read-only, refused with the reason.
