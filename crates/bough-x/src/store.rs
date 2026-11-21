@@ -140,20 +140,17 @@ impl Tiles {
             (y0 >> TILE_SHIFT) as usize,
             ((y1 - 1) >> TILE_SHIFT) as usize,
         );
-        self.lo = self.lo.min(c);
-        self.hi = self.hi.max(d + 1);
         let (wa, wb) = (a >> 6, b >> 6);
-        let (ma, mb) = (!0u64 << (a & 63), !0u64 >> (63 - (b & 63)));
         // Every field of `Tiles` is public (and so is `World::tiles`): the rect was cut to `w` x `h`, but
         // nothing ties `w`, `h`, `stride` and `bits` together, so the bound is checked against the bitmap
         // itself (soundness review S02; it was a `debug_assert!`). One compare per mark.
-        let end = (d + 1)
-            .checked_mul(self.stride)
-            .expect("tile damage outside its bitmap");
-        assert!(
-            wb < self.stride && end <= self.bits.len(),
-            "tile damage outside its bitmap"
-        );
+        let (end, overflow) = (d + 1).overflowing_mul(self.stride);
+        if overflow | (wb >= self.stride) | (end > self.bits.len()) {
+            invalid_damage();
+        }
+        self.lo = self.lo.min(c);
+        self.hi = self.hi.max(d + 1);
+        let (ma, mb) = (!0u64 << (a & 63), !0u64 >> (63 - (b & 63)));
         // SAFETY: checked just above: rows `c..=d` of `stride` words end at `end <= bits.len()`, and the
         // words written in a row are `wa..=wb < stride`. `p` advances at most to `end`, one past the last row.
         unsafe {
@@ -860,6 +857,24 @@ impl Site {
             (*pg).initialized & (1 << ((self.base + slot) as usize & 63)) != 0
         }
     }
+    /// Return the record address only if its initialization bit is set.
+    ///
+    /// # Safety
+    /// As `set_rect`, and `A` is the archetype of the site's column.
+    #[inline(always)]
+    pub(crate) unsafe fn initialized_record<A>(&self, slot: u32) -> Option<*mut A> {
+        let index = (self.base + slot) as usize & 63;
+        // SAFETY: the caller supplies the current page and an in-bounds slot of A. Use one raw
+        // page address for the mask and the record. The mask is initialized even if the record is absent.
+        unsafe {
+            let page = self.page.cast::<Page<A>>().add((slot >> 6) as usize);
+            if (*page).initialized & (1 << index) == 0 {
+                return None;
+            }
+            Some((&raw mut (*page).rec).cast::<A>().add(index))
+        }
+    }
+
     /// The record at `slot`.
     ///
     /// SAFETY: as `set_rect`, and `A` is the archetype of the site's column.
@@ -871,6 +886,12 @@ impl Site {
                 .add((self.base + slot) as usize & 63)
         }
     }
+}
+
+#[cold]
+#[inline(never)]
+fn invalid_damage() -> ! {
+    panic!("tile damage outside its bitmap")
 }
 
 /// Which store, from the root: the child index at each level.

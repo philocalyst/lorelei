@@ -350,18 +350,10 @@ unsafe impl<V, A: Arch> Row<V> for A {
     unsafe fn patch(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
         // SAFETY: as `write`.
         unsafe {
-            if !(*sites).is_init::<A>(slot) {
-                // Never written (a row a re-description appended, or one a panicking row function left
-                // behind): there is nothing to compare with, and reading the slot as an `A` would read a
-                // value that was never made (soundness review S04). It appears where it is.
-                let r = (*sites).rect(slot).shift(mk.org);
-                cx.tiles.mark(r.shift(self.offset(cx.u)).and(mk.clip));
-                cx.tiles.mark(r.and(mk.clip));
-                (*sites).write_record(slot, *self);
-                cx.changed += 1;
+            let Some(p) = (*sites).initialized_record::<A>(slot) else {
+                write_missing(&*sites, slot, *self, mk, cx);
                 return;
-            }
-            let p = (*sites).rec::<A>(slot);
+            };
             if A::STATE {
                 if !(*p).eq_ops(self) {
                     // other operands: its transitions go on from what the record shows now
@@ -378,6 +370,22 @@ unsafe impl<V, A: Arch> Row<V> for A {
             }
         }
     }
+}
+
+/// Initialize a record first reached during a patch, including a row left by an unwound view.
+///
+/// SAFETY: the site holds A, its pointers are current, and the slot is under capacity.
+#[cold]
+#[inline(never)]
+unsafe fn write_missing<A: Arch>(site: &Site, slot: u32, value: A, mk: &Mk, cx: &mut Cx<'_>) {
+    // SAFETY: the caller supplies the site, column type, and slot needed for a typed write.
+    unsafe {
+        let r = site.rect(slot).shift(mk.org);
+        cx.tiles.mark(r.shift(value.offset(cx.u)).and(mk.clip));
+        cx.tiles.mark(r.and(mk.clip));
+        site.write_record(slot, value);
+    }
+    cx.changed += 1;
 }
 
 /// A record whose operands differ from what the column holds: damage what it showed, store it, damage what it
