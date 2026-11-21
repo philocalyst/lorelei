@@ -1518,7 +1518,10 @@ impl<V> Leaf<V> for Same<'_> {
     #[inline(always)]
     fn leaf<A: Arch>(&mut self, _: &A, _: TypeId, hov: Option<Hov>) {
         let fits = self.st.sites.get(self.k).is_some_and(|s| {
-            let c = &self.st.cols[s.col as usize];
+            let Some(c) = self.st.cols.get(s.col as usize) else {
+                return false;
+            };
+
             // The record type, and with it the record's layout. A handler is the same handler if its captures
             // have the layout the column's lane was made for (the same closure of a generic `view` is another
             // type in each sink's instantiation; the element layer's views are not generic and need no such
@@ -1536,6 +1539,7 @@ impl<V> Leaf<V> for Same<'_> {
         self.k += 1;
     }
     fn hole(&mut self) {
+        self.ok &= self.st.sites.get(self.k).is_some_and(|s| s.col == u32::MAX);
         self.k += 1;
     }
 }

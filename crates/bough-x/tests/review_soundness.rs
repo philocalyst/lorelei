@@ -248,7 +248,16 @@ fn a_click_on_a_row_never_written_runs_nothing() {
     w.click(&mut v, 1, 3 * 4 + 1);
     assert_eq!(v.hit, 0, "row 3 was never written");
     w.click(&mut v, 1, 1);
-    assert_eq!(v.hit, 1, "row 0 was written before the panic");
+    assert_eq!(
+        v.hit, 0,
+        "the incomplete pass cannot publish its written row either"
+    );
+    w.settle(&v);
+    w.click(&mut v, 1, 3 * 4 + 1);
+    assert_eq!(
+        v.hit, 1,
+        "the completed repair publishes the previously unwritten row"
+    );
 }
 
 // ---- S13: rows of a list that hold a scrolled box ---------------------------------------------------------
