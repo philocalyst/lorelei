@@ -109,3 +109,35 @@ fn a_typed_field_write_damages_exactly_its_readers() {
         "rejected"
     );
 }
+
+#[test]
+fn rows_source_points_at_the_real_description_call_site() {
+    const SOURCE: &str = include_str!("../../../comparisons/bough-guibench-x/src/rows.rs");
+    let mut session = rows(100);
+    let snapshot = session.snapshot();
+    let label = snapshot
+        .nodes
+        .iter()
+        .find(|n| n.text.as_deref() == Some("Row 00002"))
+        .unwrap();
+    assert!(
+        label
+            .loc
+            .file
+            .ends_with("comparisons/bough-guibench-x/src/rows.rs")
+    );
+    let source = SOURCE.lines().nth(label.loc.line as usize - 1).unwrap();
+    assert!(
+        source.trim_start().starts_with("s.list(&List"),
+        "{} pointed at {source:?}",
+        label.loc.short()
+    );
+    // A row describes several leaves. The description location currently names
+    // the call they share, so agent navigation should land on that call.
+    assert!(
+        snapshot
+            .nodes
+            .iter()
+            .any(|n| n.kind == "fill" && n.key.row == label.key.row && n.loc == label.loc)
+    );
+}
