@@ -1,6 +1,6 @@
 # bough-dev — provenance and licence
 
-`bough-dev` is forked from the GPUI-CE CLI:
+`bough-dev` reimplements the development-loop architecture of the GPUI-CE CLI. It records this upstream reference:
 
 - repository: https://github.com/gpui-ce/cli
 - commit: `6774184ad4fe84bf0ecf3293222c27ca273fe52d` (2026-11, "fix: verify installable source
@@ -9,12 +9,12 @@
   `MIT OR Apache-2.0`.
 - author: the GPUI-CE contributors (a community fork of Zed's GPUI).
 
-What this fork inherits (the shape, not the code): a CLI that owns `watch` (a source watcher with a debounce), a
+The upstream architecture includes a CLI that owns `watch` (a source watcher with a debounce), a
 cargo capture and rebuild (`compiler.rs`), a native start/stop of the application, and a local server the running
 application connects to (`server.rs`). The upstream CLI drives Subsecond: it compiles application Rust into
 shared libraries and patches the running process through a jump table.
 
-What this fork changes:
+The current bough implementation:
 
 - the unit of a patch is the **view description**, not a function: lorelei's typed core keeps identity and state
   in the stores, so a re-description (or an asset reload) keeps the application's state without any code patching;

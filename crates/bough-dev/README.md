@@ -3,7 +3,8 @@
 The developer loop for a lorelei (bough) application: watch, rebuild, reload or restart with typed state
 preserved, inspect over a terminal or MCP, and screenshot.
 
-Forked from [`gpui-ce/cli`](https://github.com/gpui-ce/cli) at `6774184` (Apache-2.0). See `NOTICE`.
+This implementation follows the CLI architecture from GPUI-CE at `6774184` (Apache-2.0).
+See `NOTICE` for the upstream repository and commit.
 
 ## What is real
 
@@ -28,7 +29,7 @@ Forked from [`gpui-ce/cli`](https://github.com/gpui-ce/cli) at `6774184` (Apache
 ## What is not
 
 - **No in-process Rust code patching.** The upstream CLI compiles changed functions into shared libraries and
-  patches a running process through Subsecond's jump table. This fork does not; it does not depend on Subsecond
+  patches a running process through Subsecond's jump table. `bough-dev` currently uses a process restart and has no Subsecond dependency
   and does not write executable memory. A change to `view()` is new code and needs a new binary, which is why the
   restart path exists and is what `run` uses for Rust files. (The owner's brief allows the hot path to refuse as
   long as the state-preserving fallback exists; this is that boundary, stated.)
