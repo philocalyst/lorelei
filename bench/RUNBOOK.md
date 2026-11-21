@@ -65,7 +65,9 @@ The example uses a self-diff. For a source comparison, pass the two emission dir
 
 ## 3. Reproducible macOS baselines and the regression gate
 
-For an integration checkout, set `BOUGH_FONT` to the face identified by the native reference receipt and run:
+For an integration checkout, set `BOUGH_FONT` to the matching DejaVu Sans font. The reference receipt records its SHA-256 under `runtime_inputs.BOUGH_FONT`. The capture used the font from `zgx/comparisons/fonts/DejaVuSans.ttf`.
+
+Run the gate from the integration checkout.
 
 ```sh
 bench/baseline/gate.sh
@@ -86,6 +88,8 @@ Set `BASE_WORKTREE` and `HEAD_WORKTREE` to the checkouts being compared. Omit `-
 `run.sh` takes the lock around the build and replay. The native gate compares named per-operation counters emitted by `sheet_x`, `events_x`, `text_x`, `anim_x`, `ops_x`, and the effects adapters. The current matrix includes near/swept animation variants, retained-pixel correctness checks for both effects adapters, and the staged paint, panes and video rows from `bench/fx/run.sh`. The JSON also keeps whole-process instructions, wall time and RSS as separate metrics. Results default to `runtime/baseline/<name>/`, with raw logs in `raw/`. `--no-build` requires matching source, toolchain and binary fingerprints.
 
 Default limits are 2% for instructions, 10% for wall time and 5% for process RSS. Wall and RSS are unqualified above the load ceiling. Wall is also unqualified if either input spreads more than the tolerance. See [native measurement scope and threshold overrides](baseline/README.md).
+
+Run `bench/fx/run.sh` for the standalone staged paint replay. It writes the eight `fxbench` invocations and two `pbench` invocations under `runtime/fx/`. The native gate includes the same workloads and verifies the pixel verdicts.
 
 ## 4. The older headless jobs on macOS
 
