@@ -612,7 +612,7 @@ impl View for Overlapping {
 }
 
 #[test]
-#[ignore = "known allocation boundary: event buffers initially reserve 64 overlaps"]
+#[ignore = "TR1-09 open"]
 fn pointer_dispatch_does_not_allocate_past_64_overlaps() {
     let mut view = Overlapping(U::default());
     let mut world = World::<_, Soft>::new(32, 32, 0);

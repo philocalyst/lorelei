@@ -63,7 +63,7 @@ fn empty_zero_height_list_can_later_gain_rows() {
 }
 
 #[test]
-#[ignore = "known issue: packed place needs a publication generation"]
+#[ignore = "TR1-02 open"]
 fn stale_place_after_ring_reuse_is_refused() {
     let mut view = Rows {
         u: U::default(),
@@ -101,7 +101,7 @@ fn redescribe_subscribes_to_replacement_relation() {
 }
 
 #[test]
-#[ignore = "known issue: settle still watches the retired relation"]
+#[ignore = "TR1-03 open"]
 fn settle_subscribes_to_replacement_relation() {
     let mut view = Rows {
         u: U::default(),
@@ -167,7 +167,7 @@ impl View for CountingRows {
 }
 
 #[test]
-#[ignore = "known scaling limit: a front insert rewrites the exposed suffix"]
+#[ignore = "TR1-10 open"]
 fn front_insert_does_not_redescribe_every_visible_row() {
     let mut counts = Vec::new();
     for height in [32, 256] {
@@ -221,7 +221,7 @@ impl View for PointerRows {
 }
 
 #[test]
-#[ignore = "known scaling limit: pointer words evaluate every exposed reader"]
+#[ignore = "TR1-09 open"]
 fn pointer_change_without_damage_has_bounded_record_work() {
     let mut counts = Vec::new();
     for height in [32, 256] {
@@ -239,4 +239,35 @@ fn pointer_change_without_damage_has_bounded_record_work() {
         counts[1] <= counts[0] + 2,
         "evaluations at 32 and 256 exposed rows: {counts:?}"
     );
+}
+
+#[test]
+fn packed_places_still_require_a_live_slot() {
+    let mut v = Rows {
+        u: U::default(),
+        items: Rel::new(vec![0xff00_0000; 130]),
+        height: 8,
+    };
+    let mut world = World::<_, Soft>::new(16, 8, 1);
+    world.mount(&v);
+    let path = Path { at: [0; 6], n: 2 };
+    let live = world.place(&path, 0, 0);
+    let hole = world.place(&path, 0, 1);
+    assert!(world.at_place(live).is_some());
+    assert!(world.at_place(hole).is_none());
+    v.u.w[0] = 8;
+    world.settle(&v);
+    assert!(world.at_place(live).is_none());
+    assert!(world.at_place(hole).is_some());
+}
+
+#[test]
+#[should_panic(expected = "the world has not been mounted")]
+fn settle_still_refuses_an_unmounted_world() {
+    let view = Rows {
+        u: U::default(),
+        items: Rel::new(vec![]),
+        height: 0,
+    };
+    World::<_, Soft>::new(16, 8, 1).settle(&view);
 }

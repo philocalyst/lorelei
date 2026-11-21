@@ -30,7 +30,6 @@ fn refused_runs_and_missing_faces_emit_no_spans() {
 }
 
 #[test]
-#[ignore = "known issue: glyph shaper receives previously published lanes as mutable Vecs"]
 fn refused_shaper_does_not_overwrite_an_older_run() {
     let mut glyphs = Glyphs::new();
     let (run, _) = glyphs
@@ -50,4 +49,36 @@ fn refused_shaper_does_not_overwrite_an_older_run() {
             .is_none()
     );
     assert_eq!(glyphs.of(run), (&[1][..], &[10][..]));
+}
+
+#[test]
+fn a_panicking_custom_shaper_leaves_published_runs_intact() {
+    let mut glyphs = Glyphs::new();
+    let (first, _) = glyphs
+        .line_with(1, 0, b"first", |slots, pens| {
+            slots.push(7);
+            pens.push(12);
+            Some(20)
+        })
+        .unwrap();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        glyphs.line_with(2, 0, b"retry", |slots, pens| {
+            slots.clear();
+            pens.clear();
+            slots.push(99);
+            panic!("test shaper stopped");
+        });
+    }));
+    assert!(failure.is_err());
+    assert_eq!(glyphs.of(first), (&[7][..], &[12][..]));
+    let (retried, _) = glyphs
+        .line_with(2, 0, b"retry", |slots, pens| {
+            assert!(slots.is_empty() && pens.is_empty());
+            slots.push(9);
+            pens.push(17);
+            Some(30)
+        })
+        .unwrap();
+    assert_eq!(glyphs.of(retried), (&[9][..], &[17][..]));
+    assert_eq!(glyphs.of(first), (&[7][..], &[12][..]));
 }
