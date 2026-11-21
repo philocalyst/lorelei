@@ -60,14 +60,16 @@ def spread(stats):
     return ratio(stats["min"], stats["max"]) - 1
 
 
-def display(name, base, head, limit, compare=True):
+def display(name, base, head, limit, compare=True, same_binary=False):
     b, h = base["median"], head["median"]
     r = ratio(b, h)
-    bad = compare and r > limit
+    bad = compare and r > limit and not same_binary
     if not compare:
         verdict = "UNQUALIFIED"
     elif bad:
         verdict = f"REGRESSED (limit {limit:g}x)"
+    elif same_binary and r > limit:
+        verdict = "VARIED (same binary)"
     elif h < b and r < 1 / limit:
         verdict = "IMPROVED"
     else:
@@ -147,19 +149,23 @@ def main():
             failed |= args.require_same_cells or (b is None and not args.allow_missing)
             continue
         limits = {**DEFAULT_LIMITS, **thresholds.get(name, {})}
+        same_binary = False
         if not legacy:
             keys = ("binary", "argv", "env", "parser", "counter_scope", "check")
             if any(a[key] != b[key] for key in keys):
                 raise ValueError(f"workload parameters changed for {name}")
             bin_name = a["binary"]
-            if base["binaries"][bin_name]["cargo_args"] != head["binaries"][bin_name]["cargo_args"]:
+            base_bin, head_bin = (run["binaries"][bin_name] for run in (base, head))
+            if base_bin["cargo_args"] != head_bin["cargo_args"]:
                 raise ValueError(f"binary build options changed for {name}")
+            base_digest = base_bin.get("sha256")
+            same_binary = bool(base_digest and base_digest == head_bin.get("sha256"))
         if not operations:
             if not full_cell:
                 continue
             bp, hp = (a, b) if legacy else (a["process"], b["process"])
             failed |= display(f"{name}/process instructions", metric(bp["instructions"]),
-                              metric(hp["instructions"]), limits["instructions"])
+                              metric(hp["instructions"]), limits["instructions"], same_binary=same_binary)
             compared += 1
         if full_cell:
             bp, hp = (a, b) if legacy else (a["process"], b["process"])
@@ -183,7 +189,8 @@ def main():
                 raise ValueError(f"no instruction counter for {key}")
             for counter in gated:
                 failed |= display(f"{key} [{counter}]", metric(old[counter], base["reps"]),
-                                  metric(new[counter], head["reps"]), cap["instructions"])
+                                  metric(new[counter], head["reps"]), cap["instructions"],
+                                  same_binary=same_binary and counter != "dispatch_allocs")
                 compared += 1
     if wanted - found:
         raise ValueError(f"unknown cells or operations: {', '.join(sorted(wanted - found))}")

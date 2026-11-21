@@ -92,6 +92,19 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(reverse.returncode, 1, reverse.stderr)
         self.assertIn("REGRESSED", reverse.stdout)
 
+    def test_instruction_variance_requires_identical_binary(self):
+        base = copy.deepcopy(self.doc)
+        base["binaries"]["sheet_x"]["sha256"] = "a" * 64
+        head = copy.deepcopy(base)
+        head["cells"][self.cid]["operations"]["hover"]["instr_p50"] = summary([15000] * 3)
+        repeat = self.compare(base, head, "--require-same-cells")
+        self.assertEqual(repeat.returncode, 0, repeat.stderr)
+        self.assertIn("VARIED (same binary)", repeat.stdout)
+        head["binaries"]["sheet_x"]["sha256"] = "b" * 64
+        changed = self.compare(base, head, "--require-same-cells")
+        self.assertEqual(changed.returncode, 1, changed.stderr)
+        self.assertIn("REGRESSED", changed.stdout)
+
     def test_integration_gate_checks_added_operations(self):
         head = copy.deepcopy(self.doc)
         operations = head["cells"][self.cid]["operations"]

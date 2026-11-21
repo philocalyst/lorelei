@@ -37,6 +37,8 @@ Set `BOUGH_FONT` to a known TrueType face for the façade and effects comparison
 
 The gate allows a 2% increase in the primary instruction counters by default. Process wall time and RSS are secondary. Their default limits are 10% and 5%. They are unqualified for unlocked captures or above the load ceiling and wall is unqualified when either run already spreads more than its tolerance. A positive allocation count where the baseline is zero fails.
 
+The comparison reports an over-limit instruction count as `VARIED (same binary)` when the executable SHA-256, runtime inputs and workload contract match. Those are repeat measurements of one executable. This rule still checks fixture coverage, correctness, dispatch allocations and qualified time and RSS. A changed executable uses the operation limit. Repeated `fbf6a2637b` captures saw instruction variation in the corpus index and Metal paths, including more than 2× on one small corpus probe. Inspect the samples when a changed executable exceeds the limit on these workloads.
+
 Use `--thresholds limits.json` for preregistered per-fixture and per-operation overrides. For example, an override on `hover` leaves every other sheet operation under the fixture default.
 
 ```json
