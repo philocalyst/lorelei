@@ -13,6 +13,8 @@ use std::alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error};
 
 pub use crate::expr::Rect;
 
+pub mod fast;
+
 pub const TILE_SHIFT: u32 = 5;
 pub const TILE: i32 = 1 << TILE_SHIFT;
 
@@ -29,6 +31,12 @@ pub struct Tiles {
     /// Damage that is still to come: the boxes records in motion stay inside, and until when. A frame marks
     /// them; nothing is evaluated. At most one entry per column that has a record in motion.
     pub sweeps: Vec<Sweep>,
+    /// With [`Tiles::sweep_rects`] set: the boxes of the records in motion this frame, in screen space, for a
+    /// raster that takes rects. They are damage like the bits are; `clear` empties them.
+    pub swept: Vec<Rect>,
+    /// Hand the boxes of records in motion over as rects ([`Tiles::swept`], by [`Tiles::tick_rects`]) instead
+    /// of marking their tiles each frame: a frame with motion then costs a push per column in motion, whatever its box covers.
+    pub sweep_rects: bool,
 }
 
 /// Records of one column are in motion until `until` (a value of `Time`; `u32::MAX`: endlessly) and stay inside
@@ -81,6 +89,25 @@ impl Tiles {
             }
         }
     }
+    /// As [`Tiles::tick`], with the boxes handed over as rects ([`Tiles::swept`]) and no tile marked.
+    #[inline(never)]
+    pub fn tick_rects(&mut self, now: u32, u: &U) {
+        let mut i = 0;
+        while i < self.sweeps.len() {
+            let s = self.sweeps[i];
+            let r = s.rect.shift(s.space.origin(u)).and(s.space.clip);
+            #[cfg(not(any(feature = "mutant_sweep", feature = "mutant_swept")))]
+            if (r.x0 < r.x1) & (r.y0 < r.y1) {
+                self.swept.push(r);
+            }
+            let _ = r;
+            if !crate::expr::ahead(s.until, now) {
+                self.sweeps.swap_remove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
     pub fn new(w: i32, h: i32) -> Tiles {
         let cols = ((w + TILE - 1) >> TILE_SHIFT) as usize;
         let rows = ((h + TILE - 1) >> TILE_SHIFT) as usize;
@@ -94,6 +121,8 @@ impl Tiles {
             lo: usize::MAX,
             hi: 0,
             sweeps: Vec::new(),
+            swept: Vec::new(),
+            sweep_rects: false,
         }
     }
     /// Mark the tiles a screen rectangle touches.
@@ -152,10 +181,18 @@ impl Tiles {
             self.bits[self.lo * self.stride..self.hi * self.stride].fill(0);
         }
         (self.lo, self.hi) = (usize::MAX, 0);
+        self.swept.clear();
     }
     #[inline]
     pub fn any(&self) -> bool {
-        self.lo < self.hi
+        (self.lo < self.hi) | !self.swept.is_empty()
+    }
+    /// The rects handed over this frame, marked as tiles: what a raster that takes only tiles calls before it
+    /// reads them (and what the gate compares the two modes by).
+    pub fn settle_swept(&mut self) {
+        for r in core::mem::take(&mut self.swept) {
+            self.mark(r);
+        }
     }
     #[inline]
     pub fn count(&self) -> u32 {
@@ -338,6 +375,11 @@ pub trait Arch: Record {
     fn sweep(&self, r: Rect, _u: &U) -> Rect {
         r
     }
+    /// A keyed selection (`expr::Sel`): `(block word, index of the key among the record's words)`. See
+    /// [`fast`]: a change of only that word concerns the records keyed by its old and its new value.
+    const KEYED: Option<(usize, usize)> = None;
+    /// A bounded reader of the pointer (`expr::Near`): `(index of the centre's first word, reach)`.
+    const NEAR: Option<(usize, i32)> = None;
     /// The record holds words the core writes (a transition's start): see [`Arch::carry`].
     const STATE: bool = false;
     /// The same operands as `o`, state words aside. Only asked when `STATE`.
@@ -494,6 +536,8 @@ pub struct Desc {
     active: ActiveFn,
     pub slots: fn(&mut dyn FnMut(Slot)),
     paint: unsafe fn(&RawCol, &StoreView, &U, *mut ()),
+    /// The bounded deltas the archetype admits ([`fast`]).
+    pub fast: fast::FastFns,
 }
 
 struct Holder<A, B>(core::marker::PhantomData<(A, B)>);
@@ -515,6 +559,7 @@ impl<A: Arch, B: Backend> Holder<A, B> {
         },
         slots: A::slots,
         paint: paint_col::<A, B>,
+        fast: fast::fns::<A>(),
     };
 }
 #[inline(always)]
