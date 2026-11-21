@@ -218,6 +218,46 @@ fn image_of(r: &rmcp::model::CallToolResult) -> Option<String> {
     })
 }
 
+async fn record_and_replay(
+    recorder: &rmcp::service::RunningService<rmcp::service::RoleClient, ()>,
+) {
+    let start = recorder
+        .call_tool(CallToolRequestParams::new("record_start").with_arguments(Map::new()))
+        .await
+        .expect("record_start");
+    assert_ne!(start.is_error, Some(true), "{}", text_of(&start));
+    for (name, args) in [
+        ("pointer_move", json!({"x": 20, "y": 20})),
+        ("click", json!({"x": 20, "y": 20})),
+        ("tick", json!({"ms": 16})),
+    ] {
+        let r = recorder
+            .call_tool(
+                CallToolRequestParams::new(name).with_arguments(args.as_object().unwrap().clone()),
+            )
+            .await
+            .unwrap();
+        assert_ne!(r.is_error, Some(true), "{name}: {}", text_of(&r));
+    }
+    let stop = recorder
+        .call_tool(CallToolRequestParams::new("record_stop").with_arguments(Map::new()))
+        .await
+        .expect("record_stop");
+    assert_ne!(stop.is_error, Some(true), "{}", text_of(&stop));
+    let log: Value = serde_json::from_str(&text_of(&stop)).expect("the log is JSON");
+    assert!(log.get("steps").is_some(), "{log}");
+    let replay = recorder
+        .call_tool(
+            CallToolRequestParams::new("replay")
+                .with_arguments(json!({"log": log}).as_object().unwrap().clone()),
+        )
+        .await
+        .expect("replay");
+    assert_ne!(replay.is_error, Some(true), "{}", text_of(&replay));
+    let result: Value = serde_json::from_str(&text_of(&replay)).unwrap();
+    assert_eq!(result["match"], true, "{result}");
+}
+
 #[test]
 fn a_standard_client_drives_every_tool_and_resource_over_stdio() {
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -288,40 +328,7 @@ fn a_standard_client_drives_every_tool_and_resource_over_stdio() {
         )
         .unwrap();
         let recorder = ().serve(transport).await.expect("pristine initialize");
-        let start = recorder
-            .call_tool(CallToolRequestParams::new("record_start").with_arguments(Map::new()))
-            .await
-            .expect("record_start");
-        assert_ne!(start.is_error, Some(true), "{}", text_of(&start));
-        for (name, args) in [
-            ("pointer_move", json!({"x": 20, "y": 20})),
-            ("click", json!({"x": 20, "y": 20})),
-            ("tick", json!({"ms": 16})),
-        ] {
-            let r = recorder
-                .call_tool(
-                    CallToolRequestParams::new(name)
-                        .with_arguments(args.as_object().unwrap().clone()),
-                )
-                .await
-                .unwrap();
-            assert_ne!(r.is_error, Some(true), "{name}: {}", text_of(&r));
-        }
-        let stop = recorder
-            .call_tool(CallToolRequestParams::new("record_stop").with_arguments(Map::new()))
-            .await
-            .expect("record_stop");
-        assert_ne!(stop.is_error, Some(true), "{}", text_of(&stop));
-        let log: Value = serde_json::from_str(&text_of(&stop)).expect("the log is JSON");
-        assert!(log.get("steps").is_some(), "{log}");
-        let replay = recorder
-            .call_tool(
-                CallToolRequestParams::new("replay")
-                    .with_arguments(json!({"log": log}).as_object().unwrap().clone()),
-            )
-            .await
-            .expect("replay");
-        assert_ne!(replay.is_error, Some(true), "{}", text_of(&replay));
+        record_and_replay(&recorder).await;
         recorder.cancel().await.ok();
         drop(pristine);
 
@@ -387,6 +394,7 @@ fn the_http_transport_accepts_the_same_client() {
         let client = ().serve(transport).await.expect("HTTP initialize");
         let tools = client.list_all_tools().await.expect("HTTP tools/list");
         assert!(tools.len() >= 26);
+        record_and_replay(&client).await;
         let mut log = None;
         let mut golden = None;
         let mut fails = Vec::new();
