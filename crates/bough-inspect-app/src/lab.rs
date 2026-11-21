@@ -34,13 +34,19 @@ pub trait Scenario: Model + 'static {
 /// One scenario, mounted and painted by the benchmark app's own `Scene`.
 pub struct Lab<V: Scenario> {
     pub scene: Scene<V>,
+    #[cfg(feature = "inspect")]
+    initial_geometry: (i32, i32, i32),
 }
 impl<V: Scenario> Lab<V> {
     pub fn new(v: V, w: i32, h: i32, scale: i32) -> Lab<V> {
         let mut scene = Scene::new(v);
         // the host's first resize mounts the world
         App::resize(&mut scene, w, h, scale.max(1));
-        Lab { scene }
+        Lab {
+            scene,
+            #[cfg(feature = "inspect")]
+            initial_geometry: (w, h, scale),
+        }
     }
     pub fn size(&self) -> (i32, i32) {
         (self.scene.geo.w, self.scene.geo.h)
@@ -104,8 +110,10 @@ impl<V: Scenario> Lab<V> {
             }
         }
     }
+    #[cfg(feature = "inspect")]
     pub fn rebuild_with(&self, v: V) -> Lab<V> {
-        Lab::new(v, self.scene.geo.w, self.scene.geo.h, self.scene.geo.k)
+        let (w, h, scale) = self.initial_geometry;
+        Lab::new(v, w, h, scale)
     }
 }
 

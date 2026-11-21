@@ -24,6 +24,39 @@ pub enum Command {
     Settle,
 }
 impl Command {
+    pub(crate) fn validate(&self) -> Result<(), &'static str> {
+        let coordinate = |v: i32| (-1_000_000..=1_000_000).contains(&v);
+        match self {
+            Self::Resize { w, h, scale }
+                if !(1..=4096).contains(w)
+                    || !(1..=4096).contains(h)
+                    || i64::from(*w) * i64::from(*h) > 8_388_608
+                    || !(1.0..=4.0).contains(scale) =>
+            {
+                Err("resize exceeds inspector size or scale limits")
+            }
+            Self::Pointer { x, y }
+            | Self::Down { x, y, .. }
+            | Self::Up { x, y, .. }
+            | Self::Click { x, y }
+            | Self::Wheel { x, y, .. }
+                if !coordinate(*x) || !coordinate(*y) =>
+            {
+                Err("input coordinates outside inspector limits")
+            }
+            Self::Wheel { dx, dy, .. }
+                if dx.abs() > 10_000.0
+                    || dy.abs() > 10_000.0
+                    || !dx.is_finite()
+                    || !dy.is_finite() =>
+            {
+                Err("invalid wheel delta")
+            }
+            Self::Text { text } if text.len() > 64 * 1024 => Err("text exceeds inspector limit"),
+            _ => Ok(()),
+        }
+    }
+
     pub fn name(&self) -> &'static str {
         match self {
             Command::Pointer { .. } => "pointer",
@@ -103,7 +136,11 @@ impl Command {
             .get("cmd")
             .and_then(J::as_str)
             .ok_or("a command needs a name")?;
-        let i = |k: &str| v.get(k).and_then(J::as_i64).map(|x| x as i32);
+        let i = |k: &str| {
+            v.get(k)
+                .and_then(J::as_i64)
+                .and_then(|x| i32::try_from(x).ok())
+        };
         let f = |k: &str| v.get(k).and_then(J::as_f32);
         let b = |k: &str| v.get(k).and_then(J::as_bool).unwrap_or(false);
         Ok(match cmd {
@@ -267,6 +304,8 @@ pub struct Step {
     pub refused: Option<(String, String)>,
 }
 
+pub(crate) const MAX_LOG_STEPS: usize = 1024;
+
 /// A session's commands and what each produced.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Log {
@@ -337,8 +376,15 @@ impl Log {
         }
         let size = v.get("size").ok_or("size")?;
         let mut steps = Vec::new();
-        for s in v.get("steps").and_then(|x| Some(x.arr())).unwrap_or(&[]) {
+        let Some(J::Arr(entries)) = v.get("steps") else {
+            return Err("steps must be an array".into());
+        };
+        if entries.len() > MAX_LOG_STEPS {
+            return Err("recording exceeded the step limit".into());
+        }
+        for s in entries {
             let command = Command::from_json(s)?;
+            command.validate()?;
             let refused = s.get("refused").map(|r| {
                 (
                     r.get("code").and_then(J::as_str).unwrap_or("").to_owned(),
@@ -376,15 +422,21 @@ impl Log {
 /// One command recorded: run it, then take the description and the frame it produced.
 pub fn record_step<P: Program>(s: &mut Session<P>, c: Command) -> Step {
     let refused = match &c {
-        Command::Set { field, value } => s
-            .set(field, value)
-            .err()
-            .map(|e| (e.code().to_owned(), e.reason())),
+        Command::Set { field, value } => s.set(field, value).err(),
         _ => {
             s.run(&c);
             None
         }
     };
+    observe(s, c, refused.as_ref())
+}
+
+pub(crate) fn observe<P: Program>(
+    s: &mut Session<P>,
+    c: Command,
+    refusal: Option<&Refusal>,
+) -> Step {
+    let refused = refusal.map(|e| (e.code().to_owned(), e.reason()));
     let digest = s.snapshot().digest();
     let damage = s.damage().tiles;
     let revision = s.app().world().revision();
@@ -417,6 +469,19 @@ pub enum Replay {
 /// Apply a log's commands to a fresh application of the same kind, in order, comparing every product.
 pub fn replay<P: Program>(log: &Log, app: impl FnOnce() -> P) -> Replay {
     let mut s = Session::new(app());
+    let fresh = Log::new(&mut s);
+    if (log.app.as_str(), log.w, log.h, log.scale)
+        != (fresh.app.as_str(), fresh.w, fresh.h, fresh.scale)
+        && let Some(step) = log.steps.first()
+    {
+        return Replay::Mismatch {
+            step: 0,
+            command: step.command.clone(),
+            what: "initial configuration",
+            expected: format!("{} {}x{} @ {}", log.app, log.w, log.h, log.scale),
+            got: format!("{} {}x{} @ {}", fresh.app, fresh.w, fresh.h, fresh.scale),
+        };
+    }
     for (i, want) in log.steps.iter().enumerate() {
         #[cfg(feature = "mutant_replay")]
         if i % 4 == 3 {

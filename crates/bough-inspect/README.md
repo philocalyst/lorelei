@@ -53,6 +53,10 @@ Commands such as screenshots still execute synchronously on the application thre
 
 ## Record and replay
 
+Start recording on a fresh app before injecting turns. `record_stop` returns the complete versioned log.
+Use that object as the `log` parameter to `replay`. Replay compares a fresh app with the same startup
+configuration, even if the app that recorded the log has since been resized.
+
 A `Command` is a turn: pointer, button, key, text, wheel, tick, resize, settle, typed set. `record` runs a script
 and keeps each command's description digest and pixel digest; `replay` runs it on a fresh application and compares
 every description, every pixel and every refusal. The app must be deterministic (the benchmark apps are).

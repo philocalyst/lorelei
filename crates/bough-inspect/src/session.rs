@@ -232,7 +232,8 @@ pub struct Session<P: Program> {
     last_settle_us: u64,
     last_paint_us: u64,
     /// A recording session keeps the commands it ran, to replay them on a fresh app.
-    log: Option<Vec<Command>>,
+    log: Option<crate::record::Log>,
+    log_overflow: bool,
     /// The block as of the last command (to name what moved) and the words that moved then.
     last_shown: U,
     last_change: u64,
@@ -260,6 +261,7 @@ impl<P: Program> Session<P> {
             last_settle_us: 0,
             last_paint_us: 0,
             log: None,
+            log_overflow: false,
             last_shown,
             last_change: 0,
             world,
@@ -334,11 +336,6 @@ impl<P: Program> Session<P> {
 
     /// Run one command, then settle (when it changes state). Returns what it did.
     pub fn run(&mut self, c: &Command) -> Outcome {
-        if let Some(log) = &mut self.log
-            && !matches!(c, Command::Set { .. })
-        {
-            log.push(c.clone());
-        }
         if let Some(e) = c.input() {
             if let Input::Pointer { x, y }
             | Input::Down { x, y, .. }
@@ -373,22 +370,32 @@ impl<P: Program> Session<P> {
             }
         }
         self.last_command = c.name().to_owned();
-        Outcome {
+        let outcome = Outcome {
             command: c.name().to_owned(),
             revision: self.app.world().revision(),
             damage_tiles: self.last_damage.tiles,
             digest: self.snapshot().digest(),
+        };
+        if !matches!(c, Command::Set { .. }) {
+            self.observe_command(|| c.clone(), None);
         }
+        outcome
     }
 
     /// Write a registered state field through its typed setter, commit, and check that the write landed.
     pub fn set(&mut self, field: &str, value: &PropValue) -> Result<Outcome, Refusal> {
-        if let Some(log) = &mut self.log {
-            log.push(Command::Set {
+        let result = self.set_inner(field, value);
+        self.observe_command(
+            || Command::Set {
                 field: field.to_owned(),
                 value: value.clone(),
-            });
-        }
+            },
+            result.as_ref().err(),
+        );
+        result
+    }
+
+    fn set_inner(&mut self, field: &str, value: &PropValue) -> Result<Outcome, Refusal> {
         let def = self
             .app
             .fields()
@@ -477,8 +484,8 @@ impl<P: Program> Session<P> {
         let p = Rect {
             x0: x,
             y0: y,
-            x1: x + 1,
-            y1: y + 1,
+            x1: x.saturating_add(1),
+            y1: y.saturating_add(1),
         };
         let mut v: Vec<(usize, Key)> = snap
             .nodes
@@ -513,14 +520,40 @@ impl<P: Program> Session<P> {
         ok
     }
 
-    pub fn start_recording(&mut self) {
-        self.log = Some(Vec::new());
+    /// Capture a replayable log from a pristine application instance.
+    pub fn start_recording(&mut self) -> Result<(), &'static str> {
+        if self.log.is_some() {
+            return Err("a recording is already active");
+        }
+        if self.commands != 0 || self.app.fresh().is_none() {
+            return Err("recording requires a fresh, replayable application");
+        }
+        self.log_overflow = false;
+        self.log = Some(crate::record::Log::new(self));
+        Ok(())
     }
-    pub fn recorded(&self) -> Option<&[Command]> {
-        self.log.as_deref()
+    /// Whether the session is capturing turns.
+    pub fn recording(&self) -> bool {
+        self.log.is_some()
     }
-    pub fn stop_recording(&mut self) -> Vec<Command> {
-        self.log.take().unwrap_or_default()
+    /// Finish and return the complete replay log.
+    pub fn stop_recording(&mut self) -> Result<crate::record::Log, &'static str> {
+        let log = self.log.take().ok_or("no recording is active")?;
+        if self.log_overflow {
+            return Err("recording exceeded the step limit");
+        }
+        Ok(log)
+    }
+    fn observe_command(&mut self, command: impl FnOnce() -> Command, refusal: Option<&Refusal>) {
+        if let Some(mut log) = self.log.take() {
+            if log.steps.len() < crate::record::MAX_LOG_STEPS {
+                log.steps
+                    .push(crate::record::observe(self, command(), refusal));
+            } else {
+                self.log_overflow = true;
+            }
+            self.log = Some(log);
+        }
     }
     pub fn counters(&mut self) -> Counters {
         let world = self.app.world();

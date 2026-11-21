@@ -356,7 +356,7 @@ fn incomplete_frames_and_slow_readers_do_not_hold_other_clients() {
     let mut incomplete = UnixStream::connect(&app.path).unwrap();
     incomplete.write_all(&[0, 0]).unwrap();
     let mut c = Client::open(&app.path).unwrap();
-    assert!(call(&mut c, "counters", J::obj()).get("records").is_some());
+    assert!(call(&mut c, "counters", J::obj()).get("retained").is_some());
     let mut malformed = UnixStream::connect(&app.path).unwrap();
     malformed
         .set_read_timeout(Some(Duration::from_secs(5)))
@@ -412,4 +412,53 @@ fn binding_preserves_existing_paths_and_cleans_up_only_its_socket() {
     drop(listener);
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "replacement");
     std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn wire_recording_replays_on_a_separate_app_with_initial_geometry() {
+    let first = spawn("capture-log", "rows", 100);
+    let mut c = Client::open(&first.path).unwrap();
+    call(&mut c, "record_start", J::obj());
+    call(&mut c, "pointer", J::obj().set("x", 30).set("y", 85));
+    call(&mut c, "resize", J::obj().set("w", 200).set("h", 160));
+    call(&mut c, "tick", J::obj().set("ms", 16));
+    let (code, _) = refusable(
+        &mut c,
+        "set",
+        J::obj()
+            .set("field", "scroll")
+            .set("value", J::obj().set("kind", "int").set("value", -1)),
+    );
+    assert_eq!(code, -32010);
+    let log = call(&mut c, "record_stop", J::obj());
+    assert_eq!(log.get("count").and_then(J::as_u32), Some(4));
+    assert!(
+        log.get("steps")
+            .unwrap()
+            .arr()
+            .iter()
+            .all(|s| s.get("pixels").is_some())
+    );
+    let params = J::obj().set("log", log);
+    assert_eq!(
+        call(&mut c, "replay", params.clone())
+            .get("match")
+            .and_then(J::as_bool),
+        Some(true)
+    );
+    let second = spawn("replay-log", "rows", 100);
+    let mut other = Client::open(&second.path).unwrap();
+    assert_eq!(
+        call(&mut other, "replay", params)
+            .get("match")
+            .and_then(J::as_bool),
+        Some(true)
+    );
+    assert_eq!(refusable(&mut c, "record_start", J::obj()).0, -32602);
+    assert_eq!(
+        refusable(&mut other, "resize", J::obj().set("w", 0).set("h", 1)).0,
+        -32602
+    );
+    call(&mut c, "shutdown", J::obj());
+    call(&mut other, "shutdown", J::obj());
 }

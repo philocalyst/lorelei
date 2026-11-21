@@ -241,10 +241,18 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                 Ok(c) => c,
                 Err(e) => return fail(e),
             };
+            if let Err(e) = c.validate() {
+                return fail(RpcError::params(e));
+            }
             let o = s.run(&c);
             ok(record::outcome_json(&o))
         }
         "reload" => {
+            if s.recording() {
+                return fail(RpcError::params(
+                    "stop recording before reloading external inputs",
+                ));
+            }
             let reloaded = s.reload();
             let snap = s.snapshot();
             ok(J::obj()
@@ -257,19 +265,14 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
             Ok(v) => ok(v),
             Err(e) => fail(e),
         },
-        "record_start" => {
-            s.start_recording();
-            ok(J::obj().set("recording", true))
-        }
-        "record_stop" => {
-            let log = s.stop_recording();
-            let mut steps = Vec::new();
-            // the commands are replayed one at a time by the caller's own log; report what was recorded
-            for c in &log {
-                steps.push(c.to_json());
-            }
-            ok(J::obj().set("steps", steps).set("count", log.len()))
-        }
+        "record_start" => match s.start_recording() {
+            Ok(()) => ok(J::obj().set("recording", true)),
+            Err(e) => fail(RpcError::params(e)),
+        },
+        "record_stop" => match s.stop_recording() {
+            Ok(log) => ok(log.to_json().set("count", log.steps.len())),
+            Err(e) => fail(RpcError::params(e)),
+        },
         "replay" => {
             let log = match params.get("log") {
                 Some(v) => match Log::from_json(v) {
@@ -313,7 +316,9 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
 }
 
 fn int(p: &J, k: &str) -> Option<i32> {
-    p.get(k).and_then(J::as_i64).map(|x| x as i32)
+    p.get(k)
+        .and_then(J::as_i64)
+        .and_then(|x| i32::try_from(x).ok())
 }
 fn flt(p: &J, k: &str) -> Option<f32> {
     p.get(k).and_then(J::as_f32)
@@ -323,7 +328,16 @@ fn flag(p: &J, k: &str, d: bool) -> bool {
 }
 
 fn command(method: &str, p: &J) -> Result<Command, RpcError> {
-    let (x, y) = (int(p, "x").unwrap_or(0), int(p, "y").unwrap_or(0));
+    let coordinate = |name| match int(p, name) {
+        Some(value) => Ok(value),
+        None if method == "wheel" && p.get(name).is_none() => Ok(0),
+        None => Err(RpcError::params(name)),
+    };
+    let (x, y) = if matches!(method, "pointer" | "down" | "up" | "click" | "wheel") {
+        (coordinate("x")?, coordinate("y")?)
+    } else {
+        (0, 0)
+    };
     Ok(match method {
         "pointer" => Command::Pointer { x, y },
         "down" => Command::Down {

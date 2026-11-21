@@ -657,14 +657,18 @@ pub fn tools() -> Vec<J> {
         ),
         tool(
             "record_stop",
-            "Stop recording and return the commands.",
+            "Stop recording and return a replay log with per-step description and pixel digests.",
             no(),
         ),
         tool(
             "replay",
             "Replay a recorded log on a fresh application of the same kind; reports the first description or pixel that differs.",
             schema(
-                &[("log", "object", "the log from record_stop, plus digests")],
+                &[(
+                    "log",
+                    "object",
+                    "the complete object returned by record_stop",
+                )],
                 &["log"],
             ),
         ),
