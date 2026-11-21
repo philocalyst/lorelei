@@ -209,3 +209,29 @@ program that does not use it, not what a deep typed view costs; that number does
   (`list_ops`, `list_end`, `list_pubs`), each with its argument; their tests are the suites above, not
   dedicated ones.
 * `bough-x/mutant_moves` does not bite the typed path.
+
+## Addendum: the review lane's staged reference (read after the report; nothing below was built)
+
+Source: the review lane's round 2 note and its patch `card3-staged-word-reference` (branch
+`lane/independent-review/card3` @ 6ba766d9ac, `crates/bough/src/staged.rs`). Its cells (net instructions, 16 /
+128 fixed rows): paint 524, selection 915 to 969, hover 931 to 985, prepared text 547, broad colour 462 to 882;
+0 allocations, 0 descriptions, the author's view driven once at mount.
+
+How it gets them, read from the patch, and what that means for `bough::typed`:
+
+| its mechanism | its number | `bough::typed` today | taken / rejected, and why |
+|---|---:|---:|---|
+| a turn is `App::turn(Writes { color, selected, digit })`: a fixed struct of admitted fields written by the runtime, then `World::settle`. No author handler runs and the view is never run again | paint 524 | a handler's turn: 4,633 for the description alone | **rejected as it stands.** It is another author interface (the handler is replaced by a write set), and it is exactly the case D3 ruled on: the reference says itself that a bounded write set cannot certify what arbitrary Rust reads while describing. What is comparable is my `mount_once` turn (settle only), not measured as a cell; the difference to 524 would then be the gather of the block and the handler dispatch. The route to its number under D3 is the owner's decision recorded above (a proof that the view's plain state did not change), not this |
+| hover is `hits[y / 32]`: a banded table of (rect, key) built at mount; the hover word is written from it and the world settles. No chain, no hovered set, no handler | 931 to 985 | 3,623 (chain 972, hovered set and handlers 697, settle about 1,550) | **the idea is better and I would take it for `hover_bg`**: `hover_bg` runs no author code, so its id can come from a table by position (bands for the fixed part, the arithmetic row for a list) and the word written without `HSet`, the hovered set or a second gather. That removes about 1,700 of the 3,623 for a view with no `on_hover`/pointer handler under the pointer; a view that has one still needs the chain. Not built: it needs the table kept right across rigid row moves and scrolled spaces (the reference's table is fixed geometry only) |
+| `World::prepare_key_indexes` at mount | first hover allocates nothing | the index's room is reserved when the table shape is decided; it is built the second time a word is asked with no pass between | **partly taken already** (the reservation; the cross-column index is mine and answers one hover with 2 records over 6 columns, where a per-column index visits 6). Building at mount instead of at the second ask is a one-line change worth taking with the hover table |
+| prepared digits: ten runs of equal width, the digit is a word | 547 | a fresh string is shaped: 16,659 | **taken in spirit, not in code**: a projection of a word by a capture-free function is already keyed by the word (the `format!` does not run when the word repeats). Preparing the ten digits for numeric sources would make the edit counter of the slice a word; general strings still need the shaper. Not built |
+| `World::broad` for a colour word | 462 to 882 | not used: the slice's theme is a plain field | **nothing to take for this slice**; a bound theme should be declared broad when token colours exist |
+| `rel::Seq` for structural edits (hand-written fixture): insert 4,191 / 4,345 at 1,000 / 100,000 rows | | 54,487, of which about 30,000 is shaping two fresh strings and about 5,000 the description D3 requires | the list part is the same idea (one row enters, the rest keep their records) and is built over `List<T>`'s own log; its admitted prototype does not cover a virtual `list` at all. The remaining gap is text and the description, not the list |
+
+Where `bough::typed` is ahead of the reference: a dynamic virtual `list` with structural edits, general text,
+ordinary handlers, plain fields (D3 by a twin test against the legacy runtime), the review's own identity probes.
+Where it is behind: every cell the reference measures, by the cost of running the author's code and describing
+after it, which the reference does not do.
+
+On `World::rederive`: 888 of the 4,633 above is that walk. The review lane is recovering it
+(`lane/independent-review/typed-core-r4`); I did not touch it and no threshold here depends on it staying.
