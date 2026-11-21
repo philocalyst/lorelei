@@ -536,7 +536,8 @@ impl<V: View, B: Backend> World<V, B> {
         if self.shape == STALE {
             self.retable();
         }
-        if ch & self.reads == 0 {
+        let relevant = ch & self.reads;
+        if relevant == 0 {
             return;
         }
         for &(reads, key) in &self.spaces {
@@ -550,9 +551,9 @@ impl<V: View, B: Backend> World<V, B> {
                 }
             }
         }
-        if ch.is_power_of_two() {
+        if relevant & relevant.wrapping_sub(1) == 0 {
             // A single reader list contains each column at most once.
-            let word = ch.trailing_zeros() as usize;
+            let word = relevant.trailing_zeros() as usize;
             let start = self.by_word[word] as usize;
             let end = self.by_word[word + 1] as usize;
             self.delta_stats.visited_incidences = end - start;
@@ -562,7 +563,7 @@ impl<V: View, B: Backend> World<V, B> {
             return;
         }
 
-        let mut words = ch;
+        let mut words = relevant;
         let mut incidences = 0usize;
         while words != 0 {
             let w = words.trailing_zeros() as usize;
@@ -583,7 +584,7 @@ impl<V: View, B: Backend> World<V, B> {
                 self.union_seen.fill(0);
                 self.union_epoch = 1;
             }
-            let mut words = ch;
+            let mut words = relevant;
             #[cfg(feature = "mutant_sparse_union")]
             if words.count_ones() > 1 {
                 let first = 1u64 << words.trailing_zeros();
