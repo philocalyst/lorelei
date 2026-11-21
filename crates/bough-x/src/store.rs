@@ -911,6 +911,96 @@ pub enum Pass {
 pub type RowSrc = (&'static core::panic::Location<'static>, u32, u32);
 
 ///
+/// Owns one store allocation. Moving the handle leaves the allocation and its raw provenance intact.
+pub struct StoreOwner(core::ptr::NonNull<Store>);
+
+impl StoreOwner {
+    pub(crate) fn new(store: Store) -> Self {
+        Self(core::ptr::NonNull::from(Box::leak(Box::new(store))))
+    }
+
+    /// The owning pointer itself. Borrowing the store for a view pass does not replace it.
+    pub(crate) fn as_ptr(&self) -> *const Store {
+        self.0.as_ptr()
+    }
+}
+
+impl core::ops::Deref for StoreOwner {
+    type Target = Store;
+
+    #[inline(always)]
+    fn deref(&self) -> &Store {
+        // SAFETY: the allocation remains owned until this handle is dropped. Access borrows the owner.
+        unsafe { self.0.as_ref() }
+    }
+}
+
+impl core::ops::DerefMut for StoreOwner {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Store {
+        // SAFETY: a unique borrow of the owner allows a unique reborrow of its allocation. The world
+        // suppresses table reads during view passes, so its owning pointers are dormant during this borrow.
+        unsafe { self.0.as_mut() }
+    }
+}
+
+impl Drop for StoreOwner {
+    fn drop(&mut self) {
+        // SAFETY: this handle alone owns the allocation it created in `new`.
+        drop(unsafe { Box::from_raw(self.0.as_ptr()) });
+    }
+}
+
+/// A store's children in paint discovery order. Each child owns an independent allocation.
+#[derive(Default)]
+pub struct StoreChildren(Vec<StoreOwner>);
+
+impl StoreChildren {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub fn get(&self, index: usize) -> Option<&Store> {
+        self.0.get(index).map(|owner| &**owner)
+    }
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut Store> {
+        self.0.get_mut(index).map(|owner| &mut **owner)
+    }
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &Store> + DoubleEndedIterator {
+        self.into_iter()
+    }
+    pub(crate) fn push(&mut self, store: Store) {
+        self.0.push(StoreOwner::new(store));
+    }
+    pub(crate) fn owner(&self, index: usize) -> &StoreOwner {
+        &self.0[index]
+    }
+}
+
+impl<'a> IntoIterator for &'a StoreChildren {
+    type Item = &'a Store;
+    type IntoIter =
+        core::iter::Map<core::slice::Iter<'a, StoreOwner>, fn(&'a StoreOwner) -> &'a Store>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter().map(|owner| &**owner)
+    }
+}
+
+impl core::ops::Index<usize> for StoreChildren {
+    type Output = Store;
+    fn index(&self, index: usize) -> &Store {
+        &self.0[index]
+    }
+}
+
+impl core::ops::IndexMut<usize> for StoreChildren {
+    fn index_mut(&mut self, index: usize) -> &mut Store {
+        &mut self.0[index]
+    }
+}
+
 /// A store is made and changed only by the world that owns it (soundness review S01): its sites and column
 /// headers hold raw pointers that its safe passes dereference, so outside code may read a store
 /// ([`crate::world::World::root`]) but never own one or reach it mutably.
@@ -926,7 +1016,7 @@ pub struct Store {
     pub(crate) world: Option<crate::world::WorldId>,
     pub cols: Vec<RawCol>,
     pub sites: Vec<Site>,
-    pub subs: Vec<Store>,
+    pub subs: StoreChildren,
     /// Paint order: columns and child stores in the order the view first described them.
     pub order: Vec<Pass>,
     /// Row slots: 1 for a fixed shape, a power of two of at least 64 for a list's window.
@@ -1010,7 +1100,7 @@ impl Store {
             world: None,
             cols: Vec::new(),
             sites: Vec::new(),
-            subs: Vec::new(),
+            subs: StoreChildren::default(),
             order: Vec::new(),
             cap,
             row_live: vec![0; (cap as usize / 64).max(1)],
@@ -1286,7 +1376,7 @@ impl Store {
         n += (self.tmpl.capacity() + self.row0.capacity()) * size_of::<Rect>()
             + self.plan.capacity() * 4;
         n + self.subs.iter().map(|s| s.bytes_all()).sum::<usize>()
-            + (self.subs.capacity() - self.subs.len()) * size_of::<Store>()
+            + self.subs.0.capacity() * size_of::<StoreOwner>()
     }
     /// The block words read by some column of this store or of the stores under it.
     pub fn reads_all(&self) -> u64 {

@@ -8,21 +8,15 @@ use crate::expr::{
     U_SCALE, U_TIME,
 };
 use crate::sink::{Cx, Patch, View, Write};
-use crate::store::{Backend, ColEnt, Path, Space, Store, Tiles};
+use crate::store::{Backend, ColEnt, Path, Space, Store, StoreOwner, Tiles};
 use core::marker::PhantomData;
 use core::sync::atomic::Ordering;
 
-/// Index of a child store relative to a preceding route. Route zero is the root.
-#[derive(Clone, Copy)]
-struct StoreRoute {
-    parent: u32,
-    child: u32,
-}
-
-/// One published column. Its route is interpreted against the current tree while the world is borrowed.
+/// Published metadata for a column. Stores come from their owners. A view pass prevents all table
+/// reads until it returns, and a change to store structure requires a new table before reading it.
 #[derive(Clone, Copy)]
 struct Column {
-    store: u32,
+    store: *const Store,
     index: u32,
     fast: u32,
 }
@@ -137,7 +131,7 @@ pub struct World<V, B> {
     /// Private (review C01):
     /// its columns' descriptors were made for `B` and for the view mounted; outside code reads it through
     /// [`World::root`] and changes it only through the world's own passes.
-    root: Box<Store>,
+    root: StoreOwner,
     /// The block as of the last settle: what the pixels on screen were shaded with.
     pub shown: U,
     pub tiles: Tiles,
@@ -178,8 +172,7 @@ pub struct World<V, B> {
     /// The clip the current delta last marked for a broad word (so a space is marked once a delta).
     broad_last: Option<crate::store::Rect>,
     cols: Vec<Column>,
-    stores: Vec<StoreRoute>,
-    spaces: Vec<(u64, u32)>,
+    spaces: Vec<(u64, *const Store)>,
     shape: u64,
     relations: Vec<(std::sync::Arc<core::sync::atomic::AtomicU32>, u32)>,
     pub retables: usize,
@@ -221,7 +214,7 @@ impl<V: View, B: Backend> World<V, B> {
         World {
             id,
             inputs: crate::el::InputToken::new(),
-            root: Box::new(root),
+            root: StoreOwner::new(root),
             shown,
             tiles: Tiles::new(w, h),
             nwords,
@@ -241,7 +234,6 @@ impl<V: View, B: Backend> World<V, B> {
             broad: 0,
             broad_last: None,
             cols: Vec::new(),
-            stores: Vec::new(),
             spaces: Vec::new(),
             shape: u64::MAX,
             relations: Vec::new(),
@@ -415,7 +407,7 @@ impl<V: View, B: Backend> World<V, B> {
     fn learn(&mut self, v: &V) {
         self.observe_relations();
         for _ in 0..8 {
-            if self.shape == self.root.structure_revision() {
+            if self.shape != STALE {
                 return;
             }
             self.retable();
@@ -430,7 +422,7 @@ impl<V: View, B: Backend> World<V, B> {
             self.changed(v, ch, self.epoch);
         }
         // eight rounds and the shape still moved: the table must not outlive the tree it was built from
-        if self.shape != self.root.structure_revision() {
+        if self.shape == STALE {
             self.retable();
         }
     }
@@ -443,24 +435,18 @@ impl<V: View, B: Backend> World<V, B> {
         self.retables += 1;
         self.shape = STALE;
         self.cols.clear();
-        self.stores.clear();
-        self.stores.push(StoreRoute {
-            parent: 0,
-            child: 0,
-        });
         self.spaces.clear();
         fn visit(
-            st: &Store,
-            store: u32,
+            owner: &StoreOwner,
             cols: &mut Vec<Column>,
-            stores: &mut Vec<StoreRoute>,
-            spaces: &mut Vec<(u64, u32)>,
+            spaces: &mut Vec<(u64, *const Store)>,
         ) {
-            let reads = st.space.reads();
+            let store = owner.as_ptr();
+            let reads = owner.space.reads();
             if reads != 0 {
                 spaces.push((reads, store));
             }
-            for pass in &st.order {
+            for pass in &owner.order {
                 match *pass {
                     crate::store::Pass::Col(index) => cols.push(Column {
                         store,
@@ -468,28 +454,18 @@ impl<V: View, B: Backend> World<V, B> {
                         fast: u32::MAX,
                     }),
                     crate::store::Pass::Sub(child) => {
-                        let route = u32::try_from(stores.len()).expect("too many stores");
-                        stores.push(StoreRoute {
-                            parent: store,
-                            child,
-                        });
-                        visit(&st.subs[child as usize], route, cols, stores, spaces);
+                        visit(owner.subs.owner(child as usize), cols, spaces)
                     }
                 }
             }
         }
-        visit(
-            &self.root,
-            0,
-            &mut self.cols,
-            &mut self.stores,
-            &mut self.spaces,
-        );
+        visit(&self.root, &mut self.cols, &mut self.spaces);
         self.handlers.clear();
         self.col_reads.clear();
         self.fast.clear();
         for (k, route) in self.cols.iter_mut().enumerate() {
-            let st = Self::store_at(&self.root, &self.stores, route.store);
+            // SAFETY: the table is current, and no view pass can run while it is borrowed here.
+            let st = unsafe { &*route.store };
             let c = &st.cols[route.index as usize];
             if let Some(o) = c.hover {
                 self.handlers.push((k as u32, o.kinds));
@@ -531,7 +507,8 @@ impl<V: View, B: Backend> World<V, B> {
         // The root view's fields the columns' lenses name. Two fields in one word cannot both be Frame state.
         self.slots.clear();
         for route in &self.cols {
-            let st = Self::store_at(&self.root, &self.stores, route.store);
+            // SAFETY: the table is current, and no view pass can run while it is borrowed here.
+            let st = unsafe { &*route.store };
             let d = st.cols[route.index as usize].desc;
             (d.slots)(
                 &mut |s: Slot| match self.slots.iter().find(|t| t.index() == s.index()) {
@@ -555,27 +532,13 @@ impl<V: View, B: Backend> World<V, B> {
         self.shape = self.root.structure_revision();
     }
 
-    #[inline]
-    fn store_at<'a>(root: &'a Store, routes: &[StoreRoute], key: u32) -> &'a Store {
-        if key == 0 {
-            return root;
-        }
-        let StoreRoute { parent, child } = routes[key as usize];
-        let st = if parent == 0 {
-            root
-        } else {
-            Self::store_at(root, routes, parent)
-        };
-        &st.subs[child as usize]
-    }
-
     /// The damage of the block going from what is shown to `u` (`ch`: the changed words). The path from here
     /// to a page is this world, the column's entry, the page: the store tree is not on it.
     #[inline]
     fn delta(&mut self, u: &U, ch: u64) {
         self.delta_stats = DeltaStats::default();
         self.broad_last = None;
-        if self.shape != self.root.structure_revision() {
+        if self.shape == STALE {
             self.retable();
         }
         if ch & self.reads == 0 {
@@ -583,7 +546,8 @@ impl<V: View, B: Backend> World<V, B> {
         }
         for &(reads, key) in &self.spaces {
             if reads & ch != 0 {
-                let st = Self::store_at(&self.root, &self.stores, key);
+                // SAFETY: `delta` refreshed a stale table before accessing its stores.
+                let st = unsafe { &*key };
                 // the space moved: everything it shows is somewhere else
                 self.tiles.mark(st.space.clip);
                 if st.timed & (st.reads & ch != 0) {
@@ -649,7 +613,8 @@ impl<V: View, B: Backend> World<V, B> {
     fn delta_one(&mut self, k: usize, u: &U, ch: u64) {
         self.delta_stats.evaluated_columns += 1;
         let route = self.cols[k];
-        let st = Self::store_at(&self.root, &self.stores, route.store);
+        // SAFETY: the table is current, and no view pass can run while it is borrowed here.
+        let st = unsafe { &*route.store };
         let c = &st.cols[route.index as usize];
         let e = st.ent(c);
         if e.skip & ch != 0 {
@@ -831,7 +796,9 @@ impl<V: View, B: Backend> World<V, B> {
                     _p: PhantomData,
                 })
             });
-            self.shape = shape;
+            if shape == self.root.structure_revision() {
+                self.shape = shape;
+            }
             self.lists |= cx.lists;
             self.revision = self.revision.wrapping_add(cx.changed);
             if ch != 0 {
@@ -874,7 +841,9 @@ impl<V: View, B: Backend> World<V, B> {
         crate::el::track_inputs(&self.inputs, || {
             v.view(&mut Write::<V, B>::new(&mut self.root, &mut cx, false))
         });
-        self.shape = shape;
+        if shape == self.root.structure_revision() {
+            self.shape = shape;
+        }
         self.lists |= cx.lists;
         let regroup = cx.regroup;
         self.revision = self.revision.wrapping_add(cx.changed);
@@ -919,10 +888,7 @@ impl<V: View, B: Backend> World<V, B> {
         let st = st as *const Store;
         self.cols
             .iter()
-            .position(|entry| {
-                entry.index == col
-                    && core::ptr::eq(Self::store_at(&self.root, &self.stores, entry.store), st)
-            })
+            .position(|entry| entry.index == col && core::ptr::eq(entry.store, st))
             .map(|i| i as u32)
     }
     /// The store, column and record a place names (the column table holds the store: no walk).
@@ -933,13 +899,14 @@ impl<V: View, B: Backend> World<V, B> {
     pub fn at_place(&self, place: u32) -> Option<(&Store, u32, u32)> {
         // A `&self` reader cannot rebuild the table: a stale one (a pass that panicked, a tree that grew since)
         // names nothing (soundness review S03).
-        if self.shape != self.root.structure_revision() {
+        if self.shape == STALE {
             return None;
         }
         let &Column {
             store, index: col, ..
         } = self.cols.get((place >> PLACE_REC_BITS) as usize)?;
-        let st = Self::store_at(&self.root, &self.stores, store);
+        // SAFETY: the revision check proves this table is current and no pass is running.
+        let st = unsafe { &*store };
         let rec = place & ((1 << PLACE_REC_BITS) - 1);
         let c = st.cols.get(col as usize)?;
         // A store admits capacity one or a power-of-two ring. At capacity
@@ -950,7 +917,7 @@ impl<V: View, B: Backend> World<V, B> {
     }
     /// The column table, current (cold when the tree changed shape).
     fn columns(&mut self) {
-        if self.shape != self.root.structure_revision() {
+        if self.shape == STALE {
             self.retable();
         }
     }
@@ -995,7 +962,8 @@ impl<V: View, B: Backend> World<V, B> {
                 continue;
             }
             let route = self.cols[k as usize];
-            let st = Self::store_at(&self.root, &self.stores, route.store);
+            // SAFETY: the table is current, and no view pass can run while it is borrowed here.
+            let st = unsafe { &*route.store };
             let c = &st.cols[route.index as usize];
             let Some(o) = c.hover else { continue };
             let sv = crate::store::StoreView {
@@ -1536,7 +1504,8 @@ impl<V: View, B: Backend> World<V, B> {
         let mut out = self.take();
         let mut recs = self.take();
         for (i, route) in self.cols.iter().enumerate() {
-            let st = Self::store_at(&self.root, &self.stores, route.store);
+            // SAFETY: the table is current, and no view pass can run while it is borrowed here.
+            let st = unsafe { &*route.store };
             let c = &st.cols[route.index as usize];
             if c.hover.is_none_or(|o| o.kinds & kind::FOCUSABLE == 0) {
                 continue;
