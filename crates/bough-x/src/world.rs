@@ -22,8 +22,8 @@ struct Column {
     fast: u16,
 }
 
-/// A `shape` no store tree has: structure revisions count up from 0 with a checked add.
-const STALE: u64 = u64::MAX;
+/// An unpublished table. Store structure revisions count up from 1 with a checked add.
+const STALE: u64 = 0;
 
 /// Non-reusable identity of one world instance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -390,7 +390,7 @@ impl<V: View, B: Backend> World<V, B> {
     /// After a pass that made columns: the slots they name are learned, and a word of the view's own fields
     /// that no column named before is gathered now and settled like any other change. Bounded: each round
     /// follows a pass that changed the tree's shape, and a view has finitely many fields to name.
-    #[inline]
+    #[inline(never)]
     fn learn(&mut self, v: &V) {
         for _ in 0..8 {
             if self.shape != STALE {
@@ -768,7 +768,7 @@ impl<V: View, B: Backend> World<V, B> {
             self.learn(v);
         }
     }
-    #[inline(never)]
+    #[inline(always)]
     fn changed(&mut self, v: &V, ch: u64, journals: bool) -> bool {
         let u = &self.block(v);
         if ch != 0 {

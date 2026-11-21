@@ -1169,7 +1169,7 @@ impl Store {
         );
         Store {
             column_count: Default::default(),
-            structure: Default::default(),
+            structure: std::sync::Arc::new(core::sync::atomic::AtomicU64::new(1)),
             journal: None,
             world: None,
             cols: Vec::new(),
