@@ -263,9 +263,15 @@ impl TextSys {
         self.stats.shaped += 1;
         // fallback segments: maximal stretches of characters whose first covering face is the same
         let mut segs: Vec<(u8, usize, usize)> = Vec::new();
+        let mut rtl = false;
         for (at, c) in text.char_indices() {
-            // joiners, selectors and marks stay with the character before them
-            let glue = matches!(c, '\u{200d}' | '\u{fe00}'..='\u{fe0f}' | '\u{300}'..='\u{36f}' | '\u{1f3fb}'..='\u{1f3ff}' | ' ');
+            // joiners, selectors and marks stay with the character before them; a space stays inside a
+            // right-to-left stretch (so its words keep their order) and is otherwise the UI face's
+            let glue = matches!(c, '\u{200d}' | '\u{fe00}'..='\u{fe0f}' | '\u{300}'..='\u{36f}' | '\u{1f3fb}'..='\u{1f3ff}')
+                || (c == ' ' && rtl);
+            if c != ' ' {
+                rtl = matches!(c as u32, 0x590..=0x8ff | 0xfb1d..=0xfdff | 0xfe70..=0xfeff);
+            }
             let face = match segs.last() {
                 Some(&(f, ..))
                     if glue

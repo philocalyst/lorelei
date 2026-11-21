@@ -14,6 +14,7 @@
 //! [`App::refused`]) instead of drawing something else; the list is in the lane report.
 pub mod app;
 pub mod canvas;
+pub mod list;
 pub mod provenance;
 pub mod text;
 
@@ -116,10 +117,17 @@ pub(crate) struct Doc {
 pub struct Core<'a> {
     pub(crate) scale: f32,
     pub(crate) docs: Vec<Doc>,
-    cur: usize,
+    pub(crate) cur: usize,
     pub(crate) handlers: Vec<Hnd>,
     pub(crate) owners: Vec<Owner>,
-    owner: u32,
+    pub(crate) owner: u32,
+    /// What identifies the current owner across descriptions (0: the root view).
+    pub(crate) owner_key: u64,
+    /// The window in device pixels.
+    pub(crate) win: (i32, i32),
+    pub(crate) lists: &'a list::Lists,
+    /// The list rows this description materialised.
+    pub(crate) rows: Vec<list::RowRec>,
     pub(crate) text: &'a mut text::TextSys,
     pub(crate) images: &'a mut canvas::Images,
     pub(crate) refused: Vec<&'static str>,
@@ -198,6 +206,8 @@ impl Node {
 impl<'a> Core<'a> {
     pub(crate) fn new(
         scale: f32,
+        win: (i32, i32),
+        lists: &'a list::Lists,
         text: &'a mut text::TextSys,
         images: &'a mut canvas::Images,
     ) -> Core<'a> {
@@ -212,12 +222,16 @@ impl<'a> Core<'a> {
             handlers: Vec::new(),
             owners: Vec::new(),
             owner: 0,
+            owner_key: 0,
+            win,
+            lists,
+            rows: Vec::new(),
             text,
             images,
             refused: Vec::new(),
         }
     }
-    fn doc(&mut self) -> &mut Doc {
+    pub(crate) fn doc(&mut self) -> &mut Doc {
         &mut self.docs[self.cur]
     }
     fn parent(&mut self) -> u32 {

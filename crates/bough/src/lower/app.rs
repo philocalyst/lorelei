@@ -82,6 +82,7 @@ pub struct App<V: View> {
     handlers: Vec<Hnd>,
     owners: Vec<Owner>,
     refused: Vec<&'static str>,
+    lists: super::list::Lists,
     size_pt: (f32, f32),
     scale: f32,
     /// The surfaces, each with the damage it has not repaired yet.
@@ -131,6 +132,7 @@ impl<V: View> App<V> {
             handlers: Vec::new(),
             owners: Vec::new(),
             refused: Vec::new(),
+            lists: Default::default(),
             size_pt: (cfg.width_pt, cfg.height_pt),
             scale: cfg.scale,
             ring: Vec::new(),
@@ -167,31 +169,44 @@ impl<V: View> App<V> {
         self.shown = 0;
     }
     /// Run the view and lay it out: the scene, the handlers, the hit list. No world pass.
+    ///
+    /// A virtual list places its rows from heights measured by earlier descriptions. If this one measured a
+    /// row at another height than it assumed, it is run again with the measurement (at most four times: each
+    /// round can only add measurements of rows the round before exposed).
     fn describe(&mut self) {
+        for round in 0.. {
+            if !self.describe_once() || round == 3 {
+                break;
+            }
+        }
+        self.rehover();
+    }
+    /// One description. Returns whether a list row was measured at a height the description did not assume.
+    fn describe_once(&mut self) -> bool {
         count(|c| c.describe += 1);
         self.stats.describes += 1;
         let (w, h) = self.px();
         let (mut text, mut images) = (self.text.borrow_mut(), self.images.borrow_mut());
         text.begin_pass();
-        let mut core = Core::new(self.scale, &mut text, &mut images);
+        let mut core = Core::new(self.scale, (w, h), &self.lists, &mut text, &mut images);
         View::view(&self.lv.v).lower(&mut Lower::new(&mut core));
-        assert!(
-            core.refused.is_empty(),
-            "the lowered runtime does not lower these elements yet: {:?}",
-            core.refused
-        );
+        assert!(core.refused.is_empty(), "the lowered runtime does not lower these elements yet: {:?}", core.refused);
         let scene = super::finish(&core, w, h);
-        let Core {
-            docs,
-            handlers,
-            owners,
-            refused,
-            ..
-        } = core;
+        let Core { docs, handlers, owners, refused, rows, .. } = core;
+        let mut again = false;
+        for r in rows {
+            let rect = scene.rects[r.doc as usize][r.node as usize];
+            let st = self.lists.entry(r.key).or_default();
+            if st.h.len() <= r.slot as usize {
+                st.h.resize(r.slot as usize + 1, 0);
+            }
+            let hgt = (rect[3] - rect[1]).max(1);
+            again |= st.h[r.slot as usize] != hgt;
+            st.h[r.slot as usize] = hgt;
+        }
         (self.docs, self.handlers, self.owners, self.refused) = (docs, handlers, owners, refused);
         *self.lv.scene.borrow_mut() = scene;
-        drop((text, images));
-        self.rehover();
+        again
     }
     /// After a description: who is under the pointer now, and their hover paints into the scene.
     fn rehover(&mut self) {
