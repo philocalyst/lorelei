@@ -179,7 +179,6 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
     if keyed {
         w.s.set_key(cards, ncards, 2_000_000);
     }
-    ncards += 1;
     // hover targets: that chip, and the plain card in cell 4 beneath the first panel
     (w.above, w.beneath) = (2_000_000, 5);
     w
