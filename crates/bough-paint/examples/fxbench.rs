@@ -106,6 +106,17 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
     let dots = s.column::<ADot>(n / 4 + 4);
     let vids = s.column::<AVideo>(1);
     s.push(back, [0, 0, q(FW as f32), q(FH as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Rec(0xff1a_1410) }, b: Pmo { c: Rec(0xffe8_ecf0) }, t: Uw } });
+    // words 0 and 1 pan every column but the backdrop; the cards compare word 2 with their id
+    if std::env::var("NOINDEX").is_err() {
+        s.scroll(cards, 0, 1);
+        s.scroll(grads, 0, 1);
+        s.scroll(glassc, 0, 1);
+        s.scroll(shaders, 0, 1);
+        s.scroll(dots, 0, 1);
+        s.keyed(cards, 2);
+    }
+    let keyed = std::env::var("NOINDEX").is_err();
+    let mut ncards = 0usize;
     let mut w = World { s, glass: glassc, dots, vids, g_rect: vec![], g_blur: vec![], g_sx: vec![], d_rect: vec![], d_col: vec![], d_sx: vec![], v_rect: vec![], v_dim: vec![], src: vec![], av: vec![], av_published: 0, av_quiet: 0, above: 0, beneath: 0 };
     let rows_in_frame = 8;
     for i in 0..n {
@@ -122,6 +133,10 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
                 rect,
                 Over(Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x3800_0000), tab: Tab::NONE }, Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x4000_0000), tab: Tab::NONE }), RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(id) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(g.color(true)) }, b: Pmo { c: Rec(g.color(true)) }, t: Uw } } }),
             );
+            if keyed {
+                w.s.set_key(cards, ncards, id);
+            }
+            ncards += 1;
         }
         if i % 12 == 5 && (!lean || i == 5) {
             // a glass panel over the two cards to its left and this one (they are beneath it in paint order)
@@ -140,6 +155,10 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
                     RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(chip) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(g.color(true)) }, b: Pmo { c: Rec(g.color(true)) }, t: Uw } } },
                 ),
             );
+            if keyed {
+                w.s.set_key(cards, ncards, chip);
+            }
+            ncards += 1;
         }
         if i % 16 == 9 && !lean {
             w.s.push(shaders, [q(x + 8.0), q(y + 44.0), q(x + 88.0), q(y + 76.0)], Shader { b: pan(), r: Ki, id: Rec((i / 16 % 2) as u32), now: Uw, c: pm(g.color(true)), c2: pm(g.color(false)) });
@@ -157,6 +176,9 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
         [q(430.0), q(40.0), q(490.0), q(70.0)],
         Over(Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x3800_0000), tab: Tab::NONE }, Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x4000_0000), tab: Tab::NONE }), RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(2_000_000) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(0xff40_80c0) }, b: Pmo { c: Rec(0xffc0_8040) }, t: Uw } } }),
     );
+    if keyed {
+        w.s.set_key(cards, ncards, 2_000_000);
+    }
     // hover targets: that chip, and the plain card in cell 4 beneath the first panel
     (w.above, w.beneath) = (2_000_000, 5);
     w
@@ -350,7 +372,8 @@ struct Row {
     turn: Vec<u64>,
     /// Under the chooser: frames idle / on the CPU / on the GPU, and the two device constants it measured.
     ran: [u32; 3],
-    consts: (f64, f64),
+    /// Layer repair that left its words as they were (CPU executor).
+    same: bough_paint::tile::Stats,
 }
 fn med<T: Copy + PartialOrd>(v: &[T]) -> Option<T> {
     let mut v = v.to_vec();
@@ -403,26 +426,31 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
                 row.ran[ran as usize] += 1;
             }
             tiles.resize(fs.tiles as usize, 0);
-            if f == 0 {
-                mx.calibrate(&w.s, &u, pool);
-                row.consts = (mx.cpu_ns_per_weight, mx.gpu_floor_ns);
-            }
             fs
         } else {
             let (j0, _) = pmu::instructions_cycles();
-            let fs = w.s.update(&u);
+            let mut fs = if gpu.is_some() { w.s.update_eager(&u) } else { w.s.update(&u) };
             let (j1, _) = pmu::instructions_cycles();
             if f >= warm {
                 row.turn.push(j1 - j0);
             }
-            w.s.damage.tiles(&mut tiles);
-            w.s.damage.clear();
             match gpu.as_mut() {
                 None => {
-                    w.s.prepare(&u);
+                    // the CPU kernel repairs the layers as it schedules them; the output damage is whole after
+                    let st = w.s.prepare(&u);
+                    (fs.prefix_tiles, fs.blocks) = (st.prefix as u32, st.blk.iter().sum::<u64>() as u32);
+                    if f >= warm {
+                        row.same.add(&st);
+                    }
+                    w.s.damage.tiles(&mut tiles);
+                    w.s.damage.clear();
                     w.s.shade(&u, &tiles, &mut out, FW as usize, pool, 0);
                 }
-                Some(g) => gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu,
+                Some(g) => {
+                    w.s.damage.tiles(&mut tiles);
+                    w.s.damage.clear();
+                    gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu;
+                }
             }
             fs
         };
@@ -489,7 +517,7 @@ fn main() {
     println!("# fxbench {scene} {n}{}; {FW}x{FH}; reps {reps}; load at start: {}", if dense { " dense" } else { "" }, load());
     println!("# scene: {} records in {} columns, {} layers, {} glass / {} dots / {} videos; media pool {} slots", w.s.records(), w.s.cols().len(), w.s.layers.list.len(), w.g_rect.len(), w.d_rect.len(), w.v_rect.len(), w.s.media.stats().0);
     drop(w);
-    println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch\tturn_med\tran_idle/cpu/gpu\tcpu_ns_per_weight\tgpu_floor_ns");
+    println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch\tturn_med\tran_idle/cpu/gpu\tprefix_same/prefix\tblocks_same/blocks by level 1..5");
     if scene == "media" {
         // T3: what the pacer costs per tile per refresh
         let mut sink = NullSink::new(Spec::STEREO_48K, 480, |_: &mut Block| {});
@@ -513,7 +541,7 @@ fn main() {
             bad_total += bad;
             let f = r.frames.max(1) as f64;
             println!(
-                "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{:.1}\t{:.0}",
+                "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{}/{}\t{}",
                 if dense { "d" } else { "" },
                 cell.name(),
                 r.tiles as f64 / f,
@@ -532,8 +560,9 @@ fn main() {
                 r.ran[0],
                 r.ran[1],
                 r.ran[2],
-                r.consts.0,
-                r.consts.1,
+                r.same.prefix_same,
+                r.same.prefix,
+                (1..6).map(|k| format!("{}/{}", r.same.blk_same[k], r.same.blk[k])).collect::<Vec<_>>().join(" "),
             );
         }
     }

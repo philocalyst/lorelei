@@ -53,6 +53,13 @@ pub struct Stats {
     pub px_corner: u64,
     /// Of those, the ones answered from a corner table.
     pub px_table: u64,
+    /// Layer repair that changed nothing: prefix tiles stored, and of them those whose every word was
+    /// already there; pyramid blocks per level, and of them those left byte-identical. (Counters: what
+    /// compare-on-write would stop.)
+    pub prefix: u64,
+    pub prefix_same: u64,
+    pub blk: [u64; 6],
+    pub blk_same: [u64; 6],
 }
 impl Stats {
     pub fn add(&mut self, o: &Stats) {
@@ -63,6 +70,12 @@ impl Stats {
         self.px_shadow += o.px_shadow;
         self.px_corner += o.px_corner;
         self.px_table += o.px_table;
+        self.prefix += o.prefix;
+        self.prefix_same += o.prefix_same;
+        for k in 0..6 {
+            self.blk[k] += o.blk[k];
+            self.blk_same[k] += o.blk_same[k];
+        }
     }
 }
 
@@ -188,14 +201,19 @@ impl<'a> Tile<'a> {
         debug_assert!(self.need == self.all);
         let (x0, x1) = ((v.r[0] - self.ox).max(0), (v.r[2] - self.ox).min(self.cols));
         let mut m = self.all & rows(v.r[1] - self.oy, v.r[3] - self.oy);
+        let mut same = true;
         while m != 0 {
             let y = m.trailing_zeros() as i32;
             m &= m - 1;
             for xx in x0..x1 {
-                pool[layer::at(v, self.ox + xx, self.oy + y)] = k::store8(ld(&self.acc[(y * 32 + xx) as usize]));
+                let (at, w) = (layer::at(v, self.ox + xx, self.oy + y), k::store8(ld(&self.acc[(y * 32 + xx) as usize])));
+                same &= pool[at] == w;
+                pool[at] = w;
             }
         }
         self.st.tiles += 1;
+        self.st.prefix += 1;
+        self.st.prefix_same += same as u64;
     }
     /// Write the tile: shaded rows from the accumulator, flat rows from the row above.
     ///

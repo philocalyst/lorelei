@@ -6,16 +6,18 @@
 //!
 //! * a **broad** change (`FrameStats::broad`: a declared-broad block word moved) goes to the GPU with nothing
 //!   computed: the whole frame is a resident job buffer, re-submitted;
-//! * otherwise the frame's CPU cost is predicted from its damage alone (the weights of the damaged tiles'
-//!   entries and the layer work scheduled, both O(damage)) times one device constant, and compared with the
-//!   GPU's round trip, the other device constant. Both are measured once, at start-up (`calibrate`).
+//! * otherwise the frame's cost on the CPU kernel is predicted from its damage alone (the weights of the
+//!   damaged tiles' entries and the layer work scheduled, both O(damage)) and compared with what a staged
+//!   Metal frame costs the frame thread whatever it draws. Both constants are **frame-thread instructions**:
+//!   the frame thread is the resource the mixed model protects, and instructions do not move with the
+//!   machine's load (a first version compared wall times measured at start-up and chose differently from
+//!   run to run on a busy machine).
 //!
 //! Nothing here is a constant of a scene.
 use crate::expr::U;
 use crate::metal::Gpu;
 use crate::scene::{FrameStats, Scene};
 use bough_kernel::cpu::Pool;
-use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ran {
@@ -24,14 +26,18 @@ pub enum Ran {
     Cpu,
     Gpu,
 }
+/// Frame-thread instructions of one unit of tile weight on the CPU kernel (`paint::Cost::weight`: a flat
+/// entry of a tile is 1, a blurred shadow 24). From the cost model's own calibration (a flat entry about
+/// 0.3 us of one core).
+pub const CPU_INSTR_PER_WEIGHT: u64 = 3_000;
+/// Frame-thread instructions of a staged Metal frame whatever it draws: the command buffer (measured:
+/// 180 K to 200 K for a whole-frame theme dispatch, `bench/results/fx/slice4.txt`).
+pub const GPU_FRAME_INSTR: u64 = 190_000;
+
 pub struct Mixed {
     pub gpu: Gpu,
     words: usize,
     stride: usize,
-    /// Device constant 1: nanoseconds of one CPU core per unit of tile weight.
-    pub cpu_ns_per_weight: f64,
-    /// Device constant 2: nanoseconds of a staged GPU frame that does nothing (the command buffer's floor).
-    pub gpu_floor_ns: f64,
     tiles: Vec<u32>,
     /// What the last frame's prediction was (weight units), and its GPU seconds (0 on the CPU), for reports.
     pub last_weight: u64,
@@ -44,43 +50,19 @@ impl Mixed {
         let words = stride * scene.fh as usize;
         // SAFETY: the caller's contract is `Gpu::new`'s.
         let gpu = unsafe { Gpu::new(scene, words, 256) }?;
-        // defaults for an M-class machine until `calibrate` runs: 15 ns a weight unit, 250 us a round trip
-        Some(Mixed { gpu, words, stride, cpu_ns_per_weight: 15.0, gpu_floor_ns: 250_000.0, tiles: Vec::new(), last_weight: 0, last_gpu: 0.0 })
+        Some(Mixed { gpu, words, stride, tiles: Vec::new(), last_weight: 0, last_gpu: 0.0 })
     }
     /// The surface (the GPU's buffer, which the CPU kernel also draws into).
     pub fn out(&self) -> &[u32] {
         self.gpu.out(self.words)
-    }
-    /// Measure the two device constants on this machine, after the first frame has been drawn: the GPU's
-    /// floor as the fastest of a few frames that dispatch nothing, the CPU's rate from shading a sample of
-    /// the scene's tiles into scratch. Wall-clock, so it wants a quiet moment; it changes speed, never pixels.
-    pub fn calibrate(&mut self, scene: &Scene, u: &U, pool: &Pool) {
-        let mut floor = f64::MAX;
-        for _ in 0..5 {
-            floor = floor.min(self.gpu.staged(scene, u, &[], self.stride).wall * 1e9);
-        }
-        let nt = (scene.tx * scene.ty) as u32;
-        let sample: Vec<u32> = (0..nt).step_by((nt as usize / 24).max(1)).collect();
-        let weight: u64 = sample.iter().map(|&t| scene.tile_weight(t) as u64).sum();
-        let mut scratch = vec![0u32; self.words];
-        let mut best = f64::MAX;
-        for _ in 0..3 {
-            let t = Instant::now();
-            scene.shade(u, &sample, &mut scratch, self.stride, pool, 0);
-            best = best.min(t.elapsed().as_secs_f64() * 1e9);
-        }
-        if weight > 0 {
-            (self.gpu_floor_ns, self.cpu_ns_per_weight) = (floor, best / weight as f64);
-        }
     }
     /// One frame: update, choose, draw. `force`: `None` lets the chooser decide.
     pub fn frame(&mut self, scene: &mut Scene, u: &U, pool: &Pool, force: Option<Ran>) -> (FrameStats, Ran) {
         let mut fs = scene.update(u);
         let mut tiles = std::mem::take(&mut self.tiles);
         scene.damage.tiles(&mut tiles);
-        scene.damage.clear();
-        fs.tiles = tiles.len() as u32;
-        let idle = tiles.is_empty() && !scene.plan.full && scene.plan.work.is_empty();
+        let due = scene.due_weight(GPU_FRAME_INSTR / CPU_INSTR_PER_WEIGHT);
+        let idle = tiles.is_empty() && !scene.plan.full && due == 0;
         let ran = if idle {
             Ran::Idle
         } else if let Some(r) = force {
@@ -89,17 +71,37 @@ impl Mixed {
             // a broad change never touches the CPU painter, and nothing is computed to decide so
             Ran::Gpu
         } else {
-            // the damage's weight: the tiles to shade, the prefix tiles (a tile program each) and the
-            // pyramid pixels (16 taps each, about a flat entry per 16 pixels)
-            let w: u64 = tiles.iter().map(|&t| scene.tile_weight(t) as u64).sum::<u64>() + scene.plan.work.iter().flat_map(|w| w.prefix.iter()).map(|&t| scene.tile_weight(t) as u64).sum::<u64>() + scene.plan.px / 16;
+            // the damage's weight before any repair: the layer tiles that are due and the tiles to shade,
+            // summed only until the CPU's side of the comparison is lost (the sum is then not needed)
+            let limit = GPU_FRAME_INSTR / CPU_INSTR_PER_WEIGHT;
+            let mut w = due;
+            for &t in &tiles {
+                if w > limit {
+                    break;
+                }
+                w += scene.tile_weight(t) as u64;
+            }
             self.last_weight = w;
-            if (w as f64) * self.cpu_ns_per_weight <= self.gpu_floor_ns { Ran::Cpu } else { Ran::Gpu }
+            if w <= limit { Ran::Cpu } else { Ran::Gpu }
         };
-        self.last_gpu = 0.0;
+        // the CPU kernel repairs the layers first and lets damage stop where nothing changed; Metal needs
+        // the whole schedule before it runs. Either way the output damage is complete only now.
         match ran {
             Ran::Idle => {}
             Ran::Cpu => {
                 scene.prepare(u);
+            }
+            Ran::Gpu => {
+                scene.plan_eager();
+            }
+        }
+        scene.damage.tiles(&mut tiles);
+        scene.damage.clear();
+        fs.tiles = tiles.len() as u32;
+        self.last_gpu = 0.0;
+        match ran {
+            Ran::Idle => {}
+            Ran::Cpu => {
                 let (words, stride) = (self.words, self.stride);
                 fs.raster = scene.shade(u, &tiles, self.gpu.out_mut(words), stride, pool, 0);
             }

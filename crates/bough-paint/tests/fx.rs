@@ -275,8 +275,9 @@ fn retained_equals_full_redraw_and_the_specification() {
         let mut stale = vec![vec![true; nt]; 4];
         for k in 0..STEPS {
             let name = if k == 0 { "mount" } else { step(&mut g, k, &mut u, &mut wd, &mut b) };
-            let fs = b.s.update(&u);
-            b.s.prepare(&u);
+            let mut fs = b.s.update(&u);
+            let st = b.s.prepare(&u);
+            (fs.prefix_tiles, fs.blocks) = (st.prefix as u32, st.blk.iter().sum::<u64>() as u32);
             let mut tiles = Vec::new();
             b.s.damage.tiles(&mut tiles);
             b.s.damage.clear();
@@ -548,7 +549,7 @@ fn gpu_staged_frame_equals_the_cpu() {
             // The retained scene is drawn by Metal alone (the layers' pool is shared memory now: a CPU
             // `prepare` on the same scene would repair what a broken GPU stage left). The reference is a
             // fresh scene drawn whole by the CPU kernel.
-            b.s.update(&u);
+            b.s.update_eager(&u);
             let mut tiles = Vec::new();
             b.s.damage.tiles(&mut tiles);
             b.s.damage.clear();
@@ -605,7 +606,7 @@ fn gpu_staged_frame_equals_the_cpu() {
         let (mut kept, mut u, mut d) = (vec![0u32; words], U::default(), 0);
         for hover in [0, 1, 0] {
             u.w[2] = hover;
-            s.update(&u);
+            s.update_eager(&u);
             let mut tiles = Vec::new();
             s.damage.tiles(&mut tiles);
             s.damage.clear();
@@ -731,5 +732,119 @@ fn executors_alternate_and_a_broad_word_costs_nothing_to_find() {
     }
     eprintln!("mixed: {} scenes; frames idle / cpu / gpu {ran:?}; {broad} broad changes found without a record; {bad} failing steps", seeds());
     assert!(broad > 0 && ran[1] > 0 && ran[2] > 0);
+    assert_eq!(bad, 0);
+}
+
+/// S1: a pan and a hover answered by index. A world 7,000 px tall seen through a 320 x 250 frame: cards keyed
+/// by id, sprung glass and dots, all scrolled by words 0 and 1. With the declarations (`Scene::scroll`,
+/// `Scene::keyed`) a pan visits the records near the old and new viewport and a hover the records of two ids;
+/// the frames must be those of the same scene without the declarations, of a fresh redraw, and of the
+/// specification. (`mutant_scroll_band` and `mutant_key_old` must fail.)
+#[test]
+fn a_pan_and_a_hover_visit_what_they_can_reach() {
+    type AKey = Over<Shadow<Off<Pan, Ki<0>, Ki<768>>, Ki<1536>, Ki<2560>, Any, Tab>, RRect<Pan, Ki<1536>, SelV<Eq<Uw<2>, Rec>, Pm<K<0xff6b3bff>>, Pmo<Rec>>>>;
+    let (fw, fh) = (320u32, 250u32);
+    let stride = fw as usize;
+    let pool = Pool::new(1);
+    #[derive(Clone)]
+    struct W {
+        glass: Vec<Glass>,
+        dots: Vec<Dot>,
+    }
+    let build = |w: &W, declare: bool| {
+        let mut g = Rng(0xfeed);
+        let mut s = Scene::new(fw, fh, 1 << 18);
+        let (cards, glass, dots) = (s.column::<AKey>(256), s.column::<AGlass>(16), s.column::<ADot>(32));
+        if declare {
+            s.scroll(cards, 0, 1);
+            s.scroll(glass, 0, 1);
+            s.scroll(dots, 0, 1);
+            s.keyed(cards, 2);
+        }
+        let (mut gi, mut di) = (0, 0);
+        for i in 0..200usize {
+            let (x, y) = (8.0 + (i % 3) as f32 * 104.0 + g.f(0.0, 6.0), 6.0 + (i / 3) as f32 * 104.0 + g.f(0.0, 9.0));
+            let rect = [q(x.round()), q(y.round()), q(x.round() + 92.0), q(y.round() + 88.0)];
+            let id = 1 + (i as u32 % 40);
+            s.push(cards, rect, Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x5000_0000), tab: Tab::NONE }, RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(id) }, a: Pm { c: K }, b: Pmo { c: Rec(g.color(true)) } } }));
+            if declare {
+                s.set_key(cards, i, id);
+            }
+            if i % 25 == 7 && gi < w.glass.len() {
+                s.push(glass, w.glass[gi].rect, w.glass[gi].rec());
+                gi += 1;
+            }
+            if i % 16 == 3 && di < w.dots.len() {
+                s.push(dots, w.dots[di].rect, w.dots[di].rec());
+                di += 1;
+            }
+        }
+        (s, glass, dots)
+    };
+    let mut g = Rng(4242);
+    let mut w = W { glass: Vec::new(), dots: Vec::new() };
+    for k in 0..8 {
+        let (x, y) = (g.pos(10.0, 180.0), 60.0 + k as f32 * 850.0);
+        w.glass.push(Glass { rect: [q(x), q(y), q(x + 120.0), q(y + 70.0)], rad: q(10.0), blur: q([2.0, 7.0, 15.0][k % 3]), f: [256, 320, 256], line: 0x80ff_ffff, tint: 0x30ff_ffff, sx: Spring::rest(0), sy: Spring::rest(0) });
+    }
+    for k in 0..12 {
+        let (x, y) = (g.pos(0.0, 280.0), 30.0 + k as f32 * 560.0);
+        w.dots.push(Dot { rect: [q(x), q(y), q(x + 14.0), q(y + 14.0)], c: [g.color(true), g.color(false)], t0: 0, dur: 1, sx: Spring::rest(0), sy: Spring::rest(0) });
+    }
+    let (mut s, glass, dots) = build(&w, true);
+    let (mut kept, mut u) = (vec![0u32; stride * fh as usize], U::default());
+    s.frame(&u, &mut kept, stride, &pool, 0);
+    let (mut bad, mut pans, mut hovers, mut pan_recs, mut hover_recs) = (0, 0u32, 0u32, 0u32, 0u32);
+    for step in 0..90 {
+        let now = u.w[U_TIME];
+        let kind = [0, 0, 1, 2, 0, 3, 1, 4, 0, 5][step % 10];
+        match kind {
+            // a pan: a few pixels, a page, or a jump across the world (and back up)
+            0 => {
+                let dy = [11.0, -11.0, 240.0, 3100.0, -2900.0, 1.0, 600.0][g.u(7) as usize];
+                let y = ((u.w[1] as i32) as f32 / 256.0 - dy).clamp(-6800.0, 0.0);
+                (u.w[0], u.w[1]) = ((q(g.f(-4.0, 4.0).round())) as u32, q(y.round()) as u32);
+            }
+            1 => u.w[2] = g.u(42),
+            2 => u.w[U_TIME] = now + 5 + g.u(60),
+            3 => {
+                let i = g.u(w.dots.len() as u32) as usize;
+                w.dots[i].sx.retarget(KS, now, q(g.f(-40.0, 40.0)));
+                w.dots[i].sy.retarget(KS, now, q(g.f(-300.0, 300.0)));
+                s.set(dots, i, w.dots[i].rect, w.dots[i].rec());
+            }
+            4 => {
+                let i = g.u(w.glass.len() as u32) as usize;
+                w.glass[i].sy.retarget(KS, now, q(g.f(-200.0, 200.0)));
+                s.set(glass, i, w.glass[i].rect, w.glass[i].rec());
+            }
+            _ => {
+                // a pan and a hover and the clock in one turn
+                (u.w[1], u.w[2], u.w[U_TIME]) = ((u.w[1] as i32 - q(37.0)).max(q(-6800.0)) as u32, g.u(42), now + 16);
+            }
+        }
+        let fs = s.frame(&u, &mut kept, stride, &pool, 0);
+        if kind == 0 {
+            (pans, pan_recs) = (pans + 1, pan_recs + fs.recs_visited);
+        }
+        if kind == 1 {
+            (hovers, hover_recs) = (hovers + 1, hover_recs + fs.recs_visited);
+        }
+        let mut plain = vec![0u32; stride * fh as usize];
+        build(&w, false).0.frame(&u, &mut plain, stride, &pool, 0);
+        let mut d = [diff(&kept, &plain), 0];
+        if step % 9 == 0 {
+            let mut spec = vec![0u32; stride * fh as usize];
+            s.spec(&u, &mut spec, stride);
+            d[1] = diff(&spec, &plain);
+        }
+        if d != [0, 0] {
+            eprintln!("scroll/hover step {step} (kind {kind}): {} words differ from the undeclared fresh scene, specification {}", d[0], d[1]);
+            bad += 1;
+        }
+    }
+    eprintln!("scroll and hover by index: {} records in the scene; a pan visited {:.1} records on average, a hover {:.1}; {bad} failing steps", s.records(), pan_recs as f32 / pans as f32, hover_recs as f32 / hovers as f32);
+    // a hover is the records of two ids (five cards each); a pan is the records near two viewports
+    assert!(hover_recs <= hovers * 10 && pan_recs < pans * 60, "the indexes did not narrow the visits");
     assert_eq!(bad, 0);
 }
