@@ -474,6 +474,11 @@ fn repeated_resize_descriptions_keep_runs_referenced_by_unchanged_rows() {
     assert!(expected.chunks_exact(4).any(|p| p != rgba(BACK)));
     for n in 1..=550 {
         app.resize(W as f32, H as f32);
+        assert_eq!(
+            app.pass_stats().rows,
+            0,
+            "unchanged rows visited after {n} descriptions"
+        );
         if n >= 500 || n % 128 == 0 {
             app.frame();
             let pixels = app.presented_pixels();

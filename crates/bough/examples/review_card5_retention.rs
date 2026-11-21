@@ -142,7 +142,17 @@ fn maintenance() {
         }
     }
     steady.sort_unstable();
-    println!("steady\t{}\t{}", steady.len(), steady[steady.len() / 2]);
+    println!(
+        "steady\t{}\t{}\tmax\t{}",
+        steady.len(),
+        steady[steady.len() / 2],
+        steady.last().unwrap()
+    );
+    assert_eq!(
+        steady.len(),
+        650,
+        "unchanged descriptions must not revisit the rows"
+    );
     // An independent app has a different run store. No oracle touches the measured run store until here.
     let mut fresh = self::app(1_000);
     fresh.frame();

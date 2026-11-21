@@ -386,6 +386,14 @@ pub struct Op {
 
 /// An archetype: a paint kind applied to expression types. The value is one record's constants.
 pub trait Arch: Record {
+    /// Records that keep a resource alive while stored in a column slot. Copies outside the column
+    /// have no ownership. This is false for ordinary paint archetypes.
+    const OWNS_RESOURCE: bool = false;
+    fn same_resource(&self, _other: &Self) -> bool {
+        false
+    }
+    fn acquire_resource(&self) {}
+    fn release_resource(&self) {}
     /// Compare evaluated values for opaque CPU records; never inspect padding.
     fn same_at(&self, other: &Self, u: &U) -> bool {
         if Self::WORD_LAYOUT {
@@ -623,6 +631,7 @@ pub struct Desc {
     active: ActiveFn,
     pub slots: fn(&mut dyn FnMut(Slot)),
     paint: unsafe fn(&RawCol, &StoreView, &U, *mut ()),
+    release_resources: Option<unsafe fn(&RawCol)>,
     /// The bounded deltas the archetype admits ([`fast`]).
     pub fast: fast::FastFns,
 }
@@ -649,6 +658,11 @@ impl<A: Arch, B: Backend> Holder<A, B> {
         },
         slots: A::slots,
         paint: paint_col::<A, B>,
+        release_resources: if A::OWNS_RESOURCE {
+            Some(release_resources::<A>)
+        } else {
+            None
+        },
         fast: fast::fns::<A>(),
     };
 }
@@ -823,9 +837,26 @@ impl RawCol {
         }
     }
 }
+/// SAFETY: the column's descriptor was instantiated for A.
+unsafe fn release_resources<A: Arch>(col: &RawCol) {
+    // SAFETY: this callback comes from the column's own descriptor.
+    for page in unsafe { col.all::<A>() } {
+        let mut initialized = page.initialized;
+        while initialized != 0 {
+            let index = initialized.trailing_zeros() as usize;
+            initialized &= initialized - 1;
+            page.record(index).release_resource();
+        }
+    }
+}
+
 impl Drop for RawCol {
     fn drop(&mut self) {
         if self.npages != 0 {
+            if let Some(release) = self.desc.release_resources {
+                // SAFETY: this is the callback made for the archetype of these pages.
+                unsafe { release(self) };
+            }
             let one = self.desc.page;
             // SAFETY: allocated in `grow` with exactly this layout.
             unsafe {

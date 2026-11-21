@@ -78,6 +78,7 @@ struct SlotEnt {
 /// the row being described, refusals.
 pub struct Shared {
     text: Rc<RefCell<TextSys>>,
+    run_owner: RunOwner,
     slots: RefCell<Vec<SlotEnt>>,
     refused: RefCell<Vec<&'static str>>,
     scale: Cell<f32>,
@@ -106,8 +107,7 @@ pub struct Shared {
     li: Cell<usize>,
     /// A pass that consults nothing kept (the oracles: an immediate description, a fresh mount).
     plain: Cell<bool>,
-    /// A pass in which every exposed row is described and compared (so every run shown is asked for again
-    /// before the run store collects).
+    /// A repair pass after an interrupted description forces every exposed row to be described.
     full: Cell<bool>,
     pass: Cell<PassStats>,
 }
@@ -511,14 +511,66 @@ impl<C: Expr<Out = XColor> + Copy + 'static> Draws for PBox<C> {
     }
 }
 
+thread_local! {
+    static RUN_OWNERS: RefCell<std::collections::HashMap<u32, std::rc::Weak<RefCell<TextSys>>, crate::layout::FxBuild>> =
+        RefCell::new(std::collections::HashMap::default());
+}
+
+struct RunOwner(u32);
+impl RunOwner {
+    fn new(text: &Rc<RefCell<TextSys>>) -> Self {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT: AtomicU32 = AtomicU32::new(1);
+        let id = NEXT
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .expect("text cache identities exhausted");
+        RUN_OWNERS.with(|owners| {
+            owners.borrow_mut().insert(id, Rc::downgrade(text));
+        });
+        Self(id)
+    }
+}
+impl Drop for RunOwner {
+    fn drop(&mut self) {
+        let _ = RUN_OWNERS.try_with(|owners| owners.borrow_mut().remove(&self.0));
+    }
+}
+
 /// One line of text: a run of the run store, where its baseline is in the box, its colour expression.
 #[derive(Clone, Copy)]
 pub struct PLine<C> {
+    owner: u32,
     run: (u32, u32),
     base: i32,
     c: C,
 }
 impl<C: Expr<Out = XColor> + Copy + 'static> Arch for PLine<C> {
+    const OWNS_RESOURCE: bool = !cfg!(feature = "mutant_typed_run_lease");
+    fn same_resource(&self, other: &Self) -> bool {
+        (self.owner, self.run) == (other.owner, other.run)
+    }
+    fn acquire_resource(&self) {
+        RUN_OWNERS.with(|owners| {
+            let text = owners
+                .borrow()
+                .get(&self.owner)
+                .and_then(std::rc::Weak::upgrade)
+                .expect("the text cache is alive while writing its records");
+            text.borrow_mut().acquire(self.run);
+        });
+    }
+    fn release_resource(&self) {
+        // If the view has been dropped already, its owner registry entry is gone as well.
+        let _ = RUN_OWNERS.try_with(|owners| {
+            if let Some(text) = owners
+                .borrow()
+                .get(&self.owner)
+                .and_then(std::rc::Weak::upgrade)
+            {
+                text.borrow_mut().release(self.run);
+            }
+        });
+    }
     const READS: u64 = C::READS;
     const NAME: &'static str = "line";
     const STAGE: StageId = C::STAGE;
@@ -1132,6 +1184,7 @@ impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Pa
             w,
             lh,
             rec: PLine {
+                owner: with(|sh| sh.run_owner.0),
                 run,
                 base,
                 c: self.color.expr(),
@@ -1162,6 +1215,7 @@ impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Pa
             }
             if !(l.same & same_c) {
                 u.leaf(&PLine {
+                    owner: u.sh.run_owner.0,
                     run: l.run,
                     base: l.base,
                     c: self.color.expr(),
@@ -1968,8 +2022,6 @@ pub struct App<V: View> {
     size_pt: (f32, f32),
     scale: f32,
     once: bool,
-    /// The run store's pass at the last description that asked for every exposed row's runs.
-    full_at: u32,
     /// A description started but unwound. Its journals and tapes cannot certify that every write landed.
     retry_description: bool,
     /// The turn's publications for `View::changed` (kept: its buffers are reused).
@@ -1997,6 +2049,7 @@ impl<V: View> App<V> {
         let images = Rc::new(RefCell::new(Images::default()));
         let sh = Rc::new(Shared {
             text: text.clone(),
+            run_owner: RunOwner::new(&text),
             slots: RefCell::new(Vec::new()),
             refused: RefCell::new(Vec::new()),
             scale: Cell::new(cfg.scale),
@@ -2036,7 +2089,6 @@ impl<V: View> App<V> {
             size_pt: (cfg.width_pt, cfg.height_pt),
             scale: cfg.scale,
             once: cfg.mount_once,
-            full_at: 0,
             retry_description: false,
             pubs: crate::changed::Pubs::default(),
             ring: Vec::new(),
@@ -2175,14 +2227,12 @@ impl<V: View> App<V> {
         }
     }
 
-    /// Refresh the runs of kept rows before the text store can evict them. Every fixed description,
-    /// including resize and hover-handler descriptions, advances the text store's clock.
     fn update_description(&mut self) {
-        let pass = self.text.borrow().pass();
-        let full = self.retry_description || pass.wrapping_sub(self.full_at) >= 128;
+        let full = self.retry_description;
         if self.retry_description {
             // Force the fixed conversion and replay all exposed rows once after an incomplete write.
             *self.ty.sh.lay.borrow_mut() = LayMemo::default();
+            self.ty.sh.tape.borrow_mut().clear();
         }
         self.retry_description = true;
         self.ty.sh.full.set(full);
@@ -2190,9 +2240,6 @@ impl<V: View> App<V> {
         self.retire_lists();
         self.retry_description = false;
         self.ty.sh.full.set(false);
-        if full {
-            self.full_at = pass;
-        }
     }
 
     /// After author code ran: the façade's contract is that the owner is described again (the legacy runtime

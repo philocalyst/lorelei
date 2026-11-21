@@ -466,7 +466,7 @@ unsafe impl<V, A: Arch> Row<V> for A {
     #[inline(always)]
     unsafe fn write(&self, sites: *const Site, slot: u32) {
         // SAFETY: the caller's contract: the site's column is of archetype `A` and holds `slot`.
-        unsafe { (*sites).write_record(slot, *self) }
+        unsafe { write_arch_record(&*sites, slot, *self) }
     }
     #[inline(always)]
     unsafe fn patch(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
@@ -507,8 +507,32 @@ unsafe fn patch_record<A: Arch>(
         } else if !(*p).same_at(&value, cx.u) {
             replace(site, slot, p, value, mk, cx);
         } else {
+            change_resource(Some(&*p), &value);
             p.write(value);
         }
+    }
+}
+
+#[inline(always)]
+fn change_resource<A: Arch>(old: Option<&A>, new: &A) {
+    if A::OWNS_RESOURCE && !old.is_some_and(|old| old.same_resource(new)) {
+        new.acquire_resource();
+        if let Some(old) = old {
+            old.release_resource();
+        }
+    }
+}
+
+/// SAFETY: the site holds a column of A, and slot is in capacity.
+#[inline(always)]
+unsafe fn write_arch_record<A: Arch>(site: &Site, slot: u32, value: A) {
+    // SAFETY: the caller proves the slot, type and page. Read the old record only when initialized.
+    unsafe {
+        if A::OWNS_RESOURCE {
+            let old = site.initialized_record::<A>(slot).map(|p| &*p);
+            change_resource(old, &value);
+        }
+        site.write_record(slot, value);
     }
 }
 
@@ -523,7 +547,7 @@ unsafe fn write_missing<A: Arch>(site: &Site, slot: u32, value: A, mk: &Mk, cx: 
         let r = site.rect(slot).shift(mk.org);
         cx.tiles.mark(r.shift(value.offset(cx.u)).and(mk.clip));
         cx.tiles.mark(r.and(mk.clip));
-        site.write_record(slot, value);
+        write_arch_record(site, slot, value);
     }
     cx.changed += 1;
 }
@@ -543,6 +567,7 @@ unsafe fn replace<A: Arch>(site: &Site, slot: u32, p: *mut A, a: A, mk: &Mk, cx:
         } else {
             cx.tiles.mark(r.and(mk.clip));
         }
+        change_resource(Some(&*p), &a);
         *p = a;
         cx.changed += 1;
     }

@@ -66,6 +66,8 @@ mutant_skip_transition = []
 mutant_typed_tape = []
 # Hover paint ignores the identity of its list occurrence.
 mutant_hover_scope = []
+# Allows the run-store collector to evict runs that stored text still names.
+mutant_typed_run_lease = []
 # a list's log is not read into its journal
 mutant_typed_log = []
 # a turn that changed a bound word is not described (the skip ruling D3 removed; tests/typed_twin.rs must fail)

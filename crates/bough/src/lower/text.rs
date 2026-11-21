@@ -79,7 +79,12 @@ struct FaceD {
     /// The shape plans made for this face, by what a plan is made from (direction, script, language). Making a
     /// plan is most of what shaping a short string costs (`rustybuzz::shape` makes one per call); the plan for
     /// the same properties is the same plan.
-    plans: Vec<(rustybuzz::Direction, rustybuzz::Script, Option<rustybuzz::Language>, rustybuzz::ShapePlan)>,
+    plans: Vec<(
+        rustybuzz::Direction,
+        rustybuzz::Script,
+        Option<rustybuzz::Language>,
+        rustybuzz::ShapePlan,
+    )>,
 }
 
 /// One glyph of a run: which face, which glyph, where its origin is relative to the run's pen origin (device
@@ -101,6 +106,7 @@ pub struct Run {
     pub size: f32,
     generation: u32,
     stamp: u32,
+    owners: u32,
     key: (Box<str>, u32),
     live: bool,
 }
@@ -207,7 +213,11 @@ impl TextSys {
                         self.ascii0[b as usize] = rb.glyph_index(b as char).is_some();
                     }
                 }
-                self.faces.push(FaceD { rb, upem, plans: Vec::new() });
+                self.faces.push(FaceD {
+                    rb,
+                    upem,
+                    plans: Vec::new(),
+                });
                 true
             }
             _ => false,
@@ -250,7 +260,7 @@ impl TextSys {
         if self.pass % 256 == 0 {
             // runs nobody asked for in the last 256 descriptions are released; their slots get a new generation
             for (i, r) in self.runs.iter_mut().enumerate() {
-                if r.live && self.pass.wrapping_sub(r.stamp) > 256 {
+                if r.live && r.owners == 0 && self.pass.wrapping_sub(r.stamp) > 256 {
                     if let Some(m) = self.memo.get_mut(&r.key.1) {
                         m.remove(&r.key.0);
                     }
@@ -295,6 +305,7 @@ impl TextSys {
             size,
             generation: 1,
             stamp: self.pass,
+            owners: 0,
             key: key.clone(),
             live: true,
         };
@@ -317,11 +328,27 @@ impl TextSys {
     pub fn touch(&mut self, i: u32) {
         self.runs[i as usize].stamp = self.pass;
     }
-    /// The number of the description pass under way.
-    #[inline(always)]
-    pub fn pass(&self) -> u32 {
-        self.pass
+    pub(crate) fn acquire(&mut self, (index, generation): (u32, u32)) {
+        let run = &mut self.runs[index as usize];
+        assert!(
+            run.live && run.generation == generation,
+            "storing an expired text run"
+        );
+        run.owners = run.owners.checked_add(1).expect("too many text run owners");
     }
+
+    pub(crate) fn release(&mut self, (index, generation): (u32, u32)) {
+        let run = &mut self.runs[index as usize];
+        assert!(
+            run.live && run.generation == generation && run.owners > 0,
+            "expired text run owner"
+        );
+        run.owners -= 1;
+        if run.owners == 0 {
+            run.stamp = self.pass;
+        }
+    }
+
     /// The run a record names, if it is still that run.
     pub fn get(&self, i: u32, generation: u32) -> Option<&Run> {
         self.runs
@@ -380,7 +407,11 @@ impl TextSys {
             buf.push_str(&text[a..b]);
             buf.guess_segment_properties();
             let key = (buf.direction(), buf.script(), buf.language());
-            let pi = match f.plans.iter().position(|p| (p.0, p.1, &p.2) == (key.0, key.1, &key.2)) {
+            let pi = match f
+                .plans
+                .iter()
+                .position(|p| (p.0, p.1, &p.2) == (key.0, key.1, &key.2))
+            {
                 Some(i) => i,
                 None => {
                     // exactly the plan `rustybuzz::shape` would make for this buffer (an unset script is
@@ -864,5 +895,29 @@ mod tests {
         assert_eq!(a.as_ptr(), b.as_ptr());
         assert!(font_file("/nonexistent/font.ttf").is_none());
         std::fs::remove_file(&path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod run_ownership_tests {
+    #[test]
+    fn owned_run_survives_age_and_released_run_is_collected() {
+        let mut text = super::TextSys::new(&crate::ui::default_font());
+        let id = text.run("held", 16.0);
+        text.acquire(id);
+        text.acquire(id);
+        text.release(id);
+        for _ in 0..768 {
+            text.begin_pass();
+        }
+        assert!(text.get(id.0, id.1).is_some());
+        text.release(id);
+        for _ in 0..768 {
+            text.begin_pass();
+        }
+        assert!(text.get(id.0, id.1).is_none());
+        let next = text.run("next", 16.0);
+        assert_eq!(next.0, id.0);
+        assert_ne!(next.1, id.1);
     }
 }
