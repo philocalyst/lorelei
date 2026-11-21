@@ -90,7 +90,7 @@ The 300-card `pane` profile reproduced the hover reach result independently. Abo
 
 ## Layer correctness
 
-The direct layer replay ran the retained walk, radius and boundary sweeps on odd-sized surfaces with 13,452 CPU steps and zero mismatches. The staged Metal trace matched CPU and fresh output on all 180 steps. This binary includes the Driver candidate but these direct `Scene` and `Gpu` probes bypass the changed driver. The dedicated resident `Gpu::frame` and `Gpu::catch_up` probes captured the expected assertion. The clean halo-edge mutation fixture passed all 2,412 steps on unpatched paint. [Direct layer receipt](../../../../bench/results/effects/r3/layer-oracle-direct.txt) · [Clean halo-edge receipt](../../../../bench/results/effects/r3/layer-edge-clean.txt)
+The direct layer replay ran the retained walk, radius and boundary sweeps on odd-sized surfaces with 13,452 CPU steps and zero mismatches. The staged Metal trace matched CPU and fresh output on all 180 steps. This binary includes the Driver candidate but these direct `Scene` and `Gpu` probes bypass the changed driver. The dedicated resident `Gpu::frame` and `Gpu::catch_up` probes captured the expected assertion. The clean halo-edge mutation fixture passed all 2,412 steps on unpatched paint. Disabling the below-layer event failed 2,319 steps. At blur 0, step 43, pixel (63, 60) retained `e3e3e3e3` where the fresh redraw produced `ffffffff`. [Missing-event mutant](../../../../bench/results/effects/r3/layer-mutant-layer-event.txt) [Direct layer receipt](../../../../bench/results/effects/r3/layer-oracle-direct.txt) · [Clean halo-edge receipt](../../../../bench/results/effects/r3/layer-edge-clean.txt)
 
 ## Prefix design
 
