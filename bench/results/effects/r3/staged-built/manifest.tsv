@@ -1,0 +1,24 @@
+part	status	note
+cards: 640x400 RGBA, 10x10 grid, 64x40, quarter-pixel layer stagger, insertion order	exact	Grad/Shadow records; card i in cell i%100, last card is the foreground
+body: translucent rounded 60x36 with deterministic palette and asymmetric two-stop gradient	exact	Grad, stop alphas 0xd4/0xb8, direction (700000,-300000) in the seam's units
+two outer shadows, distinct spread/offset/blur	reduced	Shadow (spline blur: blur is two sigma) with spread via Grow; spreads +2/-1 px, offsets (0,3)/(2,5), blur 6/3 px
+shared procedural PNG tile every 16 cards	MISSING	no image/texture paint in the seam; no tile is drawn
+foreground card as motion subject	exact	last card
+scroll strip with mounted rows limited by the framework API	reduced	ten-column strip panned by uniform words; all cards stay mounted (no virtualisation API in the seam), so footprint does not follow exposure
+stroked cubic and even-odd filled path	MISSING	no path primitive
+rounded clips and alpha mask	reduced	Clip is a rectangle (one rect-clipped rounded fill is drawn); rounded-rect clip and alpha mask MISSING
+filtered group: blur 3, saturate 1.4, brightness 0.8, drop-shadow sigma 4 offset (3,5)	MISSING	no subtree group; the legacy `video` cell puts brightness 0.8 / saturation 1.4 on each pane's backdrop as a stand-in; `glass` panes have no filter
+three fills: hash-noise plasma, circle-minus-circle SDF, moving sine-ramp uniform	reduced	three Shader records using the two built-in nodes (stripes, ripple), clock word moving; plasma, SDF and sine-ramp MISSING (author shader registration not built)
+four 112x76 frosted panels, radius 12, backdrop sigma 6 px	exact	Backdrop + Border; sigma 6; tint is the translucent border fill
+256x144 video, 120 frames 30 fps, 4:2:0 limited BT.709, new frame per four ticks	reduced	Synth pattern (bars + box), NV12 BT.709; new frame each 4 ticks in glass/video; not a 120-frame loop and no codec (decode is the generator)
+fixed virtual timestamps	exact	tick k at k*1000/120 ms (U_TIME)
+cell startup (fresh process)	reduced	`measure startup N` times mount + first frame in-process; fx-seam-run.sh also spawns fresh processes
+cell idle	exact	frozen shader clock; zero recs/tiles/layer work and no active records asserted
+cell one (interrupt at 100 ms by 10 px)	reduced	spring to +10 px at tick 1, retargeted to -10 px at tick 12
+cell many (stagger translation/opacity/colour/width, interrupt at 100 ms, spring k=260 c=23 on every other card)	exact	Prog on rect, colour and opacity; every record rewritten at tick 12
+cell hover (20 distinct cells then reverse)	reduced	highlight by uniform word compare, opaque flat colour; walks only cells free of overlays
+cell theme (palette replaced every frame)	exact	eight shared palette words rewritten each tick, alpha preserved
+cell scroll (11 px per frame then reverse)	reduced	see strip
+cell resize 640x400 <-> 704x448 without remount	MISSING	Scene has a fixed surface; each size change remounts the scene from the live state (the row is a remount cost)
+cell glass over video	reduced	pane translates by a sine each tick, video each 4th tick; no group filter
+GPU timestamps, hardware GPU	MISSING	this adapter drives the CPU tile kernel on one core; the seam's Metal executor is not driven here

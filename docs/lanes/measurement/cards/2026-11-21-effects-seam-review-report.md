@@ -41,9 +41,9 @@ The pinned P6 correction passed its focused regression. Restoring the stock fift
 | Medium | `a_long_critically_damped_move_starts_at_rest_and_follows_the_ode` found a 31.50 px error on a 700 px move and 325.59 px on a 1,500 px move. Both saturated `b0` at −2,097,151. | Specify a representable range for the critical coefficient or encode its exponent explicitly. Use the same precision in CPU and GPU evaluation and preserve the exact initial displacement, derivative and final value. Reject or fall back before saturation. Add gates at the coefficient limit and across both sides of the near-critical regime. |
 | Medium | `a_storm_between_draws_holds_a_bounded_number_of_slots` reserved 51 slots during 50 producer publishes between draws. `an_abandoned_lease_is_not_lost_for_good` exhausted the pool after 3 cancellations. | Keep a single pending slot per stream and release superseded, uninstalled slots before the next fence. Add cancellation for decode leases. |
 | Medium | The `(20,000, 200)` response missed the velocity envelope by 1,996.7 px/s at 4 ms. Five retargets in the same regime missed the ODE trajectory envelope, with 5.44 px maximum error. | Derive velocity from the same response equation and quantized coefficients at every tick, with explicit start and settle behavior. Test peak and early acceleration separately to distinguish derivative approximation from coefficient range limits. |
-| Fixture | The original format-change probe ran out of allocations with only three slots and stopped at its setup assertion. | The corrected capacity ensures the request fits in two adjacent free ranges while it exceeds the unallocated tail. Its allocator verdict is queued. |
+| Medium | After correcting its setup, `a_resolution_change_does_not_strand_a_pool_of_free_slots` could not lease a 96×54 frame in an 8,192-word pool with six free slots and one installed 64×48 frame. | Reuse larger free ranges or coalesce adjacent free ranges. Preserve the installed slot and bound the unallocated tail in the gate. |
 
-The baseline suite passed staggered launch, retarget at rest, and the 480-frame retained spring and settle script. Its 8 failures include the format-change setup failure above. [Baseline receipt](../../../../bench/results/effects/r3/motion-media-baseline.txt) · [Media ownership design](../../../../bench/results/effects/r3/paint-video-slot-lifetime.md)
+The baseline suite passed staggered launch, retarget at rest, and the 480-frame retained spring and settle script. Its 8 failures include the initial format-change setup failure. The corrected focused run reproduced the allocation refusal. [Corrected format-change gate](../../../../bench/results/effects/r3/media-format-gate.txt) [Baseline receipt](../../../../bench/results/effects/r3/motion-media-baseline.txt) · [Media ownership design](../../../../bench/results/effects/r3/paint-video-slot-lifetime.md)
 
 ## Blur error and layer storage
 
@@ -53,7 +53,7 @@ At 640×400 the four 112×76 σ=6 panels require **502,960 bytes** for their liv
 
 ## Staged paint capability at the pin
 
-The adapter drives the same nine cell scripts at 200, 1,000 and 5,000 cards. These are source admissions. The pinned build and pixel gates determine whether each row receives timings.
+The adapter drives the same nine cell scripts at 200, 1,000 and 5,000 cards. The pinned adapter built and reported the capability manifest below. The pixel and mutant gates determine whether each row receives timings. [Built capability manifest](../../../../bench/results/effects/r3/staged-built/manifest.tsv)
 
 | Cell | Coverage | Boundary |
 |---|---|---|
