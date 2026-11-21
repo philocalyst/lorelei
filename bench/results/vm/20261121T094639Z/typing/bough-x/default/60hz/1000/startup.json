@@ -1,6 +1,6 @@
 {
   "pid": 63262,
-  "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario typing --rows 1000",
+  "command": "~/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario typing --rows 1000",
   "spawned": 2955960651754,
   "window": 1,
   "connected_ms": 0.75687,

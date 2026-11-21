@@ -1,6 +1,6 @@
 {
   "pid": 61920,
-  "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario table --rows 1000 --variant fine",
+  "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario table --rows 1000 --variant fine",
   "spawned": 1771055516851,
   "window": 1,
   "connected_ms": 3.052513,

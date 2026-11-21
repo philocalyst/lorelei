@@ -542,7 +542,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario rows --rows 100",
+                "command": "~/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario rows --rows 100",
                 "cpu_ms": 0.169709,
                 "cpu_ms_per_s": 0.05755714665912398,
                 "cpu_percent": {

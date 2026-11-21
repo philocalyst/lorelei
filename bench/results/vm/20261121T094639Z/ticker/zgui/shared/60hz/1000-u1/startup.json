@@ -1,6 +1,6 @@
 {
   "pid": 63105,
-  "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario ticker --rows 1000 --variant shared --updates 1 --interval-ms 16",
+  "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario ticker --rows 1000 --variant shared --updates 1 --interval-ms 16",
   "spawned": 2905084492638,
   "window": 1,
   "connected_ms": 1.688561,

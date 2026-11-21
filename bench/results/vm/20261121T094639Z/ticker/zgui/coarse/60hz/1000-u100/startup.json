@@ -1,6 +1,6 @@
 {
   "pid": 63043,
-  "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
+  "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
   "spawned": 2889509632187,
   "window": 1,
   "connected_ms": 1.733822,

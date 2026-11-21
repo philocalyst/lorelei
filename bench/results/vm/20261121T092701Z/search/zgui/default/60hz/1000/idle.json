@@ -663,7 +663,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario search --rows 1000",
+                "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario search --rows 1000",
                 "cpu_ms": 331.356611,
                 "cpu_ms_per_s": 112.28264914900447,
                 "cpu_percent": {

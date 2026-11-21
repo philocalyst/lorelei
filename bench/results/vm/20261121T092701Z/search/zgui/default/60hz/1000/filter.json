@@ -1791,7 +1791,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario search --rows 1000",
+                "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario search --rows 1000",
                 "cpu_ms": 527.321547,
                 "cpu_ms_per_s": 756.1777339871934,
                 "cpu_percent": {
@@ -1836,7 +1836,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario search --rows 1000",
+                "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario search --rows 1000",
                 "cpu_ms": 516.846455,
                 "cpu_ms_per_s": 749.1769524106012,
                 "cpu_percent": {

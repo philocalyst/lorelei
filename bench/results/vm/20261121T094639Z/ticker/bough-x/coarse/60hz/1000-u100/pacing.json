@@ -1398,7 +1398,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
+                "command": "~/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
                 "cpu_ms": 31.355079,
                 "cpu_ms_per_s": 10.628078860550493,
                 "cpu_percent": {
@@ -1443,7 +1443,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
+                "command": "~/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
                 "cpu_ms": 29.571286,
                 "cpu_ms_per_s": 10.024794802416926,
                 "cpu_percent": {

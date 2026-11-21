@@ -1,6 +1,6 @@
 {
   "pid": 64303,
-  "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario rows --rows 100",
+  "command": "~/src/gui-bench/apps/bough/target/release/bough-bench --scenario rows --rows 100",
   "spawned": 3604562484886,
   "window": 1,
   "connected_ms": 3.756509,

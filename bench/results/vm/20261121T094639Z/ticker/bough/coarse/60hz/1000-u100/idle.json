@@ -663,7 +663,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
+                "command": "~/src/gui-bench/apps/bough/target/release/bough-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
                 "cpu_ms": 92.565496,
                 "cpu_ms_per_s": 30.7894577567976,
                 "cpu_percent": {

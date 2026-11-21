@@ -1,6 +1,6 @@
 {
   "pid": 63282,
-  "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario typing --rows 1000",
+  "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario typing --rows 1000",
   "spawned": 2975446321692,
   "window": 1,
   "connected_ms": 1.788201,

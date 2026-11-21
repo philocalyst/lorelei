@@ -593,7 +593,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario virtual --rows 100000",
+                "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario virtual --rows 100000",
                 "cpu_ms": 93.60408,
                 "cpu_ms_per_s": 31.70404906647808,
                 "cpu_percent": {

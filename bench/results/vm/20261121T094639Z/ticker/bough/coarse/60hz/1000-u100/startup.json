@@ -1,6 +1,6 @@
 {
   "pid": 62717,
-  "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
+  "command": "~/src/gui-bench/apps/bough/target/release/bough-bench --scenario ticker --rows 1000 --variant coarse --updates 100 --interval-ms 16",
   "spawned": 2765753630750,
   "window": 1,
   "connected_ms": 4.452377,

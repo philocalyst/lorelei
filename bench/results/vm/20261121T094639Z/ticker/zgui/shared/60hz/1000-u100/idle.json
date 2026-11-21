@@ -663,7 +663,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario ticker --rows 1000 --variant shared --updates 100 --interval-ms 16",
+                "command": "~/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario ticker --rows 1000 --variant shared --updates 100 --interval-ms 16",
                 "cpu_ms": 1708.866057,
                 "cpu_ms_per_s": 579.5780688309931,
                 "cpu_percent": {

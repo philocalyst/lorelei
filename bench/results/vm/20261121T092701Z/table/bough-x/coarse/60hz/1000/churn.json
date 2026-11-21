@@ -4,7 +4,7 @@
   "before": {
     "gpu": null,
     "process": {
-      "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario table --rows 1000 --variant coarse",
+      "command": "~/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario table --rows 1000 --variant coarse",
       "cpu_ns_total": 102256053,
       "cpu_percent": 0.0,
       "ctx_switches_total": 293,
@@ -26,7 +26,7 @@
   "after": {
     "gpu": null,
     "process": {
-      "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario table --rows 1000 --variant coarse",
+      "command": "~/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario table --rows 1000 --variant coarse",
       "cpu_ns_total": 119740302,
       "cpu_percent": 0.0,
       "ctx_switches_total": 323,

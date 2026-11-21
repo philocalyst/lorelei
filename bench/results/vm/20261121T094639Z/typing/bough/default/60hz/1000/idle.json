@@ -663,7 +663,7 @@
             "gpu_power_w": null,
             "processes": [
               {
-                "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough/target/release/bough-bench --scenario typing --rows 1000",
+                "command": "~/src/gui-bench/apps/bough/target/release/bough-bench --scenario typing --rows 1000",
                 "cpu_ms": 1.131417,
                 "cpu_ms_per_s": 0.3835068783447028,
                 "cpu_percent": {
