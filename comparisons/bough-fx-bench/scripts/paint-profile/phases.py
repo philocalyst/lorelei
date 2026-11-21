@@ -22,7 +22,7 @@ def main():
     parser.add_argument("tsv", type=Path)
     parser.add_argument("scene", choices=("pane", "effects"))
     parser.add_argument("shape", choices=("sparse", "dense"))
-    parser.add_argument("script", choices=("published", "noshader"))
+    parser.add_argument("script", choices=("published", "noshader", "clock", "frozen"))
     parser.add_argument("cell", help="cell name as printed by fxprof")
     opts = parser.parse_args()
     groups = defaultdict(dict)
