@@ -529,7 +529,7 @@ impl<V: View, B: Backend> World<V, B> {
 
     /// The damage of the block going from what is shown to `u` (`ch`: the changed words). The path from here
     /// to a page is this world, the column's entry, the page: the store tree is not on it.
-    #[inline]
+    #[inline(never)]
     fn delta(&mut self, u: &U, ch: u64) {
         self.delta_stats = DeltaStats::default();
         self.broad_last = None;
@@ -611,7 +611,8 @@ impl<V: View, B: Backend> World<V, B> {
         // SAFETY: the table is current, and no view pass can run while it is borrowed here.
         let st = unsafe { &*route.store };
         let c = &st.cols[route.index as usize];
-        if st.space.reads() & ch != 0 {
+        let scroll = st.space.scroll;
+        if scroll != crate::store::NO_WORD && ch >> (scroll & 63) & 1 != 0 {
             return;
         }
         if c.reads & ch & self.broad != 0 && !c.desc.state && !self.no_fast {
