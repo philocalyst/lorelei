@@ -1071,6 +1071,12 @@ impl core::ops::IndexMut<usize> for StoreChildren {
     }
 }
 
+pub(crate) struct ScrollContent {
+    pub field: Option<crate::expr::Slot>,
+    pub height: i32,
+    pub line: Option<f32>,
+}
+
 /// A store is made and changed only by the world that owns it (soundness review S01): its sites and column
 /// headers hold raw pointers that its safe passes dereference, so outside code may read a store
 /// ([`crate::world::World::root`]) but never own one or reach it mutably.
@@ -1095,6 +1101,7 @@ pub struct Store {
     pub row_live: Vec<u64>,
     pub(crate) initialized_window: Option<(u32, u32)>,
     pub space: Space,
+    pub(crate) scroll_content: Option<Box<ScrollContent>>,
     disc: Vec<(u32, Rect)>,
     /// A list's materialised window of rows, `lo..hi`; row `r` is at slot `(r + bias) mod cap`
     /// ([`Store::slot_of`]).
@@ -1208,6 +1215,7 @@ impl Store {
             row_live: vec![0; (cap as usize / 64).max(1)],
             initialized_window: None,
             space,
+            scroll_content: None,
             disc: Vec::new(),
             lo: 0,
             hi: 0,

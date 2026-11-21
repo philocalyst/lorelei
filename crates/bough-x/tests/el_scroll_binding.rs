@@ -16,7 +16,6 @@ impl View for ScrollOnly {
 }
 
 #[test]
-#[ignore = "the typed field table gathers only paint-column operands"]
 fn a_signal_used_only_as_a_scroll_offset_moves_the_space() {
     let mut app = App::<_, Soft>::new(ScrollOnly { y: Signal::new(0.) }, 24, 40, 1.).once();
     let draw_first = |app: &App<ScrollOnly, Soft>| {

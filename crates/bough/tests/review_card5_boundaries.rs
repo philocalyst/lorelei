@@ -212,17 +212,20 @@ impl View for PlainScroll {
 }
 
 #[test]
-#[ignore = "Card 5 omits plain scroll extent and line distance"]
 fn wheel_scrolls_a_plain_box_by_its_declared_line() {
+    let mut config = cfg();
+    config.scale = 1.25;
     let mut app = App::new(
         PlainScroll {
             y: Signal::new(0.0),
         },
-        cfg(),
+        config,
     )
     .unwrap_or_else(|(_, why)| panic!("plain scroll refused: {why:?}"));
     app.wheel(6.0, 6.0, 0.0, 1.0);
     assert_eq!(*app.view().y, 12.0);
+    app.wheel(6.0, 6.0, 0.0, 0.25);
+    assert_eq!(*app.view().y, 15.0);
     app.check().unwrap();
 }
 

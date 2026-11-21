@@ -120,6 +120,16 @@ pub trait Sink<V>: Sized + for<'r> ScopeOf<'r, V> {
     fn leaf<A: Arch>(&mut self, _k: usize, _a: &A) {
         unimplemented!("this sink does not keep rows")
     }
+    /// A scrolled scope's optional projected field and measured content height in device pixels.
+    /// `line` overrides the first list row's default wheel distance, in points.
+    fn scroll_content(
+        &mut self,
+        _field: Option<crate::expr::Slot>,
+        _height: i32,
+        _line: Option<f32>,
+    ) {
+    }
+
     /// A child with its own coordinate space (a clip, a scroll offset read from the block).
     #[track_caller]
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(
@@ -801,6 +811,21 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
         // SAFETY: the site is record `k` of this store's first row (in range, above), not a hole, and its
         // column was made for archetype `A` (checked above); slot 0 is the fixed row's slot.
         unsafe { <A as Row<V>>::patch(a, &site, 0, &self.mk, self.cx) }
+    }
+    fn scroll_content(&mut self, field: Option<crate::expr::Slot>, height: i32, line: Option<f32>) {
+        if self.st.scroll_content.as_ref().and_then(|info| info.field) != field {
+            self.st.bump_structure();
+        }
+        let new = crate::store::ScrollContent {
+            field,
+            height,
+            line,
+        };
+        if let Some(info) = self.st.scroll_content.as_mut() {
+            **info = new;
+        } else {
+            self.st.scroll_content = Some(Box::new(new));
+        }
     }
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(
         &mut self,

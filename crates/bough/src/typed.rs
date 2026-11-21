@@ -1491,12 +1491,13 @@ where
         let s = with(|sh| sh.scale.get());
         let p = self.port;
         let c = self.content;
-        Scroll {
-            spec: crate::lower::lay_spec(&p.spec, s),
-            paint: Rec1(pbox(p.bg.expr(), p.draw, p.radius, p.border)),
-            content: tbox(&c.spec, pbox(XColor(0), false, 0.0, None), c.ch.kids()),
-            word: slot as u8,
-        }
+        Scroll::new(
+            crate::lower::lay_spec(&p.spec, s),
+            Rec1(pbox(p.bg.expr(), p.draw, p.radius, p.border)),
+            tbox(&c.spec, pbox(XColor(0), false, 0.0, None), c.ch.kids()),
+            slot as u8,
+        )
+        .wheel_line(self.line)
     }
     // its content is a row of a child space, which the walk does not reach: always the conversion
     const BY_REF: bool = false;
@@ -1638,15 +1639,15 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
         };
         let mut spec = self_.spec;
         spec.container = false;
-        Scroll {
-            spec: crate::lower::lay_spec(&spec, s),
-            paint: Rec1(pbox(
+        Scroll::new(
+            crate::lower::lay_spec(&spec, s),
+            Rec1(pbox(
                 XColor(self_.bg.map_or(0, |c| c.0)),
                 self_.bg.is_some(),
                 self_.radius,
                 None,
             )),
-            content: {
+            {
                 let (list, off) = (self_.src.list.list, self_.src.list.off);
                 let (journal, all, site) = with(|sh| {
                     if sh.row.get().3 != 0
@@ -1702,7 +1703,7 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
                 }
             },
             word,
-        }
+        )
     }
 }
 

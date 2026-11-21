@@ -672,23 +672,36 @@ impl<V: View, B: Backend> World<V, B> {
         self.by_word[64] = self.readers.len() as u32;
         // The root view's fields the columns' lenses name. Two fields in one word cannot both be Frame state.
         self.slots.clear();
+        let mut slot = |s: Slot| match self.slots.iter().find(|t| t.index() == s.index()) {
+            Some(t) => assert!(
+                *t == s,
+                "two fields of the view share word {} of the block (byte offsets {} and {}): Frame state must lie within {} bytes",
+                s.index(),
+                t.offset(),
+                s.offset(),
+                APP_WORDS * 4
+            ),
+            None => self.slots.push(s),
+        };
         for route in &cols {
             // SAFETY: the table is current, and no view pass can run while it is borrowed here.
             let st = unsafe { &*route.store };
-            let d = st.cols[route.index as usize].desc;
-            (d.slots)(
-                &mut |s: Slot| match self.slots.iter().find(|t| t.index() == s.index()) {
-                    Some(t) => assert!(
-                        *t == s,
-                        "two fields of the view share word {} of the block (byte offsets {} and {}): Frame state must lie within {} bytes",
-                        s.index(),
-                        t.offset(),
-                        s.offset(),
-                        APP_WORDS * 4
-                    ),
-                    None => self.slots.push(s),
-                },
-            );
+            (st.cols[route.index as usize].desc.slots)(&mut slot);
+        }
+        for &(_, store) in &self.spaces {
+            // SAFETY: moving_spaces just recorded the owning store addresses for this publication.
+            if let Some(field) = unsafe { &*store }
+                .scroll_content
+                .as_ref()
+                .and_then(|info| info.field)
+            {
+                assert_eq!(
+                    field.owner(),
+                    core::any::TypeId::of::<V>(),
+                    "scroll field owner mismatch"
+                );
+                slot(field);
+            }
         }
         // what a column reads, and what moves a space
         self.reads = self
@@ -1909,6 +1922,15 @@ impl<V: View, B: Backend> World<V, B> {
                 if l == 0 { s.geo.2 } else { l },
             )
         });
+        let (extent, line) = if let Some(info) = &st.scroll_content {
+            let step = info
+                .line
+                .map(|line| line * scale)
+                .unwrap_or_else(|| if line == 0 { 48.0 * scale } else { line as f32 });
+            (info.height.max(extent), step)
+        } else {
+            (extent, line.max(1) as f32)
+        };
         let max = (extent - (st.space.clip.y1 - st.space.clip.y0)).max(0);
         let Some(u) = v.block_mut() else {
             return Dispatch {
@@ -1917,12 +1939,24 @@ impl<V: View, B: Backend> World<V, B> {
                 consumed: false,
             };
         };
+        if points && let Some(line) = st.scroll_content.as_ref().and_then(|info| info.line) {
+            let at = f32::from_bits(u.w[word]);
+            let to = (at + dy * line).clamp(0.0, max as f32 / scale);
+            if to != at {
+                u.w[word] = to.to_bits();
+            }
+            return Dispatch {
+                kind: kind::WHEEL,
+                place: NONE,
+                consumed: to != at,
+            };
+        }
         let at = if points {
             (f32::from_bits(u.w[word]) * scale).round() as i32
         } else {
             u.w[word] as i32
         };
-        let to = (at + (dy * line.max(1) as f32) as i32).clamp(0, max);
+        let to = at.saturating_add((dy * line) as i32).clamp(0, max);
         if to != at {
             u.w[word] = if points {
                 (to as f32 / scale).to_bits()
@@ -1951,7 +1985,11 @@ impl<V: View, B: Backend> World<V, B> {
                 let (extent, some) = lists.fold((0i32, false), |(e, _), s| {
                     (e.max(s.geo.1 + s.n as i32 * s.geo.2), true)
                 });
-                if some {
+                if some || st.scroll_content.is_some() {
+                    let extent = st
+                        .scroll_content
+                        .as_ref()
+                        .map_or(extent, |info| extent.max(info.height));
                     let max = (extent - (st.space.clip.y1 - st.space.clip.y0)).max(0);
                     let at = if points {
                         (f32::from_bits(u.w[word]) * scale).round() as i32
