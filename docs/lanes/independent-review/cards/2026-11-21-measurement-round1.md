@@ -1,0 +1,7 @@
+# Independent replay of the measurement harness
+
+- Review the runbook at `34a1be466f` on an Apple Silicon macOS host and its local aarch64 Lima guest. The historical native control is `71ee3be`. Compare it against the wave3 integration revision and record effective commits.
+- Prediction. Whole-process counters conceal changes in operation cost. The sheet hover operation should reproduce roughly 13,504 versus 5,324 retired instructions. The forward comparison must identify the improvement. The reverse comparison must fail. Self-comparison and the assembly mutant must pass their gates.
+- Replay the VM scripts, one or more cells for each supported scenario and framework, and the runbook's native and assembly jobs. Record command, source and executable identity, counter scope, actual exit, output validity, timing mode and load. Raw evidence lives in ignored storage.
+- The VM fixed-rate and unthrottled timing modes require separate evidence. Validity must follow the compositor's own check and omissions or failed commands must propagate. Headless fixtures using the typed `bough-x` core use prepared Latin-1 DejaVu Sans 14/28 px, opaque paints, arithmetic row placement, remount on resize, group-1 keymap and CPU spans.
+- Gate. Retain exact work and measurements. Add effects and incremental operation cells, verify the Vulkan character ABI in native and guest builds, and preserve compact, portable receipts. Record every invalid or unavailable cell and the observed boundary.
