@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from operations import REQUIRED, guibench, table
+from operations import PBENCH_EXECUTORS, REQUIRED, guibench, pbench, table
 from run import summary, summarize
 
 
@@ -35,6 +35,22 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(len(operations), 2)
         with self.assertRaises(ValueError):
             table("ops", header + row * 3, {"PART": "search"})
+
+    def test_pbench_requires_all_rows_and_gates_serial_cpu(self):
+        args = ("anim", "600")
+        env = {"REPS": "24", "WORKERS": "5"}
+        header = "# pbench anim Some(600); reps 24; workers 5;\nphase\texecutor\ttiles\tthread_Kinstr"
+        rows = [f"anim.{phase}\t{executor} details\t30\t293.4" for phase in ("full", "theme", "time")
+                for executor in sorted(PBENCH_EXECUTORS)]
+        verdict = "# cross-check failures: 0; load at end: 2.0"
+        operations = pbench("\n".join([header, *rows, verdict]), args, env)
+        self.assertEqual(len(operations), 12)
+        self.assertEqual(operations["anim.full/A1"], {"instructions": 293400, "tiles": 30})
+        self.assertNotIn("anim.full/AP", operations)
+        for changed in ([header, *rows[:-1], verdict], [header, *rows, rows[0], verdict],
+                        [header, *rows, verdict.replace("0;", "1;")]):
+            with self.assertRaises(ValueError):
+                pbench("\n".join(changed), args, env)
 
     def test_changed_operation_set_refused(self):
         a = {"process": {"instructions": 2000000}, "operations": {"hover": {"instr_p50": 13504}}}

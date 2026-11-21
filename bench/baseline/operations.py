@@ -197,6 +197,56 @@ def staged_paint(stdout, args):
     return result
 
 
+PBENCH_EXECUTORS = {"A1", "A", "AP", "AG", "AD", "K", "K1", "KP", "KG"}
+# A frame-thread counter includes a variable share of the work for pooled and Metal paths.
+PBENCH_PRIMARY = {"A1", "A", "K", "K1"}
+
+
+def pbench(stdout, args, env):
+    scene, size = args
+    phases = {"full", "theme", "time"}
+    if scene == "canvas":
+        phases.update(("hover", "hover1", "pan", "drag"))
+    phases = {f"{scene}.{phase}" for phase in phases}
+    identity = f"# pbench {scene} Some({size}); reps {env['REPS']}; workers {env['WORKERS']};"
+    lines = stdout.splitlines()
+    if not lines or not lines[0].startswith(identity):
+        raise ValueError("unexpected pbench scene, repetitions or worker count")
+    if not lines[-1].startswith("# cross-check failures: 0;"):
+        raise ValueError("pbench cross-check did not pass")
+    header = None
+    seen = set()
+    operations = {}
+    for line in lines:
+        if line.startswith("#") or "\t" not in line:
+            continue
+        fields = line.split("\t")
+        if fields[0] == "phase":
+            if (header is not None or len(fields) != len(set(fields)) or
+                    not {"executor", "tiles", "thread_Kinstr"} <= set(fields)):
+                raise ValueError("missing or ambiguous pbench columns")
+            header = fields
+            continue
+        if header is None or len(fields) != len(header):
+            raise ValueError("malformed pbench row")
+        row = dict(zip(header, fields))
+        phase, executor = row["phase"], row["executor"].split(maxsplit=1)[0]
+        key = f"{phase}/{executor}"
+        if (phase not in phases or
+                executor not in PBENCH_EXECUTORS or key in seen):
+            raise ValueError(f"unexpected or repeated pbench row: {key}")
+        seen.add(key)
+        value = row["thread_Kinstr"]
+        if not re.fullmatch(r"[0-9]+\.[0-9]", value) or not Decimal(value):
+            raise ValueError(f"pbench PMU unavailable for {key}")
+        if executor in PBENCH_PRIMARY:
+            operations[key] = {"instructions": int(Decimal(value) * 1000),
+                               "tiles": unsigned(row["tiles"])}
+    if len(seen) != len(phases) * len(PBENCH_EXECUTORS):
+        raise ValueError("missing pbench operation rows")
+    return operations
+
+
 def parse(kind, stdout, stderr, args, env):
     if kind in TABLES:
         return table(kind, stdout, env)
@@ -209,7 +259,5 @@ def parse(kind, stdout, stderr, args, env):
     if kind == "fxbench":
         return staged_paint(stdout, args)
     if kind == "pbench":
-        if not re.search(r"^# cross-check failures: 0;", stdout, re.M):
-            raise ValueError("pbench cross-check did not pass")
-        return {}
+        return pbench(stdout, args, env)
     raise ValueError(f"unknown fixture parser {kind!r}")

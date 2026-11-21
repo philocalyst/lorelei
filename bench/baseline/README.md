@@ -21,11 +21,13 @@ The runner writes one structured receipt, a readable table, and raw stdout, stde
 | `text_x` | Calling-thread instructions per scenario and phase |
 | `anim_x/208` | Calling-thread instructions per phase |
 | `anim_x/208/{near,swept,near-swept}`, `ops_x/{select,lane,ops,search,corpus}` | Calling-thread instructions from the incremental-operators fixtures |
-| `pbench/canvas1` | Whole-process instructions for the offscreen CPU and Metal fixture with pixel cross-check |
+| `pbench/{canvas1,canvas4,anim600}` | Calling-thread instructions per serial CPU phase, rounded to 100 instructions. Requires all executor rows and a passing pixel cross-check. |
 | `guibench/…` | Façade calling-thread instructions for mount and named batches |
 | `effects/…` | Façade mean process instructions per trace step, or exec to first frame for cold start |
 | `effects-core/…` | Typed core median process instructions per trace step, or setup to first frame for startup |
 | `fxbench/…` | Calling-thread instructions per frame, rounded to 100 instructions. Keeps CPU cached, CPU uncached and Metal rows separate and requires the retained-pixel verdict. |
+
+The `pbench` gate uses `A1`, `A`, `K`, and `K1`. Pooled and Metal executors have diagnostic counters in the raw logs. In repeat runs of one `fbf6a2637b` binary, the `canvas1` pan phase varied from 20,922,200 to 31,426,800 frame-thread instructions on `AP`. The frame thread's share of the parallel work depends on scheduling. The `AG` drag phase varied from 71,600 to 85,500 instructions. The gate still requires both executors to emit complete rows and pass the fixture's correctness check.
 
 Set `BOUGH_FONT` to a known TrueType face for the façade and effects comparisons. Use the same font in both runs. The receipt records font digests when an override is set. The prepared-face typed core uses Latin-1 DejaVu Sans 14/28 px, opaque colours, arithmetic row placement, remount on resize, group-1 keymap and CPU spans. The typed effects adapter covers opaque, integer-position rectangles with colour transitions. The staged paint `fxbench` video cells use the source under test. The older standalone effects adapter also offers a video probe from a separately pinned paint seam. The receipt records unavailable adapters and old-tree prerequisites.
 

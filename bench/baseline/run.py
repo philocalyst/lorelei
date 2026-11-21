@@ -199,7 +199,7 @@ SCOPES = {
     "effects": "process instructions per operation, mean of trace, or spawn-to-first for startup",
     "effects-core": "process instructions per operation, median of trace, or setup-to-first for startup",
     "fxbench": "calling-thread instructions per frame, rounded to 100 instructions by its TSV",
-    "pbench": "process instructions for the full offscreen CPU and Metal benchmark",
+    "pbench": "serial CPU calling-thread instructions per phase, rounded to 100 instructions by its TSV",
 }
 
 
