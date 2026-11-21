@@ -211,6 +211,26 @@ pub trait Program {
     fn reload(&mut self) -> bool {
         false
     }
+    /// Which world of this program is mounted: 0 for the first, one more after a remount (a resize that
+    /// replaces the world). Node ids are stable within a generation and differ across generations; a fresh
+    /// application of the same kind starts at 0, so two identical programs describe the same ids.
+    fn generation(&self) -> u64 {
+        0
+    }
+    /// Whether a panel beside the app is showing the last snapshot. Only then is a snapshot built before a
+    /// frame and published; a program that draws nothing extra pays nothing.
+    fn overlay(&self) -> bool {
+        false
+    }
+    /// The snapshot the next frame will show, for a host that paints it beside the app. Called only when
+    /// [`Program::overlay`] is true.
+    fn publish(&mut self, _snap: &Snapshot) {}
+    /// Load a patch dylib into this process and re-describe the view with the code it carries. The unit is the
+    /// host's own hot-call boundary: a program that has none refuses (and the developer loop falls back to a
+    /// state-preserving restart). A failure leaves the world and the running code as they were.
+    fn hot_patch(&mut self, _path: &std::path::Path) -> Result<(), String> {
+        Err("this application has no hot-call boundary to patch".to_owned())
+    }
     /// A fresh application with the same configuration, for replay. `None`: this program cannot be rebuilt
     /// (a windowed app whose loop owns the only instance).
     fn fresh(&self) -> Option<Self>
@@ -332,9 +352,14 @@ impl<P: Program> Session<P> {
         self.last_shown = world.shown;
         self.commands += 1;
     }
-    /// Paint a frame and consume its damage, as a host does after presenting.
+    /// Paint a frame and consume its damage, as a host does after presenting. A program with a panel beside it
+    /// gets the snapshot this frame shows first.
     pub fn shot(&mut self) -> Frame {
         let t = Instant::now();
+        if self.app.overlay() {
+            let snap = self.snapshot().clone();
+            self.app.publish(&snap);
+        }
         let f = self.app.shot();
         self.last_paint_us = t.elapsed().as_micros() as u64;
         self.frames += 1;
@@ -626,6 +651,7 @@ impl<P: Program> Session<P> {
         let mut snap = Snapshot::new();
         snap.app = AppInfo {
             name: app.name().to_owned(),
+            generation: app.generation(),
             view: core::any::type_name::<P::V>(),
             world: {
                 // the world id's inner value, for a stable name across commands
@@ -653,7 +679,7 @@ impl<P: Program> Session<P> {
         // lists
         snap.lists = snap_lists(root, refl, &mut index);
         // nodes
-        snap.nodes = nodes_of(refl, root, shown, &index);
+        snap.nodes = nodes_of(refl, root, shown, &index, app.generation());
         // words and the columns that read them
         let mut readers = [0u32; 64];
         for s in &snap.stores {
@@ -892,6 +918,7 @@ fn nodes_of(
     root: &StoreRef,
     shown: &U,
     index: &[(*const StoreRef, usize)],
+    generation: u64,
 ) -> Vec<Node> {
     let mut out = Vec::new();
     for it in refl.items(root, shown) {
@@ -905,6 +932,15 @@ fn nodes_of(
         }) else {
             continue;
         };
+        let loc = node_loc(it.location());
+        let id = stable_id(
+            loc,
+            it.ent.path.n,
+            it.ent.path.at,
+            it.ent.row,
+            it.ent.pos,
+            generation,
+        );
         let handlers: Vec<&'static str> = it.info.on.map_or_else(Vec::new, |o| {
             let mut v = Vec::new();
             for (bit, name) in [
@@ -927,6 +963,7 @@ fn nodes_of(
         let ops = it
             .ops()
             .map(|o| Prop {
+                id: operand_id(id, o.name()),
                 name: o.name(),
                 word: o.op.word as u32,
                 words: o.op.words as u32,
@@ -943,11 +980,13 @@ fn nodes_of(
         };
         out.push(Node {
             key: Key::of(it.ent, it.col, it.rec),
+            id,
+            kind_id: kind_id(loc, it.kind()),
             store,
             kind: it.kind(),
             ty: it.info.ty,
             depth: it.ent.path.n,
-            loc: node_loc(it.location()),
+            loc,
             rect: R::of(it.rect),
             screen: R::of(it.screen),
             clip: R::of(it.clip),

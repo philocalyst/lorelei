@@ -39,6 +39,17 @@ fn b(v: &J, k: &str) -> bool {
 fn arr<'a>(v: &'a J, k: &str) -> &'a [J] {
     v.get(k).map(J::arr).unwrap_or(&[])
 }
+/// A stable id is written as sixteen hex digits: a JSON number would lose bits in a client.
+fn id(v: &J, k: &str) -> Result<u64, String> {
+    match v.get(k) {
+        Some(J::Str(s)) => u64::from_str_radix(s, 16).map_err(|e| format!("{k}: {e}")),
+        Some(x) => x
+            .as_i64()
+            .and_then(|n| u64::try_from(n).ok())
+            .ok_or_else(|| format!("missing id {k}")),
+        None => Ok(0),
+    }
+}
 
 impl R {
     pub fn from_json(v: &J) -> Result<R, String> {
@@ -75,8 +86,14 @@ impl Key {
     pub fn from_json(v: &J) -> Result<Key, String> {
         let path = arr(v, "path");
         let mut at = [0u16; 6];
-        for (k, p) in path.iter().enumerate().take(6) {
-            at[k] = p.as_i64().unwrap_or(0) as u16;
+        if path.len() > at.len() {
+            return Err("key path exceeds six components".into());
+        }
+        for (slot, part) in at.iter_mut().zip(path) {
+            *slot = part
+                .as_u32()
+                .and_then(|n| u16::try_from(n).ok())
+                .ok_or("invalid path component")?;
         }
         Ok(Key {
             path: at,
@@ -114,6 +131,7 @@ fn reads(v: &J) -> Vec<u32> {
 impl Prop {
     fn from_json(v: &J) -> Result<Prop, String> {
         Ok(Prop {
+            id: id(v, "id")?,
             name: stat(&s(v, "name")?),
             word: u(v, "word")?,
             words: u(v, "words")?,
@@ -228,15 +246,29 @@ impl List {
     }
 }
 impl Node {
-    fn from_json(v: &J) -> Result<Node, String> {
+    fn from_json(v: &J, generation: u64) -> Result<Node, String> {
         let off = arr(v, "offset");
+        let key = Key::from_json(v.get("key").ok_or("node key")?)?;
+        let loc = Loc::from_json(v.get("loc").ok_or("node loc")?)?;
+        let kind = stat(&s(v, "kind")?);
+        let node_id = if v.get("id").is_some() {
+            id(v, "id")?
+        } else {
+            stable_id(loc, key.depth, key.path, key.row, key.pos, generation)
+        };
         Ok(Node {
-            key: Key::from_json(v.get("key").ok_or("node key")?)?,
+            key,
+            id: node_id,
+            kind_id: if v.get("kind_id").is_some() {
+                id(v, "kind_id")?
+            } else {
+                kind_id(loc, kind)
+            },
             store: i(v, "store")? as usize,
-            kind: stat(&s(v, "kind")?),
+            kind,
             ty: stat(&s(v, "ty")?),
             depth: u(v, "depth")? as u16,
-            loc: Loc::from_json(v.get("loc").ok_or("node loc")?)?,
+            loc,
             rect: R::from_json(v.get("rect").ok_or("node rect")?)?,
             screen: R::from_json(v.get("screen").ok_or("node screen")?)?,
             clip: R::from_json(v.get("clip").ok_or("node clip")?)?,
@@ -253,7 +285,13 @@ impl Node {
             handler_ty: opt_s(v, "handler_ty"),
             ops: arr(v, "ops")
                 .iter()
-                .map(Prop::from_json)
+                .map(|p| {
+                    let mut prop = Prop::from_json(p)?;
+                    if p.get("id").is_none() {
+                        prop.id = operand_id(node_id, prop.name);
+                    }
+                    Ok::<Prop, String>(prop)
+                })
                 .collect::<Result<_, _>>()?,
             reads: reads(v),
             text: v.get("text").and_then(J::as_str).map(str::to_owned),
@@ -328,6 +366,7 @@ impl AppInfo {
         Ok(AppInfo {
             name: s(v, "name")?,
             view: stat(&s(v, "view")?),
+            generation: v.get("generation").and_then(J::as_i64).unwrap_or(0) as u64,
             world: v.get("world").and_then(J::as_i64).unwrap_or(0) as u64,
             w: i(v, "w")? as i32,
             h: i(v, "h")? as i32,
@@ -407,9 +446,11 @@ impl Snapshot {
             }
         };
         let ptr = arr(&p, "pointer");
+        let app = AppInfo::from_json(v.get("app").ok_or("app")?)?;
+        let generation = app.generation;
         Ok(Snapshot {
             schema,
-            app: AppInfo::from_json(v.get("app").ok_or("app")?)?,
+            app,
             stores: arr(v, "stores")
                 .iter()
                 .map(Store::from_json)
@@ -420,7 +461,7 @@ impl Snapshot {
                 .collect::<Result<_, _>>()?,
             nodes: arr(v, "nodes")
                 .iter()
-                .map(Node::from_json)
+                .map(|v| Node::from_json(v, generation))
                 .collect::<Result<_, _>>()?,
             damage: Damage::from_json(v.get("damage").ok_or("damage")?)?,
             counters: Counters::from_json(v.get("counters").ok_or("counters")?)?,

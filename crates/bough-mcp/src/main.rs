@@ -1,5 +1,5 @@
 //! `bough-mcp`: the MCP server. stdio by default; `--http ADDR` serves `POST /mcp` instead.
-use bough_mcp::{Mcp, serve_http, serve_stream};
+use bough_mcp::{Mcp, serve_http, serve_stream_owned};
 use std::io::BufReader;
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -51,7 +51,7 @@ fn main() {
         None => {
             let stdin = std::io::stdin();
             let stdout = std::io::stdout();
-            if let Err(e) = serve_stream(&mut mcp, BufReader::new(stdin.lock()), stdout.lock()) {
+            if let Err(e) = serve_stream_owned(&mut mcp, BufReader::new(stdin), stdout) {
                 eprintln!("bough-mcp: {e}");
                 std::process::exit(1);
             }

@@ -86,6 +86,57 @@ impl Loc {
     }
 }
 
+/// A stable identity derived from what does not move: the source site a leaf was written at, the store
+/// path and row/pos inside it (logical slots, not paint order), and the host's world generation. Two
+/// descriptions of the same view agree; a scroll that recycles materialisation slots does not change it; a
+/// replacement world (a remount) does.
+pub fn stable_id(loc: Loc, depth: u16, path: [u16; 6], row: u32, pos: u32, generation: u64) -> u64 {
+    // FNV-1a over a fixed little-endian encoding; no allocator, no hasher state to leak between builds.
+    const P: u64 = 0x100_0000_01b3;
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    let mut eat = |bytes: &[u8]| {
+        for &b in bytes {
+            h = (h ^ b as u64).wrapping_mul(P);
+        }
+    };
+    eat(loc.file.as_bytes());
+    eat(&[0xff]);
+    eat(&loc.line.to_le_bytes());
+    eat(&loc.col.to_le_bytes());
+    eat(&[depth as u8, (depth >> 8) as u8]);
+    for q in path.iter().take(depth as usize) {
+        eat(&q.to_le_bytes());
+    }
+    eat(&row.to_le_bytes());
+    eat(&pos.to_le_bytes());
+    eat(&generation.to_le_bytes());
+    h
+}
+
+/// A stable id for a record's kind: the call site and the paint kind. (`Node::ty` is display-only.)
+pub fn kind_id(loc: Loc, kind: &str) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    let mut eat = |bytes: &[u8]| {
+        for &b in bytes {
+            h = (h ^ b as u64).wrapping_mul(0x100_0000_01b3);
+        }
+    };
+    eat(loc.file.as_bytes());
+    eat(&loc.line.to_le_bytes());
+    eat(&loc.col.to_le_bytes());
+    eat(kind.as_bytes());
+    h
+}
+
+/// A stable id for one operand of one record: the record's stable id and the operand name.
+pub fn operand_id(node: u64, name: &str) -> u64 {
+    let mut h = node ^ 0xcbf2_9ce4_8422_2325;
+    for &b in name.as_bytes() {
+        h = (h ^ b as u64).wrapping_mul(0x100_0000_01b3);
+    }
+    h
+}
+
 /// A record's identity in the stores, stable across scrolling and re-description ([`bough_x::reflect::Ent`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Key {
@@ -215,6 +266,9 @@ impl PropValue {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Prop {
+    /// A stable operand id within its record (derived from the node id and the operand's name): the `expr`
+    /// beside it is a compiler-written type and display-only.
+    pub id: u64,
     pub name: &'static str,
     /// The bytes of the record that hold it.
     pub word: u32,
@@ -230,6 +284,7 @@ pub struct Prop {
 impl Prop {
     pub(crate) fn json(&self) -> J {
         J::obj()
+            .set("id", format!("{:016x}", self.id))
             .set("name", self.name)
             .set("value", self.value.json())
             .set("stage", self.stage)
@@ -434,8 +489,13 @@ impl List {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub key: Key,
+    /// The stable identity: call site + store path + row/pos + world generation (never the paint index).
+    pub id: u64,
+    /// A stable kind id: the call site and the kind name (the `ty` beside it is display-only).
+    pub kind_id: u64,
     pub store: usize,
     pub kind: &'static str,
+    /// The record type, written out by the compiler. Display-only: closure types differ per build.
     pub ty: &'static str,
     pub depth: u16,
     pub loc: Loc,
@@ -464,6 +524,8 @@ impl Node {
     pub(crate) fn json(&self) -> J {
         J::obj()
             .set("key", self.key.json())
+            .set("id", format!("{:016x}", self.id))
+            .set("kind_id", format!("{:016x}", self.kind_id))
             .set("store", self.store)
             .set("kind", self.kind)
             .set("ty", self.ty)
@@ -733,6 +795,8 @@ impl Ax {
 pub struct AppInfo {
     pub name: String,
     pub view: &'static str,
+    /// The host's world generation (see `Program::generation`): part of a node id, not of the paint.
+    pub generation: u64,
     pub world: u64,
     pub w: i32,
     pub h: i32,
@@ -746,6 +810,7 @@ impl AppInfo {
         J::obj()
             .set("name", self.name.as_str())
             .set("view", self.view)
+            .set("generation", self.generation)
             .set("world", self.world)
             .set("w", self.w)
             .set("h", self.h)
@@ -776,6 +841,7 @@ impl Default for AppInfo {
     fn default() -> Self {
         AppInfo {
             name: String::new(),
+            generation: 0,
             view: "",
             world: 0,
             w: 0,

@@ -26,13 +26,18 @@ See `NOTICE` for the upstream repository and commit.
 - **MCP**: `bough-dev mcp --socket …` serves MCP over stdio, or `--http ADDR` at `POST /mcp`. `run --http` starts
   it beside the watched application.
 
-## What is not
+- **In-process view patching.** `--features hot-view` enables a trusted local text-function boundary. Cargo
+  compiles the changed source to a `cdylib` exporting `hot_text` and an immutable `HOT_STATE_TOKEN`. The demo
+  requires an explicitly configured private `--patch-dir`. The app loads the new function and re-describes the
+  same `World`. The test edits one file twice, then changes the fixture's actual field type and verifies that
+  `patch_or_restart` restores the non-default registered field after a refusal.
 
-- **No in-process Rust code patching.** The upstream CLI compiles changed functions into shared libraries and
-  patches a running process through Subsecond's jump table. `bough-dev` currently uses a process restart and has no Subsecond dependency
-  and does not write executable memory. A change to `view()` is new code and needs a new binary, which is why the
-  restart path exists and is what `run` uses for Rust files. (The owner's brief allows the hot path to refuse as
-  long as the state-preserving fallback exists; this is that boundary, stated.)
+## Scope
+
+- The demo tag is derived from its one-field state declaration, size and alignment. A trusted library's load
+  can run initializers before admission. The tag checks compatibility and cannot sandbox native code.
+- The single text boundary ships independently of general Subsecond patching. The source watcher still takes
+  its existing restart path, and the opt-in patch command reports a refusal to its caller.
 - No cross-compilation, Windows, web or mobile.
 - The watcher does not follow changes into a local path dependency outside the roots unless that root is passed
   with `--watch`.

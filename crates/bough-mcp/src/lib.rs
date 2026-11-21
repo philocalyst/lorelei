@@ -416,6 +416,168 @@ fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> J {
     )
 }
 
+/// A schema whose properties are written out (nested selectors and values must not be a bare `object`).
+fn schema_raw(props: Vec<(&str, J)>, required: &[&str]) -> J {
+    let mut p = J::obj();
+    for (name, v) in props {
+        p.put(name, v);
+    }
+    J::obj().set("type", "object").set("properties", p).set(
+        "required",
+        required
+            .iter()
+            .map(|&r| J::Str(r.to_owned()))
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn int_array(max: i64, desc: &str) -> J {
+    J::obj()
+        .set("type", "array")
+        .set("items", J::obj().set("type", "integer"))
+        .set("maxItems", max)
+        .set("description", desc)
+}
+
+/// One admitted shape of a typed field value.
+fn field_value_schema(kind: &str, member: &str, value: J) -> J {
+    schema_raw(
+        vec![("kind", J::obj().set("const", kind)), (member, value)],
+        &["kind", member],
+    )
+    .set("additionalProperties", false)
+}
+
+fn typed_value_schema() -> J {
+    let ty = |name| J::obj().set("type", name);
+    J::obj().set(
+        "oneOf",
+        vec![
+            field_value_schema(
+                "int",
+                "value",
+                ty("integer")
+                    .set("minimum", i32::MIN)
+                    .set("maximum", i32::MAX),
+            ),
+            field_value_schema("float", "value", ty("number")),
+            field_value_schema("bool", "value", ty("boolean")),
+            field_value_schema(
+                "color",
+                "rgba",
+                ty("integer").set("minimum", 0).set("maximum", u32::MAX),
+            ),
+            field_value_schema("text", "text", ty("string")),
+        ],
+    )
+}
+
+fn replay_log_schema() -> J {
+    let ty = |name| J::obj().set("type", name);
+    let unsigned = || ty("integer").set("minimum", 0).set("maximum", u32::MAX);
+    let digest = || ty("string").set("pattern", "^[0-9a-fA-F]{16}$");
+    let point = || vec![("x", ty("integer")), ("y", ty("integer"))];
+    let variants = [
+        ("pointer", point(), vec!["x", "y"]),
+        (
+            "down",
+            [point(), vec![("button", ty("string"))]].concat(),
+            vec!["x", "y", "button"],
+        ),
+        (
+            "up",
+            [point(), vec![("button", ty("string"))]].concat(),
+            vec!["x", "y", "button"],
+        ),
+        ("click", point(), vec!["x", "y"]),
+        (
+            "key",
+            vec![
+                ("key", ty("string")),
+                ("ctrl", ty("boolean")),
+                ("shift", ty("boolean")),
+                ("alt", ty("boolean")),
+                ("logo", ty("boolean")),
+            ],
+            vec!["key"],
+        ),
+        ("text", vec![("text", ty("string"))], vec!["text"]),
+        (
+            "wheel",
+            [point(), vec![("dx", ty("number")), ("dy", ty("number"))]].concat(),
+            vec!["x", "y", "dx", "dy"],
+        ),
+        ("tick", vec![("ms", unsigned())], vec!["ms"]),
+        (
+            "resize",
+            vec![
+                ("w", ty("integer")),
+                ("h", ty("integer")),
+                ("scale", ty("number")),
+            ],
+            vec!["w", "h"],
+        ),
+        (
+            "set",
+            vec![("field", ty("string")), ("value", typed_value_schema())],
+            vec!["field", "value"],
+        ),
+        ("settle", vec![], vec![]),
+    ];
+    let steps: Vec<J> = variants
+        .into_iter()
+        .map(|(cmd, mut props, mut required)| {
+            props.extend([
+                ("cmd", J::obj().set("const", cmd)),
+                ("digest", digest()),
+                ("pixels", digest()),
+                ("damage", unsigned()),
+                ("revision", unsigned()),
+                (
+                    "refused",
+                    schema_raw(
+                        vec![("code", ty("string")), ("reason", ty("string"))],
+                        &["code", "reason"],
+                    )
+                    .set("additionalProperties", false),
+                ),
+            ]);
+            required.extend(["cmd", "digest", "pixels", "damage", "revision"]);
+            schema_raw(props, &required).set("additionalProperties", false)
+        })
+        .collect();
+    schema_raw(
+        vec![
+            (
+                "schema",
+                J::obj().set("const", bough_inspect::SCHEMA_VERSION),
+            ),
+            ("app", ty("string")),
+            (
+                "size",
+                schema_raw(
+                    vec![
+                        ("w", ty("integer")),
+                        ("h", ty("integer")),
+                        ("scale", ty("number")),
+                    ],
+                    &["w", "h", "scale"],
+                )
+                .set("additionalProperties", false),
+            ),
+            (
+                "steps",
+                ty("array")
+                    .set("maxItems", 1024)
+                    .set("items", J::obj().set("oneOf", steps)),
+            ),
+            ("count", unsigned()),
+        ],
+        &["schema", "app", "size", "steps"],
+    )
+    .set("additionalProperties", false)
+}
+
 fn tool(name: &str, description: &str, input: J) -> J {
     J::obj()
         .set("name", name)
@@ -489,16 +651,31 @@ pub fn tools() -> Vec<J> {
         tool(
             "node",
             "One record by index or by its entity (path, row, pos), with the stores it lies in.",
-            schema(
-                &[
-                    ("index", "integer", "Node index in the last tree."),
-                    ("path", "array", "Store path (child indices from the root)."),
+            schema_raw(
+                vec![
+                    (
+                        "index",
+                        J::obj()
+                            .set("type", "integer")
+                            .set("description", "Node index in the last tree."),
+                    ),
+                    (
+                        "path",
+                        int_array(6, "Store path (child indices from the root)."),
+                    ),
                     (
                         "row",
-                        "integer",
-                        "Row of a list, or the row call of a fixed shape.",
+                        J::obj().set("type", "integer").set(
+                            "description",
+                            "Row of a list, or the row call of a fixed shape.",
+                        ),
                     ),
-                    ("pos", "integer", "Position in the row's shape."),
+                    (
+                        "pos",
+                        J::obj()
+                            .set("type", "integer")
+                            .set("description", "Position in the row's shape."),
+                    ),
                 ],
                 &[],
             ),
@@ -540,14 +717,15 @@ pub fn tools() -> Vec<J> {
         tool(
             "set_field",
             "Write a typed state field through the application's own admission; refused with a reason (read-only, wrong kind, out of range, unknown). Record operands are read-only.",
-            schema(
-                &[
-                    ("field", "string", "Field name from `state`."),
+            schema_raw(
+                vec![
                     (
-                        "value",
-                        "object",
-                        "{\"kind\":\"int\"|\"float\"|\"bool\"|\"color\"|\"text\", ...}",
+                        "field",
+                        J::obj()
+                            .set("type", "string")
+                            .set("description", "Field name from `state`."),
                     ),
+                    ("value", typed_value_schema()),
                 ],
                 &["field", "value"],
             ),
@@ -669,14 +847,7 @@ pub fn tools() -> Vec<J> {
         tool(
             "replay",
             "Replay a recorded log on a fresh application of the same kind; reports the first description or pixel that differs.",
-            schema(
-                &[(
-                    "log",
-                    "object",
-                    "the complete object returned by record_stop",
-                )],
-                &["log"],
-            ),
+            schema_raw(vec![("log", replay_log_schema())], &["log"]),
         ),
         tool(
             "wait_for_idle",
@@ -693,6 +864,64 @@ pub fn serve_stream<R: BufRead, W: Write>(
     mcp: &mut Mcp,
     mut input: R,
     mut out: W,
+) -> io::Result<()> {
+    pump_stream(mcp, &mut input, |reply| {
+        writeln!(out, "{}", json::to_string(&reply))?;
+        out.flush()
+    })
+}
+
+/// Encode and write stdio replies on a worker. The 64-reply queue applies backpressure when full.
+pub fn serve_stream_owned<R: BufRead + Send + 'static, W: Write + Send + 'static>(
+    mcp: &mut Mcp,
+    mut input: R,
+    out: W,
+) -> io::Result<()> {
+    #[cfg(feature = "mutant-inline-writer")]
+    return serve_stream(mcp, input, out);
+
+    #[cfg(not(feature = "mutant-inline-writer"))]
+    serve_stream_worker(mcp, &mut input, out)
+}
+
+#[cfg(not(feature = "mutant-inline-writer"))]
+fn serve_stream_worker<R: BufRead, W: Write + Send + 'static>(
+    mcp: &mut Mcp,
+    input: &mut R,
+    out: W,
+) -> io::Result<()> {
+    use std::sync::mpsc;
+    const OUT_QUEUE: usize = 64;
+    let (tx, rx) = mpsc::sync_channel::<J>(OUT_QUEUE);
+    let writer = std::thread::spawn(move || -> io::Result<()> {
+        let mut out = out;
+        for reply in rx {
+            writeln!(out, "{}", json::to_string(&reply))?;
+            out.flush()?;
+        }
+        Ok(())
+    });
+    let result = pump_stream(mcp, input, |reply| {
+        tx.send(reply)
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "the writer stopped"))
+    });
+    drop(tx);
+    match writer.join() {
+        Ok(Ok(())) => result,
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err(io::Error::new(
+            io::ErrorKind::Other,
+            "the writer thread panicked",
+        )),
+    }
+}
+
+/// The protocol loop over newline-delimited JSON, with the emit step supplied by the transport (so a
+/// transport can hand an owned JSON value to its writer).
+fn pump_stream<R: BufRead, F: FnMut(J) -> io::Result<()>>(
+    mcp: &mut Mcp,
+    input: &mut R,
+    mut emit: F,
 ) -> io::Result<()> {
     let mut line = String::new();
     loop {
@@ -723,8 +952,7 @@ pub fn serve_stream<R: BufRead, W: Write>(
                     "error",
                     J::obj().set("code", -32700).set("message", format!("{e}")),
                 );
-                writeln!(out, "{}", json::to_string(&reply))?;
-                out.flush()?;
+                emit(reply)?;
                 continue;
             }
         };
@@ -737,14 +965,12 @@ pub fn serve_stream<R: BufRead, W: Write>(
                     }
                 }
                 if !replies.is_empty() {
-                    writeln!(out, "{}", json::to_string(&J::Arr(replies)))?;
-                    out.flush()?;
+                    emit(J::Arr(replies))?;
                 }
             }
             m => {
                 if let Some(r) = mcp.handle(&m) {
-                    writeln!(out, "{}", json::to_string(&r))?;
-                    out.flush()?;
+                    emit(r)?;
                 }
             }
         }
@@ -887,12 +1113,33 @@ fn one_http(mcp: &mut Mcp, mut s: TcpStream) -> io::Result<()> {
             None => return respond(&mut s, 202, "application/json", b""),
         },
     };
-    respond(
-        &mut s,
-        200,
-        "application/json",
-        json::to_string(&reply).as_bytes(),
-    )
+    // The reply is already a value: its write to this client runs on its own thread, so a reader that
+    // takes one byte per tick cannot hold up the accept loop or another client.
+    respond_async(s, 200, "application/json", reply)
+}
+
+/// Slow readers in flight. The bound keeps a stalled set of connections from growing without limit.
+static SLOW_WRITERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+const MAX_SLOW_WRITERS: usize = 64;
+
+fn respond_async(mut s: TcpStream, code: u16, mime: &'static str, body: J) -> io::Result<()> {
+    use std::sync::atomic::Ordering;
+    if SLOW_WRITERS.fetch_add(1, Ordering::AcqRel) >= MAX_SLOW_WRITERS {
+        SLOW_WRITERS.fetch_sub(1, Ordering::AcqRel);
+        return respond(&mut s, 503, "text/plain", b"too many slow readers");
+    }
+    std::thread::spawn(move || {
+        struct Done;
+        impl Drop for Done {
+            fn drop(&mut self) {
+                SLOW_WRITERS.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+            }
+        }
+        let _done = Done;
+        let body = json::to_string(&body);
+        let _ = respond(&mut s, code, mime, body.as_bytes());
+    });
+    Ok(())
 }
 
 fn find(h: &[u8], n: &[u8]) -> Option<usize> {
@@ -910,6 +1157,7 @@ fn respond(s: &mut TcpStream, code: u16, mime: &str, body: &[u8]) -> io::Result<
         411 => "Length Required",
         413 => "Content Too Large",
         431 => "Request Header Fields Too Large",
+        503 => "Service Unavailable",
         _ => "OK",
     };
     let head = format!(

@@ -19,6 +19,9 @@ impl<V: Fields> Program for Lab<V> {
     fn name(&self) -> &'static str {
         <V as Scenario>::NAME
     }
+    fn generation(&self) -> u64 {
+        self.generation
+    }
     fn view(&self) -> &V {
         &self.scene.v
     }

@@ -9,6 +9,21 @@ description = "The Model Context Protocol server for a running lorelei (bough) a
 [dependencies]
 bough-inspect = { path = "../bough-inspect" }
 
+# The interoperability gate: a standard MCP client implementation drives the server. Client only; the
+# reference server side of rmcp is not built or linked.
+[dev-dependencies]
+rmcp = { version = "3.10.0", default-features = false, features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client-reqwest",
+    "transport-async-rw",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-std"] }
+serde_json = "1"
+
 [[bin]]
 name = "bough-mcp"
 path = "src/main.rs"
+
+[features]
+mutant-inline-writer = []
