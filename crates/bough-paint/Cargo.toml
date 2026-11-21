@@ -58,3 +58,7 @@ mutant_halo_damage = []
 # a moved window is not inserted in the bins of the tiles it entered (tests/fx.rs must fail; leaving a
 # stale entry behind instead cannot be seen: a record shades nothing outside its window)
 mutant_bins_stale = []
+# a broad change does not mark the layers for repair (tests/fx.rs must fail)
+mutant_broad_layers = []
+# the resident whole-frame jobs are reused after the bins or the layer table changed (tests/fx.rs must fail)
+mutant_full_stale = []

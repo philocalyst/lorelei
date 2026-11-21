@@ -184,6 +184,9 @@ pub struct Plan {
     pub prefix_tiles: u32,
     pub blocks: u32,
     pub px: u64,
+    /// Everything: every layer whole (a broad change). `work` is then empty and stands for
+    /// `Layers::full_plan`: nothing was enumerated to say so.
+    pub full: bool,
 }
 
 /// The scene's layers and their pool.
@@ -196,13 +199,38 @@ pub struct Layers {
     /// Words in use, and words of the live layers (the rest is what moved layers left behind).
     pub used: usize,
     pub live: usize,
-    /// The CPU executor's storage.
-    pub pool: Vec<u32>,
+    /// The layers' storage: one reservation that never moves, so the Metal executor wraps it without a copy
+    /// and both executors repair the same words.
+    pub pool: PoolMem,
     /// Bumped when the table changed (the GPU re-uploads it).
     pub epoch: u64,
     dirty: [Blocks; LEVELS],
 }
 pub const NONE: u32 = u32::MAX;
+
+/// Words reserved for the layers' pool (address space: pages are touched only where a layer is stored).
+pub const POOL_WORDS: usize = 1 << 25;
+/// The pool's memory: nothing until a scene has a layer, then one page-aligned reservation.
+#[derive(Default)]
+pub struct PoolMem(Option<crate::scene::Arena>);
+impl PoolMem {
+    /// Make room for `words` (the reservation is made once; a scene that outgrows it is refused).
+    pub fn ensure(&mut self, words: usize) {
+        assert!(words <= POOL_WORDS, "the layers need {words} words, more than the pool's reservation of {POOL_WORDS}");
+        if self.0.is_none() && words > 0 {
+            self.0 = Some(crate::scene::Arena::new(POOL_WORDS));
+        }
+    }
+    pub fn words(&self) -> &[u32] {
+        self.0.as_ref().map_or(&[], |a| a.words())
+    }
+    pub fn words_mut(&mut self) -> &mut [u32] {
+        self.0.as_mut().map_or(&mut [], |a| a.words_mut())
+    }
+    pub fn arena(&self) -> Option<&crate::scene::Arena> {
+        self.0.as_ref()
+    }
+}
 
 impl Layers {
     pub fn any(&self) -> bool {
@@ -294,6 +322,42 @@ impl Layers {
         self.live = self.used;
         self.epoch += 1;
         true
+    }
+    /// Every layer's whole repair, in paint order: what a broad change schedules, enumerated only by the
+    /// executor that needs the jobs (and cached there while the bins and the table stand).
+    pub fn full_plan(&self, tx: usize) -> Plan {
+        let mut plan = Plan::default();
+        for (lid, l) in self.list.iter().enumerate() {
+            if l.lv[0].empty() {
+                continue;
+            }
+            let mut w = Work { lid: lid as u32, ..Default::default() };
+            let r = l.lv[0].r;
+            for by in r[1] >> 5..(r[3] + 31) >> 5 {
+                for bx in r[0] >> 5..(r[2] + 31) >> 5 {
+                    w.prefix.push(by as u32 * tx as u32 + bx as u32);
+                }
+            }
+            plan.prefix_tiles += w.prefix.len() as u32;
+            for k in 1..=l.top {
+                let (r, bs) = (l.lv[k as usize].r, bshift(k));
+                if r[0] >= r[2] {
+                    continue;
+                }
+                let m = (1 << bs) - 1;
+                let mut v = Vec::new();
+                for by in r[1] >> bs..(r[3] + m) >> bs {
+                    for bx in r[0] >> bs..(r[2] + m) >> bs {
+                        v.push((bx, by));
+                    }
+                }
+                plan.blocks += v.len() as u32;
+                plan.px += ((r[2] - r[0]) * (r[3] - r[1])) as u64;
+                w.blocks.push((k, v));
+            }
+            plan.work.push(w);
+        }
+        plan
     }
     /// The table as the GPU reads it: per layer `ROW` words.
     pub fn table(&self, out: &mut Vec<u32>) {

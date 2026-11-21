@@ -512,8 +512,8 @@ fn the_stored_prefix_never_changes_pixels() {
     assert_eq!(diff(&frames[0], &frames[1]), 0);
 }
 
-/// G3: the Metal executor's staged frame (the CPU's schedule, run as dispatches over the scene's records,
-/// with its own retained layer pool) writes the words the CPU kernel writes, retained across the steps.
+/// G3: the Metal executor's staged frame (the CPU's schedule, run as dispatches over the scene's records and
+/// the shared layer pool), retained across the steps, writes the words a fresh CPU redraw writes.
 /// Then source mutations of the layer and media glue, each of which must be seen.
 #[cfg(target_os = "macos")]
 #[test]
@@ -545,13 +545,15 @@ fn gpu_staged_frame_equals_the_cpu() {
         let (mut bad, mut d_all, mut ran) = (0, 0, [0u32; 4]);
         for k in 0..STEPS {
             let name = if k == 0 { "mount" } else { step(&mut g, k, &mut u, &mut wd, &mut b) };
+            // The retained scene is drawn by Metal alone (the layers' pool is shared memory now: a CPU
+            // `prepare` on the same scene would repair what a broken GPU stage left). The reference is a
+            // fresh scene drawn whole by the CPU kernel.
             b.s.update(&u);
-            b.s.prepare(&u);
             let mut tiles = Vec::new();
             b.s.damage.tiles(&mut tiles);
             b.s.damage.clear();
-            b.s.shade(&u, &tiles, &mut kept, stride, &pool, 0);
             gpu.staged(&b.s, &u, &tiles, stride);
+            build(&wd, fw, fh).s.frame(&u, &mut kept, stride, &pool, 0);
             b.s.media.reclaim();
             for (a, n) in ran.iter_mut().zip(gpu.staged_stats) {
                 *a += n;
@@ -604,12 +606,11 @@ fn gpu_staged_frame_equals_the_cpu() {
         for hover in [0, 1, 0] {
             u.w[2] = hover;
             s.update(&u);
-            s.prepare(&u);
             let mut tiles = Vec::new();
             s.damage.tiles(&mut tiles);
             s.damage.clear();
-            s.shade(&u, &tiles, &mut kept, fw as usize, &pool, 0);
             gpu.staged(&s, &u, &tiles, fw as usize);
+            aligned_pane(fw, fh).frame(&u, &mut kept, fw as usize, &pool, 0);
             d += diff(gpu.out(words), &kept);
         }
         d
@@ -673,5 +674,62 @@ fn a_halo_crossing_tile_edges_stays_exact() {
             bad += 1;
         }
     }
+    assert_eq!(bad, 0);
+}
+
+/// B1, B2: the mixed model. Frames alternate between the CPU kernel and Metal at random on one pool and one
+/// surface and stay equal to a fresh redraw; a change of a word declared broad visits no record, rebuilds
+/// no bins, enumerates no layer, and is right. (`mutant_broad_layers` and `mutant_full_stale` must fail.)
+#[cfg(target_os = "macos")]
+#[test]
+fn executors_alternate_and_a_broad_word_costs_nothing_to_find() {
+    use bough_paint::mixed::{Mixed, Ran};
+    let (fw, fh) = (320u32, 250u32);
+    let stride = fw as usize;
+    let pool = Pool::new(1);
+    let (mut bad, mut broad, mut ran) = (0, 0, [0u32; 3]);
+    for seed in 0..seeds() {
+        let mut wd = world(seed, fw, fh);
+        let mut b = build(&wd, fw, fh);
+        // word 3 is the theme's mix: no geometry reads it
+        b.s.broad = 1 << 3;
+        // SAFETY: the scene is declared before the executor and outlives it; it is written between calls.
+        let Some(mut mx) = (unsafe { Mixed::new(&b.s, stride) }) else {
+            eprintln!("no Metal device: skipped");
+            return;
+        };
+        let mut g = Rng(seed * 977 + 3);
+        let mut u = block(&mut g);
+        for k in 0..STEPS + 8 {
+            let name = if k == 0 {
+                "mount"
+            } else if k % 5 == 3 {
+                // the theme alone
+                u.w[3] = [0, 32768, 12345, 20000][g.u(4) as usize] ^ (k as u32 & 1);
+                "theme"
+            } else {
+                step(&mut g, k, &mut u, &mut wd, &mut b)
+            };
+            let before = b.s.bins_epoch;
+            let force = [Some(Ran::Cpu), Some(Ran::Gpu), None][g.u(3) as usize];
+            let (fs, r) = mx.frame(&mut b.s, &u, &pool, force);
+            b.s.media.reclaim();
+            ran[r as usize] += 1;
+            if name == "theme" && fs.broad {
+                assert_eq!((fs.recs_visited, b.s.bins_epoch, fs.prefix_tiles), (0, before, 0), "seed {seed} step {k}: a broad change was looked for");
+                broad += 1;
+            }
+            let mut f = build(&wd, fw, fh);
+            let mut fresh = vec![0u32; stride * fh as usize];
+            f.s.frame(&u, &mut fresh, stride, &pool, 0);
+            let d = diff(mx.out(), &fresh);
+            if d != 0 {
+                eprintln!("seed {seed} step {k} ({name}, ran {r:?}): {d} differing words");
+                bad += 1;
+            }
+        }
+    }
+    eprintln!("mixed: {} scenes; frames idle / cpu / gpu {ran:?}; {broad} broad changes found without a record; {bad} failing steps", seeds());
+    assert!(broad > 0 && ran[1] > 0 && ran[2] > 0);
     assert_eq!(bad, 0);
 }

@@ -448,7 +448,12 @@ pub struct Gpu {
     /// 7 output, 8 atlas, 9 damage, 10 pick, 11 rewritten records (a bit per key), 12 table jobs; the staged
     /// frame's: 13 the layers' pool (this executor's own retained copy), 14 the layer table, 15 the media
     /// pool (the scene's, no copy), 16 layer of key, 17 jobs.
-    bufs: [Option<Buf>; 18],
+    bufs: [Option<Buf>; 19],
+    /// The scene's layer pool this executor wrapped (null: none yet).
+    pool: *const u32,
+    /// The whole frame as resident jobs (buffer 18): the bins and layer table they were made for, and
+    /// their stages. A broad change re-submits them.
+    full: Option<(u64, u64, Vec<(bool, usize, usize)>, [u32; 4])>,
     /// The scene's media pool this executor wrapped.
     media: *const u32,
     /// The scene's bins and layer table as last mirrored (`staged`).
@@ -527,6 +532,8 @@ impl Gpu {
             seg,
             down,
             media: scene.media.arena().ptr(),
+            pool: std::ptr::null(),
+            full: None,
             seen_bins: None,
             seen_lay: None,
             staged_stats: [0; 4],
@@ -700,24 +707,12 @@ impl Gpu {
         GpuTime { wall: t.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }
     }
 
-    /// A buffer at least `bytes` long that keeps what it held (the layers' pool grows when layers do).
-    fn grow_keep(&mut self, i: usize, bytes: usize) {
-        let old = self.bufs[i].clone();
-        if old.as_ref().is_some_and(|b| b.length() >= bytes) {
-            return;
-        }
-        self.bufs[i] = None;
-        self.buf(i, bytes);
-        if let Some(o) = old {
-            let n = self.bufs[i].as_ref().unwrap();
-            // SAFETY: two distinct shared buffers, the new one at least as long; no frame is in flight.
-            unsafe { std::ptr::copy_nonoverlapping(o.contents().as_ptr() as *const u8, n.contents().as_ptr() as *mut u8, o.length()) };
-        }
-    }
     /// The staged frame: what `Scene::update` scheduled, executed here. The CPU scene decided the damage,
     /// the bins and the layers' stages; this runs them as dispatches over the scene's own records: per
     /// layer in paint order its prefix jobs (`k_seg` into the layer) and its pyramid blocks level by level
-    /// (`k_down`), then the output tiles (`k_seg` into the surface). The layers' pool here is this
+    /// (`k_down`), then the output tiles (`k_seg` into the surface). The layers' pool is the scene's own
+    /// memory (wrapped, not copied), so a frame may run here or on the CPU kernel, whichever the chooser
+    /// picks. (Historical wording follows.) The layers' pool here is this
     /// executor's own and is retained: call this once for every `update` of the scene (each frame's stages
     /// repair what the previous ones left), with `tiles` the output tiles to draw (the frame's damage, or
     /// more for an older surface). This is the path for scenes with layers; `frame` refuses them.
@@ -757,8 +752,18 @@ impl Gpu {
             lo[..scene.layers.of.len().min(nz)].copy_from_slice(&scene.layers.of[..scene.layers.of.len().min(nz)]);
             self.seen_lay = Some(scene.layers.epoch);
         }
-        self.grow_keep(13, scene.layers.used.max(16) * 4);
-        // the jobs: (pipeline is seg, first word, count) per dispatch
+        // the layers' pool is the scene's own memory: wrap it once (it never moves)
+        if let Some(a) = scene.layers.pool.arena() {
+            if !std::ptr::eq(self.pool, a.ptr()) {
+                // SAFETY: page-aligned whole pages owned by the scene, which outlives the executor; the CPU
+                // writes it only between this executor's calls (each waits for the GPU).
+                self.bufs[13] = unsafe { self.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(a.ptr() as *mut std::ffi::c_void).expect("pool"), a.bytes(), MTLResourceOptions::StorageModeShared, None) };
+                self.pool = a.ptr();
+            }
+        }
+        let nt = self.nt;
+        // the jobs of a plan and an output tile list: (pipeline is seg, first word, count) per dispatch
+        let build = |plan: &crate::layer::Plan, tiles: &[u32]| -> (Vec<u32>, Vec<(bool, usize, usize)>, [u32; 4]) {
         let mut jobs: Vec<u32> = Vec::new();
         let mut stages: Vec<(bool, usize, usize)> = Vec::new();
         let mut st = [0u32; 4];
@@ -768,7 +773,7 @@ impl Gpu {
         };
         // Layers whose halos share no tile with a lower layer that also has work this frame are independent:
         // they take the same rank and run in one dispatch per stage.
-        let work = &scene.plan.work;
+        let work = &plan.work;
         let tiles_of = |lid: u32| scene.layers.list[lid as usize].lv[0].r;
         let mut rank = vec![0usize; work.len()];
         for i in 0..work.len() {
@@ -811,9 +816,37 @@ impl Gpu {
             st[2] = tiles.len() as u32;
         }
         st[3] = stages.len() as u32;
-        self.staged_stats = st;
-        self.buf(17, jobs.len().max(16) * 4);
-        self.words_mut(17)[..jobs.len()].copy_from_slice(&jobs);
+        (jobs, stages, st)
+        };
+        // a broad change: the whole frame, from resident jobs while the bins and the layer table stand
+        let whole = scene.plan.full && tiles.len() == nt;
+        let key = (scene.bins_epoch, scene.layers.epoch);
+        let stages = if whole {
+            let stale = self.full.as_ref().is_none_or(|f| (f.0, f.1) != key);
+            if self.full.is_none() || (stale && !cfg!(feature = "mutant_full_stale")) {
+                let (jobs, stages, st) = build(&scene.layers.full_plan(scene.tx), tiles);
+                self.buf(18, jobs.len().max(16) * 4);
+                self.words_mut(18)[..jobs.len()].copy_from_slice(&jobs);
+                self.full = Some((key.0, key.1, stages, st));
+            }
+            let f = self.full.as_ref().unwrap();
+            self.staged_stats = f.3;
+            f.2.clone()
+        } else {
+            let plan_full;
+            let plan = if scene.plan.full {
+                plan_full = scene.layers.full_plan(scene.tx);
+                &plan_full
+            } else {
+                &scene.plan
+            };
+            let (jobs, stages, st) = build(plan, tiles);
+            self.staged_stats = st;
+            self.buf(17, jobs.len().max(16) * 4);
+            self.words_mut(17)[..jobs.len()].copy_from_slice(&jobs);
+            stages
+        };
+        let jobs_buf = if whole { 18 } else { 17 };
         let m = self.words_mut(1);
         m[2] = stride as u32;
         m[M_UNEW..M_UNEW + 64].copy_from_slice(&u.w);
@@ -824,7 +857,7 @@ impl Gpu {
         for &(is_seg, at, n) in &stages {
             enc.setComputePipelineState(if is_seg { &self.seg } else { &self.down });
             // SAFETY: buffer 17 holds every stage's jobs; `at` words in is inside it and word aligned.
-            unsafe { enc.setBuffer_offset_atIndex(self.bufs[17].as_deref(), at * 4, 17) };
+            unsafe { enc.setBuffer_offset_atIndex(self.bufs[jobs_buf].as_deref(), at * 4, 17) };
             enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: n, height: 1, depth: 1 }, MTLSize { width: 16, height: 16, depth: 1 });
         }
         enc.endEncoding();

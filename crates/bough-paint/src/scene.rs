@@ -428,7 +428,7 @@ impl Arena {
         // SAFETY: `ptr` is `words` initialised (zeroed) words owned by this arena.
         unsafe { std::slice::from_raw_parts(self.ptr, self.words) }
     }
-    fn words_mut(&mut self) -> &mut [u32] {
+    pub(crate) fn words_mut(&mut self) -> &mut [u32] {
         // SAFETY: as `words`, uniquely borrowed.
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.words) }
     }
@@ -653,6 +653,8 @@ pub struct FrameStats {
     pub cols_visited: u32,
     pub recs_visited: u32,
     pub rebinned: bool,
+    /// A broad word changed: the frame is damaged whole and no record was asked about it.
+    pub broad: bool,
     /// Layer work scheduled: prefix tiles, pyramid blocks, pyramid pixels.
     pub prefix_tiles: u32,
     pub blocks: u32,
@@ -688,6 +690,11 @@ pub struct Scene {
     /// Measurement switch, never a result's configuration: every layer is recomputed whole on every
     /// frame and no tile restarts from a stored prefix (what a compositor that redraws its layers does).
     pub fx_nocache: bool,
+    /// Block words declared **broad**: a change of one (a theme's mix, a palette word) is never
+    /// differentiated. The frame is damaged as one fact and every layer is due as one fact; no record is
+    /// visited, no bins are rebuilt, nothing is enumerated. Only for words no geometry operand reads (a
+    /// column whose geometry reads the word takes its window pass regardless).
+    pub broad: u64,
     /// The media pool video records sample.
     pub media: crate::media::Pool,
     pub bins: Bins,
@@ -762,6 +769,7 @@ impl Scene {
             rebin: Vec::new(),
             bins_epoch: 0,
             fx_nocache: std::env::var("BOUGH_FX_NOCACHE").is_ok(),
+            broad: 0,
             media: crate::media::Pool::new(0),
             bins: Bins::default(),
             damage: Damage::new(tx, ty),
@@ -978,8 +986,17 @@ impl Scene {
         self.touched = touched;
         // the clock alone never sends a pass over a whole column: its readers said when they stop
         let tbit = 1u64 << U_TIME;
+        // a broad word is not differentiated: it damages the frame as one fact (below)
+        let bword = if first { 0 } else { mask & self.broad };
+        let mut broad_hit = false;
         for ci in 0..self.cols.len() {
             let d = self.cols[ci].desc;
+            let mask = if d.geom_reads & bword == 0 {
+                broad_hit |= d.reads & bword != 0;
+                mask & !bword
+            } else {
+                mask
+            };
             let full = first || d.reads & (mask & !tbit) != 0;
             if !full && (mask & d.reads & tbit == 0 || self.cols[ci].active.is_empty()) {
                 continue;
@@ -1008,9 +1025,7 @@ impl Scene {
                 relaid = true;
             }
             relaid |= self.layers.repack();
-            if self.layers.pool.len() < self.layers.used {
-                self.layers.pool.resize(self.layers.used, 0);
-            }
+            self.layers.pool.ensure(self.layers.used);
         }
         if moved {
             let lanes = Lanes { win: &self.win, cover: &self.cover, halo: &self.halo, lay: &self.layers.of, cut: self.cut };
@@ -1031,7 +1046,14 @@ impl Scene {
         // records, the layers above it there; a layer's repair is output damage of its record and an event
         // for the layers above that
         self.plan = layer::Plan::default();
-        if lay_on && (first || relaid || !events.is_empty()) {
+        if broad_hit {
+            self.damage.all();
+            fs.broad = true;
+        }
+        if broad_hit && lay_on && !cfg!(feature = "mutant_broad_layers") {
+            // every layer whole, said in one word: the executor has (or makes once) the jobs for it
+            self.plan.full = true;
+        } else if lay_on && (first || relaid || !events.is_empty()) {
             let mut todo: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
             if first || self.fx_nocache {
                 todo.extend(0..self.layers.list.len() as u32);
@@ -1154,22 +1176,26 @@ impl Scene {
     /// prefix tiles, then its pyramid's dirty blocks level by level. Nothing to do (and nothing done) when
     /// no layer was reached by a change. Call between `update` and `shade`.
     pub fn prepare(&mut self, u: &U) -> Stats {
+        if self.plan.full {
+            self.plan = self.layers.full_plan(self.tx);
+        }
         if self.plan.work.is_empty() {
             return Stats::default();
         }
         let mut pool = std::mem::take(&mut self.layers.pool);
+        let pool_words = pool.words_mut();
         let st = {
             let s = &*self;
             let mut t = s.worker();
             for w in &s.plan.work {
                 let l = &s.layers.list[w.lid as usize];
                 for &ti in &w.prefix {
-                    s.run_tile(u, ti, &mut t, &pool, w.lid);
-                    t.store_layer(&mut pool, &l.lv[0]);
+                    s.run_tile(u, ti, &mut t, pool_words, w.lid);
+                    t.store_layer(pool_words, &l.lv[0]);
                 }
                 for (k, blocks) in &w.blocks {
                     for &(bx, by) in blocks {
-                        layer::down(&mut pool, l, *k, s.fw, s.fh, bx, by);
+                        layer::down(pool_words, l, *k, s.fw, s.fh, bx, by);
                     }
                 }
             }
@@ -1196,7 +1222,7 @@ impl Scene {
     /// these tiles during the call (tiles given to concurrent callers are disjoint).
     pub unsafe fn shade_into(&self, u: &U, tiles: &[u32], out: *mut u32, stride: usize, t: &mut Tile) {
         for &ti in tiles {
-            self.run_tile(u, ti, t, &self.layers.pool, layer::NONE);
+            self.run_tile(u, ti, t, self.layers.pool.words(), layer::NONE);
             let (ox, oy) = ((ti as usize % self.tx) * 32, (ti as usize / self.tx) * 32);
             let at = oy * stride + ox;
             // SAFETY: the tile's rows [oy, oy + nrows) x columns [ox, ox + cols) lie inside `out` (the
