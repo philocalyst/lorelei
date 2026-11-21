@@ -143,7 +143,10 @@ struct ListEnt {
     journal: Box<Journal>,
     /// The list's log of this turn as journal edits (`ops::<T>`), and the end of its turn.
     ops: unsafe fn(*const u8, &mut Journal),
-    end: unsafe fn(*mut u8, bool),
+    end: unsafe fn(*mut u8, u32),
+    /// What the list's head holds while it is this list: a `List` put in the field's place (assigned, swapped)
+    /// has another head, and every row of it is another row.
+    tag: u32,
 }
 /// The log of the `List<T>` at `p` since its last `end_turn`, as edits of `j`. An edited item is an update of
 /// the row it is at, if the list reading `j` exposes it (`Journal::window`).
@@ -174,15 +177,15 @@ unsafe fn list_ops<T>(p: *const u8, j: &mut Journal) {
         }
     }
 }
-/// The end of the turn for the `List<T>` at `p`: its log is dropped and it is shown as displayed (`on`) or as
-/// not displayed, with no log kept.
+/// The end of the turn for the `List<T>` at `p`: its log is dropped and its head is `tag` (non-zero: displayed,
+/// so it keeps a log; 0: not displayed, no log kept).
 ///
 /// SAFETY: `p` is a live `List<T>`, exclusively borrowed.
-unsafe fn list_end<T>(p: *mut u8, on: bool) {
+unsafe fn list_end<T>(p: *mut u8, tag: u32) {
     // SAFETY: the caller's contract.
     let l = unsafe { &mut *(p as *mut List<T>) };
     l.end_turn();
-    l.head().set(on as u32);
+    l.head().set(tag);
 }
 thread_local! {
     static CX: Cell<*const Shared> = const { Cell::new(std::ptr::null()) };
@@ -1546,7 +1549,12 @@ impl<'a, V: View, T: View> Seg<Ty<V>> for TRows<'a, V, T> {
         // world's stores are dropped with the `App` that holds the `Shared`); nothing writes it while a
         // pass runs (`App::after` feeds it before the pass).
         let edits = unsafe { &*self.journal };
-        f.y += s.rows_j(n as u32, geo, edits, self.all, |r| {
+        // A row is its item's view, and its handlers reach the item by its slot: nothing in it is the index.
+        let how = bough_x::sink::RowsHow {
+            all: self.all,
+            by_item: true,
+        };
+        f.y += s.rows_j(n as u32, geo, edits, how, |r| {
             assert!(r < n);
             let slot = list.slot(r).expect("a row under the list's length");
             with(|sh| {
@@ -1642,15 +1650,19 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
                         "the view's lists are described in one order"
                     );
                     if k == lists.len() {
-                        // The list is displayed from now on: it keeps the log its journal is fed from.
-                        if list.head().get() == 0 {
-                            list.head().set(1);
-                        }
+                        // The list is displayed from now on: it keeps the log its journal is fed from. Its
+                        // head says which list of the view it is (the first description site of the field).
+                        let tag = lists
+                            .iter()
+                            .find(|e| e.off == off)
+                            .map_or(k as u32 + 1, |e| e.tag);
+                        list.head().set(tag);
                         lists.push(ListEnt {
                             off,
-                            journal: Box::new(Journal::new()),
+                            journal: Box::new(Journal::by_item()),
                             ops: list_ops::<T>,
                             end: list_end::<T>,
+                            tag,
                         });
                     }
                     assert!(
@@ -2025,11 +2037,13 @@ impl<V: View> App<V> {
             if lists[..k].iter().all(|o| o.off != e.off) {
                 // SAFETY: `off` came from an `LWired<'_, T, V>` (only `sig!` makes one) and `end` was
                 // instantiated for that `T`; `self.ty.v` is that `V`, exclusively borrowed.
-                unsafe { (e.end)(base.add(e.off as usize), on) }
+                unsafe { (e.end)(base.add(e.off as usize), if on { e.tag } else { 0 }) }
             }
         }
     }
-    /// What the turn did to the view's lists, into their journals (each list's own log, read once).
+    /// What the turn did to the view's lists, into their journals (each list's own log, read once). A list
+    /// whose head is not the tag it was given is another `List` value in the field's place: it kept no log,
+    /// and every row of it is another row.
     fn lists_sync(&mut self) {
         {
             let base = &self.ty.v as *const V as *const u8;
@@ -2038,7 +2052,14 @@ impl<V: View> App<V> {
                 if cfg!(feature = "mutant_typed_log") {
                     continue;
                 }
-                // SAFETY: as `lists_end`; the view is not mutably borrowed here.
+                // SAFETY: as `lists_end`: `off` is a `List<_>` field of `V`, whose first field is its head
+                // (`Headed`: `repr(C)`, a `Cell<u32>` at offset 0); the view is not mutably borrowed here.
+                let head = unsafe { (*(base.add(e.off as usize) as *const Cell<u32>)).get() };
+                if head & !crate::signal::QUEUED != e.tag {
+                    e.journal.push(Edit::Shift(0));
+                    continue;
+                }
+                // SAFETY: as above; `ops` was instantiated for the field's item type.
                 unsafe { (e.ops)(base.add(e.off as usize), &mut e.journal) }
             }
         }
@@ -2055,6 +2076,7 @@ impl<V: View> App<V> {
     /// Under `Config::mount_once` only the block is compared, as on the legacy runtime.
     fn after(&mut self, ran: bool) {
         self.ty.ran.set(false);
+        let motion = self.world.motion();
         self.lists_sync();
         if ran && !self.once {
             self.ty.sh.pass.set(PassStats::default());
@@ -2068,11 +2090,33 @@ impl<V: View> App<V> {
             self.ty.sh.full.set(full);
             self.world.redescribe(&self.ty);
             self.ty.sh.full.set(false);
-            let refused = self.ty.sh.refused.borrow();
-            assert!(
-                refused.is_empty(),
-                "a view admitted to the typed path described what it does not hold: {refused:?}"
-            );
+            {
+                let refused = self.ty.sh.refused.borrow();
+                assert!(
+                    refused.is_empty(),
+                    "a view admitted to the typed path described what it does not hold: {refused:?}"
+                );
+            }
+            // The turn may have moved content under a still pointer: the pick again, as the legacy runtime
+            // does after every turn. A row that left the pointer hears its leave, the one now under it its
+            // enter; if one of those is the author's handler the view is described once more.
+            self.rehover(motion);
+        } else {
+            self.world.settle(&self.ty);
+            self.rehover(motion);
+        }
+    }
+    /// If something shown moved since `motion` (a row entered, a list scrolled, a rect changed), the pick
+    /// under the pointer is taken again and hover brought up to date; what its handlers changed is settled,
+    /// or described if one of them was the author's.
+    fn rehover(&mut self, motion: u32) {
+        if self.world.motion() == motion {
+            return;
+        }
+        self.world.repick(&mut self.ty);
+        if self.ty.ran.replace(false) && !self.once {
+            self.lists_sync();
+            self.world.redescribe(&self.ty);
         } else {
             self.world.settle(&self.ty);
         }

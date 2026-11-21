@@ -62,8 +62,9 @@ fn empty_zero_height_list_can_later_gain_rows() {
     assert_eq!(image(&world), image(&fresh));
 }
 
+// TR1-02, closed by Integration Card 5: a place token carries the stamp of its slot (the number of the write
+// that put the row there), so a token made for one row is refused once the ring has given the slot to another.
 #[test]
-#[ignore = "TR1-02 open"]
 fn stale_place_after_ring_reuse_is_refused() {
     let mut view = Rows {
         u: U::default(),
@@ -166,14 +167,18 @@ impl View for CountingRows {
     }
 }
 
+// TR1-10, closed by Integration Card 5. One change to the probe as the review wrote it: the relation is made
+// with `Rel::by_item` instead of `Rel::new`. A row kept across a front insert is only the same description if
+// the row function reads its item and not its index, and `tests/events.rs::captures_follow_the_ring` (rows
+// whose handlers say their index) requires the opposite of a list that has not said so: the declaration is
+// the relation's. With it the insert describes the one row that entered, whatever is exposed.
 #[test]
-#[ignore = "TR1-10 open"]
 fn front_insert_does_not_redescribe_every_visible_row() {
     let mut counts = Vec::new();
     for height in [32, 256] {
         let mut view = CountingRows {
             u: U::default(),
-            items: Rel::new(vec![0xff00_0000; 512]),
+            items: Rel::by_item(vec![0xff00_0000; 512]),
             calls: Cell::new(0),
         };
         let mut world = World::<_, Soft>::new(16, height, 1);
@@ -187,6 +192,70 @@ fn front_insert_does_not_redescribe_every_visible_row() {
         counts[1] <= counts[0] + 2,
         "row descriptions at 32 and 256 visible rows: {counts:?}"
     );
+}
+
+/// The same edit on a relation that did not declare its rows to be by item: every exposed row from the edit
+/// on is described again (the negative of the probe above, and what `mutant_rigid`'s gate compares with),
+/// and both show what a fresh mount shows.
+#[test]
+fn front_insert_by_index_describes_the_rows_after_it_and_both_match_a_fresh_mount() {
+    fn image(world: &World<CountingRows, Soft>) -> Vec<u32> {
+        let mut soft = Soft::new(16, 64);
+        world.paint(&mut soft);
+        soft.px
+    }
+    for by_item in [false, true] {
+        // every row another colour: a row left where it was, or moved the wrong way, shows
+        let items: Vec<u32> = (0..512).map(|i| 0xff00_0000 + i * 0x0305).collect();
+        let mut view = CountingRows {
+            u: U::default(),
+            items: if by_item {
+                Rel::by_item(items)
+            } else {
+                Rel::new(items)
+            },
+            calls: Cell::new(0),
+        };
+        let mut world = World::<_, Soft>::new(16, 64, 1);
+        world.mount(&view);
+        for (k, at) in [0usize, 0, 20, 40, 63, 5].into_iter().enumerate() {
+            view.calls.set(0);
+            view.items.insert(at, 0xffff_0000 + k as u32 * 0x1010);
+            world.settle(&view);
+            if !by_item && at == 0 {
+                assert!(
+                    view.calls.get() >= 64,
+                    "by index: {} rows described",
+                    view.calls.get()
+                );
+            }
+            if by_item && at == 0 {
+                assert!(
+                    view.calls.get() <= 2,
+                    "by item: {} rows described",
+                    view.calls.get()
+                );
+            }
+            let mut fresh = World::<_, Soft>::new(16, 64, 1);
+            fresh.mount(&view);
+            assert_eq!(
+                image(&world),
+                image(&fresh),
+                "by_item {by_item}, insert {k} at {at}"
+            );
+        }
+        for (k, at) in [0usize, 30, 62, 3, 0].into_iter().enumerate() {
+            view.items.remove(at);
+            world.settle(&view);
+            let mut fresh = World::<_, Soft>::new(16, 64, 1);
+            fresh.mount(&view);
+            assert_eq!(
+                image(&world),
+                image(&fresh),
+                "by_item {by_item}, remove {k} at {at}"
+            );
+        }
+    }
 }
 
 thread_local! {

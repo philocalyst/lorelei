@@ -65,6 +65,9 @@ impl WorldId {
 pub struct Place {
     world: WorldId,
     packed: u32,
+    /// The stamp of the place's slot when the token was made (`Store::row_stamp`): the token names that
+    /// record, not whatever row a list later puts in its slot (review TR1-02).
+    stamp: u32,
 }
 impl Place {
     pub fn packed(self) -> u32 {
@@ -130,6 +133,16 @@ struct Fast {
     box_valid: u64,
     box_asked: u64,
     boxes: Vec<[i32; 4]>,
+}
+
+/// A hovered record as it was entered (`World::hov_kept`): its handler face, and where its record and its
+/// captures are copied in `hov_bytes` (in 16-byte units; `u32::MAX`: not kept, the record is over-aligned
+/// or was never written).
+#[derive(Clone, Copy)]
+struct Kept {
+    ons: Option<crate::store::Hov>,
+    rec: u32,
+    caps: u32,
 }
 
 /// The records of every column keyed by one block word, by key: `(key, column in the table, record)`, sorted.
@@ -238,10 +251,19 @@ pub struct World<V, B> {
     handlers: Vec<(u32, u32)>,
     /// Publication revision: grows whenever a pass stored records with other words or rects, or moved a list.
     revision: u32,
+    /// Grows whenever something shown may be somewhere else than it was: a rect, a list's rows, a space
+    /// that moved. What a host compares to know whether the pick under a still pointer is to be taken
+    /// again ([`World::repick`]).
+    motion: u32,
     /// A typed world may dispatch only after mounting its view.
     mounted: bool,
     /// The row each hovered place showed when it was entered (a list's slot shows another row after a scroll).
     hov_what: Vec<u32>,
+    /// A copy of each hovered record and its handler's captures as they were when the place was entered, with
+    /// the handler face they belong to: what a leave is delivered with when the slot has since been given to
+    /// another row (the item that was entered hears the leave, not the row now in its slot).
+    hov_kept: Vec<Kept>,
+    hov_bytes: Vec<u128>,
     /// Scratch for the event path, reserved once: an event allocates nothing.
     buf: Vec<u32>,
     pool: Vec<Vec<u32>>,
@@ -294,9 +316,12 @@ impl<V: View, B: Backend> World<V, B> {
             clock: 0,
             ptr: None,
             revision: 0,
+            motion: 0,
             mounted: false,
             slots: Vec::new(),
             hov_what: Vec::with_capacity(64),
+            hov_kept: Vec::with_capacity(64),
+            hov_bytes: Vec::with_capacity(64),
             hov: Vec::with_capacity(64),
             held: None,
             focus: None,
@@ -342,10 +367,11 @@ impl<V: View, B: Backend> World<V, B> {
         Some(Place {
             world: self.id,
             packed,
+            stamp: self.stamp_at(packed),
         })
     }
     pub fn at_token(&self, place: Place) -> Option<(&Store, u32, u32)> {
-        if place.world != self.id {
+        if place.world != self.id || self.stamp_at(place.packed) != place.stamp {
             return None;
         }
         self.at_place(place.packed)
@@ -436,6 +462,7 @@ impl<V: View, B: Backend> World<V, B> {
             lists: 0,
             regroup: false,
             changed: 0,
+            moved: 0,
             scale: f32::from_bits(self.shown.w[U_SCALE]),
         };
         // SAFETY: the store's one site was discovered from a row of type `R` (checked just above against the
@@ -463,6 +490,12 @@ impl<V: View, B: Backend> World<V, B> {
     #[inline(always)]
     pub fn revision(&self) -> u32 {
         self.revision
+    }
+    /// See the field: moves when a pass or a delta may have put other content under a still pointer. (A
+    /// record that moves by its own paint with a block word, `Arch::MOVES`, is not counted.)
+    #[inline(always)]
+    pub fn motion(&self) -> u32 {
+        self.motion
     }
     /// The time of the frame being prepared, by the clock: what a handler stamps a motion's start with.
     #[inline(always)]
@@ -511,6 +544,7 @@ impl<V: View, B: Backend> World<V, B> {
             lists: 0,
             regroup: false,
             changed: 0,
+            moved: 0,
             scale: f32::from_bits(self.shown.w[U_SCALE]),
         };
         // The column table points into the tree the view is about to grow: until it is rebuilt below it names
@@ -521,6 +555,7 @@ impl<V: View, B: Backend> World<V, B> {
         });
         self.lists = cx.lists;
         self.revision = self.revision.wrapping_add(cx.changed + 1);
+        self.motion = self.motion.wrapping_add(cx.moved + 1);
         self.root.resweep(&self.shown, &mut self.tiles);
         self.retable();
         self.observe_relations();
@@ -685,6 +720,7 @@ impl<V: View, B: Backend> World<V, B> {
                 let st = unsafe { &*st };
                 // the space moved: everything it shows is somewhere else
                 self.tiles.mark(st.space.clip);
+                self.motion = self.motion.wrapping_add(1);
                 if st.timed & (st.reads & ch != 0) {
                     st.resweep(u, &mut self.tiles);
                 }
@@ -1022,6 +1058,7 @@ impl<V: View, B: Backend> World<V, B> {
                 lists: 0,
                 regroup: false,
                 changed: 0,
+                moved: 0,
                 scale: f32::from_bits(u.w[U_SCALE]),
             };
             // as in `mount_pass`: stale while the view runs, as it was after it returns
@@ -1037,6 +1074,7 @@ impl<V: View, B: Backend> World<V, B> {
             self.shape = shape;
             self.lists |= cx.lists;
             self.revision = self.revision.wrapping_add(cx.changed);
+            self.motion = self.motion.wrapping_add(cx.moved);
             self.rederive();
             if ch != 0 {
                 self.shown = *u;
@@ -1073,6 +1111,7 @@ impl<V: View, B: Backend> World<V, B> {
             lists: 0,
             regroup: false,
             changed: 0,
+            moved: 0,
             scale: f32::from_bits(u.w[U_SCALE]),
         };
         let shape = core::mem::replace(&mut self.shape, STALE);
@@ -1090,6 +1129,7 @@ impl<V: View, B: Backend> World<V, B> {
             self.wrote += 1;
         }
         self.revision = self.revision.wrapping_add(cx.changed);
+            self.motion = self.motion.wrapping_add(cx.moved);
         crate::probe::mark(crate::probe::ph::LISTS);
         self.rederive();
         crate::probe::mark(crate::probe::ph::REDERIVE);
@@ -1233,7 +1273,7 @@ impl<V: View, B: Backend> World<V, B> {
                     if ly >= 0 {
                         let r = (ly / st.geo.2) as u32;
                         if (r >= st.lo) & (r < st.hi) {
-                            let slot = r & (st.cap - 1);
+                            let slot = st.slot_of(r);
                             for s in st.sites.iter().filter(|s| s.col == j) {
                                 // SAFETY: a record's site of this store (its column is `j`, not a hole);
                                 // the slot is under the store's capacity; the table is current.
@@ -1379,15 +1419,43 @@ impl<V: View, B: Backend> World<V, B> {
                 next.push(p);
             }
         }
-        // places that now show another row than when they were entered: their item is gone from under the
-        // pointer, and its captures with it (the slot holds the new row's), so it is dropped without a leave
-        let mut i = 0;
-        while i < self.hov.len() {
-            if self.row_at(self.hov[i]) != self.hov_what[i] {
+        // Places whose slot has been given to another row since they were entered: the item that was entered
+        // is gone from under the pointer, and the slot holds another row's record and captures. It hears
+        // its leave with the record and the captures it was entered with (kept copies), topmost first, and
+        // is no longer hovered; whatever is in the slot now is entered below like any other place.
+        let (px, py) = self.ptr.map_or((-1.0, -1.0), |(x, y)| (x as f32, y as f32));
+        let mut i = self.hov.len();
+        while i > 0 {
+            i -= 1;
+            if self.stamp_at(self.hov[i]) != self.hov_what[i] {
+                let k = self.hov_kept[i];
                 self.hov.remove(i);
                 self.hov_what.remove(i);
-            } else {
-                i += 1;
+                self.hov_kept.remove(i);
+                if let Some(o) = k.ons
+                    && k.rec != u32::MAX
+                {
+                    let e = Event {
+                        kind: kind::HOVER,
+                        ev: Ev {
+                            on: false,
+                            ..Ev::at(px, py)
+                        },
+                        text: "",
+                    };
+                    let rec = self.hov_bytes[k.rec as usize..].as_ptr() as *const u8;
+                    let caps = if o.caps == 0 {
+                        core::ptr::without_provenance(o.caps_align as usize)
+                    } else {
+                        self.hov_bytes[k.caps as usize..].as_ptr() as *const u8
+                    };
+                    // SAFETY: `o` is the handler face of the column the place was in when it was entered
+                    // (`keep`), instantiated for that column's record and handler types and for this
+                    // world's `V`. `rec` and `caps` point at bitwise copies of that place's record (it was
+                    // initialised: `keep` checked) and of its captures (both `Copy`), taken then, in storage
+                    // aligned to 16 (`keep` kept only what that suffices for).
+                    unsafe { (o.call)(v as *mut V as *mut (), caps, rec, &e) };
+                }
             }
         }
         if next == self.hov {
@@ -1401,11 +1469,14 @@ impl<V: View, B: Backend> World<V, B> {
         }
         let old = core::mem::replace(&mut self.hov, next);
         self.hov_what.clear();
+        self.hov_kept.clear();
+        self.hov_bytes.clear();
         for i in 0..self.hov.len() {
-            let r = self.row_at(self.hov[i]);
+            let r = self.stamp_at(self.hov[i]);
             self.hov_what.push(r);
+            self.keep(self.hov[i]);
         }
-        let (x, y) = self.ptr.map_or((-1.0, -1.0), |(x, y)| (x as f32, y as f32));
+        let (x, y) = (px, py);
         let mut out = Dispatch {
             kind: kind::HOVER,
             place: NONE,
@@ -1454,10 +1525,51 @@ impl<V: View, B: Backend> World<V, B> {
         self.done(old);
         out
     }
-    /// The row a place shows now (`NONE` for no record).
-    fn row_at(&self, place: u32) -> u32 {
-        self.at_place(place)
-            .map_or(NONE, |(st, _, rec)| row_of(st, rec))
+    /// The stamp of the slot a place is in (`Store::row_stamp`; 0 in a fixed shape, `NONE` for no record).
+    fn stamp_at(&self, place: u32) -> u32 {
+        self.at_place(place).map_or(NONE, |(st, _, rec)| {
+            st.row_stamp.get((rec % st.cap) as usize).copied().unwrap_or(0)
+        })
+    }
+    /// Keep a copy of the record at `place` and of its captures (`hov_kept`, `hov_bytes`).
+    fn keep(&mut self, place: u32) {
+        let mut k = Kept {
+            ons: None,
+            rec: u32::MAX,
+            caps: u32::MAX,
+        };
+        if let Some((st, col, rec)) = self.at_place(place) {
+            let c = &st.cols[col as usize];
+            if let Some(o) = c.hover
+                && c.rec_init(rec)
+                && c.desc.rec_align <= 16
+                && o.caps_align <= 16
+            {
+                let (rs, cs) = (c.desc.rec_size, o.caps as usize);
+                let (rp, cp) = (c.rec_ptr(rec), c.caps_ptr(rec));
+                let (r0, c0) = (self.hov_bytes.len(), self.hov_bytes.len() + rs.div_ceil(16).max(1));
+                let end = c0 + cs.div_ceil(16);
+                let mut bytes = core::mem::take(&mut self.hov_bytes);
+                bytes.resize(end, 0);
+                // SAFETY: `rp` is the initialised record `rec` of the column (`rs` bytes of it, in bounds
+                // of its page); `cp` its captures (`cs` bytes of the lane, when there are any). The
+                // destinations are `rs` and `cs` bytes inside the buffer just grown, and do not overlap
+                // the sources (another allocation). A byte copy carries padding as it is.
+                unsafe {
+                    core::ptr::copy_nonoverlapping(rp, bytes[r0..].as_mut_ptr() as *mut u8, rs);
+                    if cs != 0 {
+                        core::ptr::copy_nonoverlapping(cp, bytes[c0..].as_mut_ptr() as *mut u8, cs);
+                    }
+                }
+                self.hov_bytes = bytes;
+                k = Kept {
+                    ons: Some(o),
+                    rec: r0 as u32,
+                    caps: c0 as u32,
+                };
+            }
+        }
+        self.hov_kept.push(k);
     }
     fn kinds(&self, place: u32) -> u32 {
         self.at_place(place)
@@ -1942,7 +2054,7 @@ impl<V: View, B: Backend> World<V, B> {
             if !exposed {
                 return None;
             }
-            let rec = s.base + f.row % st.cap;
+            let rec = s.base + st.slot_of(f.row);
             let i = self.col_index(st, s.col)?;
             Some(i << PLACE_REC_BITS | rec)
         })()
@@ -1961,8 +2073,7 @@ fn row_of(st: &Store, rec: u32) -> u32 {
     if st.cap == 1 {
         return 0;
     }
-    let slot = rec % st.cap;
-    st.lo + (slot + st.cap - st.lo % st.cap) % st.cap
+    st.row_at_slot(rec % st.cap)
 }
 /// A record's rect in its store's space.
 fn rect_of(st: &Store, col: u32, rec: u32) -> Option<crate::store::Rect> {

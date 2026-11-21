@@ -721,7 +721,7 @@ fn walk_owned<'w>(
                             slot
                         } else {
                             // the row of the window that lives at this slot
-                            st.lo + (slot + st.cap - st.lo % st.cap) % st.cap
+                            st.row_at_slot(slot)
                         };
                         if !c.rec_init(rec) {
                             // live, never written (soundness review S04): there is no record to read

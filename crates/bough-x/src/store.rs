@@ -570,6 +570,7 @@ pub struct Desc {
     pub name: &'static str,
     pub stage: StageId,
     pub rec_size: usize,
+    pub rec_align: usize,
     pub rec_off: usize,
     /// Where a page's `initialized` mask is (a byte offset into the page).
     pub init_off: usize,
@@ -594,6 +595,7 @@ impl<A: Arch, B: Backend> Holder<A, B> {
         name: A::NAME,
         stage: A::STAGE,
         rec_size: size_of::<A>(),
+        rec_align: align_of::<A>(),
         rec_off: core::mem::offset_of!(Page<A>, rec),
         init_off: core::mem::offset_of!(Page<A>, initialized),
         page: Layout::new::<Page<A>>(),
@@ -913,9 +915,20 @@ pub struct Store {
     pub row_live: Vec<u64>,
     pub space: Space,
     disc: Vec<(u32, Rect)>,
-    /// A list's materialised window of rows, `lo..hi`; row `r` is at slot `r mod cap`.
+    /// A list's materialised window of rows, `lo..hi`; row `r` is at slot `(r + bias) mod cap`
+    /// ([`Store::slot_of`]).
     pub lo: u32,
     pub hi: u32,
+    /// What a row's index is offset by to find its slot. An insert or a remove before rows that stay
+    /// exposed changes their indices and not their records: the bias moves the other way, so each keeps
+    /// its slot (`sink::list_plan`).
+    pub(crate) bias: u32,
+    /// A list: per slot, the number of the write that put the row there (`stamp` counts them). A record
+    /// someone holds by its place (the hovered set) is still the record they were given exactly while its
+    /// slot's stamp is the one they saw: a row described again in place (an edit) keeps it, a row written
+    /// over another does not.
+    pub(crate) row_stamp: Vec<u32>,
+    pub(crate) stamp: u32,
     /// The relation version this window was last brought up to.
     pub seen: u32,
     /// The rows of the shape: the type of each row value described here and its first site.
@@ -952,6 +965,19 @@ pub struct Store {
     pub(crate) spill: bool,
 }
 
+impl Store {
+    /// The slot row `r` of a list's window is kept at (0 in a fixed shape).
+    #[inline(always)]
+    pub fn slot_of(&self, r: u32) -> u32 {
+        r.wrapping_add(self.bias) & (self.cap - 1)
+    }
+    /// The row of the window that is kept at `slot` (the inverse of [`Store::slot_of`] over `lo..lo + cap`).
+    #[inline(always)]
+    pub fn row_at_slot(&self, slot: u32) -> u32 {
+        self.lo
+            .wrapping_add(slot.wrapping_sub(self.lo.wrapping_add(self.bias)) & (self.cap - 1))
+    }
+}
 impl Drop for Store {
     fn drop(&mut self) {
         self.column_count
@@ -1013,6 +1039,9 @@ impl Store {
             lay: (0, 0, 0),
             memo: bough_lay::Memo::new(),
             spill: false,
+            bias: 0,
+            row_stamp: Vec::new(),
+            stamp: 0,
         }
     }
     #[inline(always)]

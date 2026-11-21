@@ -133,8 +133,11 @@ pub struct TextSys {
     runs: Vec<Run>,
     free: Vec<u32>,
     /// Runs by size (its bits), then by text: a lookup borrows the text and allocates nothing.
-    memo: HashMap<u32, HashMap<Box<str>, u32>>,
-    glyphs: HashMap<(u8, u16, u32), Bitmap>,
+    memo: HashMap<u32, HashMap<Box<str>, u32, crate::layout::FxBuild>, crate::layout::FxBuild>,
+    glyphs: HashMap<(u8, u16, u32), Bitmap, crate::layout::FxBuild>,
+    /// The ASCII characters the primary face has a glyph for: a text of only these is one segment of that
+    /// face, known without asking the faces character by character.
+    ascii0: [bool; 128],
     pass: u32,
     /// The shaping buffer, kept between runs.
     buf: Option<rustybuzz::UnicodeBuffer>,
@@ -178,8 +181,9 @@ impl TextSys {
             pending: system_fallbacks(),
             runs: Vec::new(),
             free: Vec::new(),
-            memo: HashMap::new(),
-            glyphs: HashMap::new(),
+            memo: HashMap::default(),
+            glyphs: HashMap::default(),
+            ascii0: [false; 128],
             pass: 0,
             buf: None,
             stats: TextStats::default(),
@@ -198,6 +202,11 @@ impl TextSys {
         match rustybuzz::Face::from_slice(data, 0) {
             Some(rb) if self.faces.len() < 255 => {
                 let upem = rb.units_per_em() as f32;
+                if self.faces.is_empty() {
+                    for b in 0..128u8 {
+                        self.ascii0[b as usize] = rb.glyph_index(b as char).is_some();
+                    }
+                }
                 self.faces.push(FaceD { rb, upem, plans: Vec::new() });
                 true
             }
@@ -265,7 +274,8 @@ impl TextSys {
         }
         let (glyphs, w) = self.shape(text, size);
         let mut ink = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
-        for g in glyphs.clone() {
+        for i in 0..glyphs.len() {
+            let g = glyphs[i];
             let b = self.bitmap(g.face, g.gid, size);
             if b.w > 0 && b.h > 0 {
                 ink[0] = ink[0].min(g.x + b.left);
@@ -326,7 +336,16 @@ impl TextSys {
         // fallback segments: maximal stretches of characters whose first covering face is the same
         let mut segs: Vec<(u8, usize, usize)> = Vec::new();
         let mut rtl = false;
+        // Every character an ASCII one the primary face covers: the loop below would find the one segment
+        // (the first covering face of each is face 0, and nothing is right-to-left).
+        let plain = !text.is_empty() && text.bytes().all(|b| b < 128 && self.ascii0[b as usize]);
+        if plain {
+            segs.push((0, 0, text.len()));
+        }
         for (at, c) in text.char_indices() {
+            if plain {
+                break;
+            }
             // joiners, selectors and marks stay with the character before them; a space stays inside a
             // right-to-left stretch (so its words keep their order) and is otherwise the UI face's
             let glue = matches!(c, '\u{200d}' | '\u{fe00}'..='\u{fe0f}' | '\u{300}'..='\u{36f}' | '\u{1f3fb}'..='\u{1f3ff}')

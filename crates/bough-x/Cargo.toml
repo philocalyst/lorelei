@@ -23,6 +23,8 @@ mutant_repair_bounds = []
 mutant_delta = []
 # a list ignores the relation's journal
 mutant_journal = []
+# rows kept across an insert or a remove keep their old rects (bough's typed list gates must fail)
+mutant_rigid = []
 # a moved record damages only where it is now; a record in motion only where it will rest
 mutant_moves = []
 # a frame with records in motion damages nothing
