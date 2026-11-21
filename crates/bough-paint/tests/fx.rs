@@ -1304,8 +1304,8 @@ fn resident_commands_follow_changed_slots() {
     let (fw, fh) = (640, 192);
     let words = (fw * fh) as usize;
     let pool = Pool::new(1);
-    let left = |width| [q(96.0), q(64.0), q(96.0 + width), q(128.0)];
-    let right = |width| [q(416.0), q(64.0), q(416.0 + width), q(128.0)];
+    let left = |width: f32| [q(96.0), q(64.0), q(96.0 + width), q(128.0)];
+    let right = |width: f32| [q(416.0), q(64.0), q(416.0 + width), q(128.0)];
     let make = |switched| {
         let mut s = Scene::new(fw, fh, 16_384);
         s.broad = 1 << 4;
