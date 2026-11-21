@@ -74,6 +74,16 @@ The example uses a self-diff. For a source comparison, pass the two emission dir
 
 ## 3. Reproducible macOS baselines and the regression gate
 
+For an integration checkout, set `BOUGH_FONT` to the face identified by the native reference receipt and run:
+
+```sh
+bench/baseline/gate.sh
+```
+
+The command builds the current source, runs the complete native suite and compares its receipt with `bench/baselines/native/reference.json` using the checked-in limits. An unexplained regression, an invalid fixture, or a changed set of operation names makes it exit nonzero. Treat an added fixture as a reference update requiring a measured receipt. The native performance gate runs alongside the existing `bench/gate.sh` code gate.
+
+Use the separate commands for historical source comparisons:
+
 ```sh
 bench/baseline/run.sh --name base --worktree "$BASE_WORKTREE" --reps 3
 bench/baseline/run.sh --name head --worktree "$HEAD_WORKTREE" --reps 3
@@ -82,7 +92,7 @@ bench/baseline/compare.sh runtime/baseline/base/base.json runtime/baseline/head/
 
 Set `BASE_WORKTREE` and `HEAD_WORKTREE` to the checkouts being compared. Omit `--worktree` to use the harness checkout. Use `--cells sheet_x/rows10000` to run the sheet alone or `--cells sheet_x/rows10000/hover` with `compare.sh` to isolate the hover counter. Use the same face override `BOUGH_FONT` in both runs when measuring façade or effects workloads.
 
-`run.sh` takes the lock around the build and replay. The native gate compares named per-operation counters emitted by `sheet_x`, `events_x`, `text_x`, `anim_x`, `ops_x`, and the effects adapters. The current matrix includes near/swept animation variants and retained-pixel correctness checks for effects. The JSON also keeps whole-process instructions, wall time and RSS as separate metrics. Results default to `runtime/baseline/<name>/`, with raw logs in `raw/`. `--no-build` requires matching source, toolchain and binary fingerprints.
+`run.sh` takes the lock around the build and replay. The native gate compares named per-operation counters emitted by `sheet_x`, `events_x`, `text_x`, `anim_x`, `ops_x`, and the effects adapters. The current matrix includes near/swept animation variants, retained-pixel correctness checks for both effects adapters, and the staged paint, panes and video rows from `bench/fx/run.sh`. The JSON also keeps whole-process instructions, wall time and RSS as separate metrics. Results default to `runtime/baseline/<name>/`, with raw logs in `raw/`. `--no-build` requires matching source, toolchain and binary fingerprints.
 
 Default limits are 2% for instructions, 10% for wall time and 5% for process RSS. Wall and RSS are unqualified above the load ceiling. Wall is also unqualified if either input spreads more than the tolerance. See [native measurement scope and threshold overrides](baseline/README.md).
 

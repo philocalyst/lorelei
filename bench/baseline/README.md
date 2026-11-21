@@ -25,8 +25,9 @@ The runner writes one structured receipt, a readable table, and raw stdout, stde
 | `guibench/…` | Façade calling-thread instructions for mount and named batches |
 | `effects/…` | Façade mean process instructions per trace step, or exec to first frame for cold start |
 | `effects-core/…` | Typed core median process instructions per trace step, or setup to first frame for startup |
+| `fxbench/…` | Calling-thread instructions per frame, rounded to 100 instructions. Keeps CPU cached, CPU uncached and Metal rows separate and requires the retained-pixel verdict. |
 
-Set `BOUGH_FONT` to a known TrueType face for the façade and effects comparisons. Use the same font in both runs. The receipt records font digests when an override is set. The prepared-face typed core uses Latin-1 DejaVu Sans 14/28 px, opaque colours, arithmetic row placement, remount on resize, group-1 keymap and CPU spans. The typed effects adapter covers opaque, integer-position rectangles with colour transitions. The staged video adapter uses a separately pinned paint seam. The receipt records unavailable adapters and old-tree prerequisites.
+Set `BOUGH_FONT` to a known TrueType face for the façade and effects comparisons. Use the same font in both runs. The receipt records font digests when an override is set. The prepared-face typed core uses Latin-1 DejaVu Sans 14/28 px, opaque colours, arithmetic row placement, remount on resize, group-1 keymap and CPU spans. The typed effects adapter covers opaque, integer-position rectangles with colour transitions. The staged paint `fxbench` video cells use the source under test. The older standalone effects adapter also offers a video probe from a separately pinned paint seam. The receipt records unavailable adapters and old-tree prerequisites.
 
 `--no-build` reuses binaries listed in a previous build receipt in the chosen target. The source, toolchain and binary fingerprints must still match. A failed compile, pixel gate, process launch, counter parse or incomplete repetition set makes the command exit nonzero. Build and counter diagnostics are in `raw/`.
 
