@@ -296,7 +296,7 @@ fn measure(n: usize, cell: &str, ring: usize, samples: usize, font: &[u8]) {
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let [mode, n, cell, count] = &args[..] else {
-        eprintln!("usage: bough-fx-bench check|measure|mutant CARDS CELL SAMPLES");
+        eprintln!("usage: bough-fx-bench check|measure|cold|mutant CARDS CELL SAMPLES");
         return ExitCode::FAILURE;
     };
     let n: usize = n.parse().expect("card count");
@@ -305,11 +305,13 @@ fn main() -> ExitCode {
     if cell == "video" || mode == "full-effects" {
         #[cfg(feature = "full-effects")]
         eprintln!(
-            "unavailable full-effects seam for {:#?}",
+            "unavailable in the author frontend for {:#?}",
             full_effects::OPERATIONS
         );
         #[cfg(not(feature = "full-effects"))]
-        eprintln!("unavailable: full-effects feature has no backend adapter yet");
+        eprintln!(
+            "unavailable in the author frontend. See scripts/build-fx-seam.sh for the staged probe."
+        );
         return ExitCode::from(2);
     }
     assert!(CELLS.contains(&cell.as_str()));
@@ -323,6 +325,18 @@ fn main() -> ExitCode {
             }
         }
         "measure" => measure(n, cell, 4, count, &font),
+        "cold" => {
+            assert_eq!((cell.as_str(), count), ("startup", 1));
+            let mut app = mount(n, false, State::default(), 4, (WIDTH, HEIGHT), &font);
+            assert!(app.frame());
+            app.wait_presented();
+            let ns = perf::since_exec_ns();
+            let process = perf::snap();
+            println!(
+                "spawn_to_first,{n},{ns},{},{},{},{}",
+                process.instrs, process.cpu_ns, process.rss, process.footprint
+            );
+        }
         _ => return ExitCode::FAILURE,
     }
     ExitCode::SUCCESS

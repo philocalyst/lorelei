@@ -115,6 +115,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bough-expr"
+version = "0.0.0"
+
+[[package]]
 name = "bough-face"
 version = "0.0.0"
 
@@ -139,6 +143,7 @@ version = "0.0.0"
 dependencies = [
  "bough",
  "bough-sys",
+ "bough-x",
 ]
 
 [[package]]
@@ -151,6 +156,13 @@ dependencies = [
  "objc2-foundation",
  "objc2-metal",
  "wgsl-rs",
+]
+
+[[package]]
+name = "bough-lay"
+version = "0.0.0"
+dependencies = [
+ "bough-expr",
 ]
 
 [[package]]
@@ -209,6 +221,15 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "xkbcommon-dl",
+]
+
+[[package]]
+name = "bough-x"
+version = "0.0.0"
+dependencies = [
+ "bough-expr",
+ "bough-face",
+ "bough-lay",
 ]
 
 [[package]]
