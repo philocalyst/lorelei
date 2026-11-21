@@ -740,6 +740,33 @@ impl RawCol {
         };
         mask & (1 << (rec & 63)) != 0
     }
+    /// Resolve a handler's record and capture lanes after one bounds and initialization check.
+    #[inline]
+    pub(crate) fn handler_data(&self, rec: u32, kind: u32) -> Option<(Hov, *const u8, *const u8)> {
+        let handler = self.hover?;
+        if handler.kinds & kind == 0 || rec >= self.nrec {
+            return None;
+        }
+        let layout = self.desc;
+        // SAFETY: `rec < nrec <= npages * 64`. The page is allocated and its mask is always
+        // initialized. The record lane's layout and offset belong to this column's archetype.
+        let record = unsafe {
+            let page = self.pages.add((rec as usize >> 6) * layout.page.size());
+            let index = rec as usize & 63;
+            if page.add(layout.init_off).cast::<u64>().read() & (1 << index) == 0 {
+                return None;
+            }
+            page.add(layout.rec_off + index * layout.rec_size)
+        };
+        let captures = if handler.caps == 0 {
+            core::ptr::without_provenance(handler.caps_align as usize)
+        } else {
+            // SAFETY: this column allocates one capture per record-capacity slot for this handler.
+            unsafe { self.caps.add(rec as usize * handler.caps as usize) }
+        };
+        Some((handler, captures, record))
+    }
+
     /// The constants of record `rec`, untyped (for a handler that knows the type).
     pub fn rec_ptr(&self, rec: u32) -> *const u8 {
         assert!(rec < self.npages * 64);

@@ -993,19 +993,13 @@ impl<V: View, B: Backend> World<V, B> {
         let Some((st, col, rec)) = self.at_place(place) else {
             return false;
         };
-        let c = &st.cols[col as usize];
-        let Some(o) = c.hover else { return false };
-        if o.kinds & e.kind == 0 {
+        let Some((handler, captures, record)) = st.cols[col as usize].handler_data(rec, e.kind)
+        else {
             return false;
-        }
-        // live, but never written (a row function panicked before reaching it): no record and no captures to
-        // run a handler on (soundness review S04)
-        if !c.rec_init(rec) {
-            return false;
-        }
-        // SAFETY: `call` was instantiated for the record and handler type this column was created with, and for
-        // the view type `V` this world is driven with; `rec` is a record of the column and the captures its own.
-        unsafe { (o.call)(v as *mut V as *mut (), c.caps_ptr(rec), c.rec_ptr(rec), e) }
+        };
+        // SAFETY: the lookup admitted an initialized record and its capture lane. The handler was
+        // instantiated for this archetype, its captures, and the world's invariant view type V.
+        unsafe { (handler.call)(v as *mut V as *mut (), captures, record, e) }
     }
     /// The first place of `chain` (topmost first) whose handler consumes `e`.
     fn bubble(&self, v: &mut V, chain: impl Iterator<Item = u32>, e: &Event) -> Dispatch {
