@@ -57,6 +57,9 @@ def table(kind, stdout, env):
                 raise ValueError("unexpected fixture name")
             if unsigned(row["steps"]) == 0:
                 raise ValueError("zero operation samples")
+        if key in operations and kind == "ops" and env["PART"] == "search":
+            # The probe clears both query strings back to the same empty needle.
+            key += " (second query)"
         if not key or key in operations:
             raise ValueError(f"empty or repeated operation name: {key!r}")
         operations[key] = {name: unsigned(value) for name, value in row.items()}
@@ -71,14 +74,22 @@ def table(kind, stdout, env):
     return operations
 
 
-def guibench(output, op):
-    tag = "mount" if op == "mount" else "result"
+def guibench(output, args):
+    op = args[args.index("--op") + 1]
+    blocked = "--blocks" in args and unsigned(args[args.index("--blocks") + 1]) != 0
+    tag = "mount" if op == "mount" else "perop" if blocked else "result"
     lines = [line for line in output.splitlines() if line.startswith(tag + " ")]
     if len(lines) != 1:
         raise ValueError(f"expected one {tag!r} counter line")
     fields = dict(re.findall(r"\b(\w+)=([^\s]+)", lines[0]))
-    if tag == "result" and fields.get("op") != op:
-        raise ValueError("unexpected façade operation")
+    if tag != "mount" and (fields.get("op") != op or fields.get("render") != "false"):
+        raise ValueError("unexpected façade operation or renderer")
+    if tag == "perop":
+        median, lo, hi = (unsigned(fields[name]) for name in ("med", "lo", "hi"))
+        if not 0 < lo <= median <= hi:
+            raise ValueError("invalid façade operation bounds")
+        return {op: {"instructions": median, "instructions_lo": lo, "instructions_hi": hi,
+                     "records": unsigned(fields["records"]), "frames": unsigned(fields["frames"])}}
     counters = {name: unsigned(fields[name]) for name in ("instructions", "rss", "footprint")}
     if counters["instructions"] == 0:
         raise ValueError("façade instruction counter unavailable")
@@ -145,7 +156,7 @@ def parse(kind, stdout, stderr, args, env):
     if kind in TABLES:
         return table(kind, stdout, env)
     if kind == "guibench":
-        return guibench(stdout + "\n" + stderr, args[args.index("--op") + 1])
+        return guibench(stdout + "\n" + stderr, args)
     if kind == "effects":
         return effects(stdout, args)
     if kind == "effects-core":

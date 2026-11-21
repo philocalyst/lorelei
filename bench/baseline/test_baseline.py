@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from operations import REQUIRED, table
+from operations import REQUIRED, guibench, table
 from run import summary, summarize
 
 
@@ -20,6 +20,21 @@ class OperationsTests(unittest.TestCase):
             table("sheet", stdout + "\n" + rows[0], {})
         with self.assertRaises(ValueError):
             table("sheet", stdout.replace("\t13504", "\t0"), {})
+
+    def test_facade_uses_per_operation_block_median(self):
+        output = "perop op=hover render=false med=3033593 lo=3033241 hi=3211363 records=5002 frames=53"
+        args = ("--op", "hover", "--blocks", "3")
+        self.assertEqual(guibench(output, args)["hover"]["instructions"], 3033593)
+        with self.assertRaises(ValueError):
+            guibench(output.replace("render=false", "render=true"), args)
+
+    def test_search_keeps_both_empty_query_backspaces(self):
+        header = "scene\tpart\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\n"
+        row = "ops_x\tsearch\tscan backspace (empty query)\t1\t25\t25\t0\n"
+        operations = table("ops", header + row * 2, {"PART": "search"})
+        self.assertEqual(len(operations), 2)
+        with self.assertRaises(ValueError):
+            table("ops", header + row * 3, {"PART": "search"})
 
     def test_changed_operation_set_refused(self):
         a = {"process": {"instructions": 2000000}, "operations": {"hover": {"instr_p50": 13504}}}

@@ -51,8 +51,9 @@ def cells(worktree):
         ("search", 1000, "filter-nochange", 6),
     ):
         label = "rows" if scene == "typing" else scene
-        args = ("--scenario", scene, "--rows", str(rows), "--op", op,
-                "--repeats", str(repeats), "--blocks", "3")
+        args = ("--scenario", scene, "--rows", str(rows), "--op", op, "--repeats", str(repeats))
+        if op != "mount":
+            args += ("--blocks", "3")
         matrix.append(Cell(f"guibench/{label}-{rows}-{op}", "headless", args, {}, "guibench"))
     unavailable = {}
     if (worktree / "crates/bough-x/examples/ops_x.rs").is_file():
@@ -183,7 +184,7 @@ SCOPES = {
     "text": "calling-thread instructions per operation",
     "anim": "calling-thread instructions per operation",
     "ops": "calling-thread instructions per operation",
-    "guibench": "calling-thread instructions per batch, except mount",
+    "guibench": "calling-thread instructions for mount or the median per operation across timed blocks",
     "effects": "process instructions per operation, mean of trace, or spawn-to-first for startup",
     "effects-core": "process instructions per operation, median of trace, or setup-to-first for startup",
     "pbench": "process instructions for the full offscreen CPU and Metal benchmark",
