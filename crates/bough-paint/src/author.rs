@@ -52,7 +52,7 @@ fn collect(code: &'static PCode, modules: &mut Vec<&'static Module>) {
 fn bounded(body: &naga::Block) -> bool {
     use naga::Statement;
     body.iter().all(|s| match s {
-        Statement::Loop { .. } | Statement::Barrier(_) | Statement::Kill => false,
+        Statement::Loop { .. } | Statement::ControlBarrier(_) | Statement::MemoryBarrier(_) | Statement::Kill => false,
         Statement::Block(block) => bounded(block),
         Statement::If { accept, reject, .. } => bounded(accept) && bounded(reject),
         Statement::Switch { cases, .. } => cases.iter().all(|c| bounded(&c.body)),

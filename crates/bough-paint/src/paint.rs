@@ -433,7 +433,7 @@ impl<F, B, R, T, A, D> Author<F, B, R, T, A, D> {
 }
 // SAFETY: repr(C) contains whole-word operands and a zero-sized marker with alignment 1.
 unsafe impl<F: 'static, B: Words, R: Words, T: Words, A: Words, D: Words> Words for Author<F, B, R, T, A, D> {}
-impl<F: crate::author::Program, B: Expr<Out = Vec4i>, R: Expr<Out = i32>, T: Expr<Out = u32>, A: Expr<Out = Vec4u>, D: Expr<Out = Vec4u>> Paint for Author<F, B, R, T, A, D> {
+impl<F: crate::author::Program, B: Expr<Out = Vec4i> + Words, R: Expr<Out = i32> + Words, T: Expr<Out = u32> + Words, A: Expr<Out = Vec4u> + Words, D: Expr<Out = Vec4u> + Words> Paint for Author<F, B, R, T, A, D> {
     const READS: u64 = B::READS | R::READS | T::READS | A::READS | D::READS;
     const GEOM_READS: u64 = B::READS | R::READS;
     const OPAQUE_CORE: bool = false;
