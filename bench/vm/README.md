@@ -60,7 +60,8 @@ tests.
 
 Environment: `GB_TIMING`, `GB_PIN` (cpu list, default `0-5`), `BENCH_RESULTS` (result root),
 `BENCH_GUEST_BASE` (guest directory for sources and targets, so a second user of the VM does not
-overwrite the first one's trees).
+overwrite the first one's trees). `BENCH_VM_CPUS` changes the CPU count when `up.sh` creates a new
+instance. Choose a `GB_PIN` list within that instance's guest CPU range.
 
 ## Timing contract
 
