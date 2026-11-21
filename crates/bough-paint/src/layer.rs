@@ -117,6 +117,29 @@ impl Blocks {
     }
 }
 
+/// The level windows of a backdrop command (`ops::bd_rect`: each level holds the pixels its reads take and
+/// the pixels the level above is made from), with **level 0 grown to whole tiles**. A prefix tile is a whole
+/// tile program, the dear part of a layer, so the prefix is kept by whole tiles: while the record moves
+/// inside the same tiles no prefix is recomputed, and when it crosses into a new tile that tile enters once.
+/// (The levels above are not grown: growth there doubles at every level beneath, which a measurement showed
+/// to quadruple the layers; their entering strips cost pixels of a small block.) Not cut to the frame.
+pub fn rects(c: Cmd) -> [[i32; 4]; LEVELS] {
+    let mut out = [[0; 4]; LEVELS];
+    if c.win.x >= c.win.z || c.win.y >= c.win.w {
+        return out;
+    }
+    for (k, r) in out.iter_mut().enumerate() {
+        *r = arr(x::bd_rect(c, k as u32));
+    }
+    let r = out[0];
+    out[0] = [r[0] & !31, r[1] & !31, (r[2] + 31) & !31, (r[3] + 31) & !31];
+    out
+}
+/// The halo of a backdrop command: the frame pixels whose prefix its layer keeps (`rects(c)[0]`).
+pub fn halo(c: Cmd) -> Vec4i {
+    let r = rects(c)[0];
+    Vec4 { x: r[0], y: r[1], z: r[2], w: r[3] }
+}
 fn cut(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
@@ -205,9 +228,10 @@ impl Layers {
         let win = arr(c.win);
         let mut lv = l.lv;
         let mut fits = !l.fresh && top == l.top;
+        let need = rects(c);
         for k in 0..LEVELS {
             let dims = [0, 0, x::bd_dim(fw, k as u32), x::bd_dim(fh, k as u32)];
-            let r = cut(arr(x::bd_rect(c, k as u32)), dims);
+            let r = cut(need[k], dims);
             lv[k].r = if r[0] < r[2] && r[1] < r[3] { r } else { [0; 4] };
             fits &= (lv[k].r[2] - lv[k].r[0]) as u32 <= lv[k].cw && (lv[k].r[3] - lv[k].r[1]) as u32 <= lv[k].ch;
         }
@@ -233,12 +257,13 @@ impl Layers {
                 }
             }
         } else {
-            // new storage: a slack of two pixels per side so that a move's rounding does not re-allocate
+            // new storage, with slack (a tile at level 0, a few pixels above): a move changes a window's
+            // size by rounding only, and must not re-allocate
             let old: usize = l.lv.iter().map(|v| (v.cw * v.ch) as usize).sum();
             self.live -= old.min(self.live);
             for k in 0..LEVELS {
                 let (w, h) = ((lv[k].r[2] - lv[k].r[0]) as u32, (lv[k].r[3] - lv[k].r[1]) as u32);
-                (lv[k].cw, lv[k].ch) = if w == 0 || k as u32 > top { (1, 1) } else { (w + 4, h + 4) };
+                (lv[k].cw, lv[k].ch) = if w == 0 || k as u32 > top { (1, 1) } else { (w + if k == 0 { 32 } else { 4 }, h + if k == 0 { 32 } else { 4 }) };
                 lv[k].base = self.used as u32;
                 self.used += (lv[k].cw * lv[k].ch) as usize;
                 self.live += (lv[k].cw * lv[k].ch) as usize;
@@ -257,7 +282,7 @@ impl Layers {
         (self.used, self.live) = (0, 0);
         for l in self.list.iter_mut() {
             for v in l.lv.iter_mut() {
-                (v.cw, v.ch) = if v.empty() { (1, 1) } else { ((v.r[2] - v.r[0]) as u32 + 4, (v.r[3] - v.r[1]) as u32 + 4) };
+                (v.cw, v.ch) = if v.empty() { (1, 1) } else { ((v.r[2] - v.r[0]) as u32 + 32, (v.r[3] - v.r[1]) as u32 + 32) };
                 v.base = self.used as u32;
                 self.used += (v.cw * v.ch) as usize;
             }

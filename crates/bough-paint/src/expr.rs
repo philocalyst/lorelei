@@ -180,7 +180,9 @@ where
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
         let now = cx.u.w[U_TIME];
-        let mut t = anim_end(self.t0.eval(cx), self.dur.eval(cx), self.now.eval(cx));
+        // (a spring of no duration is at rest wherever the clock is)
+        let dur = self.dur.eval(cx);
+        let mut t = if dur == 0 { 0 } else { anim_end(self.t0.eval(cx), dur, self.now.eval(cx)) };
         for o in [self.t0.until(cx), self.dur.until(cx), self.to.until(cx), self.a0.until(cx), self.b0.until(cx), self.decay.until(cx), self.omega.until(cx)] {
             t = bough_expr::latest(t, o, now);
         }

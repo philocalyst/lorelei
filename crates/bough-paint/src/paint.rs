@@ -658,7 +658,7 @@ impl Sink for WinSink {
     #[inline(always)]
     fn backdrop(&mut self, c: Cmd) {
         self.add(c);
-        let h = x::bd_rect(c, 0);
+        let h = crate::layer::halo(c);
         self.1 = Vec4 { x: h.x.clamp(-32768, 32767), y: h.y.clamp(-32768, 32767), z: h.z.clamp(-32768, 32767), w: h.w.clamp(-32768, 32767) };
     }
     #[inline(always)]

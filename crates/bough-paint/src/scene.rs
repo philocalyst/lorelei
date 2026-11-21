@@ -463,7 +463,11 @@ impl Bins {
         self.floor.resize(nt, 0);
         let span = |w: &[i16; 4]| ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(tx), ((w[3].max(0) as usize + 31) >> 5).min(ty));
         for z in 0..win.len() {
-            let (x0, y0, x1, y1) = span(&bin(z));
+            let b = bin(z);
+            if b[0] >= b[2] {
+                continue;
+            }
+            let (x0, y0, x1, y1) = span(&b);
             let c = cover[z];
             let covers = cut && c[0] < c[2];
             let lz = is_lay(z);
@@ -493,7 +497,11 @@ impl Bins {
         self.list.clear();
         self.list.resize(at as usize, 0);
         for z in 0..win.len() {
-            let (x0, y0, x1, y1) = span(&bin(z));
+            let b = bin(z);
+            if b[0] >= b[2] {
+                continue;
+            }
+            let (x0, y0, x1, y1) = span(&b);
             for y in y0..y1 {
                 for x in x0..x1 {
                     let t = y * tx + x;
@@ -806,6 +814,8 @@ impl Scene {
         fs.mask = mask;
         if first {
             self.damage.all();
+            // a full redraw recomputes every layer whole
+            self.layers.list.iter_mut().for_each(|l| l.fresh = true);
         }
         let mut moved = first;
         let mut touched = std::mem::take(&mut self.touched);
