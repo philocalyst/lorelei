@@ -2474,3 +2474,76 @@ fn xbutton(b: crate::input::Button) -> bough_x::event::Button {
         crate::input::Button::Middle => bough_x::event::Button::Middle,
     }
 }
+
+#[cfg(test)]
+mod card5_safety {
+    use super::*;
+
+    #[test]
+    fn spec_same_respects_all_value_bytes() {
+        use crate::layout::{Align, Dim, Justify, Spec};
+        let mut a = Spec::new(true, false);
+        a.w = Dim::Pt(f32::from_bits(0x7fc0_0001));
+        a.h = Dim::Pct(0.5);
+        a.items = Some(Align::Baseline);
+        a.justify = Some(Justify::SpaceEvenly);
+        let mut b = a;
+        assert!(spec_same(&a, &b));
+        b.w = Dim::Pt(f32::from_bits(0x7fc0_0002));
+        assert!(!spec_same(&a, &b));
+        b = a;
+        b.justify = None;
+        assert!(!spec_same(&a, &b));
+        b = a;
+        b.pad[3] = -0.0;
+        assert!(!spec_same(&a, &b));
+        assert_eq!(spec_same(&a, &b), a.bytes() == b.bytes());
+    }
+
+    #[test]
+    fn list_callbacks_use_the_current_owner_and_field_type() {
+        #[repr(C)]
+        struct Owner {
+            untouched: List<u8>,
+            items: List<u32>,
+        }
+        let mut owner = Owner {
+            untouched: List::new(),
+            items: List::new(),
+        };
+        owner.items.push(11);
+        let offset = crate::sig!(owner: Owner => items).off as usize;
+        assert_ne!(offset, 0);
+        // SAFETY: sig! established that the offset names Owner::items. This is its exclusive owner.
+        unsafe { list_end::<u32>(std::ptr::from_mut(&mut owner).cast::<u8>().add(offset), 7) };
+        owner.items.insert(0, 22);
+        *owner.items.edit(1) = 33;
+        let moved = owner;
+        let mut journal = Journal::by_item();
+        journal.win.store(2, core::sync::atomic::Ordering::Relaxed);
+        let mut pubs = crate::changed::Pubs::default();
+        // SAFETY: use the current shared owner and the same field offset and type. The callbacks borrow it
+        // only during each call, after the move.
+        let len = unsafe {
+            let field = std::ptr::from_ref(&moved).cast::<u8>().add(offset);
+            list_ops::<u32>(field, &mut journal);
+            list_pubs::<u32>(field, 1, &mut pubs)
+        };
+        assert_eq!(len, 2);
+        assert_eq!(&journal.log[..2], &[Edit::Insert(0), Edit::Update(1)]);
+        let changed = crate::changed::Changed {
+            pubs: &pubs,
+            readers: &[],
+            _v: PhantomData,
+        };
+        assert!(matches!(
+            changed.list(crate::sig!(moved: Owner => items)),
+            Some([crate::list::Op::Edit { .. }])
+        ));
+        assert!(
+            changed
+                .list(crate::sig!(moved: Owner => untouched))
+                .is_none()
+        );
+    }
+}

@@ -774,11 +774,14 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
             .rows
             .get(1)
             .map_or(self.st.sites.len(), |r| r.1 as usize);
-        assert!(p0 + k < end, "a record past the fixed row");
-        let site = self.st.sites[p0 + k];
+        let site = self.st.sites[p0..end][k];
         assert!(
             site.col != u32::MAX && self.st.cols[site.col as usize].arch == TypeId::of::<A>(),
             "a record of another type than the row's column"
+        );
+        assert!(
+            self.st.cols[site.col as usize].rec_init(site.base),
+            "an unwritten leaf"
         );
         // SAFETY: the site is record `k` of this store's first row (in range, above), not a hole, and its
         // column was made for archetype `A` (checked above); slot 0 is the fixed row's slot.
@@ -1788,7 +1791,7 @@ fn list_plan(
             if st.row_stamp.len() != st.cap as usize {
                 st.row_stamp.resize(st.cap as usize, 0);
             }
-            st.stamp = st.stamp.wrapping_add(1);
+            st.stamp = st.stamp.checked_add(1).expect("row stamp exhausted");
             let slot = st.slot_of(r) as usize;
             st.row_stamp[slot] = st.stamp;
         } else if all | upd[..nupd].contains(&r) {

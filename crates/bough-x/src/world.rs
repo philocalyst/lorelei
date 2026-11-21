@@ -43,7 +43,7 @@ pub struct Place {
     packed: u32,
     /// The stamp of the place's slot when the token was made (`Store::row_stamp`): the token names that
     /// record, not whatever row a list later puts in its slot (review TR1-02).
-    stamp: u32,
+    stamp: u64,
 }
 impl Place {
     pub fn packed(self) -> u32 {
@@ -112,13 +112,26 @@ struct Fast {
 }
 
 /// A hovered record as it was entered (`World::hov_kept`): its handler face, and where its record and its
-/// captures are copied in `hov_bytes` (in 16-byte units; `u32::MAX`: not kept, the record is over-aligned
-/// or was never written).
+/// captures are copied in `hov_bytes` (in 16-byte units). For an over-aligned copy, `rec == u32::MAX`
+/// and `caps` identifies the owner in `hov_aligned`.
 #[derive(Clone, Copy)]
 struct Kept {
     ons: Option<crate::store::Hov>,
     rec: u32,
     caps: u32,
+}
+
+/// Owned storage for the rare record or capture whose alignment exceeds the inline arena's.
+struct AlignedHover {
+    ptr: core::ptr::NonNull<u8>,
+    layout: std::alloc::Layout,
+    captures: usize,
+}
+impl Drop for AlignedHover {
+    fn drop(&mut self) {
+        // SAFETY: this allocation belongs to this owner, with exactly this layout.
+        unsafe { std::alloc::dealloc(self.ptr.as_ptr(), self.layout) };
+    }
 }
 
 /// The records of every column keyed by one block word, by key: `(key, column in the table, record)`, sorted.
@@ -234,12 +247,13 @@ pub struct World<V, B> {
     /// A typed world may dispatch only after mounting its view.
     mounted: bool,
     /// The row each hovered place showed when it was entered (a list's slot shows another row after a scroll).
-    hov_what: Vec<u32>,
+    hov_what: Vec<u64>,
     /// A copy of each hovered record and its handler's captures as they were when the place was entered, with
     /// the handler face they belong to: what a leave is delivered with when the slot has since been given to
     /// another row (the item that was entered hears the leave, not the row now in its slot).
     hov_kept: Vec<Kept>,
-    hov_bytes: Vec<u128>,
+    hov_bytes: Vec<core::mem::MaybeUninit<u128>>,
+    hov_aligned: Vec<AlignedHover>,
     /// Scratch for the event path, reserved once: an event allocates nothing.
     buf: Vec<u32>,
     pool: Vec<Vec<u32>>,
@@ -296,6 +310,7 @@ impl<V: View, B: Backend> World<V, B> {
             hov_what: Vec::with_capacity(64),
             hov_kept: Vec::with_capacity(64),
             hov_bytes: Vec::with_capacity(64),
+            hov_aligned: Vec::new(),
             hov: Vec::with_capacity(64),
             held: None,
             focus: None,
@@ -1448,9 +1463,7 @@ impl<V: View, B: Backend> World<V, B> {
                 self.hov.remove(i);
                 self.hov_what.remove(i);
                 self.hov_kept.remove(i);
-                if let Some(o) = k.ons
-                    && k.rec != u32::MAX
-                {
+                if let Some(o) = k.ons {
                     let e = Event {
                         kind: kind::HOVER,
                         ev: Ev {
@@ -1459,17 +1472,23 @@ impl<V: View, B: Backend> World<V, B> {
                         },
                         text: "",
                     };
-                    let rec = self.hov_bytes[k.rec as usize..].as_ptr() as *const u8;
-                    let caps = if o.caps == 0 {
-                        core::ptr::without_provenance(o.caps_align as usize)
+                    let (rec, caps) = if k.rec == u32::MAX {
+                        let saved = &self.hov_aligned[k.caps as usize];
+                        let rec = saved.ptr.as_ptr().cast_const();
+                        // SAFETY: the capture offset is aligned and within this saved allocation.
+                        let caps = unsafe { rec.add(saved.captures) };
+                        (rec, caps)
                     } else {
-                        self.hov_bytes[k.caps as usize..].as_ptr() as *const u8
+                        let rec = self.hov_bytes[k.rec as usize..].as_ptr().cast::<u8>();
+                        let caps = if o.caps == 0 {
+                            core::ptr::without_provenance(o.caps_align as usize)
+                        } else {
+                            self.hov_bytes[k.caps as usize..].as_ptr().cast::<u8>()
+                        };
+                        (rec, caps)
                     };
-                    // SAFETY: `o` is the handler face of the column the place was in when it was entered
-                    // (`keep`), instantiated for that column's record and handler types and for this
-                    // world's `V`. `rec` and `caps` point at bitwise copies of that place's record (it was
-                    // initialised: `keep` checked) and of its captures (both `Copy`), taken then, in storage
-                    // aligned to 16 (`keep` kept only what that suffices for).
+                    // SAFETY: these are the kept, aligned copies for this handler and view type.
+                    // The handler only reads the initialized fields through their original types.
                     unsafe { (o.call)(v as *mut V as *mut (), caps, rec, &e) };
                 }
             }
@@ -1487,6 +1506,7 @@ impl<V: View, B: Backend> World<V, B> {
         self.hov_what.clear();
         self.hov_kept.clear();
         self.hov_bytes.clear();
+        self.hov_aligned.clear();
         for i in 0..self.hov.len() {
             let r = self.stamp_at(self.hov[i]);
             self.hov_what.push(r);
@@ -1541,16 +1561,20 @@ impl<V: View, B: Backend> World<V, B> {
         self.done(old);
         out
     }
-    /// The stamp of the slot a place is in (`Store::row_stamp`; 0 in a fixed shape, `NONE` for no record).
-    fn stamp_at(&self, place: u32) -> u32 {
-        self.at_place(place).map_or(NONE, |(st, _, rec)| {
-            st.row_stamp
-                .get((rec % st.cap) as usize)
-                .copied()
-                .unwrap_or(0)
-        })
+    /// Identity of the column allocation and of the item occupying this slot.
+    fn stamp_at(&self, place: u32) -> u64 {
+        let Some((st, col, rec)) = self.at_place(place) else {
+            return 0;
+        };
+        let stamp = st
+            .row_stamp
+            .get((rec & (st.cap - 1)) as usize)
+            .copied()
+            .unwrap_or(0);
+        (u64::from(st.cols[col as usize].id) << 32) | u64::from(stamp)
     }
-    /// Keep a copy of the record at `place` and of its captures (`hov_kept`, `hov_bytes`).
+
+    /// Keep the initialized record and captures at `place`, including any padding in their storage.
     fn keep(&mut self, place: u32) {
         let mut k = Kept {
             ons: None,
@@ -1559,36 +1583,52 @@ impl<V: View, B: Backend> World<V, B> {
         };
         if let Some((st, col, rec)) = self.at_place(place) {
             let c = &st.cols[col as usize];
-            if let Some(o) = c.hover
-                && c.rec_init(rec)
-                && c.desc.rec_align <= 16
-                && o.caps_align <= 16
-            {
-                let (rs, cs) = (c.desc.rec_size, o.caps as usize);
-                let (rp, cp) = (c.rec_ptr(rec), c.caps_ptr(rec));
-                let (r0, c0) = (
-                    self.hov_bytes.len(),
-                    self.hov_bytes.len() + rs.div_ceil(16).max(1),
-                );
-                let end = c0 + cs.div_ceil(16);
-                let mut bytes = core::mem::take(&mut self.hov_bytes);
-                bytes.resize(end, 0);
-                // SAFETY: `rp` is the initialised record `rec` of the column (`rs` bytes of it, in bounds
-                // of its page); `cp` its captures (`cs` bytes of the lane, when there are any). The
-                // destinations are `rs` and `cs` bytes inside the buffer just grown, and do not overlap
-                // the sources (another allocation). A byte copy carries padding as it is.
-                unsafe {
-                    core::ptr::copy_nonoverlapping(rp, bytes[r0..].as_mut_ptr() as *mut u8, rs);
-                    if cs != 0 {
-                        core::ptr::copy_nonoverlapping(cp, bytes[c0..].as_mut_ptr() as *mut u8, cs);
+            if let Some((handler, captures, record)) = c.handler_data(rec, kind::HOVER) {
+                let (rsize, csize) = (c.desc.rec_size, handler.caps as usize);
+                let align = c.desc.rec_align.max(handler.caps_align as usize);
+                k.ons = Some(handler);
+                if align <= align_of::<u128>() {
+                    let r0 = self.hov_bytes.len();
+                    let c0 = r0 + rsize.div_ceil(16).max(1);
+                    let mut bytes = core::mem::take(&mut self.hov_bytes);
+                    bytes.resize(c0 + csize.div_ceil(16), core::mem::MaybeUninit::uninit());
+                    // SAFETY: `handler_data` admitted the initialized lanes. The arena stores
+                    // MaybeUninit words so their padding can be copied and survive reallocation.
+                    unsafe {
+                        record.copy_to_nonoverlapping(bytes[r0..].as_mut_ptr().cast(), rsize);
+                        if csize != 0 {
+                            captures.copy_to_nonoverlapping(bytes[c0..].as_mut_ptr().cast(), csize);
+                        }
                     }
+                    self.hov_bytes = bytes;
+                    k.rec = u32::try_from(r0).expect("hover record arena exhausted");
+                    k.caps = u32::try_from(c0).expect("hover capture arena exhausted");
+                } else {
+                    let offset = rsize.max(1).next_multiple_of(align);
+                    let size = offset
+                        .checked_add(csize.max(1))
+                        .expect("hover copy too large");
+                    let layout = std::alloc::Layout::from_size_align(size, align)
+                        .expect("hover copy layout");
+                    // SAFETY: `layout` is nonempty. Copy the admitted lanes into disjoint aligned
+                    // ranges. AlignedHover owns the untyped bytes and releases them with this layout.
+                    let saved = unsafe {
+                        let ptr = core::ptr::NonNull::new(std::alloc::alloc(layout))
+                            .unwrap_or_else(|| std::alloc::handle_alloc_error(layout));
+                        record.copy_to_nonoverlapping(ptr.as_ptr(), rsize);
+                        if csize != 0 {
+                            captures.copy_to_nonoverlapping(ptr.as_ptr().add(offset), csize);
+                        }
+                        AlignedHover {
+                            ptr,
+                            layout,
+                            captures: offset,
+                        }
+                    };
+                    k.caps = u32::try_from(self.hov_aligned.len())
+                        .expect("hover capture arena exhausted");
+                    self.hov_aligned.push(saved);
                 }
-                self.hov_bytes = bytes;
-                k = Kept {
-                    ons: Some(o),
-                    rec: r0 as u32,
-                    caps: c0 as u32,
-                };
             }
         }
         self.hov_kept.push(k);

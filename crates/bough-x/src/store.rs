@@ -1288,7 +1288,9 @@ impl Store {
                 k: 0,
                 reads: d.reads,
                 delta: d.delta,
-                id: COL_ID.fetch_add(1, Ordering::Relaxed),
+                id: COL_ID
+                    .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+                    .expect("column identity exhausted"),
                 key,
                 arch,
                 desc: d,
