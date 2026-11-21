@@ -51,6 +51,24 @@ The rendered fixture measured **12.30 maximum and 4.62 RMS byte error** for the 
 
 At 640×400 the four 112×76 σ=6 panels require **502,960 bytes** for their live BGRA8 level pixels. Toroidal padding and inactive level sentinels bring the first-update pool reservation to **698,688 bytes**. Individual panels reserve **135,040–208,160 bytes**. The allocator reported the same capacity as its 698,688-byte live pool. The counts exclude metadata and any separate Metal copy. [Source-derived allocation ledger](../../../../bench/results/effects/r3/four-pane-source-ledger.tsv)
 
+## Staged paint capability at the pin
+
+The adapter drives the same nine cell scripts at 200, 1,000 and 5,000 cards. These are source admissions. The pinned build and pixel gates determine whether each row receives timings.
+
+| Cell | Coverage | Boundary |
+|---|---|---|
+| Startup | Mount and first offscreen frame. Fresh-process repeats measure the in-child interval and process wall time. | CPU1. |
+| Idle | Fixed shader clock, zero changed records, tile repairs, layer repairs, and active paint records. | The headless harness drives virtual ticks. |
+| One | One translating spring among dense rounded, translucent gradient cards and shadows. The trace retargets at tick 12. | The clock-only test isolates the foreground spring. |
+| Many | Staggered width, translation, color and opacity, with springs on alternating records. | Staged paint expressions apply geometry and color directly. |
+| Hover | Uniform selects the top card under 20 pointer positions and their reverse. | Manual hit target selection. |
+| Theme | Alternate shared palette words with preserved alpha and order. | Direct paint uniform update. |
+| Scroll | Pan the ten-column strip by 11 pixels per tick and reverse. | No admitted virtualization or mounted-row limit. |
+| Resize | Surface replacement preserves the replay inputs used for a remount diagnostic. | Retained resize is not expressible. `Scene` has a fixed surface. |
+| Glass over video | Four rounded backdrop panels, staged shader paints and synthetic 256×144 NV12, advanced every fourth tick. A panel moves each tick. | Synthetic generation and repair have separate counters. The path has no codec and no group effect. |
+
+The seam exposes solid and gradient paints, shadow with geometry-derived spread, rectangle clips, and two built-in shader paints. The frozen PNG, cubic and even-odd path, rounded clip, alpha mask, isolated group filters and drop-shadow of a subtree's alpha require additional primitives. Author registration of all three frozen shaders is unavailable. The headless adapter uses CPU1. The stock paint replay and independent layered test cover Metal separately.
+
 ## Dense layer work
 
 The published `effects 600 dense` script advances 38 shader records along with the one spring. The published 3.19 G instructions belong to that combined workload. The independent profile repeats it with the same script and separately disables endless shader motion. The profile distinguishes the rebin, event reach, prefix selection and shading, pyramid downsample, and final output phases. The patch applies to the pinned source and the instrumented executable has built. Its grouped phase table preserves the rounding residual. The corrected instruction means and stock per-frame medians have different aggregation. The 300-card smoke test records a corrected mean of **1,999,554 instructions** and a median of **2,001,679** with instrumentation disabled. Bins account for **285,477** instructions in the bracket. The six-frame trace covers four dirty tiles each tick. The full size sweep uses longer runs to cover more of the spring trajectory. [Smoke receipt](../../../../bench/results/effects/r3/profile-smoke) The timing runner records early exits for the larger dense reproductions. [Profiler patch and commands](../../../../comparisons/bough-fx-bench/scripts/paint-profile)
