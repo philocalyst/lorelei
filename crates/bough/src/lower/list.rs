@@ -22,6 +22,35 @@ use std::collections::HashMap;
 
 pub(crate) type ListKey = (TypeId, u32, u64);
 
+/// A list field reached through the same owner path as its row handlers.
+pub(crate) struct DisplayedList {
+    pub owner: u32,
+    pub offset: u32,
+    pub display: fn(&mut dyn Any, u32, bool),
+}
+
+fn display_list<V: 'static, T: 'static>(owner: &mut dyn Any, offset: u32, on: bool) {
+    let Some(owner) = owner.downcast_mut::<V>() else {
+        return;
+    };
+    // SAFETY: the entry is installed by lower_list for the offset of a proven List<T> field of V.
+    // The owner path supplied a live, exclusively borrowed V.
+    let list = unsafe {
+        &mut *(std::ptr::from_mut(owner)
+            .cast::<u8>()
+            .add(offset as usize)
+            .cast::<List<T>>())
+    };
+    if on {
+        // The lowered route has no wire chain. QUEUED is nonzero for List::displayed and prevents
+        // the legacy queue from interpreting this display marker as a wire index.
+        list.head().set(crate::signal::QUEUED);
+    } else if list.head().get() == crate::signal::QUEUED {
+        list.end_turn();
+        list.head().set(0);
+    }
+}
+
 /// What a list keeps between descriptions: measured row heights by slot index (device pixels; 0: not measured).
 #[derive(Default)]
 pub struct ListState {
@@ -105,6 +134,18 @@ pub(crate) fn lower_list<V: 'static, T: 'static>(
     f: for<'c, 'a> fn(&T, &mut Lower<'c, 'a, T>),
 ) {
     let core = &mut *l.core;
+    if let Some(displayed) = &mut core.displayed_lists {
+        if !displayed
+            .iter()
+            .any(|list| list.owner == core.owner && list.offset == off)
+        {
+            displayed.push(DisplayedList {
+                owner: core.owner,
+                offset: off,
+                display: display_list::<V, T>,
+            });
+        }
+    }
     let key: ListKey = (TypeId::of::<V>(), off, core.owner_key);
     let s = core.scale;
     let n = list.len();

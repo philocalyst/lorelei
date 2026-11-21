@@ -132,6 +132,24 @@ fn held_press_across_resize_releases_on_the_same_row() {
 }
 
 #[test]
+fn displayed_list_releases_removed_slots_at_turn_end() {
+    let mut a = new(Rows::new(20), 80., 144., 1., 2);
+    let old = a.view().rows.slot(0).unwrap();
+    a.turn(|v| {
+        v.rows.remove(0);
+        let replacement = v.rows.insert(0, Item::new(100));
+        assert_ne!(old.index(), replacement.index());
+        assert!(v.rows.get_slot(old).is_none());
+    });
+    a.turn(|v| {
+        let recycled = v.rows.insert(0, Item::new(101));
+        assert_eq!(old.index(), recycled.index());
+        assert_ne!(old, recycled);
+    });
+    a.check().unwrap();
+}
+
+#[test]
 #[ignore = "Card 3 currently retargets an ordinal held over a recycled slot"]
 fn removed_row_press_is_not_delivered_to_its_replacement() {
     let mut a = new(Rows::new(20), 80., 144., 1., 2);

@@ -87,6 +87,7 @@ pub struct App<V: View> {
     owners: Vec<Owner>,
     refused: Vec<&'static str>,
     lists: super::list::Lists,
+    displayed_lists: Vec<super::list::DisplayedList>,
     lay: super::LayMemo,
     size_pt: (f32, f32),
     scale: f32,
@@ -138,6 +139,7 @@ impl<V: View> App<V> {
             owners: Vec::new(),
             refused: Vec::new(),
             lists: Default::default(),
+            displayed_lists: Vec::new(),
             lay: Default::default(),
             size_pt: (cfg.width_pt, cfg.height_pt),
             scale: cfg.scale,
@@ -174,6 +176,14 @@ impl<V: View> App<V> {
         self.next = 0;
         self.shown = 0;
     }
+    fn display_lists(&mut self, on: bool) {
+        for entry in &self.displayed_lists {
+            if let Some(owner) = resolve(&self.owners, entry.owner, &mut self.lv.v) {
+                (entry.display)(owner, entry.offset, on);
+            }
+        }
+    }
+
     /// Run the view and lay it out: the scene, the handlers, the hit list. No world pass.
     ///
     /// A virtual list places its rows from heights measured by earlier descriptions. If this one measured a
@@ -189,12 +199,16 @@ impl<V: View> App<V> {
     }
     /// One description. Returns whether a list row was measured at a height the description did not assume.
     fn describe_once(&mut self) -> bool {
+        self.display_lists(false);
+        let mut displayed_lists = std::mem::take(&mut self.displayed_lists);
+        displayed_lists.clear();
         count(|c| c.describe += 1);
         self.stats.describes += 1;
         let (w, h) = self.px();
         let (mut text, mut images) = (self.text.borrow_mut(), self.images.borrow_mut());
         text.begin_pass();
         let mut core = Core::new(self.scale, (w, h), &self.lists, &mut text, &mut images);
+        core.displayed_lists = Some(displayed_lists);
         let t0 = if self.stats.profile {
             bough_sys::perf::thread_instructions()
         } else {
@@ -221,6 +235,7 @@ impl<V: View> App<V> {
             handlers,
             owners,
             refused,
+            displayed_lists,
             rows,
             ..
         } = core;
@@ -237,6 +252,9 @@ impl<V: View> App<V> {
         }
         (self.docs, self.handlers, self.owners, self.refused) = (docs, handlers, owners, refused);
         *self.lv.scene.borrow_mut() = scene;
+        drop((text, images));
+        self.displayed_lists = displayed_lists.unwrap_or_default();
+        self.display_lists(true);
         again
     }
     /// After a description: who is under the pointer now, and their hover paints into the scene.

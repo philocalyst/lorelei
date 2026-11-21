@@ -126,6 +126,7 @@ pub struct Core<'a> {
     /// The window in device pixels.
     pub(crate) win: (i32, i32),
     pub(crate) lists: &'a list::Lists,
+    pub(crate) displayed_lists: Option<Vec<list::DisplayedList>>,
     /// The list rows this description materialised.
     pub(crate) rows: Vec<list::RowRec>,
     pub(crate) text: &'a mut text::TextSys,
@@ -225,6 +226,7 @@ impl<'a> Core<'a> {
             owner_key: 0,
             win,
             lists,
+            displayed_lists: None,
             rows: Vec::new(),
             text,
             images,
