@@ -119,6 +119,15 @@ Not all of Card 3: the prelude exports above that are refused are not lowered; e
 no twin; the runner scenarios and the five heavy scenes are not ported; nothing was measured alone on a quiet
 host or by a second party. `bough::raw::App` remains the legacy runtime and every legacy test still runs on it.
 
+## Whole-workspace suite
+
+`cargo test --release --workspace --no-fail-fast -j 8` on this branch: **460 passed, 6 failed, 3 ignored**
+(`bench/results/card3/workspace-release-tests-20261121.txt`). The six failures are the six of the baseline run at
+`71ee3be0aa` on this host (437 passed, 6 failed): `bough-app-sketch-code` `code.rs` x3 (a missing sample file),
+`bough-text` `parley_twin::random_mixed`, `bough-x` `text::the_glyph_memo_is_collected_and_frames_stay_exact`,
+`bough-zgui` `drawing::faces_and_display_text_draw_their_own_font`. None is in code this branch changed in
+behaviour; none was fixed here. The 23 additional passes are this branch's tests.
+
 ## Not verified
 
 * The compile thresholds alone at `-j 3` (run at `-j 8` under load 17).
