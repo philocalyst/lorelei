@@ -1043,6 +1043,7 @@ pub struct Store {
     pub(crate) world: Option<crate::world::WorldId>,
     pub cols: Vec<RawCol>,
     pub sites: Vec<Site>,
+    pub(crate) has_holes: bool,
     pub subs: StoreChildren,
     /// Paint order: columns and child stores in the order the view first described them.
     pub order: Vec<Pass>,
@@ -1128,6 +1129,7 @@ impl Store {
             world: None,
             cols: Vec::new(),
             sites: Vec::new(),
+            has_holes: false,
             subs: StoreChildren::default(),
             order: Vec::new(),
             cap,
@@ -1249,6 +1251,7 @@ impl Store {
     /// so the positions of a row and of its layout count alike.
     #[cold]
     pub(crate) fn hole(&mut self) {
+        self.has_holes = true;
         self.sites.push(Site {
             page: core::ptr::null_mut(),
             page_size: 0,

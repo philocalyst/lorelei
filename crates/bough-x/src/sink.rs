@@ -1364,13 +1364,20 @@ fn list_plan(
             // compared, and the row is damaged as a whole.
             if fresh {
                 let at = (l.x, l.y + r as i32 * l.row_h);
-                for (s, t) in st.sites[..leaves].iter().zip(l.shape) {
-                    if s.col == u32::MAX {
-                        // a hole (a scrolled box in the row) has no page (soundness review S13)
-                        continue;
+                let sites = &st.sites[..leaves];
+                if st.has_holes {
+                    for (s, t) in sites.iter().zip(l.shape) {
+                        if s.col != u32::MAX {
+                            // SAFETY: a record's site of this list; the slot is under `cap`.
+                            unsafe { s.set_rect(r & mask, t.shift(at)) }
+                        }
                     }
-                    // SAFETY: a record's site of this list; the slot is under `cap`.
-                    unsafe { s.set_rect(r & mask, t.shift(at)) }
+                } else {
+                    for (s, t) in sites.iter().zip(l.shape) {
+                        // SAFETY: creating a hole sets `has_holes`, so all these sites have pages.
+                        // `r & mask` is under this store's capacity.
+                        unsafe { s.set_rect(r & mask, t.shift(at)) }
+                    }
                 }
             }
             cx.tiles.mark(row_rect(r));
