@@ -1129,6 +1129,16 @@ fn list_new(parent: &mut Store, l: &List<'_>) {
     parent.bump_structure();
 }
 
+#[inline(always)]
+fn same_template(kept: &[Rect], current: &[Rect]) -> bool {
+    kept.len() == current.len()
+        && kept.iter().zip(current).all(|(a, b)| {
+            let a = [a.x0, a.y0, a.x1, a.y1];
+            let b = [b.x0, b.y0, b.x1, b.y1];
+            a == b
+        })
+}
+
 /// Decide what a list pass does, and do everything that does not need the row's type: replay the relation's
 /// journal, move the window, lay out rows that entered (their rects are the shape's, shifted), damage rows that
 /// entered, left or are other rows than before, and leave in `st.plan` the rows whose operands the caller must
@@ -1186,11 +1196,10 @@ fn list_plan(
         }
         .and(space.clip)
     };
-    // The layout is the same if it is the same slice (the usual case: one layout per shape, kept by whoever
-    // computed it); only a different slice is compared by content.
-    // The layout is compared by content: a slice kept by its owner may have been written in place.
+    // The owner may mutate the template in place. Compare whole rects even
+    // if the template still lives at the address used on the last pass.
     st.tmpl_at = l.shape.as_ptr() as usize;
-    if st.geo != geo || st.tmpl != l.shape {
+    if st.geo != geo || !same_template(&st.tmpl, l.shape) {
         // the layout of the rows changed: every exposed row is laid out again
         st.geo = geo;
         st.tmpl.clear();

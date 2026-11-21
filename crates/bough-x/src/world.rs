@@ -560,11 +560,12 @@ impl<V: View, B: Backend> World<V, B> {
         if (ch == 0) & (epoch == self.epoch) {
             return;
         }
-        self.changed(v, ch, epoch);
-        self.learn(v);
+        if self.changed(v, ch, epoch) {
+            self.learn(v);
+        }
     }
     #[inline(never)]
-    fn changed(&mut self, v: &V, ch: u64, epoch: u32) {
+    fn changed(&mut self, v: &V, ch: u64, epoch: u32) -> bool {
         let u = &self.block(v);
         if ch != 0 {
             self.delta(u, ch);
@@ -595,8 +596,14 @@ impl<V: View, B: Backend> World<V, B> {
             }
             // windows may have moved: the focused row's place (or that it has none)
             self.refocus();
-        } else if ch != 0 {
-            self.shown = *u;
+            // Only a description can change the set of observed relations or
+            // the descriptors. Uniform-only delta stages neither.
+            true
+        } else {
+            if ch != 0 {
+                self.shown = *u;
+            }
+            false
         }
     }
 
