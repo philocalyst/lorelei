@@ -1,0 +1,48 @@
+{
+  "key": "F5",
+  "cycles": 10,
+  "before": {
+    "gpu": null,
+    "process": {
+      "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario table --rows 1000 --variant coarse",
+      "cpu_ns_total": 102256053,
+      "cpu_percent": 0.0,
+      "ctx_switches_total": 293,
+      "gpu_busy_ns_total": null,
+      "gpu_mem_bytes": null,
+      "gpu_source": null,
+      "gpu_util_percent": null,
+      "hwm_bytes": 11018240,
+      "pid": 61875,
+      "private_bytes": 4419584,
+      "processes": 1,
+      "pss_bytes": 7046144,
+      "rss_bytes": 11018240,
+      "swap_bytes": 0,
+      "threads": 1,
+      "time": 1768852533103
+    }
+  },
+  "after": {
+    "gpu": null,
+    "process": {
+      "command": "/home/rmccrar6.guest/src/gui-bench/apps/bough-x/target/release/bough-bench --scenario table --rows 1000 --variant coarse",
+      "cpu_ns_total": 119740302,
+      "cpu_percent": 0.0,
+      "ctx_switches_total": 323,
+      "gpu_busy_ns_total": null,
+      "gpu_mem_bytes": null,
+      "gpu_source": null,
+      "gpu_util_percent": null,
+      "hwm_bytes": 11018240,
+      "pid": 61875,
+      "private_bytes": 4419584,
+      "processes": 1,
+      "pss_bytes": 7046144,
+      "rss_bytes": 11018240,
+      "swap_bytes": 0,
+      "threads": 1,
+      "time": 1770953812025
+    }
+  }
+}

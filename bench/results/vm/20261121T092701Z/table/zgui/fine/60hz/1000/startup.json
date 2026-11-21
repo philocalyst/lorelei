@@ -1,0 +1,15 @@
+{
+  "pid": 61920,
+  "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario table --rows 1000 --variant fine",
+  "spawned": 1771055516851,
+  "window": 1,
+  "connected_ms": 3.052513,
+  "first_surface_ms": 31.098362,
+  "toplevel_ms": 199.738293,
+  "first_buffer_ms": 192.474519,
+  "first_present_ms": 198.819066,
+  "visually_complete_ms": null,
+  "responsive_ms": null,
+  "first_input_latency_ms": null,
+  "exited_early": false
+}

@@ -1,0 +1,48 @@
+{
+  "key": "F5",
+  "cycles": 10,
+  "before": {
+    "gpu": null,
+    "process": {
+      "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario table --rows 1000 --variant fine",
+      "cpu_ns_total": 14403974539,
+      "cpu_percent": 0.0,
+      "ctx_switches_total": 10982,
+      "gpu_busy_ns_total": null,
+      "gpu_mem_bytes": null,
+      "gpu_source": null,
+      "gpu_util_percent": null,
+      "hwm_bytes": 312713216,
+      "pid": 61920,
+      "private_bytes": 297918464,
+      "processes": 1,
+      "pss_bytes": 304346112,
+      "rss_bytes": 312713216,
+      "swap_bytes": 0,
+      "threads": 33,
+      "time": 1798313060435
+    }
+  },
+  "after": {
+    "gpu": null,
+    "process": {
+      "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario table --rows 1000 --variant fine",
+      "cpu_ns_total": 16023806147,
+      "cpu_percent": 0.047910665772600405,
+      "ctx_switches_total": 11700,
+      "gpu_busy_ns_total": null,
+      "gpu_mem_bytes": null,
+      "gpu_source": null,
+      "gpu_util_percent": null,
+      "hwm_bytes": 312713216,
+      "pid": 61920,
+      "private_bytes": 297918464,
+      "processes": 1,
+      "pss_bytes": 304346112,
+      "rss_bytes": 312713216,
+      "swap_bytes": 0,
+      "threads": 33,
+      "time": 1800763749014
+    }
+  }
+}

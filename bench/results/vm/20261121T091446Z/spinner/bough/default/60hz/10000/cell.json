@@ -1,0 +1,25 @@
+{
+  "cell": {
+    "scenario": "spinner",
+    "framework": "bough",
+    "variant": "default",
+    "hz": 60.0,
+    "rows": 10000,
+    "updates": null
+  },
+  "dir": "spinner/bough/default/60hz/10000",
+  "args": [
+    "--scenario",
+    "spinner",
+    "--rows",
+    "10000"
+  ],
+  "done": [
+    "startup",
+    "layout",
+    "idle",
+    "pacing"
+  ],
+  "errors": [],
+  "skipped": []
+}

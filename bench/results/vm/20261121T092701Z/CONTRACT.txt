@@ -1,0 +1,20 @@
+run 20261121T092701Z
+guest Linux 7.3.0-9-generic aarch64
+guest-cpus 10
+guest-memory Mem:              15           0           3           0          11          14
+vm 
+host-macos 26.7.3
+host-cpu Apple M3 Ultra
+toolchain-lorelei rustc 1.101.0-nightly (5d8fec066 2026-10-16)
+toolchain-gui-bench nightly-2026-04-16 (its rust-toolchain.toml)
+renderer lavapipe (Mesa software Vulkan; VK_LOADER_DRIVERS_DISABLE is emptied so Mesa device-select does not hide it); bough CPU executor into wl_shm
+timing fixed 60 Hz (fakeland fake display default); no GB_TIMING patch
+pinning taskset -c 0-5 for the runner and every app it launches
+load-before 1.24 1.45 1.19 1/276 61328
+icd asahi_icd.json broadcom_icd.json freedreno_icd.json gfxstream_vk_icd.json intel_icd.json lvp_icd.json nouveau_icd.json panfrost_icd.json powervr_mesa_icd.json radeon_icd.json virtio_icd.json 
+runner-sha256 d29ac90f1e33a4fd566c562a5406ed3683881bb870aaff48fda2329908c194e9
+app-bough-sha256 4220b8c837451be50ea5acab867c8060164e5f2f1e6acc4852d599e42eaaee5a
+app-bough-x-sha256 8dbfd7501f89628f1d484a75490adf5e90e344c18b000c2dc65a40d7b14ff720
+app-zgui-sha256 63d22b5d81fa1dff3b2bf4f1cb1bfbc661e8dc885e2df879c0b8eae92cfdea36
+runner-exit 0
+load-after 0.42 0.71 0.92 1/278 62298

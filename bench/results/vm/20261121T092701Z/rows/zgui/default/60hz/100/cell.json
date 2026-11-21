@@ -1,0 +1,27 @@
+{
+  "cell": {
+    "scenario": "rows",
+    "framework": "zgui",
+    "variant": "default",
+    "hz": 60.0,
+    "rows": 100,
+    "updates": null
+  },
+  "dir": "rows/zgui/default/60hz/100",
+  "args": [
+    "--scenario",
+    "rows",
+    "--rows",
+    "100"
+  ],
+  "done": [
+    "startup",
+    "layout",
+    "idle",
+    "hover",
+    "hover-marks",
+    "scroll"
+  ],
+  "errors": [],
+  "skipped": []
+}

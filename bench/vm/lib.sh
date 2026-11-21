@@ -1,0 +1,26 @@
+#!/bin/sh
+# Shared settings for the VM jobs. Sourced by the other scripts; POSIX sh.
+set -eu
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+VM=${BENCH_VM:-benchvm}
+# Host reference checkouts (read-only): gui-bench and fakeland by zortax, and the two extra clones.
+REFS=${BENCH_REFS:-$HOME/work/reactivity/ref}
+EXTRA=${BENCH_EXTRA:-$HOME/work/ref-extra}
+# The lorelei checkout the VM is built from. Defaults to this worktree.
+WT=${BENCH_WORKTREE:-$ROOT}
+# Guest locations and the guest-only target directory (never a host target).
+U=$(id -un)
+SRC=/home/$U.guest/src
+TARGET=/home/$U.guest/targets/lorelei-release
+GUI=/home/$U.guest/src/gui-bench
+LOR=/home/$U.guest/src/lorelei
+
+# Run a command in the guest with cargo on PATH and the pinned wrapper cleared.
+guest() {
+  limactl shell "$VM" -- bash -lc "source \$HOME/.cargo/env; export RUSTC_WRAPPER=; $*"
+}
+
+# A one-line description of a binary: sha256 and bytes.
+digest() {
+  guest "sha256sum $1 2>/dev/null | cut -d' ' -f1; stat -c%s $1 2>/dev/null"
+}

@@ -1,0 +1,4385 @@
+{
+  "format_version": 1,
+  "name": "scroll-glide",
+  "preset": "scroll-glide",
+  "params": {
+    "alternate": true,
+    "axis": "vertical",
+    "content_factor": 1.0,
+    "downscale": 1,
+    "duration": "1s",
+    "iterations": 3,
+    "max_frames": 2000,
+    "position": {
+      "x": 640.0,
+      "y": 720.0
+    },
+    "rate_hz": 240.0,
+    "roi": {
+      "h": 512,
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "seed": null,
+    "settle": null,
+    "source": {
+      "kinetic": false,
+      "type": "finger"
+    },
+    "tail": "300ms",
+    "target": null,
+    "velocity": 800.0,
+    "warmup": 1,
+    "window_timeout": null
+  },
+  "environment": {
+    "gpu": "",
+    "driver": "",
+    "kernel": "7.3.0-9-generic",
+    "cpu": "",
+    "governor": "",
+    "renderer": "pixman",
+    "hostname": "lima-benchvm",
+    "fakeland_version": "0.1.0"
+  },
+  "config": {
+    "iterations": 3,
+    "warmup": 1,
+    "settle": "300ms",
+    "quiet": null,
+    "phase": null,
+    "seed": 0,
+    "variants": [],
+    "target": {
+      "type": "focused"
+    },
+    "analyzers": [
+      "scroll_smoothness",
+      "frame_pacing",
+      "input_coalescing",
+      "resources",
+      "frame_cost"
+    ],
+    "outputs": [
+      {
+        "id": 1,
+        "name": "DP-1",
+        "make": "Dell Inc.",
+        "model": "DELL P2422H",
+        "serial": "7Z6X3G3",
+        "mode": {
+          "width": 1280,
+          "height": 800,
+          "refresh": 60.0
+        },
+        "modes": [
+          {
+            "width": 1280,
+            "height": 800,
+            "refresh": 60.0
+          }
+        ],
+        "scale": 1.0,
+        "transform": "normal",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "logical_size": {
+          "w": 1280,
+          "h": 800
+        },
+        "timing": {
+          "mode": {
+            "type": "fixed",
+            "refresh": 60.0
+          },
+          "latch_offset": "1ms",
+          "callbacks": {
+            "type": "at_vblank"
+          },
+          "perturbation": null,
+          "zero_copy": false
+        },
+        "enabled": true,
+        "physical_mm": [
+          353,
+          221
+        ]
+      }
+    ],
+    "lateness_threshold": "2ms"
+  },
+  "started": 1636157041974,
+  "finished": 1643187828088,
+  "iterations": [
+    {
+      "index": 0,
+      "measured": null,
+      "variant": null,
+      "phase": null,
+      "started": 1636462093582,
+      "finished": 1637919349645,
+      "ok": true,
+      "error": null,
+      "late_wakes": 27,
+      "max_lateness": 6222856,
+      "records": 0,
+      "dropped_records": 0
+    },
+    {
+      "index": 1,
+      "measured": 0,
+      "variant": null,
+      "phase": null,
+      "started": 1638221683692,
+      "finished": 1639675888370,
+      "ok": true,
+      "error": null,
+      "late_wakes": 24,
+      "max_lateness": 6784329,
+      "records": 1770,
+      "dropped_records": 0
+    },
+    {
+      "index": 2,
+      "measured": 1,
+      "variant": null,
+      "phase": null,
+      "started": 1639978289477,
+      "finished": 1641432695132,
+      "ok": true,
+      "error": null,
+      "late_wakes": 24,
+      "max_lateness": 6801798,
+      "records": 1778,
+      "dropped_records": 0
+    },
+    {
+      "index": 3,
+      "measured": 2,
+      "variant": null,
+      "phase": null,
+      "started": 1641734149911,
+      "finished": 1643186841449,
+      "ok": true,
+      "error": null,
+      "late_wakes": 20,
+      "max_lateness": 6835628,
+      "records": 1778,
+      "dropped_records": 0
+    }
+  ],
+  "validity": {
+    "valid": false,
+    "checks": [
+      {
+        "name": "iterations",
+        "status": "pass",
+        "message": "3 measured iterations",
+        "value": 3.0,
+        "limit": 1.0
+      },
+      {
+        "name": "iteration_errors",
+        "status": "pass",
+        "message": "every iteration finished",
+        "value": null,
+        "limit": null
+      },
+      {
+        "name": "wake_lateness",
+        "status": "fail",
+        "message": "68 of 530 output wakes later than 2.00 ms; max 6.836 ms",
+        "value": 6.835628,
+        "limit": 2.0
+      },
+      {
+        "name": "host_load",
+        "status": "pass",
+        "message": "other processes used 0.0% of 10 CPUs (all: 11.3%)",
+        "value": 0.0,
+        "limit": 0.25
+      },
+      {
+        "name": "samples.scroll_smoothness",
+        "status": "pass",
+        "message": "179 samples, 10 wanted",
+        "value": 179.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_pacing",
+        "status": "pass",
+        "message": "179 samples, 10 wanted",
+        "value": 179.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.input_coalescing",
+        "status": "pass",
+        "message": "182 samples, 10 wanted",
+        "value": 182.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.resources",
+        "status": "pass",
+        "message": "88 samples, 10 wanted",
+        "value": 88.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_cost",
+        "status": "pass",
+        "message": "182 samples, 10 wanted",
+        "value": 182.0,
+        "limit": 10.0
+      }
+    ]
+  },
+  "sections": [
+    {
+      "name": "scroll_smoothness",
+      "metrics": [
+        {
+          "name": "smoothness_score",
+          "variant": null,
+          "unit": "score",
+          "better": "higher",
+          "n": 3,
+          "mean": 92.01490628003192,
+          "median": 93.6991515705,
+          "stddev": 3.7705901297684035,
+          "min": 87.69573916026796,
+          "max": 94.64982810932777,
+          "ci": {
+            "lo": 87.69573916026796,
+            "hi": 94.64982810932777,
+            "confidence": 0.95
+          },
+          "values": [
+            87.69573916026796,
+            94.64982810932777,
+            93.6991515705
+          ]
+        },
+        {
+          "name": "stalls",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.3333333333333333,
+          "median": 0.0,
+          "stddev": 0.5773502691896258,
+          "min": 0.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "missed_vblanks",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.3333333333333333,
+          "median": 0.0,
+          "stddev": 0.5773502691896258,
+          "min": 0.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "stalled_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "double_steps",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.3333333333333333,
+          "median": 0.0,
+          "stddev": 0.5773502691896258,
+          "min": 0.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "relative_error",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.03298492400873439,
+          "median": 0.03297815448844106,
+          "stddev": 0.0007070211572852206,
+          "min": 0.032281311918078176,
+          "max": 0.033695305619683924,
+          "ci": {
+            "lo": 0.032281311918078176,
+            "hi": 0.033695305619683924,
+            "confidence": 0.95
+          },
+          "values": [
+            0.032281311918078176,
+            0.03297815448844106,
+            0.033695305619683924
+          ]
+        },
+        {
+          "name": "step_error_abs_max",
+          "variant": null,
+          "unit": "px",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.6670499899396377,
+          "median": 0.6673875195213412,
+          "stddev": 0.0007670988018283473,
+          "min": 0.666172003104661,
+          "max": 0.6675904471929108,
+          "ci": {
+            "lo": 0.666172003104661,
+            "hi": 0.6675904471929108,
+            "confidence": 0.95
+          },
+          "values": [
+            0.6673875195213412,
+            0.6675904471929108,
+            0.666172003104661
+          ]
+        },
+        {
+          "name": "tracking_ratio",
+          "variant": null,
+          "unit": "ratio",
+          "better": "neither",
+          "n": 3,
+          "mean": 1.0000074837935145,
+          "median": 0.9999921052758185,
+          "stddev": 0.0004129200394283823,
+          "min": 0.9996024678490311,
+          "max": 1.0004278782556935,
+          "ci": {
+            "lo": 0.9996024678490311,
+            "hi": 1.0004278782556935,
+            "confidence": 0.95
+          },
+          "values": [
+            0.9996024678490311,
+            1.0004278782556935,
+            0.9999921052758185
+          ]
+        },
+        {
+          "name": "content_gain",
+          "variant": null,
+          "unit": "ratio",
+          "better": "neither",
+          "n": 3,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "velocity_p50",
+          "variant": null,
+          "unit": "px_per_s",
+          "better": "neither",
+          "n": 3,
+          "mean": -260.0199846999882,
+          "median": -780.0388912800406,
+          "stddev": 900.7413864737857,
+          "min": -780.0876416408563,
+          "max": 780.0665788209324,
+          "ci": {
+            "lo": -780.0876416408563,
+            "hi": 780.0665788209322,
+            "confidence": 0.95
+          },
+          "values": [
+            -780.0876416408563,
+            780.0665788209324,
+            -780.0388912800406
+          ]
+        },
+        {
+          "name": "velocity_error",
+          "variant": null,
+          "unit": "px_per_s",
+          "better": "lower",
+          "n": 3,
+          "mean": 26.199022126828186,
+          "median": 26.27259588367279,
+          "stddev": 0.46147556649883703,
+          "min": 25.705179589647297,
+          "max": 26.619290907164483,
+          "ci": {
+            "lo": 25.705179589647297,
+            "hi": 26.619290907164483,
+            "confidence": 0.95
+          },
+          "values": [
+            25.705179589647297,
+            26.27259588367279,
+            26.619290907164483
+          ]
+        },
+        {
+          "name": "start_latency",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 3,
+          "mean": 36.37710633333334,
+          "median": 37.482966,
+          "stddev": 5.176486214777001,
+          "min": 30.737054,
+          "max": 40.911299,
+          "ci": {
+            "lo": 30.737054,
+            "hi": 40.911299,
+            "confidence": 0.95
+          },
+          "values": [
+            37.482966,
+            30.737054,
+            40.911299
+          ]
+        },
+        {
+          "name": "rejected_steps",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": 179,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "active_steps": 59,
+            "content_gain": 1.0,
+            "double_steps": 1,
+            "expected_total_px": -800.0,
+            "frames": 60,
+            "input_total_px": -800.0,
+            "inputs": 240,
+            "measured_total_px": -793.017957826898,
+            "missed_vblanks": 1,
+            "rejected_steps": 0,
+            "rejections": {},
+            "relative_error": 0.032281311918078176,
+            "smoothness_score": 87.69573916026796,
+            "stalled_frames": 0,
+            "stalls": 1,
+            "start_latency_ms": 37.482966,
+            "step_error_px": {
+              "count": 59,
+              "max": 0.3337617003901947,
+              "mean": 0.005345347566700608,
+              "min": -0.6673875195213412,
+              "p50": 0.3317744529199942,
+              "p90": 0.3333435291456087,
+              "p95": 0.33355359145790864,
+              "p99": 0.33370313231965726,
+              "p999": 0.333755843583141,
+              "stddev": 0.4643086222608245
+            },
+            "steps": [
+              {
+                "active": true,
+                "changed": true,
+                "commit": 107,
+                "double_step": false,
+                "expected_px": -13.333333333333332,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000871521516235,
+                "presented": 1638264102933,
+                "stalled": false,
+                "target_px": -13.333333333333332,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 108,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 33.333334,
+                "measured_px": -13.999494039307288,
+                "presented": 1638297436267,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 1
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 109,
+                "double_step": false,
+                "expected_px": -13.333333333333336,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000855855528876,
+                "presented": 1638314102934,
+                "stalled": false,
+                "target_px": -13.333333333333336,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 110,
+                "double_step": false,
+                "expected_px": -13.333333333333336,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00066651357233,
+                "presented": 1638330769601,
+                "stalled": false,
+                "target_px": -13.333333333333336,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 111,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": -13.993937727625998,
+                "presented": 1638347436268,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 112,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00163353394369,
+                "presented": 1638364102935,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 113,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999807796278752,
+                "presented": 1638380769602,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 114,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": -13.99879259009056,
+                "presented": 1638397436269,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 115,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999992781843579,
+                "presented": 1638414102936,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 116,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001833161144427,
+                "presented": 1638430769603,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 117,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999168880924689,
+                "presented": 1638447436270,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 118,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000632163097148,
+                "presented": 1638464102937,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 119,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000983176339265,
+                "presented": 1638480769604,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 120,
+                "double_step": true,
+                "expected_px": -26.666666666666686,
+                "interval_ms": 16.666667,
+                "measured_px": -26.998917478110023,
+                "presented": 1638497436271,
+                "stalled": false,
+                "target_px": -26.666666666666686,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 121,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000973877210864,
+                "presented": 1638514102938,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 122,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.998100242931898,
+                "presented": 1638530769605,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 123,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001364133281278,
+                "presented": 1638547436272,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 124,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -12.99957163294312,
+                "presented": 1638564102939,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 125,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999411393396914,
+                "presented": 1638580769606,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 126,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999672612375138,
+                "presented": 1638597436273,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 127,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001594096907345,
+                "presented": 1638614102940,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 128,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999136338670429,
+                "presented": 1638630769607,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 129,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000634872560752,
+                "presented": 1638647436274,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 130,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000900213194864,
+                "presented": 1638664102941,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 131,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999405403381234,
+                "presented": 1638680769608,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 132,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000632577072938,
+                "presented": 1638697436275,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 133,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001194770077504,
+                "presented": 1638714102942,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 134,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -12.99997789356427,
+                "presented": 1638730769609,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 135,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.99886054881383,
+                "presented": 1638747436276,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 136,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -12.99977658671979,
+                "presented": 1638764102943,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 137,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001179670034166,
+                "presented": 1638780769610,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 138,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.99918601994007,
+                "presented": 1638797436277,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 139,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001875567801843,
+                "presented": 1638814102944,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 140,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001460954043486,
+                "presented": 1638830769611,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 141,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999393415835568,
+                "presented": 1638847436278,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 142,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001030045358174,
+                "presented": 1638864102945,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 143,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.0049919467907,
+                "presented": 1638880769612,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 144,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -14.000399516318428,
+                "presented": 1638897436279,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 145,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00056212636363,
+                "presented": 1638914102946,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 146,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000138258406615,
+                "presented": 1638930769613,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 147,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999447249112555,
+                "presented": 1638947436280,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 148,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000385229953036,
+                "presented": 1638964102947,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 149,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00073924000947,
+                "presented": 1638980769614,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 150,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999028478460362,
+                "presented": 1638997436281,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 151,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001721740092783,
+                "presented": 1639014102948,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 152,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001558880413263,
+                "presented": 1639030769615,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 153,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999381029050467,
+                "presented": 1639047436282,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 154,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000834774608858,
+                "presented": 1639064102949,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 155,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001575064173558,
+                "presented": 1639080769616,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 156,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -14.000720852854599,
+                "presented": 1639097436283,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 157,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000808541637262,
+                "presented": 1639114102950,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 158,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999780092448315,
+                "presented": 1639130769617,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 159,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.998847163997532,
+                "presented": 1639147436284,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 160,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000093158875966,
+                "presented": 1639164102951,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 161,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001619971618197,
+                "presented": 1639180769618,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 162,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.99880309283202,
+                "presented": 1639197436285,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 163,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001957035879496,
+                "presented": 1639214102952,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 164,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00150978493063,
+                "presented": 1639230769619,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 165,
+                "double_step": false,
+                "expected_px": -6.666666666666629,
+                "interval_ms": 16.666667,
+                "measured_px": -7.000134512631925,
+                "presented": 1639247436286,
+                "stalled": false,
+                "target_px": -6.666666666666629,
+                "vblanks_missed": 0
+              }
+            ],
+            "tracking_ratio": 0.9996024678490311,
+            "velocity_error_px_s": 25.705179589647297,
+            "velocity_px_s": {
+              "count": 59,
+              "max": -419.98481277952243,
+              "mean": -799.3405373764886,
+              "min": -1619.9350162879011,
+              "p50": -780.0876416408563,
+              "p90": -779.9881197309975,
+              "p95": -779.9797352663214,
+              "p99": -419.9982975348969,
+              "p999": -419.98616125505987,
+              "stddev": 131.54896700785696
+            }
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "active_steps": 60,
+            "content_gain": 1.0,
+            "double_steps": 0,
+            "expected_total_px": 800.0,
+            "frames": 61,
+            "input_total_px": 800.0,
+            "inputs": 240,
+            "measured_total_px": 797.0075430103692,
+            "missed_vblanks": 0,
+            "rejected_steps": 0,
+            "rejections": {},
+            "relative_error": 0.03297815448844106,
+            "smoothness_score": 94.64982810932777,
+            "stalled_frames": 0,
+            "stalls": 0,
+            "start_latency_ms": 30.737054,
+            "step_error_px": {
+              "count": 60,
+              "max": 0.6675904471929108,
+              "mean": 0.005681272395047869,
+              "min": -0.3336839768005131,
+              "p50": -0.3322127831844224,
+              "p90": 0.6659360213069558,
+              "p95": 0.6661418402349054,
+              "p99": 0.6672390385495981,
+              "p999": 0.6675553063285795,
+              "stddev": 0.4723200958178905
+            },
+            "steps": [
+              {
+                "active": true,
+                "changed": true,
+                "commit": 169,
+                "double_step": false,
+                "expected_px": 10.0,
+                "interval_ms": 16.666667,
+                "measured_px": 9.999765381108174,
+                "presented": 1640014102968,
+                "stalled": false,
+                "target_px": 10.0,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 170,
+                "double_step": false,
+                "expected_px": 13.333333333333334,
+                "interval_ms": 16.666667,
+                "measured_px": 13.999182323362684,
+                "presented": 1640030769635,
+                "stalled": false,
+                "target_px": 13.333333333333334,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 171,
+                "double_step": false,
+                "expected_px": 13.333333333333332,
+                "interval_ms": 16.666667,
+                "measured_px": 12.999719988711464,
+                "presented": 1640047436302,
+                "stalled": false,
+                "target_px": 13.333333333333332,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 172,
+                "double_step": false,
+                "expected_px": 13.333333333333336,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000776811876754,
+                "presented": 1640064102969,
+                "stalled": false,
+                "target_px": 13.333333333333336,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 173,
+                "double_step": false,
+                "expected_px": 13.333333333333321,
+                "interval_ms": 16.666667,
+                "measured_px": 13.993894287648132,
+                "presented": 1640080769636,
+                "stalled": false,
+                "target_px": 13.333333333333321,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 174,
+                "double_step": false,
+                "expected_px": 13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000965719664134,
+                "presented": 1640097436303,
+                "stalled": false,
+                "target_px": 13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 175,
+                "double_step": false,
+                "expected_px": 13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": 12.999703663420876,
+                "presented": 1640114102970,
+                "stalled": false,
+                "target_px": 13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 176,
+                "double_step": false,
+                "expected_px": 13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": 13.999275087599663,
+                "presented": 1640130769637,
+                "stalled": false,
+                "target_px": 13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 177,
+                "double_step": false,
+                "expected_px": 13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": 12.999696567465083,
+                "presented": 1640147436304,
+                "stalled": false,
+                "target_px": 13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 178,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00074274693505,
+                "presented": 1640164102971,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 179,
+                "double_step": false,
+                "expected_px": 13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": 13.99879553182104,
+                "presented": 1640180769638,
+                "stalled": false,
+                "target_px": 13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 180,
+                "double_step": false,
+                "expected_px": 13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": 13.001339126534843,
+                "presented": 1640197436305,
+                "stalled": false,
+                "target_px": 13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 181,
+                "double_step": false,
+                "expected_px": 13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": 13.001122326468899,
+                "presented": 1640214102972,
+                "stalled": false,
+                "target_px": 13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 182,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.998854579791542,
+                "presented": 1640230769639,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 183,
+                "double_step": false,
+                "expected_px": 13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": 12.999792180433886,
+                "presented": 1640247436306,
+                "stalled": false,
+                "target_px": 13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 184,
+                "double_step": false,
+                "expected_px": 13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": 13.001289770792507,
+                "presented": 1640264102973,
+                "stalled": false,
+                "target_px": 13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 185,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.998042625177487,
+                "presented": 1640280769640,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 186,
+                "double_step": false,
+                "expected_px": 13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000638488967212,
+                "presented": 1640297436307,
+                "stalled": false,
+                "target_px": 13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 187,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 12.999737872686811,
+                "presented": 1640314102974,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 188,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.999381557354917,
+                "presented": 1640330769641,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 189,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00017159990513,
+                "presented": 1640347436308,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 190,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000334211563647,
+                "presented": 1640364102975,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 191,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.998826668097292,
+                "presented": 1640380769642,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 192,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00458136816259,
+                "presented": 1640397436309,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 193,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00524412865447,
+                "presented": 1640414102976,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 194,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.998943604892668,
+                "presented": 1640430769643,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 195,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000163380918474,
+                "presented": 1640447436310,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 196,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00044557484312,
+                "presented": 1640464102977,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 197,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.99461925648103,
+                "presented": 1640480769644,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 198,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000270414911459,
+                "presented": 1640497436311,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 199,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000204730091562,
+                "presented": 1640514102978,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 200,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 13.998669465934917,
+                "presented": 1640530769645,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 201,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000059547860333,
+                "presented": 1640547436312,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 202,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000413894726112,
+                "presented": 1640564102979,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 203,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00111877382897,
+                "presented": 1640580769646,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 204,
+                "double_step": false,
+                "expected_px": 13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": 14.00032655752451,
+                "presented": 1640597436313,
+                "stalled": false,
+                "target_px": 13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 205,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000982088722933,
+                "presented": 1640614102980,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 206,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00080406136226,
+                "presented": 1640630769647,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 207,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.999268717644842,
+                "presented": 1640647436314,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 208,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 13.001286375745323,
+                "presented": 1640664102981,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 209,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 12.999969714040365,
+                "presented": 1640680769648,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 210,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.998910536735895,
+                "presented": 1640697436315,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 211,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00006269991221,
+                "presented": 1640714102982,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 212,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 13.001213761362045,
+                "presented": 1640730769649,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 213,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.998511221990189,
+                "presented": 1640747436316,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 214,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000430057216477,
+                "presented": 1640764102983,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 215,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 13.001101040246493,
+                "presented": 1640780769650,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 216,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 14.000923780526282,
+                "presented": 1640797436317,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 217,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.005078658508555,
+                "presented": 1640814102984,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 218,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000863403272035,
+                "presented": 1640830769651,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 219,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 13.999186120777521,
+                "presented": 1640847436318,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 220,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.001079034232518,
+                "presented": 1640864102985,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 221,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000515763800646,
+                "presented": 1640880769652,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 222,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.999430363886367,
+                "presented": 1640897436319,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 223,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 12.999649356532744,
+                "presented": 1640914102986,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 224,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.00115162065348,
+                "presented": 1640930769653,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 225,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.99803258317738,
+                "presented": 1640947436320,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 226,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000815163703155,
+                "presented": 1640964102987,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 227,
+                "double_step": false,
+                "expected_px": 13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": 13.000838897446119,
+                "presented": 1640980769654,
+                "stalled": false,
+                "target_px": 13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 228,
+                "double_step": false,
+                "expected_px": 13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": 14.00032817265626,
+                "presented": 1640997436321,
+                "stalled": false,
+                "target_px": 13.333333333333371,
+                "vblanks_missed": 0
+              }
+            ],
+            "tracking_ratio": 1.0004278782556935,
+            "velocity_error_px_s": 26.27259588367279,
+            "velocity_px_s": {
+              "count": 60,
+              "max": 840.0554100304687,
+              "mean": 797.0075270702188,
+              "min": 599.9859108667723,
+              "p50": 780.0665788209324,
+              "p90": 839.9561444792965,
+              "p95": 839.9684936147265,
+              "p99": 840.0343255122916,
+              "p999": 840.053301578651,
+              "stddev": 38.3690455252661
+            }
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "active_steps": 60,
+            "content_gain": 1.0,
+            "double_steps": 0,
+            "expected_total_px": -800.0,
+            "frames": 61,
+            "input_total_px": -800.0,
+            "inputs": 240,
+            "measured_total_px": -789.9937631678966,
+            "missed_vblanks": 0,
+            "rejected_steps": 0,
+            "rejections": {},
+            "relative_error": 0.033695305619683924,
+            "smoothness_score": 93.6991515705,
+            "stalled_frames": 0,
+            "stalls": 0,
+            "start_latency_ms": 40.911299,
+            "step_error_px": {
+              "count": 60,
+              "max": 0.3337463806066481,
+              "mean": 0.00010394720171976364,
+              "min": -0.666172003104661,
+              "p50": 0.33267078536514916,
+              "p90": 0.33336040001476946,
+              "p95": 0.33350840237647983,
+              "p99": 0.3336670045175385,
+              "p999": 0.33373844299773714,
+              "stddev": 0.47450205471383794
+            },
+            "steps": [
+              {
+                "active": true,
+                "changed": true,
+                "commit": 232,
+                "double_step": false,
+                "expected_px": -13.333333333333332,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999180248103292,
+                "presented": 1641780769670,
+                "stalled": false,
+                "target_px": -13.333333333333332,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 233,
+                "double_step": false,
+                "expected_px": -13.333333333333332,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000010613876054,
+                "presented": 1641797436337,
+                "stalled": false,
+                "target_px": -13.333333333333332,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 234,
+                "double_step": false,
+                "expected_px": -13.333333333333336,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000793954136007,
+                "presented": 1641814103004,
+                "stalled": false,
+                "target_px": -13.333333333333336,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 235,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": -13.998753158793335,
+                "presented": 1641830769671,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 236,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001361095175499,
+                "presented": 1641847436338,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 237,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000068153493787,
+                "presented": 1641864103005,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 238,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999308974038502,
+                "presented": 1641880769672,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 239,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00005970460816,
+                "presented": 1641897436339,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 240,
+                "double_step": false,
+                "expected_px": -13.333333333333329,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000639568418354,
+                "presented": 1641914103006,
+                "stalled": false,
+                "target_px": -13.333333333333329,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 241,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.997824587636028,
+                "presented": 1641930769673,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 242,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000260954680563,
+                "presented": 1641947436340,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 243,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000204692443813,
+                "presented": 1641964103007,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 244,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999505336437975,
+                "presented": 1641980769674,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 245,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000211072067348,
+                "presented": 1641997436341,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 246,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00062530526808,
+                "presented": 1642014103008,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 247,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -13.99896510494175,
+                "presented": 1642030769675,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 248,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.004606200158435,
+                "presented": 1642047436342,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 249,
+                "double_step": false,
+                "expected_px": -13.333333333333343,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999979441202836,
+                "presented": 1642064103009,
+                "stalled": false,
+                "target_px": -13.333333333333343,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 250,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999083424524699,
+                "presented": 1642080769676,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 251,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000180816984086,
+                "presented": 1642097436343,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 252,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00014167737885,
+                "presented": 1642114103010,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 253,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.997964187536539,
+                "presented": 1642130769677,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 254,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000640479081081,
+                "presented": 1642147436344,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 255,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000148195008881,
+                "presented": 1642164103011,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 256,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999069238849998,
+                "presented": 1642180769678,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 257,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999827071904878,
+                "presented": 1642197436345,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 258,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.0006564169462,
+                "presented": 1642214103012,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 259,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000020808664331,
+                "presented": 1642230769679,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 260,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999114883104744,
+                "presented": 1642247436346,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 261,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999784252945027,
+                "presented": 1642264103013,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 262,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000639037411453,
+                "presented": 1642280769680,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 263,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999103222652005,
+                "presented": 1642297436347,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 264,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001167344055126,
+                "presented": 1642314103014,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 265,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.0000466529164,
+                "presented": 1642330769681,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 266,
+                "double_step": false,
+                "expected_px": -13.333333333333314,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999227900667675,
+                "presented": 1642347436348,
+                "stalled": false,
+                "target_px": -13.333333333333314,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 267,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999586952726723,
+                "presented": 1642364103015,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 268,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001341605943015,
+                "presented": 1642380769682,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 269,
+                "double_step": false,
+                "expected_px": -13.333333333333428,
+                "interval_ms": 16.666667,
+                "measured_px": -13.99814115270005,
+                "presented": 1642397436349,
+                "stalled": false,
+                "target_px": -13.333333333333428,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 270,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.00125616001636,
+                "presented": 1642414103016,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 271,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -12.999721488470977,
+                "presented": 1642430769683,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 272,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.998551364498663,
+                "presented": 1642447436350,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 273,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -12.99991436236024,
+                "presented": 1642464103017,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 274,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000602021552076,
+                "presented": 1642480769684,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 275,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999156154011008,
+                "presented": 1642497436351,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 276,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000153707475011,
+                "presented": 1642514103018,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 277,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000602562184504,
+                "presented": 1642530769685,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 278,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999088358124656,
+                "presented": 1642547436352,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 279,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000147138171812,
+                "presented": 1642564103019,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 280,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001469637196934,
+                "presented": 1642580769686,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 281,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.993881646801118,
+                "presented": 1642597436353,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 282,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.001203548398525,
+                "presented": 1642614103020,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 283,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000015384855159,
+                "presented": 1642630769687,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 284,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.998998423515593,
+                "presented": 1642647436354,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 285,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -12.99984026627279,
+                "presented": 1642664103021,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 286,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000520722799134,
+                "presented": 1642680769688,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 287,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.999458646463184,
+                "presented": 1642697436355,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 288,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000668678990188,
+                "presented": 1642714103022,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 289,
+                "double_step": false,
+                "expected_px": -13.333333333333258,
+                "interval_ms": 16.666667,
+                "measured_px": -13.000601342231139,
+                "presented": 1642730769689,
+                "stalled": false,
+                "target_px": -13.333333333333258,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 290,
+                "double_step": false,
+                "expected_px": -13.333333333333371,
+                "interval_ms": 16.666667,
+                "measured_px": -13.998817956989205,
+                "presented": 1642747436356,
+                "stalled": false,
+                "target_px": -13.333333333333371,
+                "vblanks_missed": 0
+              },
+              {
+                "active": true,
+                "changed": true,
+                "commit": 291,
+                "double_step": false,
+                "expected_px": -3.3333333333333712,
+                "interval_ms": 16.666667,
+                "measured_px": -3.0008501090369624,
+                "presented": 1642764103023,
+                "stalled": false,
+                "target_px": -3.3333333333333712,
+                "vblanks_missed": 0
+              }
+            ],
+            "tracking_ratio": 0.9999921052758185,
+            "velocity_error_px_s": 26.619290907164483,
+            "velocity_px_s": {
+              "count": 60,
+              "max": -180.05100294119768,
+              "mean": -789.9937473680219,
+              "min": -839.9703033868725,
+              "p50": -780.0388912800406,
+              "p90": -779.9944015652017,
+              "p95": -779.9868512835424,
+              "p99": -534.0062801287118,
+              "p999": -215.44653065994316,
+              "stddev": 84.94800186049032
+            }
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_pacing",
+      "metrics": [
+        {
+          "name": "fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 3,
+          "mean": 59.66666547333335,
+          "median": 59.99999880000002,
+          "stddev": 0.5773502576426235,
+          "min": 58.999998820000016,
+          "max": 59.99999880000002,
+          "ci": {
+            "lo": 58.99999882000001,
+            "hi": 59.99999880000002,
+            "confidence": 0.95
+          },
+          "values": [
+            58.999998820000016,
+            59.99999880000002,
+            59.99999880000002
+          ]
+        },
+        {
+          "name": "interval_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "neither",
+          "n": 3,
+          "mean": 16.666667,
+          "median": 16.666667,
+          "stddev": 0.0,
+          "min": 16.666667,
+          "max": 16.666667,
+          "ci": {
+            "lo": 16.666667,
+            "hi": 16.666667,
+            "confidence": 0.95
+          },
+          "values": [
+            16.666667,
+            16.666667,
+            16.666667
+          ]
+        },
+        {
+          "name": "interval_p99",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 3,
+          "mean": 19.000000380000014,
+          "median": 16.666667,
+          "stddev": 4.041451965156435,
+          "min": 16.666667,
+          "max": 23.66666714000003,
+          "ci": {
+            "lo": 16.666667,
+            "hi": 23.66666714000003,
+            "confidence": 0.95
+          },
+          "values": [
+            23.66666714000003,
+            16.666667,
+            16.666667
+          ]
+        },
+        {
+          "name": "interval_max",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 3,
+          "mean": 22.222222666666667,
+          "median": 16.666667,
+          "stddev": 9.622504678943853,
+          "min": 16.666667,
+          "max": 33.333334,
+          "ci": {
+            "lo": 16.666667,
+            "hi": 33.333334,
+            "confidence": 0.95
+          },
+          "values": [
+            33.333334,
+            16.666667,
+            16.666667
+          ]
+        },
+        {
+          "name": "jitter",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.7232717421366902,
+          "median": 1.7913474582428917e-14,
+          "stddev": 1.252743405059572,
+          "min": 1.7913474582428917e-14,
+          "max": 2.169815226410035,
+          "ci": {
+            "lo": 1.7913474582428917e-14,
+            "hi": 2.169815226410035,
+            "confidence": 0.95
+          },
+          "values": [
+            2.169815226410035,
+            1.7913474582428917e-14,
+            1.7913474582428917e-14
+          ]
+        },
+        {
+          "name": "pacing_error",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.0941619604519774,
+          "median": 0.0,
+          "stddev": 0.16309329964311617,
+          "min": 0.0,
+          "max": 0.2824858813559322,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.2824858813559322,
+            "confidence": 0.95
+          },
+          "values": [
+            0.2824858813559322,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "low_1pct_fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 3,
+          "mean": 49.999999000000024,
+          "median": 59.99999880000002,
+          "stddev": 17.320507729278617,
+          "min": 29.99999940000001,
+          "max": 59.99999880000002,
+          "ci": {
+            "lo": 29.99999940000001,
+            "hi": 59.99999880000002,
+            "confidence": 0.95
+          },
+          "values": [
+            29.99999940000001,
+            59.99999880000002,
+            59.99999880000002
+          ]
+        },
+        {
+          "name": "low_01pct_fps",
+          "variant": null,
+          "unit": "fps",
+          "better": "higher",
+          "n": 3,
+          "mean": 49.999999000000024,
+          "median": 59.99999880000002,
+          "stddev": 17.320507729278617,
+          "min": 29.99999940000001,
+          "max": 59.99999880000002,
+          "ci": {
+            "lo": 29.99999940000001,
+            "hi": 59.99999880000002,
+            "confidence": 0.95
+          },
+          "values": [
+            29.99999940000001,
+            59.99999880000002,
+            59.99999880000002
+          ]
+        },
+        {
+          "name": "jank_count",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.3333333333333333,
+          "median": 0.0,
+          "stddev": 0.5773502691896258,
+          "min": 0.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "jank_fraction",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.005649717514124294,
+          "median": 0.0,
+          "stddev": 0.009785597782875013,
+          "min": 0.0,
+          "max": 0.01694915254237288,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.01694915254237288,
+            "confidence": 0.95
+          },
+          "values": [
+            0.01694915254237288,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "missed_vblanks",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 0.3333333333333333,
+          "median": 0.0,
+          "stddev": 0.5773502691896258,
+          "min": 0.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "discarded",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 3,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": {
+            "lo": 0.0,
+            "hi": 0.0,
+            "confidence": 0.95
+          },
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "commits_per_refresh",
+          "variant": null,
+          "unit": "ratio",
+          "better": "neither",
+          "n": 3,
+          "mean": 0.993305682176428,
+          "median": 0.9991791134248131,
+          "stddev": 0.011665335240600589,
+          "min": 0.9798710072122747,
+          "max": 1.000866925892196,
+          "ci": {
+            "lo": 0.9798710072122748,
+            "hi": 1.000866925892196,
+            "confidence": 0.95
+          },
+          "values": [
+            0.9798710072122747,
+            0.9991791134248131,
+            1.000866925892196
+          ]
+        },
+        {
+          "name": "presents_per_refresh",
+          "variant": null,
+          "unit": "ratio",
+          "better": "higher",
+          "n": 3,
+          "mean": 0.9944444444444444,
+          "median": 0.9999999999999999,
+          "stddev": 0.009622504486493794,
+          "min": 0.9833333333333332,
+          "max": 0.9999999999999999,
+          "ci": {
+            "lo": 0.9833333333333331,
+            "hi": 0.9999999999999999,
+            "confidence": 0.95
+          },
+          "values": [
+            0.9833333333333332,
+            0.9999999999999999,
+            0.9999999999999999
+          ]
+        }
+      ],
+      "samples": 179,
+      "pooled": [
+        {
+          "variant": null,
+          "samples": 179,
+          "metrics": [
+            {
+              "name": "fps",
+              "value": 59.66666547333335,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "interval_p50",
+              "value": 16.666667,
+              "unit": "ms",
+              "better": "neither"
+            },
+            {
+              "name": "interval_p99",
+              "value": 16.666667,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "interval_max",
+              "value": 33.333334,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "jitter",
+              "value": 1.245725179501063,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "pacing_error",
+              "value": 0.09310987150837989,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "low_1pct_fps",
+              "value": 39.99999920000002,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "low_01pct_fps",
+              "value": 29.99999940000001,
+              "unit": "fps",
+              "better": "higher"
+            },
+            {
+              "name": "jank_count",
+              "value": 1.0,
+              "unit": "count",
+              "better": "lower"
+            },
+            {
+              "name": "jank_fraction",
+              "value": 0.00558659217877095,
+              "unit": "fraction",
+              "better": "lower"
+            },
+            {
+              "name": "missed_vblanks",
+              "value": 1.0,
+              "unit": "count",
+              "better": "lower"
+            },
+            {
+              "name": "discarded",
+              "value": 0.0,
+              "unit": "count",
+              "better": "neither"
+            },
+            {
+              "name": "commits_per_refresh",
+              "value": 1.004387507479439,
+              "unit": "ratio",
+              "better": "neither"
+            },
+            {
+              "name": "presents_per_refresh",
+              "value": 0.9944444444444444,
+              "unit": "ratio",
+              "better": "higher"
+            }
+          ],
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 60.26324924350136,
+              "commits_per_refresh": 1.004387507479439,
+              "present_rate_hz": 59.66666547333335,
+              "presents_per_refresh": 0.9944444444444444,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 182,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 3000.00006,
+            "fps": 59.66666547333335,
+            "fps_series": [],
+            "interval_ms": {
+              "count": 179,
+              "max": 33.333334,
+              "mean": 16.759776871508347,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 16.666667,
+              "p999": 30.36666727400052,
+              "stddev": 1.245725179501063
+            },
+            "jank": {
+              "count": 1,
+              "factor": 1.5,
+              "fraction": 0.00558659217877095,
+              "frames": [
+                {
+                  "commit": 108,
+                  "frame_id": 103,
+                  "interval_ms": 33.333334,
+                  "presented": 1638297436267,
+                  "vblanks_missed": 1
+                }
+              ],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 1.245725179501063,
+            "lows": {
+              "avg_fps": 59.666665473333474,
+              "frames": 179,
+              "low_01pct_fps": 29.99999940000001,
+              "low_1pct_fps": 39.99999920000002,
+              "p01_fps": 32.93084456640999,
+              "p1_fps": 59.99999880000002
+            },
+            "missed_vblanks": 1,
+            "mode": "vsync",
+            "pacing_error_ms": 0.09310987150837989,
+            "pending": 0,
+            "presented": 182,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 1,
+            "surface": 1
+          }
+        }
+      ],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 58.7922592568913,
+              "commits_per_refresh": 0.9798710072122747,
+              "present_rate_hz": 58.999998820000016,
+              "presents_per_refresh": 0.9833333333333332,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 60,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 1000.00002,
+            "fps": 58.999998820000016,
+            "fps_series": [
+              {
+                "frames": 59,
+                "second": 0
+              }
+            ],
+            "interval_ms": {
+              "count": 59,
+              "max": 33.333334,
+              "mean": 16.949152881355918,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 23.66666714000003,
+              "p999": 32.366667314000125,
+              "stddev": 2.169815226410035
+            },
+            "jank": {
+              "count": 1,
+              "factor": 1.5,
+              "fraction": 0.01694915254237288,
+              "frames": [
+                {
+                  "commit": 108,
+                  "frame_id": 103,
+                  "interval_ms": 33.333334,
+                  "presented": 1638297436267,
+                  "vblanks_missed": 1
+                }
+              ],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 2.169815226410035,
+            "lows": {
+              "avg_fps": 58.99999882000007,
+              "frames": 59,
+              "low_01pct_fps": 29.99999940000001,
+              "low_1pct_fps": 29.99999940000001,
+              "p01_fps": 30.895982904222343,
+              "p1_fps": 42.25352028169011
+            },
+            "missed_vblanks": 1,
+            "mode": "vsync",
+            "pacing_error_ms": 0.2824858813559322,
+            "pending": 0,
+            "presented": 60,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 1,
+            "surface": 1
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 59.95074560647388,
+              "commits_per_refresh": 0.9991791134248131,
+              "present_rate_hz": 59.99999880000002,
+              "presents_per_refresh": 0.9999999999999999,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 61,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 1000.00002,
+            "fps": 59.99999880000002,
+            "fps_series": [
+              {
+                "frames": 60,
+                "second": 0
+              }
+            ],
+            "interval_ms": {
+              "count": 60,
+              "max": 16.666667,
+              "mean": 16.666666999999983,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 16.666667,
+              "p999": 16.666667,
+              "stddev": 1.7913474582428917e-14
+            },
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 1.7913474582428917e-14,
+            "lows": {
+              "avg_fps": 59.999998800000085,
+              "frames": 60,
+              "low_01pct_fps": 59.99999880000002,
+              "low_1pct_fps": 59.99999880000002,
+              "p01_fps": 59.99999880000002,
+              "p1_fps": 59.99999880000002
+            },
+            "missed_vblanks": 0,
+            "mode": "vsync",
+            "pacing_error_ms": 0.0,
+            "pending": 0,
+            "presented": 61,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "cadence": {
+              "commit_rate_hz": 60.05201435249148,
+              "commits_per_refresh": 1.000866925892196,
+              "present_rate_hz": 59.99999880000002,
+              "presents_per_refresh": 0.9999999999999999,
+              "refresh_hz": 59.99999880000003
+            },
+            "commit_timing": null,
+            "commits": 61,
+            "discard_fraction": 0.0,
+            "discarded": 0,
+            "duration_ms": 1000.00002,
+            "fps": 59.99999880000002,
+            "fps_series": [
+              {
+                "frames": 60,
+                "second": 0
+              }
+            ],
+            "interval_ms": {
+              "count": 60,
+              "max": 16.666667,
+              "mean": 16.666666999999983,
+              "min": 16.666667,
+              "p50": 16.666667,
+              "p90": 16.666667,
+              "p95": 16.666667,
+              "p99": 16.666667,
+              "p999": 16.666667,
+              "stddev": 1.7913474582428917e-14
+            },
+            "jank": {
+              "count": 0,
+              "factor": 1.5,
+              "fraction": 0.0,
+              "frames": [],
+              "median_interval_ms": 16.666667,
+              "threshold_ms": 25.0000005
+            },
+            "jitter_ms": 1.7913474582428917e-14,
+            "lows": {
+              "avg_fps": 59.999998800000085,
+              "frames": 60,
+              "low_01pct_fps": 59.99999880000002,
+              "low_1pct_fps": 59.99999880000002,
+              "p01_fps": 59.99999880000002,
+              "p1_fps": 59.99999880000002
+            },
+            "missed_vblanks": 0,
+            "mode": "vsync",
+            "pacing_error_ms": 0.0,
+            "pending": 0,
+            "presented": 61,
+            "refresh_hz": 59.99999880000003,
+            "repeated_frames": 0,
+            "surface": 1
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "input_coalescing",
+      "metrics": [
+        {
+          "name": "inputs_per_frame_mean",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 3,
+          "mean": 3.972768670309654,
+          "median": 3.9508196721311477,
+          "stddev": 0.03801678002040965,
+          "min": 3.9508196721311477,
+          "max": 4.016666666666667,
+          "ci": {
+            "lo": 3.9508196721311477,
+            "hi": 4.016666666666667,
+            "confidence": 0.95
+          },
+          "values": [
+            4.016666666666667,
+            3.9508196721311477,
+            3.9508196721311477
+          ]
+        },
+        {
+          "name": "inputs_per_frame_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 3,
+          "mean": 5.333333333333333,
+          "median": 4.0,
+          "stddev": 2.309401076758503,
+          "min": 4.0,
+          "max": 8.0,
+          "ci": {
+            "lo": 4.0,
+            "hi": 8.0,
+            "confidence": 0.95
+          },
+          "values": [
+            8.0,
+            4.0,
+            4.0
+          ]
+        },
+        {
+          "name": "input_rate",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 3,
+          "mean": 209.43258072440463,
+          "median": 209.42456639564648,
+          "stddev": 0.0741346232301184,
+          "min": 209.36277887671616,
+          "max": 209.51039690085128,
+          "ci": {
+            "lo": 209.36277887671613,
+            "hi": 209.5103969008513,
+            "confidence": 0.95
+          },
+          "values": [
+            209.42456639564648,
+            209.51039690085128,
+            209.36277887671616
+          ]
+        },
+        {
+          "name": "unpresented_inputs",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "samples": 182,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "by_kind": {
+              "pointer_axis": 241,
+              "pointer_motion": 1
+            },
+            "frame_rate_hz": 52.13889619808626,
+            "frames": 60,
+            "input_rate_hz": 209.42456639564648,
+            "inputs": 242,
+            "max_per_frame": 8,
+            "per_frame": {
+              "count": 60,
+              "max": 8.0,
+              "mean": 4.016666666666667,
+              "min": 2.0,
+              "p50": 4.0,
+              "p90": 4.0,
+              "p95": 4.0,
+              "p99": 5.639999999999986,
+              "p999": 7.764000000000038,
+              "stddev": 0.5963637459756623
+            },
+            "presented_inputs": 241
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "by_kind": {
+              "pointer_axis": 241,
+              "pointer_motion": 1
+            },
+            "frame_rate_hz": 53.02960253507024,
+            "frames": 61,
+            "input_rate_hz": 209.51039690085128,
+            "inputs": 242,
+            "max_per_frame": 4,
+            "per_frame": {
+              "count": 61,
+              "max": 4.0,
+              "mean": 3.9508196721311477,
+              "min": 2.0,
+              "p50": 4.0,
+              "p90": 4.0,
+              "p95": 4.0,
+              "p99": 4.0,
+              "p999": 4.0,
+              "stddev": 0.28438410106736056
+            },
+            "presented_inputs": 241
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "by_kind": {
+              "pointer_axis": 241,
+              "pointer_motion": 1
+            },
+            "frame_rate_hz": 52.992238636845165,
+            "frames": 61,
+            "input_rate_hz": 209.36277887671616,
+            "inputs": 242,
+            "max_per_frame": 4,
+            "per_frame": {
+              "count": 61,
+              "max": 4.0,
+              "mean": 3.9508196721311477,
+              "min": 1.0,
+              "p50": 4.0,
+              "p90": 4.0,
+              "p95": 4.0,
+              "p99": 4.0,
+              "p999": 4.0,
+              "stddev": 0.3841106397986868
+            },
+            "presented_inputs": 241
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "resources",
+      "metrics": [
+        {
+          "name": "cpu_percent_mean",
+          "variant": null,
+          "unit": "percent",
+          "better": "lower",
+          "n": 3,
+          "mean": 111.91353299468098,
+          "median": 112.71170701813689,
+          "stddev": 2.9385827878886492,
+          "min": 108.65831967753768,
+          "max": 114.3705722883684,
+          "ci": {
+            "lo": 108.65831967753768,
+            "hi": 114.3705722883684,
+            "confidence": 0.95
+          },
+          "values": [
+            114.3705722883684,
+            112.71170701813689,
+            108.65831967753768
+          ]
+        },
+        {
+          "name": "rss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 3,
+          "mean": 283706709.3333333,
+          "median": 284405760.0,
+          "stddev": 1210791.2717315622,
+          "min": 282308608.0,
+          "max": 284405760.0,
+          "ci": {
+            "lo": 282308608.0,
+            "hi": 284405760.0,
+            "confidence": 0.95
+          },
+          "values": [
+            282308608.0,
+            284405760.0,
+            284405760.0
+          ]
+        },
+        {
+          "name": "threads_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 3,
+          "mean": 33.0,
+          "median": 33.0,
+          "stddev": 0.0,
+          "min": 33.0,
+          "max": 33.0,
+          "ci": {
+            "lo": 33.0,
+            "hi": 33.0,
+            "confidence": 0.95
+          },
+          "values": [
+            33.0,
+            33.0,
+            33.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_s",
+          "variant": null,
+          "unit": "ms_per_s",
+          "better": "lower",
+          "n": 3,
+          "mean": 1153.3129565120514,
+          "median": 1159.0498926899159,
+          "stddev": 29.043606930382015,
+          "min": 1121.8289895458524,
+          "max": 1179.0599873003864,
+          "ci": {
+            "lo": 1121.8289895458524,
+            "hi": 1179.0599873003864,
+            "confidence": 0.95
+          },
+          "values": [
+            1179.0599873003864,
+            1159.0498926899159,
+            1121.8289895458524
+          ]
+        },
+        {
+          "name": "cpu_ms",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 3,
+          "mean": 1632.6613913333333,
+          "median": 1621.652365,
+          "stddev": 19.91563784941026,
+          "min": 1620.680664,
+          "max": 1655.651145,
+          "ci": {
+            "lo": 1620.6806640000002,
+            "hi": 1655.651145,
+            "confidence": 0.95
+          },
+          "values": [
+            1655.651145,
+            1620.680664,
+            1621.652365
+          ]
+        },
+        {
+          "name": "wakeups_per_s",
+          "variant": null,
+          "unit": "per_s",
+          "better": "lower",
+          "n": 3,
+          "mean": 4240.769570808102,
+          "median": 4232.331154003897,
+          "stddev": 77.35165661293476,
+          "min": 4167.983106548092,
+          "max": 4321.994451872315,
+          "ci": {
+            "lo": 4167.983106548092,
+            "hi": 4321.994451872315,
+            "confidence": 0.95
+          },
+          "values": [
+            4321.994451872315,
+            4232.331154003897,
+            4167.983106548092
+          ]
+        },
+        {
+          "name": "pss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 3,
+          "mean": 273616213.3333333,
+          "median": 274315264.0,
+          "stddev": 1210791.2717315622,
+          "min": 272218112.0,
+          "max": 274315264.0,
+          "ci": {
+            "lo": 272218112.0,
+            "hi": 274315264.0,
+            "confidence": 0.95
+          },
+          "values": [
+            272218112.0,
+            274315264.0,
+            274315264.0
+          ]
+        },
+        {
+          "name": "private_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 3,
+          "mean": 265442645.33333334,
+          "median": 266141696.0,
+          "stddev": 1210791.271731562,
+          "min": 264044544.0,
+          "max": 266141696.0,
+          "ci": {
+            "lo": 264044544.0,
+            "hi": 266141696.0,
+            "confidence": 0.95
+          },
+          "values": [
+            264044544.0,
+            266141696.0,
+            266141696.0
+          ]
+        }
+      ],
+      "samples": 88,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario rows --rows 100",
+                "cpu_ms": 1655.651145,
+                "cpu_ms_per_s": 1179.0599873003864,
+                "cpu_percent": {
+                  "count": 29,
+                  "max": 211.462328761574,
+                  "mean": 114.3705722883684,
+                  "min": 0.0,
+                  "p50": 144.38149561591032,
+                  "p90": 186.8035510219936,
+                  "p95": 193.34742890602251,
+                  "p99": 207.12856585674012,
+                  "p999": 211.02895247109063,
+                  "stddev": 75.62399958977844
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 282308608,
+                "pid": 61602,
+                "private_max_bytes": 264044544,
+                "pss_max_bytes": 272218112,
+                "rss_max_bytes": 282308608,
+                "rss_mean_bytes": 282305500.6896552,
+                "samples": 29,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 4321.994451872315
+              }
+            ],
+            "selected": [
+              61602
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario rows --rows 100",
+                "cpu_ms": 1620.680664,
+                "cpu_ms_per_s": 1159.0498926899159,
+                "cpu_percent": {
+                  "count": 29,
+                  "max": 206.70388689484435,
+                  "mean": 112.71170701813689,
+                  "min": 0.0,
+                  "p50": 142.1279565904424,
+                  "p90": 174.56548825038823,
+                  "p95": 186.37309991322715,
+                  "p99": 202.63583395174206,
+                  "p999": 206.29708160053414,
+                  "stddev": 73.27958252336343
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 284405760,
+                "pid": 61602,
+                "private_max_bytes": 266141696,
+                "pss_max_bytes": 274315264,
+                "rss_max_bytes": 284405760,
+                "rss_mean_bytes": 283100689.6551724,
+                "samples": 29,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 4232.331154003897
+              }
+            ],
+            "selected": [
+              61602
+            ]
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario rows --rows 100",
+                "cpu_ms": 1621.652365,
+                "cpu_ms_per_s": 1121.8289895458524,
+                "cpu_percent": {
+                  "count": 30,
+                  "max": 204.68607157868206,
+                  "mean": 108.65831967753768,
+                  "min": 0.0,
+                  "p50": 145.04196312349404,
+                  "p90": 177.2097215968918,
+                  "p95": 185.71512637794797,
+                  "p99": 199.86427216044808,
+                  "p999": 204.2038916368587,
+                  "stddev": 74.42685394770056
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 284405760,
+                "pid": 61602,
+                "private_max_bytes": 266141696,
+                "pss_max_bytes": 274315264,
+                "rss_max_bytes": 284405760,
+                "rss_mean_bytes": 284402892.8,
+                "samples": 30,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 4167.983106548092
+              }
+            ],
+            "selected": [
+              61602
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_cost",
+      "metrics": [
+        {
+          "name": "frames",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 3,
+          "mean": 60.666666666666664,
+          "median": 61.0,
+          "stddev": 0.5773502691896258,
+          "min": 60.0,
+          "max": 61.0,
+          "ci": {
+            "lo": 60.0,
+            "hi": 61.0,
+            "confidence": 0.95
+          },
+          "values": [
+            60.0,
+            61.0,
+            61.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_frame",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 3,
+          "mean": 26.915728741803278,
+          "median": 26.584464999999998,
+          "stddev": 0.5876149856979939,
+          "min": 26.568535475409835,
+          "max": 27.59418575,
+          "ci": {
+            "lo": 26.568535475409835,
+            "hi": 27.594185749999998,
+            "confidence": 0.95
+          },
+          "values": [
+            27.59418575,
+            26.568535475409835,
+            26.584464999999998
+          ]
+        },
+        {
+          "name": "damage_fraction_p50",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 3,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "damage_fraction_mean",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 3,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": {
+            "lo": 1.0,
+            "hi": 1.0,
+            "confidence": 0.95
+          },
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "full_damage_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 3,
+          "mean": 60.666666666666664,
+          "median": 61.0,
+          "stddev": 0.5773502691896258,
+          "min": 60.0,
+          "max": 61.0,
+          "ci": {
+            "lo": 60.0,
+            "hi": 61.0,
+            "confidence": 0.95
+          },
+          "values": [
+            60.0,
+            61.0,
+            61.0
+          ]
+        }
+      ],
+      "samples": 182,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "commits": 60,
+            "cpu_frames": 60,
+            "cpu_ms": 1655.651145,
+            "cpu_ms_per_frame": 27.59418575,
+            "damage_fraction": {
+              "count": 60,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 60,
+            "full_damage_frames": 60,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 1454.204678
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "commits": 61,
+            "cpu_frames": 61,
+            "cpu_ms": 1620.680664,
+            "cpu_ms_per_frame": 26.568535475409835,
+            "damage_fraction": {
+              "count": 61,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 61,
+            "full_damage_frames": 61,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 1454.405655
+          }
+        },
+        {
+          "index": 3,
+          "variant": null,
+          "report": {
+            "commits": 61,
+            "cpu_frames": 61,
+            "cpu_ms": 1621.652365,
+            "cpu_ms_per_frame": 26.584464999999998,
+            "damage_fraction": {
+              "count": 61,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 61,
+            "full_damage_frames": 61,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 1452.691538
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

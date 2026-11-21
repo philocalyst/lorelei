@@ -1,0 +1,35 @@
+{
+  "cell": {
+    "scenario": "table",
+    "framework": "bough",
+    "variant": "fine",
+    "hz": 60.0,
+    "rows": 1000,
+    "updates": null
+  },
+  "dir": "table/bough/fine/60hz/1000",
+  "args": [
+    "--scenario",
+    "table",
+    "--rows",
+    "1000",
+    "--variant",
+    "fine"
+  ],
+  "done": [
+    "startup",
+    "layout",
+    "idle",
+    "op-select",
+    "op-update10",
+    "op-swap",
+    "op-remove",
+    "op-insert",
+    "op-replace",
+    "op-append",
+    "op-clear",
+    "churn"
+  ],
+  "errors": [],
+  "skipped": []
+}

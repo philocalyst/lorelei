@@ -1,0 +1,1807 @@
+{
+  "format_version": 1,
+  "name": "key-latency",
+  "preset": "key-latency",
+  "params": {
+    "detector": "pixels",
+    "iterations": 2,
+    "key": "F6",
+    "phase": null,
+    "quiet": "100ms",
+    "repeats": 4,
+    "roi": {
+      "h": 39,
+      "w": 640,
+      "x": 0,
+      "y": 0
+    },
+    "seed": null,
+    "settle": null,
+    "target": null,
+    "threshold": 0.001,
+    "timeout": "5s",
+    "undo": "F7",
+    "warmup": 1,
+    "window_timeout": null
+  },
+  "environment": {
+    "gpu": "",
+    "driver": "",
+    "kernel": "7.3.0-9-generic",
+    "cpu": "",
+    "governor": "",
+    "renderer": "pixman",
+    "hostname": "lima-benchvm",
+    "fakeland_version": "0.1.0"
+  },
+  "config": {
+    "iterations": 2,
+    "warmup": 1,
+    "settle": "200ms",
+    "quiet": null,
+    "phase": null,
+    "seed": 0,
+    "variants": [],
+    "target": {
+      "type": "focused"
+    },
+    "analyzers": [
+      "latency",
+      "resources",
+      "frame_cost"
+    ],
+    "outputs": [
+      {
+        "id": 1,
+        "name": "DP-1",
+        "make": "Dell Inc.",
+        "model": "DELL P2422H",
+        "serial": "7Z6X3G3",
+        "mode": {
+          "width": 1280,
+          "height": 800,
+          "refresh": 60.0
+        },
+        "modes": [
+          {
+            "width": 1280,
+            "height": 800,
+            "refresh": 60.0
+          }
+        ],
+        "scale": 1.0,
+        "transform": "normal",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "logical_size": {
+          "w": 1280,
+          "h": 800
+        },
+        "timing": {
+          "mode": {
+            "type": "fixed",
+            "refresh": 60.0
+          },
+          "latch_offset": "1ms",
+          "callbacks": {
+            "type": "at_vblank"
+          },
+          "perturbation": null,
+          "zero_copy": false
+        },
+        "enabled": true,
+        "physical_mm": [
+          353,
+          221
+        ]
+      }
+    ],
+    "lateness_threshold": "2ms"
+  },
+  "started": 1820825335153,
+  "finished": 1823640777692,
+  "iterations": [
+    {
+      "index": 0,
+      "measured": null,
+      "variant": null,
+      "phase": null,
+      "started": 1821026453505,
+      "finished": 1821740216011,
+      "ok": true,
+      "error": null,
+      "late_wakes": 17,
+      "max_lateness": 6526713,
+      "records": 0,
+      "dropped_records": 0
+    },
+    {
+      "index": 1,
+      "measured": 0,
+      "variant": null,
+      "phase": null,
+      "started": 1821942883824,
+      "finished": 1822673717469,
+      "ok": true,
+      "error": null,
+      "late_wakes": 24,
+      "max_lateness": 6678844,
+      "records": 235,
+      "dropped_records": 0
+    },
+    {
+      "index": 2,
+      "measured": 1,
+      "variant": null,
+      "phase": null,
+      "started": 1822874224233,
+      "finished": 1823640572740,
+      "ok": true,
+      "error": null,
+      "late_wakes": 25,
+      "max_lateness": 8990022,
+      "records": 239,
+      "dropped_records": 0
+    }
+  ],
+  "validity": {
+    "valid": false,
+    "checks": [
+      {
+        "name": "iterations",
+        "status": "pass",
+        "message": "2 measured iterations",
+        "value": 2.0,
+        "limit": 1.0
+      },
+      {
+        "name": "iteration_errors",
+        "status": "pass",
+        "message": "every iteration finished",
+        "value": null,
+        "limit": null
+      },
+      {
+        "name": "wake_lateness",
+        "status": "fail",
+        "message": "49 of 180 output wakes later than 2.00 ms; max 8.990 ms",
+        "value": 8.990022,
+        "limit": 2.0
+      },
+      {
+        "name": "host_load",
+        "status": "pass",
+        "message": "other processes used 0.0% of 10 CPUs (all: 5.6%)",
+        "value": 0.0,
+        "limit": 0.25
+      },
+      {
+        "name": "samples.latency",
+        "status": "warn",
+        "message": "8 samples, 10 wanted",
+        "value": 8.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.resources",
+        "status": "pass",
+        "message": "30 samples, 10 wanted",
+        "value": 30.0,
+        "limit": 10.0
+      },
+      {
+        "name": "samples.frame_cost",
+        "status": "warn",
+        "message": "8 samples, 10 wanted",
+        "value": 8.0,
+        "limit": 10.0
+      }
+    ]
+  },
+  "sections": [
+    {
+      "name": "latency",
+      "metrics": [
+        {
+          "name": "total_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 60.56994949999999,
+          "median": 60.56994949999999,
+          "stddev": 7.157570305728362,
+          "min": 55.508783,
+          "max": 65.63111599999999,
+          "ci": null,
+          "values": [
+            55.508783,
+            65.63111599999999
+          ]
+        },
+        {
+          "name": "total_p95",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 72.15773817499999,
+          "median": 72.15773817499999,
+          "stddev": 6.374602669537734,
+          "min": 67.6502134,
+          "max": 76.66526295,
+          "ci": null,
+          "values": [
+            67.6502134,
+            76.66526295
+          ]
+        },
+        {
+          "name": "total_mean",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 61.482072625,
+          "median": 61.482072625,
+          "stddev": 7.365135314161345,
+          "min": 56.2741355,
+          "max": 66.69000975,
+          "ci": null,
+          "values": [
+            56.2741355,
+            66.69000975
+          ]
+        },
+        {
+          "name": "total_max",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 73.424939,
+          "median": 73.424939,
+          "stddev": 6.895981101775878,
+          "min": 68.548744,
+          "max": 78.301134,
+          "ci": null,
+          "values": [
+            68.548744,
+            78.301134
+          ]
+        },
+        {
+          "name": "input_to_commit_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 52.41891575,
+          "median": 52.41891575,
+          "stddev": 5.5825221239938765,
+          "min": 48.4714765,
+          "max": 56.366355,
+          "ci": null,
+          "values": [
+            48.4714765,
+            56.366355
+          ]
+        },
+        {
+          "name": "input_to_commit_p95",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 60.961545675,
+          "median": 60.961545675,
+          "stddev": 3.9542746575108003,
+          "min": 58.165451250000004,
+          "max": 63.7576401,
+          "ci": null,
+          "values": [
+            58.165451250000004,
+            63.7576401
+          ]
+        },
+        {
+          "name": "commit_to_ready_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "name": "ready_to_latch_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 8.446917,
+          "median": 8.446917,
+          "stddev": 1.9582141436636862,
+          "min": 7.062250499999999,
+          "max": 9.8315835,
+          "ci": null,
+          "values": [
+            7.062250499999999,
+            9.8315835
+          ]
+        },
+        {
+          "name": "latch_to_present_p50",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "timeouts",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 0.0,
+          "median": 0.0,
+          "stddev": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "ci": null,
+          "values": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "samples": 8,
+      "pooled": [
+        {
+          "variant": null,
+          "samples": 8,
+          "metrics": [
+            {
+              "name": "total_p50",
+              "value": 63.2127225,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "total_p95",
+              "value": 74.8877975,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "total_mean",
+              "value": 61.482072625,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "total_max",
+              "value": 78.301134,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "input_to_commit_p50",
+              "value": 54.8658225,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "input_to_commit_p95",
+              "value": 62.7627869,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "commit_to_ready_p50",
+              "value": 0.0,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "ready_to_latch_p50",
+              "value": 7.9801115,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "latch_to_present_p50",
+              "value": 1.0,
+              "unit": "ms",
+              "better": "lower"
+            },
+            {
+              "name": "timeouts",
+              "value": 0.0,
+              "unit": "count",
+              "better": "lower"
+            }
+          ],
+          "report": {
+            "by_phase": [
+              {
+                "count": 1,
+                "from_ms": 0.0,
+                "to_ms": 2.083333375,
+                "total_p50_ms": 48.459026
+              },
+              {
+                "count": 2,
+                "from_ms": 2.083333375,
+                "to_ms": 4.16666675,
+                "total_p50_ms": 63.2127225
+              },
+              {
+                "count": 2,
+                "from_ms": 4.16666675,
+                "to_ms": 6.250000125,
+                "total_p50_ms": 61.915683
+              },
+              {
+                "count": 0,
+                "from_ms": 6.250000125,
+                "to_ms": 8.3333335,
+                "total_p50_ms": null
+              },
+              {
+                "count": 1,
+                "from_ms": 8.3333335,
+                "to_ms": 10.416666875,
+                "total_p50_ms": 57.196673
+              },
+              {
+                "count": 0,
+                "from_ms": 10.416666875,
+                "to_ms": 12.500000250000001,
+                "total_p50_ms": null
+              },
+              {
+                "count": 0,
+                "from_ms": 12.50000025,
+                "to_ms": 14.583333625,
+                "total_p50_ms": null
+              },
+              {
+                "count": 2,
+                "from_ms": 14.583333625,
+                "to_ms": 16.666667,
+                "total_p50_ms": 67.9720355
+              }
+            ],
+            "commit_to_ready_ms": {
+              "count": 8,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "p999": 0.0,
+              "stddev": 0.0
+            },
+            "detected": 8,
+            "histogram": {
+              "bins": [
+                {
+                  "count": 1,
+                  "hi": 46.0,
+                  "lo": 45.0
+                },
+                {
+                  "count": 0,
+                  "hi": 47.0,
+                  "lo": 46.0
+                },
+                {
+                  "count": 0,
+                  "hi": 48.0,
+                  "lo": 47.0
+                },
+                {
+                  "count": 1,
+                  "hi": 49.0,
+                  "lo": 48.0
+                },
+                {
+                  "count": 0,
+                  "hi": 50.0,
+                  "lo": 49.0
+                },
+                {
+                  "count": 0,
+                  "hi": 51.0,
+                  "lo": 50.0
+                },
+                {
+                  "count": 0,
+                  "hi": 52.0,
+                  "lo": 51.0
+                },
+                {
+                  "count": 0,
+                  "hi": 53.0,
+                  "lo": 52.0
+                },
+                {
+                  "count": 0,
+                  "hi": 54.0,
+                  "lo": 53.0
+                },
+                {
+                  "count": 0,
+                  "hi": 55.0,
+                  "lo": 54.0
+                },
+                {
+                  "count": 0,
+                  "hi": 56.0,
+                  "lo": 55.0
+                },
+                {
+                  "count": 0,
+                  "hi": 57.0,
+                  "lo": 56.0
+                },
+                {
+                  "count": 1,
+                  "hi": 58.0,
+                  "lo": 57.0
+                },
+                {
+                  "count": 0,
+                  "hi": 59.0,
+                  "lo": 58.0
+                },
+                {
+                  "count": 0,
+                  "hi": 60.0,
+                  "lo": 59.0
+                },
+                {
+                  "count": 0,
+                  "hi": 61.0,
+                  "lo": 60.0
+                },
+                {
+                  "count": 0,
+                  "hi": 62.0,
+                  "lo": 61.0
+                },
+                {
+                  "count": 1,
+                  "hi": 63.0,
+                  "lo": 62.0
+                },
+                {
+                  "count": 1,
+                  "hi": 64.0,
+                  "lo": 63.0
+                },
+                {
+                  "count": 0,
+                  "hi": 65.0,
+                  "lo": 64.0
+                },
+                {
+                  "count": 0,
+                  "hi": 66.0,
+                  "lo": 65.0
+                },
+                {
+                  "count": 0,
+                  "hi": 67.0,
+                  "lo": 66.0
+                },
+                {
+                  "count": 1,
+                  "hi": 68.0,
+                  "lo": 67.0
+                },
+                {
+                  "count": 1,
+                  "hi": 69.0,
+                  "lo": 68.0
+                },
+                {
+                  "count": 0,
+                  "hi": 70.0,
+                  "lo": 69.0
+                },
+                {
+                  "count": 0,
+                  "hi": 71.0,
+                  "lo": 70.0
+                },
+                {
+                  "count": 0,
+                  "hi": 72.0,
+                  "lo": 71.0
+                },
+                {
+                  "count": 0,
+                  "hi": 73.0,
+                  "lo": 72.0
+                },
+                {
+                  "count": 0,
+                  "hi": 74.0,
+                  "lo": 73.0
+                },
+                {
+                  "count": 0,
+                  "hi": 75.0,
+                  "lo": 74.0
+                },
+                {
+                  "count": 0,
+                  "hi": 76.0,
+                  "lo": 75.0
+                },
+                {
+                  "count": 0,
+                  "hi": 77.0,
+                  "lo": 76.0
+                },
+                {
+                  "count": 0,
+                  "hi": 78.0,
+                  "lo": 77.0
+                },
+                {
+                  "count": 1,
+                  "hi": 79.0,
+                  "lo": 78.0
+                }
+              ],
+              "overflow": 0,
+              "total": 8,
+              "underflow": 0
+            },
+            "input_to_commit_median_ci": {
+              "confidence": 0.95,
+              "estimate": 54.8658225,
+              "hi": 59.529514,
+              "lo": 40.414504
+            },
+            "input_to_commit_ms": {
+              "count": 8,
+              "max": 64.50378,
+              "mean": 51.521051875,
+              "min": 31.616019,
+              "p50": 54.8658225,
+              "p90": 61.0217938,
+              "p95": 62.7627869,
+              "p99": 64.15558138,
+              "p999": 64.46896013800001,
+              "stddev": 10.962298983973461
+            },
+            "label": null,
+            "latch_to_present_ms": {
+              "count": 8,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "presented": 8,
+            "readback_cost_ms": {
+              "count": 8,
+              "max": 16.452693,
+              "mean": 2.168823875,
+              "min": 0.117138,
+              "p50": 0.12447949999999999,
+              "p90": 5.050388799999998,
+              "p95": 10.751540899999991,
+              "p99": 15.312462579999995,
+              "p999": 16.338669958000004,
+              "stddev": 5.7715751954026855
+            },
+            "ready_to_latch_ms": {
+              "count": 8,
+              "max": 15.843007,
+              "mean": 8.96102075,
+              "min": 2.993477,
+              "p50": 7.9801115,
+              "p90": 15.2167023,
+              "p95": 15.529854649999999,
+              "p99": 15.78037653,
+              "p999": 15.836743953000001,
+              "stddev": 5.026712499559293
+            },
+            "repeats": 8,
+            "samples": [
+              {
+                "input_to_commit_ms": 58.454334,
+                "phase_ms": 14.784591,
+                "repeat": 0,
+                "timed_out": false,
+                "total_ms": 68.548744
+              },
+              {
+                "input_to_commit_ms": 40.414504,
+                "phase_ms": 4.469769,
+                "repeat": 1,
+                "timed_out": false,
+                "total_ms": 45.530232
+              },
+              {
+                "input_to_commit_ms": 56.528449,
+                "phase_ms": 4.108128,
+                "repeat": 2,
+                "timed_out": false,
+                "total_ms": 62.55854
+              },
+              {
+                "input_to_commit_ms": 31.616019,
+                "phase_ms": 1.540975,
+                "repeat": 3,
+                "timed_out": false,
+                "total_ms": 48.459026
+              },
+              {
+                "input_to_commit_ms": 64.50378,
+                "phase_ms": 5.032201,
+                "repeat": 0,
+                "timed_out": false,
+                "total_ms": 78.301134
+              },
+              {
+                "input_to_commit_ms": 47.918619,
+                "phase_ms": 2.799763,
+                "repeat": 1,
+                "timed_out": false,
+                "total_ms": 63.866905
+              },
+              {
+                "input_to_commit_ms": 59.529514,
+                "phase_ms": 15.938008,
+                "repeat": 2,
+                "timed_out": false,
+                "total_ms": 67.395327
+              },
+              {
+                "input_to_commit_ms": 53.203196,
+                "phase_ms": 9.469995,
+                "repeat": 3,
+                "timed_out": false,
+                "total_ms": 57.196673
+              }
+            ],
+            "timed_out": 0,
+            "total_median_ci": {
+              "confidence": 0.95,
+              "estimate": 63.2127225,
+              "hi": 68.548744,
+              "lo": 48.459026
+            },
+            "total_ms": {
+              "count": 8,
+              "max": 78.301134,
+              "mean": 61.482072625,
+              "min": 45.530232,
+              "p50": 63.2127225,
+              "p90": 71.474461,
+              "p95": 74.8877975,
+              "p99": 77.6184667,
+              "p999": 78.23286727000001,
+              "stddev": 10.803815908519677
+            }
+          }
+        }
+      ],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "by_phase": [
+              {
+                "count": 1,
+                "from_ms": 0.0,
+                "to_ms": 2.083333375,
+                "total_p50_ms": 48.459026
+              },
+              {
+                "count": 1,
+                "from_ms": 2.083333375,
+                "to_ms": 4.16666675,
+                "total_p50_ms": 62.55854
+              },
+              {
+                "count": 1,
+                "from_ms": 4.16666675,
+                "to_ms": 6.250000125,
+                "total_p50_ms": 45.530232
+              },
+              {
+                "count": 0,
+                "from_ms": 6.250000125,
+                "to_ms": 8.3333335,
+                "total_p50_ms": null
+              },
+              {
+                "count": 0,
+                "from_ms": 8.3333335,
+                "to_ms": 10.416666875,
+                "total_p50_ms": null
+              },
+              {
+                "count": 0,
+                "from_ms": 10.416666875,
+                "to_ms": 12.500000250000001,
+                "total_p50_ms": null
+              },
+              {
+                "count": 0,
+                "from_ms": 12.50000025,
+                "to_ms": 14.583333625,
+                "total_p50_ms": null
+              },
+              {
+                "count": 1,
+                "from_ms": 14.583333625,
+                "to_ms": 16.666667,
+                "total_p50_ms": 68.548744
+              }
+            ],
+            "commit_to_ready_ms": {
+              "count": 4,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "p999": 0.0,
+              "stddev": 0.0
+            },
+            "detected": 4,
+            "histogram": {
+              "bins": [
+                {
+                  "count": 1,
+                  "hi": 46.0,
+                  "lo": 45.0
+                },
+                {
+                  "count": 0,
+                  "hi": 47.0,
+                  "lo": 46.0
+                },
+                {
+                  "count": 0,
+                  "hi": 48.0,
+                  "lo": 47.0
+                },
+                {
+                  "count": 1,
+                  "hi": 49.0,
+                  "lo": 48.0
+                },
+                {
+                  "count": 0,
+                  "hi": 50.0,
+                  "lo": 49.0
+                },
+                {
+                  "count": 0,
+                  "hi": 51.0,
+                  "lo": 50.0
+                },
+                {
+                  "count": 0,
+                  "hi": 52.0,
+                  "lo": 51.0
+                },
+                {
+                  "count": 0,
+                  "hi": 53.0,
+                  "lo": 52.0
+                },
+                {
+                  "count": 0,
+                  "hi": 54.0,
+                  "lo": 53.0
+                },
+                {
+                  "count": 0,
+                  "hi": 55.0,
+                  "lo": 54.0
+                },
+                {
+                  "count": 0,
+                  "hi": 56.0,
+                  "lo": 55.0
+                },
+                {
+                  "count": 0,
+                  "hi": 57.0,
+                  "lo": 56.0
+                },
+                {
+                  "count": 0,
+                  "hi": 58.0,
+                  "lo": 57.0
+                },
+                {
+                  "count": 0,
+                  "hi": 59.0,
+                  "lo": 58.0
+                },
+                {
+                  "count": 0,
+                  "hi": 60.0,
+                  "lo": 59.0
+                },
+                {
+                  "count": 0,
+                  "hi": 61.0,
+                  "lo": 60.0
+                },
+                {
+                  "count": 0,
+                  "hi": 62.0,
+                  "lo": 61.0
+                },
+                {
+                  "count": 1,
+                  "hi": 63.0,
+                  "lo": 62.0
+                },
+                {
+                  "count": 0,
+                  "hi": 64.0,
+                  "lo": 63.0
+                },
+                {
+                  "count": 0,
+                  "hi": 65.0,
+                  "lo": 64.0
+                },
+                {
+                  "count": 0,
+                  "hi": 66.0,
+                  "lo": 65.0
+                },
+                {
+                  "count": 0,
+                  "hi": 67.0,
+                  "lo": 66.0
+                },
+                {
+                  "count": 0,
+                  "hi": 68.0,
+                  "lo": 67.0
+                },
+                {
+                  "count": 1,
+                  "hi": 69.0,
+                  "lo": 68.0
+                }
+              ],
+              "overflow": 0,
+              "total": 4,
+              "underflow": 0
+            },
+            "input_to_commit_median_ci": {
+              "confidence": 0.95,
+              "estimate": 48.4714765,
+              "hi": 58.454334,
+              "lo": 31.616019
+            },
+            "input_to_commit_ms": {
+              "count": 4,
+              "max": 58.454334,
+              "mean": 46.7533265,
+              "min": 31.616019,
+              "p50": 48.4714765,
+              "p90": 57.876568500000005,
+              "p95": 58.165451250000004,
+              "p99": 58.39655745,
+              "p999": 58.448556345,
+              "stddev": 12.932972659590229
+            },
+            "label": null,
+            "latch_to_present_ms": {
+              "count": 4,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "presented": 4,
+            "readback_cost_ms": {
+              "count": 4,
+              "max": 16.452693,
+              "mean": 4.20697675,
+              "min": 0.117178,
+              "p50": 0.129018,
+              "p90": 11.556746400000002,
+              "p95": 14.004719699999992,
+              "p99": 15.963098339999995,
+              "p999": 16.403733534000004,
+              "stddev": 8.163813347442414
+            },
+            "ready_to_latch_ms": {
+              "count": 4,
+              "max": 15.843007,
+              "mean": 8.520809,
+              "min": 4.115728,
+              "p50": 7.062250499999999,
+              "p90": 13.818427900000001,
+              "p95": 14.830717449999998,
+              "p99": 15.640549089999999,
+              "p999": 15.822761209000003,
+              "stddev": 5.339583392940252
+            },
+            "repeats": 4,
+            "samples": [
+              {
+                "input_to_commit_ms": 58.454334,
+                "phase_ms": 14.784591,
+                "repeat": 0,
+                "timed_out": false,
+                "total_ms": 68.548744
+              },
+              {
+                "input_to_commit_ms": 40.414504,
+                "phase_ms": 4.469769,
+                "repeat": 1,
+                "timed_out": false,
+                "total_ms": 45.530232
+              },
+              {
+                "input_to_commit_ms": 56.528449,
+                "phase_ms": 4.108128,
+                "repeat": 2,
+                "timed_out": false,
+                "total_ms": 62.55854
+              },
+              {
+                "input_to_commit_ms": 31.616019,
+                "phase_ms": 1.540975,
+                "repeat": 3,
+                "timed_out": false,
+                "total_ms": 48.459026
+              }
+            ],
+            "timed_out": 0,
+            "total_median_ci": {
+              "confidence": 0.95,
+              "estimate": 55.508783,
+              "hi": 68.548744,
+              "lo": 45.530232
+            },
+            "total_ms": {
+              "count": 4,
+              "max": 68.548744,
+              "mean": 56.2741355,
+              "min": 45.530232,
+              "p50": 55.508783,
+              "p90": 66.7516828,
+              "p95": 67.6502134,
+              "p99": 68.36903788,
+              "p999": 68.530773388,
+              "stddev": 11.055423294507165
+            }
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "by_phase": [
+              {
+                "count": 0,
+                "from_ms": 0.0,
+                "to_ms": 2.083333375,
+                "total_p50_ms": null
+              },
+              {
+                "count": 1,
+                "from_ms": 2.083333375,
+                "to_ms": 4.16666675,
+                "total_p50_ms": 63.866905
+              },
+              {
+                "count": 1,
+                "from_ms": 4.16666675,
+                "to_ms": 6.250000125,
+                "total_p50_ms": 78.301134
+              },
+              {
+                "count": 0,
+                "from_ms": 6.250000125,
+                "to_ms": 8.3333335,
+                "total_p50_ms": null
+              },
+              {
+                "count": 1,
+                "from_ms": 8.3333335,
+                "to_ms": 10.416666875,
+                "total_p50_ms": 57.196673
+              },
+              {
+                "count": 0,
+                "from_ms": 10.416666875,
+                "to_ms": 12.500000250000001,
+                "total_p50_ms": null
+              },
+              {
+                "count": 0,
+                "from_ms": 12.50000025,
+                "to_ms": 14.583333625,
+                "total_p50_ms": null
+              },
+              {
+                "count": 1,
+                "from_ms": 14.583333625,
+                "to_ms": 16.666667,
+                "total_p50_ms": 67.395327
+              }
+            ],
+            "commit_to_ready_ms": {
+              "count": 4,
+              "max": 0.0,
+              "mean": 0.0,
+              "min": 0.0,
+              "p50": 0.0,
+              "p90": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "p999": 0.0,
+              "stddev": 0.0
+            },
+            "detected": 4,
+            "histogram": {
+              "bins": [
+                {
+                  "count": 1,
+                  "hi": 58.0,
+                  "lo": 57.0
+                },
+                {
+                  "count": 0,
+                  "hi": 59.0,
+                  "lo": 58.0
+                },
+                {
+                  "count": 0,
+                  "hi": 60.0,
+                  "lo": 59.0
+                },
+                {
+                  "count": 0,
+                  "hi": 61.0,
+                  "lo": 60.0
+                },
+                {
+                  "count": 0,
+                  "hi": 62.0,
+                  "lo": 61.0
+                },
+                {
+                  "count": 0,
+                  "hi": 63.0,
+                  "lo": 62.0
+                },
+                {
+                  "count": 1,
+                  "hi": 64.0,
+                  "lo": 63.0
+                },
+                {
+                  "count": 0,
+                  "hi": 65.0,
+                  "lo": 64.0
+                },
+                {
+                  "count": 0,
+                  "hi": 66.0,
+                  "lo": 65.0
+                },
+                {
+                  "count": 0,
+                  "hi": 67.0,
+                  "lo": 66.0
+                },
+                {
+                  "count": 1,
+                  "hi": 68.0,
+                  "lo": 67.0
+                },
+                {
+                  "count": 0,
+                  "hi": 69.0,
+                  "lo": 68.0
+                },
+                {
+                  "count": 0,
+                  "hi": 70.0,
+                  "lo": 69.0
+                },
+                {
+                  "count": 0,
+                  "hi": 71.0,
+                  "lo": 70.0
+                },
+                {
+                  "count": 0,
+                  "hi": 72.0,
+                  "lo": 71.0
+                },
+                {
+                  "count": 0,
+                  "hi": 73.0,
+                  "lo": 72.0
+                },
+                {
+                  "count": 0,
+                  "hi": 74.0,
+                  "lo": 73.0
+                },
+                {
+                  "count": 0,
+                  "hi": 75.0,
+                  "lo": 74.0
+                },
+                {
+                  "count": 0,
+                  "hi": 76.0,
+                  "lo": 75.0
+                },
+                {
+                  "count": 0,
+                  "hi": 77.0,
+                  "lo": 76.0
+                },
+                {
+                  "count": 0,
+                  "hi": 78.0,
+                  "lo": 77.0
+                },
+                {
+                  "count": 1,
+                  "hi": 79.0,
+                  "lo": 78.0
+                }
+              ],
+              "overflow": 0,
+              "total": 4,
+              "underflow": 0
+            },
+            "input_to_commit_median_ci": {
+              "confidence": 0.95,
+              "estimate": 56.366355,
+              "hi": 64.50378,
+              "lo": 47.918619
+            },
+            "input_to_commit_ms": {
+              "count": 4,
+              "max": 64.50378,
+              "mean": 56.28877725,
+              "min": 47.918619,
+              "p50": 56.366355,
+              "p90": 63.01150020000001,
+              "p95": 63.7576401,
+              "p99": 64.35455202,
+              "p999": 64.488857202,
+              "stddev": 7.247275479923539
+            },
+            "label": null,
+            "latch_to_present_ms": {
+              "count": 4,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "presented": 4,
+            "readback_cost_ms": {
+              "count": 4,
+              "max": 0.163687,
+              "mean": 0.130671,
+              "min": 0.117138,
+              "p50": 0.1209295,
+              "p90": 0.1517191,
+              "p95": 0.15770304999999998,
+              "p99": 0.16249021,
+              "p999": 0.16356732100000002,
+              "stddev": 0.022206625963136915
+            },
+            "ready_to_latch_ms": {
+              "count": 4,
+              "max": 14.948286,
+              "mean": 9.401232499999999,
+              "min": 2.993477,
+              "p50": 9.8315835,
+              "p90": 14.303006400000001,
+              "p95": 14.625646199999998,
+              "p99": 14.88375804,
+              "p999": 14.941833204,
+              "stddev": 5.470866060731304
+            },
+            "repeats": 4,
+            "samples": [
+              {
+                "input_to_commit_ms": 64.50378,
+                "phase_ms": 5.032201,
+                "repeat": 0,
+                "timed_out": false,
+                "total_ms": 78.301134
+              },
+              {
+                "input_to_commit_ms": 47.918619,
+                "phase_ms": 2.799763,
+                "repeat": 1,
+                "timed_out": false,
+                "total_ms": 63.866905
+              },
+              {
+                "input_to_commit_ms": 59.529514,
+                "phase_ms": 15.938008,
+                "repeat": 2,
+                "timed_out": false,
+                "total_ms": 67.395327
+              },
+              {
+                "input_to_commit_ms": 53.203196,
+                "phase_ms": 9.469995,
+                "repeat": 3,
+                "timed_out": false,
+                "total_ms": 57.196673
+              }
+            ],
+            "timed_out": 0,
+            "total_median_ci": {
+              "confidence": 0.95,
+              "estimate": 65.63111599999999,
+              "hi": 78.301134,
+              "lo": 57.196673
+            },
+            "total_ms": {
+              "count": 4,
+              "max": 78.301134,
+              "mean": 66.69000975,
+              "min": 57.196673,
+              "p50": 65.63111599999999,
+              "p90": 75.02939190000001,
+              "p95": 76.66526295,
+              "p99": 77.97395979000001,
+              "p999": 78.268416579,
+              "stddev": 8.82060167733205
+            }
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "resources",
+      "metrics": [
+        {
+          "name": "cpu_percent_mean",
+          "variant": null,
+          "unit": "percent",
+          "better": "lower",
+          "n": 2,
+          "mean": 53.4940153688898,
+          "median": 53.4940153688898,
+          "stddev": 6.9385344934300415,
+          "min": 48.58773057708865,
+          "max": 58.400300160690946,
+          "ci": null,
+          "values": [
+            58.400300160690946,
+            48.58773057708865
+          ]
+        },
+        {
+          "name": "rss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 312610816.0,
+          "median": 312610816.0,
+          "stddev": 614017.5876569009,
+          "min": 312176640.0,
+          "max": 313044992.0,
+          "ci": null,
+          "values": [
+            312176640.0,
+            313044992.0
+          ]
+        },
+        {
+          "name": "threads_max",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 33.0,
+          "median": 33.0,
+          "stddev": 0.0,
+          "min": 33.0,
+          "max": 33.0,
+          "ci": null,
+          "values": [
+            33.0,
+            33.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_s",
+          "variant": null,
+          "unit": "ms_per_s",
+          "better": "lower",
+          "n": 2,
+          "mean": 567.1619612544126,
+          "median": 567.1619612544126,
+          "stddev": 83.35707154110159,
+          "min": 508.2196107078475,
+          "max": 626.1043118009777,
+          "ci": null,
+          "values": [
+            626.1043118009777,
+            508.2196107078475
+          ]
+        },
+        {
+          "name": "cpu_ms",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 395.6506055,
+          "median": 395.6506055,
+          "stddev": 55.138503175680974,
+          "min": 356.661796,
+          "max": 434.639415,
+          "ci": null,
+          "values": [
+            434.639415,
+            356.661796
+          ]
+        },
+        {
+          "name": "wakeups_per_s",
+          "variant": null,
+          "unit": "per_s",
+          "better": "lower",
+          "n": 2,
+          "mean": 428.76627778952604,
+          "median": 428.76627778952604,
+          "stddev": 102.57674777400102,
+          "min": 356.2335638464678,
+          "max": 501.2989917325842,
+          "ci": null,
+          "values": [
+            501.2989917325842,
+            356.2335638464678
+          ]
+        },
+        {
+          "name": "pss_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 304285696.0,
+          "median": 304285696.0,
+          "stddev": 554643.245454229,
+          "min": 303893504.0,
+          "max": 304677888.0,
+          "ci": null,
+          "values": [
+            303893504.0,
+            304677888.0
+          ]
+        },
+        {
+          "name": "private_max",
+          "variant": null,
+          "unit": "bytes",
+          "better": "lower",
+          "n": 2,
+          "mean": 297900032.0,
+          "median": 297900032.0,
+          "stddev": 495268.90325155685,
+          "min": 297549824.0,
+          "max": 298250240.0,
+          "ci": null,
+          "values": [
+            297549824.0,
+            298250240.0
+          ]
+        }
+      ],
+      "samples": 30,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario table --rows 1000 --variant coarse",
+                "cpu_ms": 434.639415,
+                "cpu_ms_per_s": 626.1043118009777,
+                "cpu_percent": {
+                  "count": 15,
+                  "max": 297.3928773622488,
+                  "mean": 58.400300160690946,
+                  "min": 0.0,
+                  "p50": 0.0,
+                  "p90": 194.11139904912426,
+                  "p95": 265.84642991407065,
+                  "p99": 291.0835878726131,
+                  "p999": 296.76194841328527,
+                  "stddev": 96.23230376602864
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 312176640,
+                "pid": 62001,
+                "private_max_bytes": 297549824,
+                "pss_max_bytes": 303893504,
+                "rss_max_bytes": 312176640,
+                "rss_mean_bytes": 312176640.0,
+                "samples": 15,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 501.2989917325842
+              }
+            ],
+            "selected": [
+              62001
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "cpu_power_w": null,
+            "energy": [],
+            "gpu": null,
+            "gpu_power_w": null,
+            "processes": [
+              {
+                "command": "/home/rmccrar6.guest/src/gui-bench/apps/zgui/target/release/zgui-bench --scenario table --rows 1000 --variant coarse",
+                "cpu_ms": 356.661796,
+                "cpu_ms_per_s": 508.2196107078475,
+                "cpu_percent": {
+                  "count": 15,
+                  "max": 257.46312441457115,
+                  "mean": 48.58773057708865,
+                  "min": 0.0,
+                  "p50": 6.394863825680804,
+                  "p90": 142.28108014239902,
+                  "p95": 179.98938549726225,
+                  "p99": 241.96837663110932,
+                  "p999": 255.91364963622505,
+                  "stddev": 75.41226557418943
+                },
+                "gpu_busy_percent": null,
+                "gpu_mem_max_bytes": null,
+                "gpu_source": null,
+                "hwm_max_bytes": 313044992,
+                "pid": 62001,
+                "private_max_bytes": 298250240,
+                "pss_max_bytes": 304677888,
+                "rss_max_bytes": 313044992,
+                "rss_mean_bytes": 312697651.2,
+                "samples": 15,
+                "swap_max_bytes": 0,
+                "threads_max": 33,
+                "wakeups_per_s": 356.2335638464678
+              }
+            ],
+            "selected": [
+              62001
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "frame_cost",
+      "metrics": [
+        {
+          "name": "frames",
+          "variant": null,
+          "unit": "count",
+          "better": "neither",
+          "n": 2,
+          "mean": 4.0,
+          "median": 4.0,
+          "stddev": 0.0,
+          "min": 4.0,
+          "max": 4.0,
+          "ci": null,
+          "values": [
+            4.0,
+            4.0
+          ]
+        },
+        {
+          "name": "cpu_ms_per_frame",
+          "variant": null,
+          "unit": "ms",
+          "better": "lower",
+          "n": 2,
+          "mean": 131.88353516666666,
+          "median": 131.88353516666666,
+          "stddev": 18.379501058560326,
+          "min": 118.88726533333333,
+          "max": 144.879805,
+          "ci": null,
+          "values": [
+            144.879805,
+            118.88726533333333
+          ]
+        },
+        {
+          "name": "damage_fraction_p50",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "damage_fraction_mean",
+          "variant": null,
+          "unit": "fraction",
+          "better": "lower",
+          "n": 2,
+          "mean": 1.0,
+          "median": 1.0,
+          "stddev": 0.0,
+          "min": 1.0,
+          "max": 1.0,
+          "ci": null,
+          "values": [
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "name": "full_damage_frames",
+          "variant": null,
+          "unit": "count",
+          "better": "lower",
+          "n": 2,
+          "mean": 4.0,
+          "median": 4.0,
+          "stddev": 0.0,
+          "min": 4.0,
+          "max": 4.0,
+          "ci": null,
+          "values": [
+            4.0,
+            4.0
+          ]
+        }
+      ],
+      "samples": 8,
+      "pooled": [],
+      "iterations": [
+        {
+          "index": 1,
+          "variant": null,
+          "report": {
+            "commits": 4,
+            "cpu_frames": 3,
+            "cpu_ms": 434.639415,
+            "cpu_ms_per_frame": 144.879805,
+            "damage_fraction": {
+              "count": 4,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 4,
+            "full_damage_frames": 4,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 730.833645
+          }
+        },
+        {
+          "index": 2,
+          "variant": null,
+          "report": {
+            "commits": 4,
+            "cpu_frames": 3,
+            "cpu_ms": 356.661796,
+            "cpu_ms_per_frame": 118.88726533333333,
+            "damage_fraction": {
+              "count": 4,
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "p50": 1.0,
+              "p90": 1.0,
+              "p95": 1.0,
+              "p99": 1.0,
+              "p999": 1.0,
+              "stddev": 0.0
+            },
+            "frames": 4,
+            "full_damage_frames": 4,
+            "gpu_fence_ms": null,
+            "gpu_fence_ms_per_s": null,
+            "span_ms": 766.348507
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}
