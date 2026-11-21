@@ -87,7 +87,7 @@ impl Loc {
 }
 
 /// A stable identity derived from what does not move: the source site a leaf was written at, the store
-/// path and row/pos inside it (logical slots, not paint order), and the store's creation generation. Two
+/// path and row/pos inside it (logical slots, not paint order), and the host's world generation. Two
 /// descriptions of the same view agree; a scroll that recycles materialisation slots does not change it; a
 /// replacement world (a remount) does.
 pub fn stable_id(loc: Loc, depth: u16, path: [u16; 6], row: u32, pos: u32, generation: u64) -> u64 {
@@ -104,7 +104,7 @@ pub fn stable_id(loc: Loc, depth: u16, path: [u16; 6], row: u32, pos: u32, gener
     eat(&loc.line.to_le_bytes());
     eat(&loc.col.to_le_bytes());
     eat(&[depth as u8, (depth >> 8) as u8]);
-    for q in &path[..depth as usize] {
+    for q in path.iter().take(depth as usize) {
         eat(&q.to_le_bytes());
     }
     eat(&row.to_le_bytes());
@@ -489,7 +489,7 @@ impl List {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub key: Key,
-    /// The stable identity: call site + store path + row/pos + store generation (never the paint index).
+    /// The stable identity: call site + store path + row/pos + world generation (never the paint index).
     pub id: u64,
     /// A stable kind id: the call site and the kind name (the `ty` beside it is display-only).
     pub kind_id: u64,

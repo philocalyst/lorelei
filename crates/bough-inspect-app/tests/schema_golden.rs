@@ -55,3 +55,47 @@ fn the_golden_is_byte_stable() {
         "the schema description changed: re-bless it deliberately"
     );
 }
+
+#[test]
+fn a_round_one_snapshot_recovers_each_added_id() {
+    let mut app = small();
+    let expected = app.snapshot().stable_json();
+    let mut old = json::parse(&expected).unwrap();
+    fn remove(value: &mut json::Value, key: &str) {
+        let json::Value::Obj(entries) = value else {
+            panic!("expected object")
+        };
+        entries.retain(|(name, _)| name != key);
+    }
+    let json::Value::Obj(top) = &mut old else {
+        panic!("expected snapshot")
+    };
+    for (key, value) in top {
+        if key == "app" {
+            remove(value, "generation");
+        }
+        if key == "nodes" {
+            let json::Value::Arr(nodes) = value else {
+                panic!("expected nodes")
+            };
+            for node in nodes {
+                remove(node, "id");
+                remove(node, "kind_id");
+                let json::Value::Obj(fields) = node else {
+                    panic!("expected node")
+                };
+                for (key, value) in fields {
+                    if key == "ops" {
+                        let json::Value::Arr(ops) = value else {
+                            panic!("expected operands")
+                        };
+                        for op in ops {
+                            remove(op, "id");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(Snapshot::from_json(&old).unwrap().stable_json(), expected);
+}

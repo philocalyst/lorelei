@@ -562,3 +562,57 @@ fn search_text_and_key_turns_change_results_and_pixels() {
     assert_eq!(initial.get("pixels"), restored.get("pixels"));
     call(&mut client, "shutdown", J::obj());
 }
+
+#[test]
+fn fresh_processes_compute_equal_ids_and_recover_a_killed_apps_socket() {
+    let mut first = spawn("id-process-a", "rows", 100);
+    let mut client = Client::open(&first.path).unwrap();
+    let before = call(&mut client, "tree", J::obj());
+    let pid = first.child.id();
+    first.child.kill().unwrap();
+    first.child.wait().unwrap();
+    assert!(first.path.exists());
+    let path = first.path.clone();
+    // Keep the stale inode for the new process to reclaim.
+    let mut second = Command::new(env!("CARGO_BIN_EXE_bough-inspect-app"))
+        .args(["--scenario", "rows", "--rows", "100", "--socket"])
+        .arg(&path)
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut ready = String::new();
+    BufReader::new(second.stdout.take().unwrap())
+        .read_line(&mut ready)
+        .unwrap();
+    let second = App {
+        child: second,
+        path,
+    };
+    assert!(ready.starts_with("ready "));
+    assert_ne!(second.child.id(), pid);
+    let mut other = Client::open(&second.path).unwrap();
+    let after = call(&mut other, "tree", J::obj());
+    let ids = |tree: &J| -> Vec<J> {
+        tree.get("nodes")
+            .unwrap()
+            .arr()
+            .iter()
+            .map(|n| {
+                J::obj()
+                    .set("id", n.get("id").unwrap().clone())
+                    .set("kind", n.get("kind_id").unwrap().clone())
+                    .set(
+                        "ops",
+                        n.get("ops")
+                            .unwrap()
+                            .arr()
+                            .iter()
+                            .map(|p| p.get("id").unwrap().clone())
+                            .collect::<Vec<_>>(),
+                    )
+            })
+            .collect()
+    };
+    assert_eq!(ids(&before), ids(&after));
+    call(&mut other, "shutdown", J::obj());
+}
