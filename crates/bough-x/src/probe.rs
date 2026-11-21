@@ -43,7 +43,11 @@ pub mod ph {
     pub const ENTER: u32 = 9;
     /// Shaping a text the run store does not hold.
     pub const SHAPE: u32 = 10;
-    pub const N: usize = 11;
+    /// A pointer move: the hit chain; the hovered set and its handlers; the turn's settle.
+    pub const CHAIN: u32 = 11;
+    pub const PICKED: u32 = 12;
+    pub const SETTLE: u32 = 13;
+    pub const N: usize = 14;
     pub const NAMES: [&str; N] = [
         "outside",
         "block+delta",
@@ -56,5 +60,8 @@ pub mod ph {
         "refocus",
         "enter",
         "shape",
+        "hit chain",
+        "hover set+handlers",
+        "settle",
     ];
 }

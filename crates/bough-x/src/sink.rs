@@ -1100,6 +1100,9 @@ struct Lanes {
     sites: *const Site,
     slot: u32,
     at: (i32, i32),
+    /// The row's height, and (out) whether some rect left the band `0..row_h` (`Store::spill`).
+    row_h: i32,
+    spill: bool,
 }
 impl bough_lay::Out for Lanes {
     #[inline(always)]
@@ -1111,6 +1114,7 @@ impl bough_lay::Out for Lanes {
             if (*self.sites.add(k)).col == u32::MAX {
                 return;
             }
+            self.spill |= (r[1] < 0) | (r[3] > self.row_h);
             (*self.sites.add(k)).set_rect(
                 self.slot,
                 Rect {
@@ -1241,9 +1245,12 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
                         sites,
                         slot: r & mask,
                         at: (gx, gy + r as i32 * row_h),
+                        row_h,
+                        spill: false,
                     };
                     st.memo
                         .row(&row, cx.scale, cx.u, gw as f32, (0, 0), &mut out);
+                    st.spill |= out.spill;
                 }
                 row.write(sites, r & mask);
             } else {
@@ -1490,6 +1497,7 @@ fn list_plan(
         st.geo = geo;
         st.tmpl.clear();
         st.tmpl.extend_from_slice(l.shape);
+        st.spill |= l.shape.iter().any(|t| (t.y0 < 0) | (t.y1 > l.row_h));
         if ohi > olo {
             cx.tiles.mark(space.clip);
         }

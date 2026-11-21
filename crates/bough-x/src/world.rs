@@ -132,6 +132,21 @@ struct Fast {
     boxes: Vec<[i32; 4]>,
 }
 
+/// The records of every column keyed by one block word, by key: `(key, column in the table, record)`, sorted.
+/// When every column that reads the word is keyed by it, a change of that word alone concerns the records
+/// keyed by its old and its new value, whichever columns they are in: two searches here instead of one visit
+/// per reading column (a view with one `hover_bg` column per button has as many columns as buttons). Built
+/// and dropped on the per-column index's terms (`Fast`).
+struct WordKeys {
+    word: u8,
+    valid: u64,
+    asked: u64,
+    /// The table shape this was decided for, and whether every reader of the word is keyed by it.
+    shape: u64,
+    all_keyed: bool,
+    keys: Vec<(u32, u32, u32)>,
+}
+
 /// A world accepts only its statically branded view and backend.
 /// Wrong-owner state cannot reach a gathered reader or event trampoline.
 ///
@@ -182,6 +197,9 @@ pub struct World<V, B> {
     /// Per column with a bounded delta (`fast_of[k]`: its index here, or `u32::MAX`), what the world keeps for it.
     fast_of: Vec<u32>,
     fast: Vec<Fast>,
+    /// Per block word that some delta asked about alone: its records by key across columns.
+    word_keys: Vec<WordKeys>,
+    key_scratch: Vec<(u32, u32)>,
     /// The number of the last description pass (mount, a list pass, a re-description): the only things that
     /// write a record's operands or change which records are live.
     wrote: u64,
@@ -259,6 +277,8 @@ impl<V: View, B: Backend> World<V, B> {
             fast_stats: FastStats::default(),
             fast_of: Vec::new(),
             fast: Vec::new(),
+            word_keys: Vec::new(),
+            key_scratch: Vec::new(),
             wrote: 1,
             no_fast: false,
             broad: 0,
@@ -673,6 +693,9 @@ impl<V: View, B: Backend> World<V, B> {
         if ch.is_power_of_two() {
             // A single reader list contains each column at most once.
             let word = ch.trailing_zeros() as usize;
+            if self.delta_word_keys(word, u) {
+                return;
+            }
             let start = self.by_word[word] as usize;
             let end = self.by_word[word + 1] as usize;
             self.delta_stats.visited_incidences = end - start;
@@ -723,6 +746,119 @@ impl<V: View, B: Backend> World<V, B> {
                 words &= words - 1;
             }
         }
+    }
+    /// The delta of a change of block word `word` alone, if every column that reads it is keyed by it: the
+    /// records keyed by the old and by the new value, through each one's own column kernel (so the damage
+    /// is the column delta's, record for record). `false`: the columns must answer one by one (some reader
+    /// is not keyed by this word, moves with it, holds core-written state or reads `Time`; or the index
+    /// was not asked for twice running since the last pass that wrote records).
+    #[inline(never)]
+    fn delta_word_keys(&mut self, word: usize, u: &U) -> bool {
+        if self.no_fast {
+            return false;
+        }
+        let (start, end) = (self.by_word[word] as usize, self.by_word[word + 1] as usize);
+        if end - start < 2 {
+            // one reader: its own index is the same thing
+            return false;
+        }
+        let ch = 1u64 << word;
+        let at = match self.word_keys.iter().position(|w| w.word as usize == word) {
+            Some(i) => i,
+            None => {
+                self.word_keys.push(WordKeys {
+                    word: word as u8,
+                    valid: 0,
+                    asked: 0,
+                    shape: STALE,
+                    all_keyed: false,
+                    keys: Vec::new(),
+                });
+                self.word_keys.len() - 1
+            }
+        };
+        if self.word_keys[at].shape != self.shape {
+            let ok = self.readers[start..end].iter().all(|&k| {
+                let (k, e) = (k as usize, &self.cols[k as usize]);
+                e.skip & ch == 0
+                    && e.reads & ch & self.broad == 0
+                    && e.timed == 0
+                    && self.fast_of[k] != u32::MAX
+                    && matches!(self.fast[self.fast_of[k] as usize].fns.key, Some((w, ..)) if w as usize == word)
+            });
+            // Room for every record the readers can hold, taken here (cold: once per table shape), so that
+            // building the index later (on a pointer move, typically) allocates nothing.
+            let (sum, max) = self.readers[start..end].iter().fold((0, 0), |(s, m), &k| {
+                let n = self.cols[k as usize].nrec as usize;
+                (s + n, m.max(n))
+            });
+            if ok {
+                self.key_scratch.reserve(max);
+            }
+            let w = &mut self.word_keys[at];
+            if ok {
+                w.keys.clear();
+                w.keys.reserve(sum);
+            }
+            (w.shape, w.all_keyed, w.valid, w.asked) = (self.shape, ok, 0, 0);
+        }
+        if !self.word_keys[at].all_keyed || self.broad & ch != 0 {
+            return false;
+        }
+        let readers = (end - start) as u64;
+        if self.word_keys[at].valid != self.wrote {
+            if self.word_keys[at].asked != self.wrote {
+                self.word_keys[at].asked = self.wrote;
+                return false;
+            }
+            let mut keys = core::mem::take(&mut self.word_keys[at].keys);
+            let mut scratch = core::mem::take(&mut self.key_scratch);
+            keys.clear();
+            for &k in &self.readers[start..end] {
+                let Some((_, build, _)) = self.fast[self.fast_of[k as usize] as usize].fns.key else {
+                    unreachable!("every reader is keyed (checked for this table shape)")
+                };
+                // SAFETY: the table is current; the kernel is this column's archetype's.
+                unsafe { build(&self.cols[k as usize], &mut scratch) };
+                keys.extend(scratch.iter().map(|&(key, rec)| (key, k, rec)));
+            }
+            keys.sort_unstable();
+            self.key_scratch = scratch;
+            let w = &mut self.word_keys[at];
+            (w.keys, w.valid) = (keys, self.wrote);
+            self.fast_stats.key_builds += readers;
+        }
+        let (ov, nv) = (self.shown.w[word], u.w[word]);
+        let keys = core::mem::take(&mut self.word_keys[at].keys);
+        let mut n = 0u64;
+        for v in [ov, nv] {
+            #[cfg(feature = "mutant_keyed")]
+            if v == ov && nv != ov {
+                continue;
+            }
+            let from = keys.partition_point(|e| e.0 < v);
+            for &(key, k, rec) in &keys[from..] {
+                if key != v {
+                    break;
+                }
+                let Some((_, _, delta)) = self.fast[self.fast_of[k as usize] as usize].fns.key else {
+                    unreachable!("every reader is keyed (checked for this table shape)")
+                };
+                // SAFETY: the table is current and the index is of the records as they are (no pass that
+                // wrote records since it was built); the kernel is the column's own, given that column's
+                // one record by its key.
+                n += unsafe { delta(&self.cols[k as usize], &[(key, rec)], &self.shown, u, &mut self.tiles) }
+                    as u64;
+            }
+            if nv == ov {
+                break;
+            }
+        }
+        self.word_keys[at].keys = keys;
+        self.delta_stats.visited_incidences = n as usize;
+        self.fast_stats.key_hits += readers;
+        self.fast_stats.key_records += n;
+        true
     }
     #[inline(always)]
     fn delta_one(&mut self, k: usize, u: &U, ch: u64) {
@@ -928,7 +1064,7 @@ impl<V: View, B: Backend> World<V, B> {
             self.delta(u, ch);
         }
         crate::probe::mark(crate::probe::ph::BLOCK);
-        self.wrote += 1;
+        let structure = self.root.structure_revision();
         self.epoch = self.relation_epoch();
         let mut cx = Cx {
             tiles: &mut self.tiles,
@@ -947,6 +1083,12 @@ impl<V: View, B: Backend> World<V, B> {
         self.shape = shape;
         self.lists |= cx.lists;
         let regroup = cx.regroup;
+        // What was built from the records (a key index, page boxes) holds over a description that stored
+        // nothing: `changed` counts every record stored again, every rect moved and every list window
+        // moved, and a new column or store moves the structure revision.
+        if cx.changed != 0 || structure != self.root.structure_revision() {
+            self.wrote += 1;
+        }
         self.revision = self.revision.wrapping_add(cx.changed);
         crate::probe::mark(crate::probe::ph::LISTS);
         self.rederive();
@@ -1079,8 +1221,34 @@ impl<V: View, B: Backend> World<V, B> {
                 },
             };
             recs.clear();
-            // SAFETY: `hit_all` was instantiated for the archetype the column was created with.
-            unsafe { (o.hit_all)(c, &sv, &self.shown, x, y, &mut recs) };
+            if st.cap > 1 && !c.desc.moves && !st.spill && st.geo.2 > 0 && !self.no_fast {
+                // A list of rows of one height, none of whose records leaves its row's band or moves by
+                // its paint: the records under the point are those of the one row the point is in. The row
+                // is arithmetic; its records in this column are one per site of the column.
+                let clip = st.space.clip;
+                if (x >= clip.x0) & (x < clip.x1) & (y >= clip.y0) & (y < clip.y1) {
+                    let org = st.space.origin(&self.shown);
+                    let (px, py) = (x - org.0, y - org.1);
+                    let ly = py - st.geo.1;
+                    if ly >= 0 {
+                        let r = (ly / st.geo.2) as u32;
+                        if (r >= st.lo) & (r < st.hi) {
+                            let slot = r & (st.cap - 1);
+                            for s in st.sites.iter().filter(|s| s.col == j) {
+                                // SAFETY: a record's site of this store (its column is `j`, not a hole);
+                                // the slot is under the store's capacity; the table is current.
+                                let b = unsafe { s.rect(slot) };
+                                if (px >= b.x0) & (px < b.x1) & (py >= b.y0) & (py < b.y1) {
+                                    recs.push(s.base + slot);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // SAFETY: `hit_all` was instantiated for the archetype the column was created with.
+                unsafe { (o.hit_all)(c, &sv, &self.shown, x, y, &mut recs) };
+            }
             out.extend(recs.iter().map(|&r| k << PLACE_REC_BITS | r));
         }
         self.buf = recs;
@@ -1180,9 +1348,12 @@ impl<V: View, B: Backend> World<V, B> {
         let Some((x, y)) = self.ptr else {
             return Dispatch::NOTHING;
         };
+        crate::probe::mark(crate::probe::ph::BLOCK);
         let all = self.chain(x, y, kind::POINTER);
+        crate::probe::mark(crate::probe::ph::CHAIN);
         let d = self.picked(v, all.last().copied().unwrap_or(NONE), &all);
         self.done(all);
+        crate::probe::mark(crate::probe::ph::PICKED);
         d
     }
     /// A pick that arrived from the raster with a frame: `place` is the `Pick` word.

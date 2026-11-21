@@ -181,12 +181,26 @@ fn a_handler_turn_is_one_description_that_is_an_update() {
         app.check()
             .unwrap_or_else(|e| panic!("ring {ring} after tint and scroll: {e}"));
         // hover across rows, and the wheel: runtime events
-        let n = allocs(|| {
-            for k in 0..5 {
+        // (two moves first: the world builds its key index the second time a hover asks with no pass between)
+        app.pointer_move(100.0, 96.0);
+        app.pointer_move(100.0, 120.0);
+        let k0 = app.delta_stats().0.key_records;
+        let mut n = allocs(|| {
+            for k in 1..5 {
                 app.pointer_move(100.0, 120.0 + 24.0 * k as f32);
             }
-            app.wheel(100.0, 150.0, 0.0, 2.0);
         });
+        let (fast, last) = app.delta_stats();
+        assert_eq!(
+            (
+                fast.key_records - k0,
+                last.evaluated_columns,
+                last.visited_incidences
+            ),
+            (2 * 4, 0, 2),
+            "ring {ring}: a hover from one row to the next evaluates two records and visits no column"
+        );
+        n += allocs(|| app.wheel(100.0, 150.0, 0.0, 2.0));
         assert_eq!(
             (app.describes(), n),
             (d0 + 2, 0),

@@ -332,6 +332,22 @@ fn main() {
                 })
             })
             .collect();
+        let mut k = 0;
+        let mut h: Vec<[u64; bough_x::probe::ph::N]> = (0..41)
+            .map(|_| {
+                k += 1;
+                t.phases_pointer(320.0, 200.0 + (k % 2) as f32 * ROW_H)
+            })
+            .collect();
+        println!("after 41 hovers: {:?}", t.delta_stats());
+        let mut line = String::from("typed hover, one row to the next, by phase (medians):");
+        for (k, name) in bough_x::probe::ph::NAMES.iter().enumerate() {
+            h.sort_by_key(|a| a[k]);
+            if h[20][k] != 0 {
+                line += &format!(" {name} {};", h[20][k]);
+            }
+        }
+        println!("{}{line}", if tsv { "# " } else { "" });
         let mut line = String::from("typed re-description after a title write by phase (medians):");
         for (k, name) in bough_x::probe::ph::NAMES.iter().enumerate() {
             v.sort_by_key(|a| a[k]);

@@ -945,6 +945,11 @@ pub struct Store {
     pub lay: (i32, i32, i32),
     /// A list of elements: the rects of the last row shape it laid out, and the widths they hold over.
     pub memo: bough_lay::Memo,
+    /// A list: some record of some row was given a rect that leaves its row's band (an out-of-flow child
+    /// past the row). While false, the records under a point are those of the one row the point is in, found
+    /// by arithmetic (`World::chain_into`); once true (until the list's columns are made again) the columns
+    /// are searched.
+    pub(crate) spill: bool,
 }
 
 impl Drop for Store {
@@ -1007,6 +1012,7 @@ impl Store {
             row0: Vec::new(),
             lay: (0, 0, 0),
             memo: bough_lay::Memo::new(),
+            spill: false,
         }
     }
     #[inline(always)]

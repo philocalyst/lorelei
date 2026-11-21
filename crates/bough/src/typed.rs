@@ -290,7 +290,8 @@ impl<T, F: Copy> Copy for Dy<T, F> {}
 impl<T: Wordy, F: Fn(&T) -> Color + Copy + 'static> Expr for Dy<T, F> {
     type Out = XColor;
     type Stage = Turn;
-    const READS: u64 = APP;
+    // any word a signal may be bound to: never the hover word
+    const READS: u64 = APP & !(1 << HOVER);
     const CODE: &'static Code = &Code::Cpu(&[]);
     #[inline(always)]
     fn eval(&self, cx: &ECx) -> XColor {
@@ -304,11 +305,37 @@ impl<T: Wordy, F: Fn(&T) -> Color + Copy + 'static> Expr for Dy<T, F> {
 }
 
 /// `hover_bg`: `hot` while the hover word names this record, else the base colour.
+///
+/// A selection in the operators lane's sense (`expr::Sel`): the id is a record constant, so when only the
+/// hover word changed the records that can show something else are the two whose id is its old and its new
+/// value. A box whose base colour is a constant declares that ([`PBox`]'s `KEYED`), and the world's key index
+/// answers the turn with those two records instead of every exposed one.
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct HSel<C> {
     id: u32,
     hot: u32,
     base: C,
+}
+// SAFETY: `repr(C)`: two `u32`s, then a `Words` operand (whole words at alignment 4, or zero-sized at
+// alignment at most 4): no padding, every bit pattern a valid value.
+unsafe impl<C: bough_x::expr::Words> bough_x::expr::Words for HSel<C> {}
+/// Where a colour expression keeps a selection key, if it is a selection by a constant key: the block word
+/// and the key's index among the expression's words.
+pub trait Keyed {
+    const KEY: Option<(usize, usize)>;
+}
+impl<C> Keyed for C {
+    default const KEY: Option<(usize, usize)> = None;
+}
+impl<C: Expr<Out = XColor> + bough_x::expr::Words> Keyed for HSel<C> {
+    // certain only when the base does not itself read the hover word (it reads no block word that the
+    // hover word's change could be confused with: the fast path is taken for a change of that word alone)
+    const KEY: Option<(usize, usize)> = if C::READS >> HOVER & 1 == 0 {
+        Some((HOVER, 0))
+    } else {
+        None
+    };
 }
 impl<C: Expr<Out = XColor>> Expr for HSel<C> {
     type Out = XColor;
@@ -391,6 +418,7 @@ impl<'a, T: Wordy, O: 'static, F: Fn(&T) -> Color + Copy + 'static> TColor<O>
 
 /// A box's record: its colour expression and its constants.
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct PBox<C> {
     c: C,
     /// 1/256 device pixels.
@@ -399,6 +427,8 @@ pub struct PBox<C> {
     border_color: u32,
     alpha: u32,
 }
+// SAFETY: `repr(C)`: a `Words` operand first, then four `u32`s: no padding, every bit pattern valid.
+unsafe impl<C: bough_x::expr::Words> bough_x::expr::Words for PBox<C> {}
 /// A box's paint as the element layer takes it.
 #[derive(Clone, Copy)]
 pub struct BoxP<C>(PBox<C>);
@@ -413,6 +443,8 @@ impl<C: Expr<Out = XColor> + Copy + 'static> Arch for PBox<C> {
     const READS: u64 = C::READS;
     const NAME: &'static str = "box";
     const STAGE: StageId = C::STAGE;
+    // the colour is the record's first field, so its key's index is the record's
+    const KEYED: Option<(usize, usize)> = <C as Keyed>::KEY;
     #[inline(always)]
     fn same_at(&self, o: &Self, u: &U) -> bool {
         (self.radius, self.border, self.border_color, self.alpha)
@@ -2173,6 +2205,17 @@ impl<V: View> App<V> {
     pub fn phases(&mut self) -> [u64; ph::N] {
         self.phases_of(|_| {})
     }
+    /// Thread instructions of one pointer move to (x, y) points, by phase.
+    #[cfg(feature = "phase_probe")]
+    pub fn phases_pointer(&mut self, x: f32, y: f32) -> [u64; ph::N] {
+        let over = bough_sys::perf::tinstr_overhead();
+        bough_x::probe::HOOK.with(|h| h.set(Some(phase_hook)));
+        PHASES.with(|c| c.set(([0; ph::N], bough_sys::perf::thread_instructions(), over)));
+        self.pointer_move(x, y);
+        mark(ph::SETTLE);
+        bough_x::probe::HOOK.with(|h| h.set(None));
+        PHASES.with(|c| c.get().0)
+    }
     /// As [`App::phases`], after `f` changed the state.
     #[cfg(feature = "phase_probe")]
     pub fn phases_of(&mut self, f: impl FnOnce(&mut V)) -> [u64; ph::N] {
@@ -2187,6 +2230,10 @@ impl<V: View> App<V> {
     }
     pub fn lifecycle(&self) -> (u32, u32) {
         self.world.lifecycle()
+    }
+    /// What the world's bounded deltas did so far, and what its last delta visited (count bands).
+    pub fn delta_stats(&self) -> (bough_x::world::FastStats, bough_x::world::DeltaStats) {
+        (self.world.fast_stats, self.world.delta_stats)
     }
     pub fn world_stats(&self) -> (usize, usize, usize) {
         self.world.root().stats()
