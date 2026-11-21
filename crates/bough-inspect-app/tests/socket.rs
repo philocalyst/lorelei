@@ -485,3 +485,42 @@ fn unsafe_narrowing_and_noop_field_writes_are_refused() {
     assert!(call(&mut c, "set", integral).get("digest").is_some());
     call(&mut c, "shutdown", J::obj());
 }
+
+#[test]
+fn screenshots_refuse_missing_nodes_and_raw_is_rgba() {
+    let app = spawn("shot-args", "rows", 100);
+    let mut client = Client::open(&app.path).unwrap();
+    assert_eq!(
+        refusable(&mut client, "shot", J::obj().set("node", -1)).0,
+        -32602
+    );
+    assert_eq!(
+        refusable(&mut client, "shot", J::obj().set("node", 9999)).0,
+        -32602
+    );
+    let mut mcp = bough_mcp::Mcp::new(&app.path);
+    let request = J::obj()
+        .set("jsonrpc", "2.0")
+        .set("id", 1)
+        .set("method", "tools/call")
+        .set(
+            "params",
+            J::obj()
+                .set("name", "screenshot")
+                .set("arguments", J::obj().set("node", 1).set("raw", true)),
+        );
+    let response = mcp.handle(&request).unwrap();
+    let result = response.get("result").unwrap();
+    assert_eq!(result.get("isError").and_then(J::as_bool), Some(false));
+    let items = result.get("content").unwrap().arr();
+    let summary = json::parse(items[0].get("text").and_then(J::as_str).unwrap()).unwrap();
+    let raw = json::base64_decode(summary.get("raw").and_then(J::as_str).unwrap()).unwrap();
+    let encoded = json::base64_decode(items[1].get("data").and_then(J::as_str).unwrap()).unwrap();
+    let decoded = png::decode(&encoded).unwrap();
+    assert_eq!(raw.len(), decoded.px.len() * 4);
+    for (pixel, rgba) in decoded.px.iter().zip(raw.chunks_exact(4)) {
+        let [a, r, g, b] = pixel.to_be_bytes();
+        assert_eq!(rgba, [r, g, b, a]);
+    }
+    call(&mut client, "shutdown", J::obj());
+}

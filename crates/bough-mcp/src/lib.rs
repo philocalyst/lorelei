@@ -300,11 +300,15 @@ impl Mcp {
                 }
                 let v = self.call("shot", &p)?;
                 let png = v.get("png").and_then(J::as_str).unwrap_or("").to_owned();
-                let summary = J::obj()
+                let mut summary = J::obj()
                     .set("w", v.get("w").cloned().unwrap_or(J::Null))
                     .set("h", v.get("h").cloned().unwrap_or(J::Null))
                     .set("digest", v.get("digest").cloned().unwrap_or(J::Null))
                     .set("bytes", v.get("bytes").cloned().unwrap_or(J::Null));
+                if let (Some(raw), Some(format)) = (v.get("raw"), v.get("format")) {
+                    summary.put("raw", raw.clone());
+                    summary.put("format", format.clone());
+                }
                 Ok((j(summary), Some(png)))
             }
             "diff_golden" | "diff" => {

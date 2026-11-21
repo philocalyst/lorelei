@@ -260,7 +260,10 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                 .set("revision", snap.app.revision)
                 .set("digest", J::Str(format!("{:016x}", snap.digest()))))
         }
-        "shot" => ok(shot(s, params)),
+        "shot" => match shot(s, params) {
+            Ok(v) => ok(v),
+            Err(e) => fail(e),
+        },
         "diff" => match diff(s, params) {
             Ok(v) => ok(v),
             Err(e) => fail(e),
@@ -715,29 +718,42 @@ fn why<P: Program>(s: &mut Session<P>) -> J {
         )
 }
 
-fn shot<P: Program>(s: &mut Session<P>, p: &J) -> J {
-    // a whole window, or the part of it one element covers (a screenshot by element)
-    let crop = match p.get("node").and_then(J::as_i64) {
-        Some(i) => {
-            let snap = s.snapshot();
-            snap.nodes.get(i as usize).map(|n| n.screen.and(n.clip))
-        }
-        None => None,
+fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
+    let crop = if let Some(node) = p.get("node") {
+        let index = node
+            .as_usize()
+            .ok_or_else(|| RpcError::params("node index"))?;
+        let node = s
+            .snapshot()
+            .node(index)
+            .ok_or_else(|| RpcError::params("node index out of range"))?;
+        Some(node.screen.and(node.clip))
+    } else {
+        None
     };
     let full = s.shot();
-    let f = match crop {
-        Some(r) if !r.empty() => {
-            let (x0, y0) = (r.x0.max(0), r.y0.max(0));
-            let (x1, y1) = (r.x1.min(full.w), r.y1.min(full.h));
-            let (w, h) = ((x1 - x0).max(0), (y1 - y0).max(0));
-            let mut px = Vec::with_capacity((w * h) as usize);
-            for y in y0..y1 {
-                let a = (y * full.w + x0) as usize;
-                px.extend_from_slice(&full.px[a..a + w as usize]);
-            }
-            crate::frame::Frame { w, h, px }
+    let count = i64::from(full.w) * i64::from(full.h);
+    if full.w <= 0 || full.h <= 0 || count > 8_388_608 || count as usize != full.px.len() {
+        return Err(RpcError::new(
+            INTERNAL,
+            "application returned an invalid screenshot buffer",
+        ));
+    }
+    let f = if let Some(r) = crop {
+        let (x0, y0) = (r.x0.max(0), r.y0.max(0));
+        let (x1, y1) = (r.x1.min(full.w), r.y1.min(full.h));
+        if x1 <= x0 || y1 <= y0 {
+            return Err(RpcError::params("element has no visible pixels"));
         }
-        _ => full,
+        let (w, h) = (x1 - x0, y1 - y0);
+        let mut px = Vec::with_capacity((w * h) as usize);
+        for y in y0..y1 {
+            let a = (y * full.w + x0) as usize;
+            px.extend_from_slice(&full.px[a..a + w as usize]);
+        }
+        crate::frame::Frame { w, h, px }
+    } else {
+        full
     };
     let png = f.png();
     let mut o = J::obj()
@@ -749,13 +765,14 @@ fn shot<P: Program>(s: &mut Session<P>, p: &J) -> J {
     if flag(p, "raw", false) {
         let mut raw = Vec::with_capacity(f.px.len() * 4);
         for c in &f.px {
-            raw.extend_from_slice(&c.to_le_bytes());
+            let [a, r, g, b] = c.to_be_bytes();
+            raw.extend_from_slice(&[r, g, b, a]);
         }
         o = o
             .set("raw", json::base64_encode(&raw))
             .set("format", "rgba8-le");
     }
-    o
+    Ok(o)
 }
 
 fn diff<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {

@@ -1,7 +1,7 @@
 //! JSON, hand-written for two reasons: the wire and the goldens are the same bytes (a schema change is a
 //! visible diff), and the inspector adds no dependency an application that links it did not already have.
 //!
-//! Values keep object members in insertion order; [`write`] is canonical (fixed key order per builder, no
+//! Values keep object members in insertion order; [`write()`] is canonical (fixed key order per builder, no
 //! whitespace). The parser is a strict subset: no comments, no trailing commas, no duplicate-key rejection
 //! beyond the last one winning (the writers here never emit duplicates).
 use std::fmt::Write as _;
