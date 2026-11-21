@@ -3,6 +3,8 @@
 use crate::line::LineRef;
 use bough_expr::{Code, Color, Cx, Expr, StageId, U, U_TIME, Words, later};
 use bough_x::draw::{Align, Draws, Prims};
+#[cfg(feature = "inspect-metadata")]
+use bough_x::{kinds::Txt, reflect::Val};
 use bough_x::store::{Arch, Backend, ColRef, Rect};
 
 const fn align(a: u8) -> Align {
@@ -102,6 +104,29 @@ pub struct Text<const AL: u8, E, C>(pub E, pub C);
 // SAFETY: `repr(C)` over `Words` operands.
 unsafe impl<const AL: u8, E: Words, C: Words> Words for Text<AL, E, C> {}
 impl<const AL: u8, E: Expr<Out: Bytes>, C: Expr<Out = Color>> Arch for Text<AL, E, C> {
+    // What an inspector, a test and an accessibility tree read: the text (up to twelve bytes, what reflection
+    // holds) and the colour. The kinds that draw themselves have no other way to be read.
+    #[cfg(feature = "inspect-metadata")]
+    const OPS: &'static [bough_x::store::Op] = &[
+        bough_x::store::Op {
+            name: "text",
+            code: E::CODE,
+            ty: core::any::type_name::<E>,
+            stage: E::STAGE,
+            reads: E::READS,
+            word: 0,
+            words: (core::mem::size_of::<E>() / 4) as u16,
+        },
+        bough_x::store::Op {
+            name: "color",
+            code: C::CODE,
+            ty: core::any::type_name::<C>,
+            stage: C::STAGE,
+            reads: C::READS,
+            word: (core::mem::offset_of!(Self, 1) / 4) as u16,
+            words: (core::mem::size_of::<C>() / 4) as u16,
+        },
+    ];
     const READS: u64 = E::READS | C::READS;
     const NAME: &'static str = "text";
     const STAGE: StageId = later(&[E::STAGE, C::STAGE]);
@@ -117,6 +142,15 @@ impl<const AL: u8, E: Expr<Out: Bytes>, C: Expr<Out = Color>> Arch for Text<AL, 
     #[inline(always)]
     fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
         b.draws(col, u)
+    }
+    #[cfg(feature = "inspect-metadata")]
+    #[inline]
+    fn val(&self, op: usize, u: &U) -> Val {
+        match op {
+            0 => Val::Text(Txt::from_bytes(self.0.eval(&Cx::of(u)).bytes())),
+            1 => Val::Color(self.1.eval(&Cx::of(u)).0),
+            _ => Val::None,
+        }
     }
 }
 impl<const AL: u8, E: Expr<Out: Bytes>, C: Expr<Out = Color>> Draws for Text<AL, E, C> {
