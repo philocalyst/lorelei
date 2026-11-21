@@ -292,6 +292,8 @@ pub fn source_fx(descs: &[&Desc], lays: &[(usize, usize)], tab: usize, frame: (u
     s.push_str(
         r#"// the corner tables: two header words (the key a table is filled for), then its entries
 static inline uint tab_h(const device uint* T, uint base, uint i) { return base >= TABLIM ? 0xFFFFFFFFu : T[base + i]; }
+// the palette tables: the PALWORDS words that end where the corner tables begin (`Code::Pal`; 0 past the end)
+static inline uint pal_at(const device uint* T, uint i) { return i < PALWORDS ? *(T - int(PALWORDS) + int(i)) : 0u; }
 static inline uint tab_v(const device uint* T, uint base, uint idx) {
     if (idx == 0xFFFFFFFEu) { return 0u; }
     if (idx == 0xFFFFFFFFu) { return 0xFFFFFFFFu; }
@@ -512,6 +514,7 @@ kernel void k_win{k}(const device uint* COLS [[buffer(0)]], const device uint* M
     uint idx = gid.x;
     if (idx >= META[{}u]) {{ return; }}
     uint TX = META[3], TY = META[4];
+    const device uint* TAB = COLS + TABBASE; (void)TAB;
 "#,
             M_LEN + k
         )
@@ -594,7 +597,15 @@ kernel void k_tab(device uint* COLS [[buffer(0)]], const device uint* JOB [[buff
 }
 "#,
     );
-    s.replace("FRAMEW", &format!("{}u", frame.0)).replace("FRAMEH", &format!("{}u", frame.1)).replace("MEDIALIM", &format!("{}u", media_words.max(8) - 1)).replace("IDXMASK", &format!("{IDX_MASK}u")).replace("IDXBITS", &format!("{IDX_BITS}u")).replace("TABBASE", &format!("{tab}u")).replace("TABLIM", &format!("{}u", crate::scene::TAB_WORDS - 2))
+    // an archetype with a palette read: its geometry functions take the table pointer too
+    for (k, d) in descs.iter().enumerate() {
+        if emit::has_pal(d.code) {
+            for f in ["texel", "win", "cover", "pick", "chgw"] {
+                s = s.replace(&format!("a{k}_{f}(rect"), &format!("a{k}_{f}(TAB, rect"));
+            }
+        }
+    }
+    s.replace("PALWORDS", &format!("{}u", crate::scene::PAL_WORDS)).replace("FRAMEW", &format!("{}u", frame.0)).replace("FRAMEH", &format!("{}u", frame.1)).replace("MEDIALIM", &format!("{}u", media_words.max(8) - 1)).replace("IDXMASK", &format!("{IDX_MASK}u")).replace("IDXBITS", &format!("{IDX_BITS}u")).replace("TABBASE", &format!("{tab}u")).replace("TABLIM", &format!("{}u", crate::scene::TAB_WORDS - 2))
 }
 
 /// Times of one GPU frame, seconds.
@@ -648,9 +659,6 @@ pub struct Gpu {
     res: Res,
     /// The scene's layer pool this executor wrapped (null: none yet).
     pool: *const u32,
-    /// The whole frame as resident jobs (buffer 18): the bins and layer table they were made for, and
-    /// their stages. A broad change re-submits them.
-    full: Option<(u64, u64, Vec<(bool, usize, usize)>, [u32; 4])>,
     /// The scene's media pool this executor wrapped.
     media: *const u32,
     /// The scene's bins and layer table as last mirrored (`staged`).
@@ -733,7 +741,6 @@ impl Gpu {
             res: Res::default(),
             media: scene.media.arena().ptr(),
             pool: std::ptr::null(),
-            full: None,
             seen_bins: None,
             seen_lay: None,
             staged_stats: [0; 4],
@@ -962,7 +969,6 @@ impl Gpu {
                 self.pool = a.ptr();
             }
         }
-        let nt = self.nt;
         // the jobs of a plan and an output tile list: (pipeline is seg, first word, count) per dispatch
         let build = |plan: &crate::layer::Plan, tiles: &[u32]| -> (Vec<u32>, Vec<(bool, usize, usize)>, [u32; 4]) {
         let mut jobs: Vec<u32> = Vec::new();
@@ -1019,35 +1025,19 @@ impl Gpu {
         st[3] = stages.len() as u32;
         (jobs, stages, st)
         };
-        // a broad change: the whole frame, from resident jobs while the bins and the layer table stand
-        let whole = scene.plan.full && tiles.len() == nt;
-        let key = (scene.bins_epoch, scene.layers.epoch);
-        let stages = if whole {
-            let stale = self.full.as_ref().is_none_or(|f| (f.0, f.1) != key);
-            if self.full.is_none() || (stale && !cfg!(feature = "mutant_full_stale")) {
-                let (jobs, stages, st) = build(&scene.layers.full_plan(scene.tx), tiles);
-                self.buf(18, jobs.len().max(16) * 4);
-                self.words_mut(18)[..jobs.len()].copy_from_slice(&jobs);
-                self.full = Some((key.0, key.1, stages, st));
-            }
-            let f = self.full.as_ref().unwrap();
-            self.staged_stats = f.3;
-            f.2.clone()
+        // (a broad change is every layer whole: enumerated here; the resident plan says it in one flag)
+        let plan_full;
+        let plan = if scene.plan.full {
+            plan_full = scene.layers.full_plan(scene.tx);
+            &plan_full
         } else {
-            let plan_full;
-            let plan = if scene.plan.full {
-                plan_full = scene.layers.full_plan(scene.tx);
-                &plan_full
-            } else {
-                &scene.plan
-            };
-            let (jobs, stages, st) = build(plan, tiles);
-            self.staged_stats = st;
-            self.buf(17, jobs.len().max(16) * 4);
-            self.words_mut(17)[..jobs.len()].copy_from_slice(&jobs);
-            stages
+            &scene.plan
         };
-        let jobs_buf = if whole { 18 } else { 17 };
+        let (jobs, stages, st) = build(plan, tiles);
+        self.staged_stats = st;
+        self.buf(17, jobs.len().max(16) * 4);
+        self.words_mut(17)[..jobs.len()].copy_from_slice(&jobs);
+        let jobs_buf = 17;
         let m = self.words_mut(1);
         m[2] = stride as u32;
         m[M_UNEW..M_UNEW + 64].copy_from_slice(&u.w);
@@ -1113,7 +1103,6 @@ impl Gpu {
             self.res_lists(scene, Some(&changed));
         }
         self.seen_bins = None;
-        self.full = None;
         // ---- the layers: the table rows that changed; slots when storage or the stage order changed ----
         if let Some(a) = scene.layers.pool.arena() {
             if !std::ptr::eq(self.pool, a.ptr()) {

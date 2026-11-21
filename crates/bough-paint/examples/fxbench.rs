@@ -43,6 +43,10 @@ type AShader = Shader<Pan, Ki<2048>, Rec, Uw<63>, Any, Any>;
 type ADot = RRect<Sprung, Ki<1536>, Any>;
 type AVideo = Video<Pan, Ki<2048>, Rec, Rec, Rec>;
 type ABack = Solid<Lane, MixV<Pmo<Rec>, Pmo<Rec>, Uw<3>>>;
+/// `PALETTE=1`: a chip on every card whose colour is a slot of two resident palette tables (words 4 and 5)
+/// mixed by the scene's derived clock word 6 (started at word 7, lasting word 8).
+type PalCol = MixV<Pm<Pal<PalIx<Uw<4>, Rec>>>, Pm<Pal<PalIx<Uw<5>, Rec>>>, Uw<6>>;
+type AChip = RRect<Pan, Ki<768>, PalCol>;
 
 fn q(v: f32) -> i32 {
     (v * 256.0).round() as i32
@@ -105,6 +109,21 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
     let shaders = s.column::<AShader>(n / 16 + 4);
     let dots = s.column::<ADot>(n / 4 + 4);
     let vids = s.column::<AVideo>(1);
+    let palette = std::env::var("PALETTE").is_ok();
+    // `NOSHADERS=1`: no endless shader paints (they are visited on every frame the clock moves, which hides
+    // what a fade alone costs the turn)
+    let noshaders = std::env::var("NOSHADERS").is_ok();
+    let chips = s.column::<AChip>(if palette { n + 1 } else { 1 });
+    if palette {
+        for t in 0..3 {
+            let cols: Vec<u32> = (0..32).map(|_| g.color(t != 1)).collect();
+            s.set_palette(t, &cols);
+        }
+        s.clock(6, 7, 8);
+        if std::env::var("NOINDEX").is_err() {
+            s.scroll(chips, 0, 1);
+        }
+    }
     s.push(back, [0, 0, q(FW as f32), q(FH as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Rec(0xff1a_1410) }, b: Pmo { c: Rec(0xffe8_ecf0) }, t: Uw } });
     // words 0 and 1 pan every column but the backdrop; the cards compare word 2 with their id
     if std::env::var("NOINDEX").is_err() {
@@ -138,6 +157,9 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
             }
             ncards += 1;
         }
+        if palette {
+            w.s.push(chips, [q(x + 6.0), q(y + 6.0), q(x + 30.0), q(y + 16.0)], RRect { b: pan(), r: Ki, c: MixV { a: Pm { c: Pal(PalIx { t: Uw, s: Rec(i as u32 % 32) }) }, b: Pm { c: Pal(PalIx { t: Uw, s: Rec(i as u32 % 32) }) }, t: Uw } });
+        }
         if i % 12 == 5 && (!lean || i == 5) {
             // a glass panel over the two cards to its left and this one (they are beneath it in paint order)
             let r = [q(x - 150.0), q(y + 20.0), q(x + 60.0), q(y + 70.0)];
@@ -160,7 +182,7 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
             }
             ncards += 1;
         }
-        if i % 16 == 9 && !lean {
+        if i % 16 == 9 && !lean && !noshaders {
             w.s.push(shaders, [q(x + 8.0), q(y + 44.0), q(x + 88.0), q(y + 76.0)], Shader { b: pan(), r: Ki, id: Rec((i / 16 % 2) as u32), now: Uw, c: pm(g.color(true)), c2: pm(g.color(false)) });
         }
         if i % 4 == 2 {
@@ -248,6 +270,10 @@ enum Cell {
     HoverAbove,
     HoverBeneath,
     Theme,
+    /// `PALETTE=1`: the two palette words step through the three tables every frame.
+    PalSwitch,
+    /// `PALETTE=1`: a 40-frame cross-fade to the next table, restarted when it ends: every frame is mid-fade.
+    PalFade,
     /// One glass panel's rect moved one pixel a frame over a still scene.
     GlassMoves,
     /// One video (not under glass) publishes a frame every frame.
@@ -271,6 +297,8 @@ impl Cell {
             Cell::HoverAbove => "hover above glass",
             Cell::HoverBeneath => "hover beneath glass",
             Cell::Theme => "theme",
+            Cell::PalSwitch => "palette switch",
+            Cell::PalFade => "palette fade",
             Cell::GlassMoves => "glass moves 1 px",
             Cell::OneVideo => "one video frame",
             Cell::VideoUnderGlass => "video under glass",
@@ -343,6 +371,13 @@ fn turn(cell: Cell, f: usize, u: &mut U, w: &mut World, slots: &[(usize, u32)]) 
         Cell::HoverAbove => u.w[2] = if f % 2 == 0 { w.above } else { 0 },
         Cell::HoverBeneath => u.w[2] = if f % 2 == 0 { w.beneath } else { 0 },
         Cell::Theme => u.w[3] = if f % 2 == 0 { 32_768 } else { 0 },
+        Cell::PalSwitch => (u.w[4], u.w[5]) = (f as u32 % 3, (f as u32 + 1) % 3),
+        Cell::PalFade => {
+            u.w[U_TIME] = now + 8;
+            if f % 40 == 1 {
+                (u.w[4], u.w[5], u.w[7], u.w[8]) = (u.w[5], (u.w[5] + 1) % 3, now + 8, 320);
+            }
+        }
         Cell::GlassMoves | Cell::GlassOverVideo => {
             if !w.g_rect.is_empty() {
                 let d = if (f / 60) % 2 == 0 { 256 } else { -256 };
@@ -399,8 +434,9 @@ enum Exec {
 fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Pool) -> (Row, usize) {
     let mut w = make();
     w.s.fx_nocache = exec == Exec::CpuNoCache;
+    w.s.no_cert = std::env::var("NOCERT").is_ok();
     // the theme's mix word (word 3) is broad: no geometry reads it
-    w.s.broad = 1 << 3;
+    w.s.broad = 1 << 3 | 1 << 4 | 1 << 5 | 1 << 6;
     let words = (FW * FH) as usize;
     // SAFETY: `w` (the scene) is declared before the executor and outlives it; the arena and the media pool
     // are written only between the executor's calls, each of which waits for the GPU.
@@ -444,6 +480,7 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
             match gpu.as_mut() {
                 None => {
                     // the CPU kernel repairs the layers as it schedules them; the output damage is whole after
+                    let u = *w.s.block();
                     let st = w.s.prepare(&u);
                     (fs.prefix_tiles, fs.blocks) = (st.prefix as u32, st.blk.iter().sum::<u64>() as u32);
                     if f >= warm {
@@ -456,6 +493,7 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
                 Some(g) => {
                     w.s.damage.tiles(&mut tiles);
                     w.s.damage.clear();
+                    let u = *w.s.block();
                     if eager {
                         gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu;
                     } else if !tiles.is_empty() || w.s.owes_layers() {
@@ -536,6 +574,7 @@ fn main() {
     let cells: &[Cell] = match scene {
         "media" => &[Cell::Idle, Cell::OneVideo, Cell::VideoUnderGlass, Cell::AllVideos, Cell::AvPlayback, Cell::Scroll, Cell::HoverAbove, Cell::Theme, Cell::AllSprings, Cell::GlassOverVideo],
         "pane" => &[Cell::Idle, Cell::OneSpring, Cell::AllSprings, Cell::HoverAbove, Cell::HoverBeneath, Cell::GlassMoves],
+        _ if std::env::var("PALETTE").is_ok() => &[Cell::Idle, Cell::Theme, Cell::PalSwitch, Cell::PalFade, Cell::HoverAbove, Cell::Scroll],
         _ => &[Cell::Idle, Cell::OneSpring, Cell::AllSprings, Cell::Scroll, Cell::HoverAbove, Cell::HoverBeneath, Cell::Theme, Cell::GlassMoves],
     };
     let w = make();

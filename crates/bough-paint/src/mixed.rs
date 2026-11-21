@@ -65,6 +65,8 @@ impl Mixed {
         // the events are routed to the layers only if the CPU is chosen: the GPU's plan finds them itself
         scene.route_off = true;
         let mut fs = scene.update(u);
+        // the block with the scene's derived words: what the frame is drawn under
+        let u = &scene.block().clone();
         let mut tiles = std::mem::take(&mut self.tiles);
         scene.damage.tiles(&mut tiles);
         let limit = (GPU_FRAME_INSTR + GPU_DISPATCH_INSTR * self.gpu.resident_dispatches() as u64) / CPU_INSTR_PER_WEIGHT;

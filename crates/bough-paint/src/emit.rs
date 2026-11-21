@@ -67,6 +67,7 @@ fn unsupported(c: &Code) -> ! {
 pub fn words(c: &Code) -> usize {
     match c {
         Code::Rec | Code::UAt(..) => 1,
+        Code::Pal(i) => words(i),
         Code::Cpu(a) => a.iter().map(|c| words(c)).sum(),
         Code::Call(_, a) => a.iter().map(|c| words(c)).sum(),
         _ => 0,
@@ -84,6 +85,7 @@ fn reads(c: &Code) -> u64 {
     match c {
         Code::U(s) => 1 << s,
         Code::UAt(b, n) => ((1u64 << n) - 1) << b,
+        Code::Pal(i) => reads(i),
         Code::Cpu(a) => a.iter().fold(0, |m, c| m | reads(c)),
         Code::Call(_, a) => a.iter().fold(0, |m, c| m | reads(c)),
         _ => 0,
@@ -92,9 +94,13 @@ fn reads(c: &Code) -> u64 {
 /// Every leaf a code tree names (the gate checks each exists in `LEAVES_MSL` under that name).
 pub fn leaves(p: &PCode, out: &mut Vec<&'static str>) {
     fn e(c: &Code, out: &mut Vec<&'static str>) {
-        if let Code::Call(n, a) = c {
-            out.push(n);
-            a.iter().for_each(|c| e(c, out));
+        match c {
+            Code::Call(n, a) => {
+                out.push(n);
+                a.iter().for_each(|c| e(c, out));
+            }
+            Code::Pal(i) => e(i, out),
+            _ => {}
         }
     }
     match p {
@@ -128,6 +134,8 @@ fn expr(c: &Code, base: &mut usize, u: char) -> String {
         Code::Lane => "rect".into(),
         Code::Lit(v) => format!("{v}u"),
         Code::UAt(..) | Code::Cpu(_) => unsupported(c),
+        // the palette tables end where the corner tables begin: read through the same pointer
+        Code::Pal(i) => format!("pal_at(TAB, {})", expr(i, base, u)),
         Code::Call(n, a) => {
             let args: Vec<String> = a.iter().map(|c| expr(c, base, u)).collect();
             format!("{n}({})", args.join(", "))
@@ -367,7 +375,26 @@ fn pick(p: &PCode, base: usize) -> Option<String> {
         PCode::Hit { p, id } => Some(expr(id, &mut (base + pwords(p)), 'u')),
     }
 }
+/// Some operand reads a palette table: every function of the archetype takes the arena's table pointer.
+pub fn has_pal(p: &PCode) -> bool {
+    fn e(c: &Code) -> bool {
+        match c {
+            Code::Pal(_) => true,
+            Code::Call(_, a) | Code::Cpu(a) => a.iter().any(|c| e(c)),
+            _ => false,
+        }
+    }
+    match p {
+        PCode::Prim { args, .. } => args.iter().any(|c| e(c)),
+        PCode::Over { a, b, .. } => has_pal(a) || has_pal(b),
+        PCode::Clip { p, k } => has_pal(p) || e(k),
+        PCode::Hit { p, id } => has_pal(p) || e(id),
+    }
+}
 pub fn has_tab(p: &PCode) -> bool {
+    if has_pal(p) {
+        return true;
+    }
     match p {
         PCode::Prim { tab, .. } => *tab,
         PCode::Over { a, b, .. } => has_tab(a) || has_tab(b),
@@ -430,7 +457,7 @@ pub fn archetype(lang: Lang, k: usize, d: &Desc, out: &mut String) {
     let mut ps = vec![(T::V4u, "acc".to_string()), rect.clone()];
     ps.extend(xy.iter().cloned());
     ps.push((T::U32, "cov8".into()));
-    let (tab, fx) = (has_tab(p), has_fx(p));
+    let (tab, fx, pal) = (has_tab(p), has_fx(p), has_pal(p));
     if fx {
         ps.push((T::U32, "lid".into()));
     }
@@ -467,30 +494,30 @@ pub fn archetype(lang: Lang, k: usize, d: &Desc, out: &mut String) {
     ps.push((T::U32, "aw".into()));
     ps.extend(ws.iter().cloned());
     ps.extend(us.iter().cloned());
-    header(lang, out, T::U32, &format!("a{k}_texel"), &ps, false, false);
+    header(lang, out, T::U32, &format!("a{k}_texel"), &ps, pal, false);
     writeln!(out, "    return {};\n}}", texel(p, 0, NO_CLIP).unwrap_or("4294967295u".into())).unwrap();
 
     let mut ps = vec![rect.clone()];
     ps.extend(ws.iter().cloned());
     ps.extend(us.iter().cloned());
-    header(lang, out, T::V4i, &format!("a{k}_win"), &ps, false, false);
+    header(lang, out, T::V4i, &format!("a{k}_win"), &ps, pal, false);
     let mut f = Fn { lang, out, n: 0 };
     f.decl(T::V4i, "w", EMPTY, true);
     f.win(p, 0, NO_CLIP);
     writeln!(out, "    return w;\n}}").unwrap();
 
-    header(lang, out, T::V4i, &format!("a{k}_cover"), &ps, false, false);
+    header(lang, out, T::V4i, &format!("a{k}_cover"), &ps, pal, false);
     let cv = if cfg!(feature = "mutant_cut") && d.opaque_core { format!("a{k}_win({})", ps.iter().map(|p| p.1.clone()).collect::<Vec<_>>().join(", ")) } else { cover(p, 0, NO_CLIP) };
     writeln!(out, "    return {cv};\n}}").unwrap();
 
-    header(lang, out, T::U32, &format!("a{k}_pick"), &ps, false, false);
+    header(lang, out, T::U32, &format!("a{k}_pick"), &ps, pal, false);
     writeln!(out, "    return {};\n}}", pick(p, 0).unwrap_or("4294967295u".into())).unwrap();
 
     let mut ps = vec![rect.clone()];
     ps.extend(ws.iter().cloned());
     ps.extend(os.iter().cloned());
     ps.extend(us.iter().cloned());
-    header(lang, out, T::V4i, &format!("a{k}_chgw"), &ps, false, false);
+    header(lang, out, T::V4i, &format!("a{k}_chgw"), &ps, pal, false);
     let mut f = Fn { lang, out, n: 0 };
     f.decl(T::V4i, "w", EMPTY, true);
     f.chgw(p, 0, NO_CLIP);
@@ -502,7 +529,7 @@ pub fn archetype(lang: Lang, k: usize, d: &Desc, out: &mut String) {
 pub fn wgsl(descs: &[&Desc]) -> String {
     let mut s = String::from(LEAVES_WGSL);
     // the table reads, for validation only (the run-time path on Metal reads the arena: `metal::source`)
-    s.push_str("\nfn tab_h(b: u32, i: u32) -> u32 { return 4294967295u; }\nfn tab_v(b: u32, i: u32) -> u32 { return 4294967295u; }\n");
+    s.push_str("\nfn tab_h(b: u32, i: u32) -> u32 { return 4294967295u; }\nfn tab_v(b: u32, i: u32) -> u32 { return 4294967295u; }\nconst TAB: u32 = 0u;\nfn pal_at(t: u32, i: u32) -> u32 { return 0u; }\n");
     // likewise the layer and media reads (`metal::source` has the real glue)
     s.push_str("fn bd_px(lid: u32, a: vec4<u32>, c: Cmd, x: i32, y: i32) -> vec4<u32> { return p_bdrop(x_flat(a), c, x, y, a); }\nfn vd_px(c: Cmd, x: i32, y: i32) -> vec4<u32> { return vd_rgb(0u, 0u, 0u); }\n");
     for (k, d) in descs.iter().enumerate() {
