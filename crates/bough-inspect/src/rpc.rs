@@ -124,6 +124,7 @@ pub const METHODS: &[&str] = &[
     "tick",
     "resize",
     "settle",
+    "reload",
     "shot",
     "diff",
     "record_start",
@@ -232,6 +233,14 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
             };
             let o = s.run(&c);
             ok(record::outcome_json(&o))
+        }
+        "reload" => {
+            let reloaded = s.reload();
+            let snap = s.snapshot();
+            ok(J::obj()
+                .set("reloaded", reloaded)
+                .set("revision", snap.app.revision)
+                .set("digest", J::Str(format!("{:016x}", snap.digest()))))
         }
         "shot" => ok(shot(s, params)),
         "diff" => match diff(s, params) {
@@ -379,6 +388,8 @@ fn rect_json(r: crate::schema::R) -> J {
 fn tree<P: Program>(s: &mut Session<P>, p: &J) -> J {
     let snap = s.snapshot();
     let mut j = snap.to_json();
+    // the description's identity, for a client that compares two trees (the dev server's state-preserving restart)
+    j.put("digest", J::Str(format!("{:016x}", snap.digest())));
     if !flag(p, "nodes", true) {
         j.put("nodes", J::Arr(Vec::new()));
     }

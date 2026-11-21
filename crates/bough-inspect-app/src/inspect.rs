@@ -79,6 +79,11 @@ impl<V: Fields> Program for Lab<V> {
         };
         Lab::input(self, &e)
     }
+    fn reload(&mut self) -> bool {
+        // the lab has no files of its own: re-describing from what it holds is the whole of a reload
+        Lab::settle(self);
+        true
+    }
     fn fields(&self) -> &'static [FieldDef<V>] {
         V::fields_def()
     }

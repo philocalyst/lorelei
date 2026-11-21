@@ -122,21 +122,34 @@ fn script(rows: usize, steps: usize, once: bool) {
     }
 }
 
+/// The element sheet is one deep view; a test thread's default stack (2 MiB on macOS) does not fit its
+/// description frame, while the application itself describes it on the main thread. Run each body on a stack
+/// the view fits, so a debug build exercises the same code a release build does.
+fn big(f: impl FnOnce() + Send + 'static) {
+    std::thread::Builder::new()
+        .stack_size(32 << 20)
+        .spawn(f)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
 #[test]
 fn facade_sheet_once() {
-    script(10_000, 300, true);
+    big(|| script(10_000, 300, true));
 }
 #[test]
 fn facade_sheet_redescribing() {
-    script(10_000, 200, false);
+    big(|| script(10_000, 200, false));
 }
 #[test]
 fn facade_sheet_short() {
-    script(20, 150, true);
+    big(|| script(20, 150, true));
 }
 
 #[test]
 fn nothing_unexposed_exists() {
+    big(|| {
     let app = App::<Sheet, Soft>::new(*Sheet::with_rows(10_000), W, H, SCALE);
     let (records, _, bytes) = app.world.root().stats();
     // 35 exposed rows of 22 records and under 60 fixed records
@@ -145,4 +158,5 @@ fn nothing_unexposed_exists() {
         "{records} records for a window of 35 rows"
     );
     assert!(bytes < 320 * 1024, "{bytes} bytes of columns");
+    });
 }

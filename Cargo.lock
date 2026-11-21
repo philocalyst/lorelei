@@ -255,10 +255,12 @@ dependencies = [
 name = "bough-inspect-app"
 version = "0.1.0"
 dependencies = [
+ "bough-dev",
  "bough-guibench-x",
  "bough-host",
  "bough-inspect",
  "bough-mcp",
+ "bough-mem",
  "bough-span",
  "bough-x",
 ]

@@ -86,7 +86,15 @@ impl Sheet {
         let mut u = U::default();
         u.set::<Hover>(NO_HOVER);
         for c in 0..COLS {
-            u.set_at::<Sum>(c, items.iter().map(|row| cents(row[c])).sum());
+            // the column total is one block word (i32): 100,000 rows of up to 1,000.00 leave it, so it saturates
+            u.set_at::<Sum>(
+                c,
+                items
+                    .iter()
+                    .map(|row| cents(row[c]) as i64)
+                    .sum::<i64>()
+                    .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+            );
         }
         Sheet { u, rows: Rel::new(items) }
     }

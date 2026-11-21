@@ -27,13 +27,17 @@ impl Frame {
         })
     }
     pub fn png(&self) -> Vec<u8> {
-        let png = png::encode(self.w, self.h, &self.px);
         #[cfg(feature = "mutant_png")]
-        if !self.px.is_empty() {
-            // the negative control of G3: the file differs from the frame by one pixel
-            png.extend_from_slice(b"mutant");
+        {
+            // the negative control of G3: the file differs from the frame (a diff against it must not match)
+            let mut px = self.px.clone();
+            if let Some(p) = px.first_mut() {
+                *p ^= 0x0000_ff00;
+            }
+            return png::encode(self.w, self.h, &px);
         }
-        png
+        #[cfg(not(feature = "mutant_png"))]
+        png::encode(self.w, self.h, &self.px)
     }
     pub fn to_image(&self) -> png::Image {
         png::Image {

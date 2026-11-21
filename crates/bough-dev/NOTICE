@@ -1,0 +1,30 @@
+# bough-dev — provenance and licence
+
+`bough-dev` is forked from the GPUI-CE CLI:
+
+- repository: https://github.com/gpui-ce/cli
+- commit: `6774184ad4fe84bf0ecf3293222c27ca273fe52d` (2026-11, "fix: verify installable source
+  packages and refresh draft releases")
+- licence: Apache-2.0 (the upstream `LICENSE`); this crate is distributed under the workspace's
+  `MIT OR Apache-2.0`.
+- author: the GPUI-CE contributors (a community fork of Zed's GPUI).
+
+What this fork inherits (the shape, not the code): a CLI that owns `watch` (a source watcher with a debounce), a
+cargo capture and rebuild (`compiler.rs`), a native start/stop of the application, and a local server the running
+application connects to (`server.rs`). The upstream CLI drives Subsecond: it compiles application Rust into
+shared libraries and patches the running process through a jump table.
+
+What this fork changes:
+
+- the unit of a patch is the **view description**, not a function: lorelei's typed core keeps identity and state
+  in the stores, so a re-description (or an asset reload) keeps the application's state without any code patching;
+- a Rust change is a **state-preserving restart** (snapshot the typed state through the inspector's admission,
+  start the rebuilt binary, write the state back, compare descriptions). This is the fallback the upstream CLI
+  has for manifest and dependency changes, made the whole path for code here;
+- the watcher is a deterministic content scan (no `notify`), so a test can drive it and a missed event cannot lose
+  an edit;
+- there is no Subsecond dependency and no ELF/Mach-O patching. `README.md` states this boundary.
+
+The MCP endpoint is `bough-mcp`'s handler, served from this process; the tool surface follows fakeland-mcp for the
+parts that are transport-neutral (tree, find, pick, drive, screenshot) and uses the in-process inspector's extra
+knowledge (source locations, dependencies, why a turn repainted) where it can.

@@ -192,6 +192,11 @@ pub trait Program {
     fn fields(&self) -> &'static [FieldDef<Self::V>] {
         &[]
     }
+    /// Re-read whatever the application keeps outside its process (assets, a theme file, configuration) and
+    /// re-describe what depends on it. `false`: this program has nothing to reload.
+    fn reload(&mut self) -> bool {
+        false
+    }
     /// A fresh application with the same configuration, for replay. `None`: this program cannot be rebuilt
     /// (a windowed app whose loop owns the only instance).
     fn fresh(&self) -> Option<Self>
@@ -414,6 +419,20 @@ impl<P: Program> Session<P> {
                 got: value.kind(),
             });
         }
+        #[cfg(feature = "mutant_accept")]
+        {
+            // the negative control of G5: the typed admission is bypassed and an invalid write is accepted
+            if let Some(f) = def.set {
+                let _ = f(self.app.view_mut(), value);
+                self.commit();
+                return Ok(Outcome {
+                    command: "set".to_owned(),
+                    revision: self.app.world().revision(),
+                    damage_tiles: self.last_damage.tiles,
+                    digest: self.snapshot().digest(),
+                });
+            }
+        }
         let (get, expected) = (def.get, value.clone());
         let before = get(self.app.view());
         set(self.app.view_mut(), value).map_err(|e| match e {
@@ -491,6 +510,15 @@ impl<P: Program> Session<P> {
     pub fn replay(&self, log: &crate::record::Log) -> Option<crate::record::Replay> {
         let fresh = self.app.fresh()?;
         Some(crate::record::replay(log, || fresh))
+    }
+
+    /// Ask the application to re-read its own inputs, then commit. The dev server's hot path for a change that
+    /// is not Rust code.
+    pub fn reload(&mut self) -> bool {
+        let ok = self.app.reload();
+        self.last_command = "reload".to_owned();
+        self.commit();
+        ok
     }
 
     pub fn start_recording(&mut self) {

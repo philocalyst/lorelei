@@ -786,9 +786,9 @@ impl Snapshot {
     pub fn json_string(&self) -> String {
         json::to_string(&self.to_json())
     }
-    /// The description without what is specific to one process's instance: the world's identity and the
-    /// session's wall-clock timings. Replay compares this; a golden may too.
-    pub fn digest_json(&self) -> J {
+    /// The description with nothing process-specific in it: what a golden holds (damage, counters and their
+    /// timings included, but no world identity).
+    pub fn stable_json(&self) -> String {
         let mut j = self.to_json();
         if let J::Obj(m) = &mut j {
             if let Some((_, J::Obj(a))) = m.iter_mut().find(|(k, _)| k == "app") {
@@ -798,9 +798,26 @@ impl Snapshot {
                 c.retain(|(k, _)| k != "last");
             }
             if let Some((_, J::Obj(a))) = m.iter_mut().find(|(k, _)| k == "ax") {
+                a.retain(|(k, _)| k != "projected");
+            }
+        }
+        json::to_string(&j)
+    }
+    /// The description without what is specific to one process's instance: the world's identity and the
+    /// session's wall-clock timings. Replay compares this; a golden may too.
+    pub fn digest_json(&self) -> J {
+        let mut j = self.to_json();
+        if let J::Obj(m) = &mut j {
+            if let Some((_, J::Obj(a))) = m.iter_mut().find(|(k, _)| k == "app") {
+                a.retain(|(k, _)| k != "world");
+            }
+            if let Some((_, J::Obj(a))) = m.iter_mut().find(|(k, _)| k == "ax") {
                 // how much of the projection an update had to touch is a cost, not a description
                 a.retain(|(k, _)| k != "projected");
             }
+            // costs are not the description: a restart with the same state re-evaluates a different number of
+            // columns and damages a different last turn
+            m.retain(|(k, _)| k != "counters" && k != "damage");
         }
         j
     }

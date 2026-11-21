@@ -27,6 +27,7 @@ pub mod png;
 pub mod record;
 pub mod rpc;
 pub mod schema;
+pub mod schema_read;
 pub mod session;
 pub mod socket;
 pub mod testing;

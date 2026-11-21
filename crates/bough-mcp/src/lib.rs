@@ -272,6 +272,7 @@ impl Mcp {
                 );
                 Ok((j(self.call("diff", &p)?), None))
             }
+            "reload" => Ok((j(self.call("reload", &J::obj())?), None)),
             "record_start" => Ok((j(self.call("record_start", &J::obj())?), None)),
             "record_stop" => Ok((j(self.call("record_stop", &J::obj())?), None)),
             "replay" => {
@@ -435,6 +436,7 @@ pub fn tools() -> Vec<J> {
         tool("resize", "Resize the window (a remount in the benchmark adapter).", schema(&[("w", "integer", "width"), ("h", "integer", "height"), ("scale", "number", "device pixels per point")], &["w", "h"])),
         tool("screenshot", "Paint the whole frame and return it as a PNG image, with its size and digest.", schema(&[("raw", "boolean", "Also return raw RGBA (base64).")], &[])),
         tool("diff_golden", "Paint the frame and diff it against a golden PNG (base64): differing pixels, bounding box, maximum channel delta.", schema(&[("golden", "string", "base64 PNG")], &["golden"])),
+        tool("reload", "Ask the application to re-read its own inputs (assets, theme, configuration) and re-describe; state is kept.", no()),
         tool("record_start", "Start recording commands for a deterministic replay.", no()),
         tool("record_stop", "Stop recording and return the commands.", no()),
         tool("replay", "Replay a recorded log on a fresh application of the same kind; reports the first description or pixel that differs.", schema(&[("log", "object", "the log from record_stop, plus digests")], &["log"])),
@@ -523,7 +525,14 @@ fn one_http(mcp: &mut Mcp, mut s: TcpStream) -> io::Result<()> {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 4096];
     let (head_end, len) = loop {
-        let n = s.read(&mut chunk)?;
+        let n = match s.read(&mut chunk) {
+            Ok(n) => n,
+            // a client that connected and said nothing: not this server's problem
+            Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {
+                return Ok(())
+            }
+            Err(e) => return Err(e),
+        };
         if n == 0 {
             return Ok(());
         }
