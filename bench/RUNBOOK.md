@@ -58,25 +58,19 @@ lorelei and gui-bench; the repository's framework source is untouched.
 ## 2. The assembly and graph harness
 
 ```sh
+asm_dir="runtime/asm/$(git rev-parse --short HEAD)"
 python3 bench/asm/asm.py list
-python3 bench/asm/asm.py emit --out bench/asm/out/$(git rev-parse --short HEAD)
-python3 bench/asm/asm.py diff OLD_DIR NEW_DIR [--threshold 0.02]
-python3 bench/asm/asm.py graph crates --out /tmp/crates.svg
-python3 bench/asm/asm.py graph expr   --out /tmp/expr.svg
-python3 bench/asm/asm.py graph calls  --out /tmp/calls.svg --emitted bench/asm/out/HEAD
-python3 bench/asm/asm.py check        # negative control: a cfg mutant must move the count
+python3 bench/asm/asm.py emit --out "$asm_dir"
+python3 bench/asm/asm.py diff "$asm_dir" "$asm_dir"
+python3 bench/asm/asm.py graph crates --out "$asm_dir/crates.svg"
+python3 bench/asm/asm.py graph expr --out "$asm_dir/expr.svg"
+python3 bench/asm/asm.py graph calls --out "$asm_dir/calls.svg" --emitted "$asm_dir"
+python3 bench/asm/asm.py check
 ```
 
-`emit` builds the harness's symbols (`bench/asm/harness`: the gui-bench `rows` scene and the layered
-canvas, plus the layout memo) and writes `fn/<entry>.s`, `raw/`, `stats.tsv` and `MANIFEST.txt`
-(commit, rustc, profile, host, load). Each entry counts instructions, branches, calls, panic paths
-and bounds-check/`brk` sites. `diff` sums an entry's symbols and exits 1 when it grows past the
-threshold (default 2 %, above 16 instructions). `check` is the gate on the gate: with
-`--features asm_mutant` the control wrappers do real extra work and the count must grow.
+The example uses a self-diff. For a source comparison, pass the two emission directories in base-to-head order. Use the same toolchain, profile, codegen settings and host contract. An entry grows past the default limit only when its increase exceeds both 2% and 16 instructions. Use `--threshold` to override the relative limit.
 
-Run it alone (no build on another core), because `cargo asm` invokes cargo. Read
-`bench/asm/README.md` for the symbol names and the two documented boundaries (inlining regimes and
-the reflection export).
+`emit` builds the GUI rows and canvas fixtures and the layout memo and writes symbol assembly, a `stats.tsv` and `MANIFEST.txt`. `check` uses an `asm_mutant` build to confirm that a change in the control wrappers moves the counts. Run the build commands under the shared benchmark lock when other lanes are active. See [the assembly harness](asm/README.md) for symbol coverage and the inlining and reflection boundaries.
 
 ## 3. Reproducible macOS baselines and the regression gate
 
@@ -92,21 +86,18 @@ Set `BASE_WORKTREE` and `HEAD_WORKTREE` to the checkouts being compared. Omit `-
 
 Default limits are 2% for instructions, 10% for wall time and 5% for process RSS. Wall and RSS are unqualified above the load ceiling. Wall is also unqualified if either input spreads more than the tolerance. See [native measurement scope and threshold overrides](baseline/README.md).
 
-## 4. The repo's older headless jobs (still valid, macOS)
+## 4. The older headless jobs on macOS
 
 ```sh
 cargo build --profile dist -p bough-heavy -p bough-scenes -p bough-vlist
-bench/results/fusion/run_slopes.sh         # per-frame instructions, bough vs zgx, RENDER 0/1
-python3 bench/integrate/micro.py 3         # micro_bench ns/op (needs zgx headless drivers)
-bench/r8/lay_compile.sh                    # per-row-type compile time and __text bytes
-bench/gate.sh                              # the code gate (check, tests, sabotage), not a benchmark
+export BOUGH_DIST="$CARGO_TARGET_DIR/dist"
+bench/results/fusion/run_slopes.sh
+python3 bench/integrate/micro.py 3
+bench/r8/lay_compile.sh
+bench/gate.sh
 ```
 
-`bench/results/fusion/run_slopes.sh` and `micro.py` expect `target/fusion/dist`; point
-`BOUGH_DIST` at wherever the dist binaries were built. `zgx` drivers need `bench/zgx/build.sh` and
-the zgx checkout (`BOUGH_REF`/`ZGX`). A cell of these jobs that needs a competitor's binaries is not
-a bough baseline; `bench/baseline/` deliberately measures bough alone and labels the competitors'
-cells unavailable.
+The slope and micro jobs also require the corresponding `zgx` binaries. Point `BOUGH_REF` or `ZGX` at the reference sources and `ZGX_HEADLESS` at the staged headless drivers. `bench/zgx/build.sh` builds the workload, animation and vlist drivers. The heavy and micro example binaries come from the separate `zgx` release or dist build. A missing driver exits nonzero. Run the compile probe on a quiet host when comparing compile times. The code gate runs checks and tests, including controls that must fail.
 
 ## 5. Validity rules (fail closed)
 
