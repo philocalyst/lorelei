@@ -102,7 +102,6 @@ fn redescribe_subscribes_to_replacement_relation() {
 }
 
 #[test]
-#[ignore = "TR1-03 open"]
 fn settle_subscribes_to_replacement_relation() {
     let mut view = Rows {
         u: U::default(),

@@ -269,6 +269,16 @@ impl Journal {
         true
     }
 }
+impl Drop for Journal {
+    fn drop(&mut self) {
+        // A displayed relation may be replaced by assignment. The world's subscription still owns
+        // this watch. Invalidate it so settle drives the view and binds the replacement journal.
+        #[cfg(not(feature = "mutant_journal_drop"))]
+        if let Some(watch) = self.watch.get() {
+            watch.store(self.ver.wrapping_add(1), Ordering::Relaxed);
+        }
+    }
+}
 impl Default for Journal {
     fn default() -> Self {
         Journal::new()
