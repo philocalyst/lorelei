@@ -715,7 +715,8 @@ impl RawCol {
                 // SAFETY: the lane holds `npages * 64` captures of `o.caps` bytes.
                 unsafe { self.caps.add(rec as usize * o.caps as usize) }
             }
-            Some(o) => o.caps_align as usize as *const u8,
+            // an aligned address with no provenance: zero-sized captures are never read through it
+            Some(o) => core::ptr::without_provenance(o.caps_align as usize),
             None => core::ptr::dangling(),
         }
     }

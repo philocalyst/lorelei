@@ -12,6 +12,40 @@ use crate::store::{Backend, ColEnt, Path, Space, Store, Tiles};
 use core::marker::PhantomData;
 use core::sync::atomic::Ordering;
 
+/// The world's store tree, owned through a raw pointer (soundness review S15). The column table keeps
+/// pointers into the tree across moves of the world; a `Box` field is retagged as unique whenever the world
+/// moves (Stacked Borrows) and so would end them. Every borrow of the tree is derived from this one pointer:
+/// shared ones by `Deref` (what the table is built from), unique ones by `DerefMut` (a pass), after which the
+/// table's pointers are derived again (`World::rederive`, `World::retable`).
+struct Root(core::ptr::NonNull<Store>);
+impl Root {
+    fn new(st: Store) -> Root {
+        Root(core::ptr::NonNull::from(Box::leak(Box::new(st))))
+    }
+}
+impl core::ops::Deref for Root {
+    type Target = Store;
+    #[inline(always)]
+    fn deref(&self) -> &Store {
+        // SAFETY: allocated by `Root::new` and freed only by `Drop`; shared access through `&self`.
+        unsafe { self.0.as_ref() }
+    }
+}
+impl core::ops::DerefMut for Root {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Store {
+        // SAFETY: as `deref`; `&mut self` is the only path to the tree for as long as the borrow lives (the
+        // table's pointers are not read while a pass holds it).
+        unsafe { self.0.as_mut() }
+    }
+}
+impl Drop for Root {
+    fn drop(&mut self) {
+        // SAFETY: from `Box::leak` in `Root::new`, dropped once.
+        drop(unsafe { Box::from_raw(self.0.as_ptr()) });
+    }
+}
+
 /// A `shape` no store tree has: structure revisions count up from 0 with a checked add.
 const STALE: u64 = u64::MAX;
 
@@ -120,7 +154,7 @@ pub struct World<V, B> {
     /// Boxed: the column table points into the tree, and the world itself may be moved. Private (review C01):
     /// its columns' descriptors were made for `B` and for the view mounted; outside code reads it through
     /// [`World::root`] and changes it only through the world's own passes.
-    root: Box<Store>,
+    root: Root,
     /// The block as of the last settle: what the pixels on screen were shaded with.
     pub shown: U,
     pub tiles: Tiles,
@@ -195,7 +229,7 @@ impl<V: View, B: Backend> World<V, B> {
         World {
             id,
             inputs: crate::el::InputToken::new(),
-            root: Box::new(root),
+            root: Root::new(root),
             shown,
             tiles: Tiles::new(w, h),
             nwords,
@@ -494,6 +528,34 @@ impl<V: View, B: Backend> World<V, B> {
             .fold(self.root.reads_all(), |m, s| m | s.0);
     }
 
+    /// After a pass, when the tree kept its shape: the table's pointers into the tree again, from a fresh shared
+    /// borrow of it (soundness review S15). The pass reached the stores through `&mut`, which ends every
+    /// borrow the table's pointers were derived from (Stacked and Tree Borrows both reject reading through
+    /// them afterwards). Same entries, same order, no allocation: a walk of the stores and their columns.
+    fn rederive(&mut self) {
+        if self.shape != self.root.structure_revision() {
+            // the tree changed shape: the next entry point rebuilds the whole table (`columns`, `learn`)
+            return;
+        }
+        fn go(st: &Store, cols: &mut [ColEnt], cold: &mut [(*const Store, u32)], k: &mut usize) {
+            for p in &st.order {
+                match *p {
+                    crate::store::Pass::Col(j) => {
+                        cols[*k] = st.ent(&st.cols[j as usize]);
+                        cold[*k] = (st, j);
+                        *k += 1;
+                    }
+                    crate::store::Pass::Sub(q) => go(&st.subs[q as usize], cols, cold, k),
+                }
+            }
+        }
+        let mut k = 0;
+        go(&self.root, &mut self.cols, &mut self.cold, &mut k);
+        debug_assert_eq!(k, self.cols.len());
+        self.spaces.clear();
+        self.root.moving_spaces(&mut self.spaces);
+    }
+
     /// The damage of the block going from what is shown to `u` (`ch`: the changed words). The path from here
     /// to a page is this world, the column's entry, the page: the store tree is not on it.
     #[inline]
@@ -737,6 +799,7 @@ impl<V: View, B: Backend> World<V, B> {
             self.shape = shape;
             self.lists |= cx.lists;
             self.revision = self.revision.wrapping_add(cx.changed);
+            self.rederive();
             if ch != 0 {
                 self.shown = *u;
             }
@@ -781,6 +844,7 @@ impl<V: View, B: Backend> World<V, B> {
         self.lists |= cx.lists;
         let regroup = cx.regroup;
         self.revision = self.revision.wrapping_add(cx.changed);
+        self.rederive();
         if self.root.timed {
             self.root.resweep(u, &mut self.tiles);
         }
