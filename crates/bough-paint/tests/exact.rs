@@ -50,8 +50,12 @@ fn tri(phase: u32, period: u32) -> Tri<Uw<63>, Rec, Rec> {
 }
 
 fn build(seed: u64, fw: u32, fh: u32, n: usize) -> Scene {
+    build_with_coverage(seed, fw, fh, n, true)
+}
+fn build_with_coverage(seed: u64, fw: u32, fh: u32, n: usize, coverage: bool) -> Scene {
     let mut g = Rng(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
     let mut s = Scene::new(fw, fh, 1 << 18);
+    s.memoise_coverage = coverage;
     s.atlas = scenes::atlas();
     s.aw = scenes::ATLAS_W;
     let c_solid = s.column::<ASolid>(n);
@@ -331,8 +335,8 @@ fn corner_tables_are_the_closed_form() {
     let (fw, fh) = (320u32, 250u32);
     let stride = fw as usize;
     let words = stride * fh as usize;
-    let mut a = build(5, fw, fh, 110);
-    let mut b = build(5, fw, fh, 110);
+    let mut a = build_with_coverage(5, fw, fh, 110, false);
+    let mut b = build_with_coverage(5, fw, fh, 110, false);
     let jobs = a.tab_jobs().len();
     assert!(jobs > 0, "the scene has no shadow in the table regime");
     let Some(mut g) = (unsafe { Gpu::new(&a, words, 256) }) else { return };
@@ -360,7 +364,7 @@ fn corner_tables_are_the_closed_form() {
     let good = source(&descs, &lays, a.tab_region().0);
     let bad = good.replacen("= x_cfillw(", "= 1u + x_cfillw(", 1);
     assert!(bad != good);
-    let mut c = build(5, fw, fh, 110);
+    let mut c = build_with_coverage(5, fw, fh, 110, false);
     let mut m = unsafe { Gpu::with_source(&c, words, 256, &bad) }.unwrap();
     m.fill_tabs(&mut c);
     m.frame(&u, None, stride);

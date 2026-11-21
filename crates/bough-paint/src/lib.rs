@@ -8,6 +8,8 @@
 //! * `tile.rs`: the CPU tile rasteriser as sinks, monomorphised per archetype.
 //! * `style.rs`: what a chain of the façade's box modifiers lowers to: one composed paint record.
 //! * `scene.rs`: columns (the GPU's buffers), paint order, the window lane, bins, the CPU frame.
+pub mod author;
+pub mod decode;
 pub mod expr;
 #[cfg(target_os = "macos")]
 pub mod driver;

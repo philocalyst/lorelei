@@ -23,12 +23,14 @@ use crate::emit;
 use crate::scene::{Desc, IDX_BITS, IDX_MASK, LANES, Scene};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2_foundation::NSString;
+use objc2_foundation::{NSRange, NSString};
 use objc2_metal::*;
 use std::fmt::Write;
 
 type Buf = Retained<ProtocolObject<dyn MTLBuffer>>;
 type Pso = Retained<ProtocolObject<dyn MTLComputePipelineState>>;
+
+type Icb = Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>;
 
 /// META words: header, then the new block, the old block, and one length per column.
 const M_UNEW: usize = 16;
@@ -89,7 +91,20 @@ static metal::uint4 bd_px(const device uint* POOL, const device uint* LT, const 
     return p_bdrop(a, c, x, y, bl);
 }
 static inline uint fx_byte(const device uint* M, uint i) { return (M[metal::min(i >> 2u, MEDIALIM)] >> ((i & 3u) * 8u)) & 255u; }
+static metal::uint4 bgra_px(const device uint* M, Cmd c, int px, int py) {
+    uint at = c_slot(c) & 0x7FFFFFFFu;
+    int width = c_vw(c), height = c_vh(c);
+    uint words = uint(width * height);
+    if (at > MEDIALIM - 7u || words > MEDIALIM - at - 7u || M[at + 7u] != 0x41524742u || M[at] != uint(width) || M[at + 1u] != uint(height)) {
+        return metal::uint4(0u);
+    }
+    const device uint* pixels = M + at + 8u;
+    metal::int2 t = vd_pos(c, px, py);
+    uint x0 = vd_ix(t.x, 0, width), x1 = vd_ix(t.x, 1, width), y0 = vd_ix(t.y, 0, height), y1 = vd_ix(t.y, 1, height);
+    return bd_bil(pixels[y0 * uint(width) + x0], pixels[y0 * uint(width) + x1], pixels[y1 * uint(width) + x0], pixels[y1 * uint(width) + x1], uint(t.x & 255), uint(t.y & 255));
+}
 static metal::uint4 vd_px(const device uint* POOL, const device uint* LT, const device uint* M, Cmd c, int px, int py) {
+    if (c_slot(c) >= 0x80000000u) { return bgra_px(M, c, px, py); }
     uint at = metal::min(c_slot(c), MEDIALIM - 7u);
     uint yoff = M[at + 2u], coff = M[at + 3u], ys = M[at + 4u], cs = M[at + 5u];
     int vw = c_vw(c), vh = c_vh(c);
@@ -228,6 +243,7 @@ kernel void k_rc0(const device uint* META [[buffer(1)]], const device uint* WINS
 kernel void k_downr(const device uint* META [[buffer(1)]], device uint* POOL [[buffer(13)]], const device uint* LT [[buffer(14)]], const device uint* SL [[buffer(19)]],
                     const device uint* LB [[buffer(20)]], device metal::atomic_uint* CHG [[buffer(21)]], const device uint* FORCE [[buffer(22)]], device metal::atomic_uint* KT [[buffer(23)]],
                     const device uint* RP [[buffer(26)]], const device uint* STG [[buffer(27)]], metal::uint3 wg [[threadgroup_position_in_grid]], metal::uint3 tp [[thread_position_in_threadgroup]]) {
+    if (wg.x >= STG[1]) { return; }
     uint s = STG[0] + wg.x, gen = RP[0], lid = SL[s] & 0xFFFFFFu, k = STG[2], bs = 5u - k;
     metal::int2 b;
     if (!rs_block(LT, lid, k, s - LB[lid * 8u + k], b)) { return; }
@@ -257,6 +273,10 @@ kernel void k_downr(const device uint* META [[buffer(1)]], device uint* POOL [[b
         metal::atomic_store_explicit(&CHG[s], gen, metal::memory_order_relaxed); // block stamps changed
         rs_mark(KT, LT, lid, k, metal::int4(x, y, x + 1, y + 1), META[3], META[4], gen);
     }
+}
+// Reset compacted layer counts before the cached stage sequence. Output uses a separate counter.
+kernel void k_rreset(device uint* ARGS [[buffer(24)]], const device uint* RP [[buffer(26)]], uint i [[thread_position_in_grid]]) {
+    if (i < RP[4]) { ARGS[8u * i] = 0u; }
 }
 // the output: the tiles damaged after the frame the surface last showed
 kernel void k_rcout(const device uint* META [[buffer(1)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]], const device uint* LT [[buffer(14)]],
@@ -299,8 +319,28 @@ static inline uint tab_v(const device uint* T, uint base, uint idx) {
     if (idx == 0xFFFFFFFFu) { return 0xFFFFFFFFu; }
     return (T[base + 2u + (idx >> 1u)] >> ((idx & 1u) * 16u)) & 0xFFFFu;
 }
+static inline bool tab_patch_ready(const device uint* T, Cmd c, metal::int4 shape) {
+    uint handle = c_tab(c), base = handle & 0x7FFFFFFFu;
+    if ((handle & 0x80000000u) == 0u || base >= TABLIM - 1u) { return false; }
+    return x_patch_ok(c, shape, T[base], T[base + 1u], T[base + 2u], T[base + 3u]);
+}
+static inline metal::uint4 tab_shadow(const device uint* T, Cmd c, metal::int4 shape, bool patch, bool corners, int x, int y) {
+    if (!x_in(c.win, x, y)) { return metal::uint4(0u); }
+    if (x_in(c.core, x, y)) { return c.pm; }
+    uint handle = c_tab(c);
+    if (patch) {
+        uint index = x_patch_idx(c, shape, x, y);
+        uint base = (handle & 0x7FFFFFFFu) + 4u, word = index >> 1u;
+        if (index != 0xFFFFFFFFu && base + word < TABLIM + 2u) {
+            return p_shadow_coverage(c, t_half(T[base + word], index));
+        }
+    }
+    metal::uint4 taps = x_ctaps(c, x, y, corners);
+    return p_shadowm(c, x, y, tab_v(T, handle, taps.x), tab_v(T, handle, taps.y), tab_v(T, handle, taps.z), tab_v(T, handle, taps.w));
+}
 "#,
     );
+    crate::author::append(descs, &mut s, true);
     s.push_str(FX_GLUE);
     for (k, d) in descs.iter().enumerate() {
         emit::archetype(emit::Lang::Msl, k, d, &mut s);
@@ -354,11 +394,12 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
     // ---- shade: `k_shade` (a whole tile program per damaged tile, into the surface) and `k_seg` (the
     // ---- staged frame's jobs: a range of a tile's list, from a stored prefix or from nothing, into the
     // ---- surface or into a layer's level 0) are one body ----
-    for variant in 0..3 {
+    for variant in 0..4 {
         // 0: `k_shade`; 1: `k_seg`; 2: `k_segr` (the resident plan's: a prefix job compares before it writes
         // and stamps its block changed)
-        let seg = variant > 0;
-        s.push_str(["\nkernel void k_shade(", "\nkernel void k_seg(", "\nkernel void k_segr(device metal::atomic_uint* CHG [[buffer(21)]], device metal::atomic_uint* KT [[buffer(23)]], const device uint* RP [[buffer(26)]], "][variant]);
+        let seg = variant == 1 || variant == 2;
+        let panned = variant == 3;
+        s.push_str(["\nkernel void k_shade(", "\nkernel void k_seg(", "\nkernel void k_segr(device metal::atomic_uint* CHG [[buffer(21)]], device metal::atomic_uint* KT [[buffer(23)]], device metal::atomic_uint* ARGS [[buffer(24)]], const device uint* RP [[buffer(26)]], ", "\nkernel void k_pan(const device uint* WORLD [[buffer(28)]], "][variant]);
         s.push_str(
             r#"const device uint* COLS [[buffer(0)]], const device uint* META [[buffer(1)]], const device uint* ORDER [[buffer(2)]],
                     const device uint* WINS [[buffer(3)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]],
@@ -370,8 +411,31 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
     const device uint* TAB = COLS + TABBASE; (void)TAB; (void)POOL; (void)LT; (void)MEDIA; (void)LAYOF; (void)JOBS; (void)TL;
 "#,
         );
+        if variant == 2 {
+            s.push_str("    if (wg.x >= metal::atomic_load_explicit(&ARGS[0], metal::memory_order_relaxed)) { return; }\n");
+        }
         s.push_str(&load_u('u', M_UNEW));
-        s.push_str(if seg {
+        s.push_str(if panned {
+            r#"    uint t = wg.x, init = 0xFFFFFFFFu, dest = 0xFFFFFFFFu;
+    int panx = int(META[16u + WORLD[0]]), pany = int(META[16u + WORLD[1]]);
+    int cx = int(t % TX) - (panx >> 13) - int((panx & 8191) != 0);
+    int cy = int(t / TX) - (pany >> 13) - int((pany & 8191) != 0);
+    uint fixed_at = WORLD[4u + 2u * t], fixed_n = WORLD[5u + 2u * t];
+    uint base = 4u + 2u * WORLD[2], lo = 0u, hi = WORLD[3];
+    while (lo < hi) {
+        uint m = lo + (hi - lo) / 2u, at = base + 4u * m;
+        int wy = int(WORLD[at]), wx = int(WORLD[at + 1u]);
+        if (wy < cy || (wy == cy && wx < cx)) { lo = m + 1u; } else { hi = m; }
+    }
+    uint world_at = 0u, world_n = 0u;
+    if (lo < WORLD[3]) {
+        uint at = base + 4u * lo;
+        if (int(WORLD[at]) == cy && int(WORLD[at+1u]) == cx) {
+            world_at = WORLD[at+2u]; world_n = WORLD[at+3u];
+        }
+    }
+"#
+        } else if seg {
             r#"    const device uint* J = JOBS + wg.x * 8u;
     uint t = J[0], from = J[1], to = J[2], init = J[3], dest = J[4];
 "#
@@ -382,7 +446,6 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
         s.push_str(
             r#"    uint ux = (t % TX) * 32u + 2u * tp.x, uy = (t / TX) * 32u + 2u * tp.y;
     int x = int(ux), y = int(uy);
-    uint off = TILES[2u * t];
     metal::uint4 a0 = metal::uint4(0u), a1 = metal::uint4(0u), a2 = metal::uint4(0u), a3 = metal::uint4(0u);
     if (init != 0xFFFFFFFFu) {
         // the stored prefix of a layer that holds this whole tile
@@ -391,6 +454,20 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
         if (ux < fw && uy + 1u < fh) { a2 = x_unstore(POOL[fx_at(LT, init, 0u, x, y + 1)]); }
         if (ux + 1u < fw && uy + 1u < fh) { a3 = x_unstore(POOL[fx_at(LT, init, 0u, x + 1, y + 1)]); }
     }
+"#,
+        );
+        s.push_str(if panned {
+            r#"    uint fi = 0u, wi = 0u;
+    while (fi < fixed_n || wi < world_n) {
+        uint f = fi < fixed_n ? WORLD[fixed_at + fi] : 0xFFFFFFFFu;
+        uint w = wi < world_n ? WORLD[world_at + wi] : 0xFFFFFFFFu;
+        uint z;
+        if (f < w) { z = f; fi++; } else { z = w; wi++; }
+        uint o = ORDER[z], idx = o & IDXMASK;
+        switch (o >> IDXBITS) {
+"#
+        } else {
+            r#"    uint off = TILES[2u * t];
     // the occlusion cut at pixel grain: start at the topmost entry whose opaque cover holds this 2 x 2 block
     uint start = from;
     for (uint i = to; i > from; i--) {
@@ -404,8 +481,8 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
         if (x + 1 < wn.x || x >= wn.z || y + 1 < wn.y || y >= wn.w) { continue; }
         uint o = ORDER[z], idx = o & IDXMASK;
         switch (o >> IDXBITS) {
-"#,
-        );
+"#
+        });
         for (k, d) in descs.iter().enumerate() {
             write!(s, "        case {k}u: {{ {}", record(k, &lays[k])).unwrap();
             let (w, u) = (loads(d), unis(d, 'u'));
@@ -617,6 +694,9 @@ pub struct GpuTime {
     pub gpu: f64,
 }
 
+/// Actual buffers (rather than argument indices) referenced by the indirect layer commands.
+const RES_COMMAND_BUFFERS: [usize; 21] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26];
+
 /// The resident plan's CPU side (`Gpu::resident`).
 #[derive(Default)]
 struct Res {
@@ -632,6 +712,15 @@ struct Res {
     lb: Vec<u32>,
     /// (level, or `u32::MAX` for a rank's reach pass; slots; first slot), in order.
     stages: Vec<(u32, u32, u32)>,
+    /// Stage index of each rank, followed by the output stage.
+    rank_stage: Vec<usize>,
+    max_dispatches: usize,
+    /// Cached layer commands and the command index at which each stage begins.
+    commands: Option<Icb>,
+    command_at: Vec<usize>,
+    first_stage: usize,
+    last_dispatches: usize,
+    world_tiles: Option<u32>,
     nslots: usize,
     era: u32,
 }
@@ -640,6 +729,9 @@ pub struct Gpu {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     shade: Pso,
+    pan: Pso,
+    world_seen: Option<u64>,
+    world_uploads: u64,
     pick: Pso,
     bin: Pso,
     compact: Pso,
@@ -653,9 +745,11 @@ pub struct Gpu {
     /// 7 output, 8 atlas, 9 damage, 10 pick, 11 rewritten records (a bit per key), 12 table jobs; the staged
     /// frame's: 13 the layers' pool (this executor's own retained copy), 14 the layer table, 15 the media
     /// pool (the scene's, no copy), 16 layer of key, 17 jobs.
-    bufs: [Option<Buf>; 28],
+    bufs: [Option<Buf>; 29],
     /// The resident plan's kernels and state (`resident`).
     rk: [Pso; 5],
+    icb_pipelines: Option<[Pso; 3]>,
+    reset_counts: Pso,
     res: Res,
     /// The scene's layer pool this executor wrapped (null: none yet).
     pool: *const u32,
@@ -722,8 +816,22 @@ impl Gpu {
             device.newComputePipelineStateWithFunction_error(&f).unwrap_or_else(|e| panic!("{name}: {e}"))
         };
         let (shade, pick, bin, compact, tab) = (pso("k_shade"), pso("k_pick"), pso("k_bin"), pso("k_compact"), pso("k_tab"));
-        let (seg, down) = (pso("k_seg"), pso("k_down"));
+        let (seg, down, pan) = (pso("k_seg"), pso("k_down"), pso("k_pan"));
         let rk = [pso("k_rc0"), pso("k_segr"), pso("k_downr"), pso("k_rcout"), pso("k_rfin")];
+        let icb_pipelines = (|| {
+            if !device.supportsFamily(MTLGPUFamily::Apple4) {
+                return None;
+            }
+            let pipeline = |name| {
+                let f = lib.newFunctionWithName(&NSString::from_str(name))?;
+                let desc = MTLComputePipelineDescriptor::new();
+                desc.setComputeFunction(Some(&f));
+                desc.setSupportIndirectCommandBuffers(true);
+                device.newComputePipelineStateWithDescriptor_options_reflection_error(&desc, MTLPipelineOption::empty(), None).ok()
+            };
+            Some([pipeline("k_rc0")?, pipeline("k_segr")?, pipeline("k_downr")?])
+        })();
+        let reset_counts = pso("k_rreset");
         let win: Vec<Pso> = (0..scene.cols.len()).map(|k| pso(&format!("k_win{k}"))).collect();
         let compile_s = t.elapsed().as_secs_f64();
         let nt = scene.tx * scene.ty;
@@ -731,6 +839,9 @@ impl Gpu {
             device,
             queue,
             shade,
+            pan,
+            world_seen: None,
+            world_uploads: 0,
             pick,
             bin,
             compact,
@@ -738,6 +849,8 @@ impl Gpu {
             seg,
             down,
             rk,
+            icb_pipelines,
+            reset_counts,
             res: Res::default(),
             media: scene.media.arena().ptr(),
             pool: std::ptr::null(),
@@ -790,6 +903,7 @@ impl Gpu {
         let need = bytes.max(16);
         if self.bufs[i].as_ref().is_none_or(|b| b.length() < need) {
             let cap = need.next_power_of_two();
+            self.res.commands = None;
             self.bufs[i] = Some(self.device.newBufferWithLength_options(cap, MTLResourceOptions::StorageModeShared).expect("buffer"));
         }
         self.bufs[i].as_ref().unwrap()
@@ -809,6 +923,7 @@ impl Gpu {
     /// already here: they are the arena.) Called after records are pushed; the next frame redraws everything.
     pub fn sync(&mut self, scene: &Scene) {
         assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
+        self.world_seen = None;
         self.nz = scene.order.len();
         self.lens = scene.cols.iter().map(|c| c.len).collect();
         self.buf(2, self.nz.max(1) * 4);
@@ -924,6 +1039,9 @@ impl Gpu {
     /// repair what the previous ones left), with `tiles` the output tiles to draw (the frame's damage, or
     /// more for an older surface). This is the path for scenes with layers; `frame` refuses them.
     pub fn staged(&mut self, scene: &Scene, u: &U, tiles: &[u32], stride: usize) -> GpuTime {
+        if let Some(world) = scene.world_frame() {
+            return self.draw_world(scene, world, u, stride);
+        }
         assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
         assert!(std::ptr::eq(self.media, scene.media.arena().ptr()), "the scene's media pool was replaced after the executor was made");
         assert!(tiles.iter().all(|&t| (t as usize) < self.nt));
@@ -965,6 +1083,7 @@ impl Gpu {
             if !std::ptr::eq(self.pool, a.ptr()) {
                 // SAFETY: page-aligned whole pages owned by the scene, which outlives the executor; the CPU
                 // writes it only between this executor's calls (each waits for the GPU).
+                self.res.commands = None;
                 self.bufs[13] = unsafe { self.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(a.ptr() as *mut std::ffi::c_void).expect("pool"), a.bytes(), MTLResourceOptions::StorageModeShared, None) };
                 self.pool = a.ptr();
             }
@@ -1071,6 +1190,13 @@ impl Gpu {
         assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
         assert!(std::ptr::eq(self.media, scene.media.arena().ptr()), "the scene's media pool was replaced after the executor was made");
         assert!(scene.order.len() == self.nz, "records were pushed: call `sync`");
+        if let Some(world) = scene.world_frame() {
+            self.res.era += 1;
+            let stats = if since.is_some() { self.draw_world(scene, world, u, stride) } else { GpuTime::default() };
+            self.res.world_tiles = Some(if since.is_some() { self.nt as u32 } else { 0 });
+            return (stats, self.res.era);
+        }
+        self.res.world_tiles = None;
         let (nt, tx, ty) = (self.nt, scene.tx, scene.ty);
         let whole = !self.res.mirrored;
         // ---- the lanes: every key once, then the keys that changed ----
@@ -1108,6 +1234,7 @@ impl Gpu {
             if !std::ptr::eq(self.pool, a.ptr()) {
                 // SAFETY: page-aligned whole pages owned by the scene, which outlives the executor; the CPU
                 // writes it only between this executor's calls (each waits for the GPU).
+                self.res.commands = None;
                 self.bufs[13] = unsafe { self.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(a.ptr() as *mut std::ffi::c_void).expect("pool"), a.bytes(), MTLResourceOptions::StorageModeShared, None) };
                 self.pool = a.ptr();
             }
@@ -1149,9 +1276,12 @@ impl Gpu {
         self.res.era += 1;
         let era = self.res.era;
         let all = scene.plan.full;
+        let mut first_rank = if all { 0 } else { usize::MAX };
         let dues = scene.take_dues();
         if !all && !cfg!(feature = "mutant_forced") {
             let lb = std::mem::take(&mut self.res.lb);
+            // Keep the rank table out of the mutable buffer borrow.
+            let ranks = std::mem::take(&mut self.res.rank);
             let force = self.words_mut(22);
             for (lid, due) in &dues {
                 let l = &scene.layers.list[*lid as usize];
@@ -1169,6 +1299,7 @@ impl Gpu {
                         if e[0] >= e[2] || e[1] >= e[3] {
                             continue;
                         }
+                        first_rank = first_rank.min(ranks[*lid as usize] as usize);
                         let m = (1 << bs) - 1;
                         for by in e[1] >> bs..(e[3] + m) >> bs {
                             for bx in e[0] >> bs..(e[2] + m) >> bs {
@@ -1178,13 +1309,23 @@ impl Gpu {
                     }
                 }
             }
+            self.res.rank = ranks;
             self.res.lb = lb;
         }
+        let ranks = std::mem::take(&mut self.res.rank);
         let kt = self.words_mut(23);
         for &(w, z) in scene.events() {
             for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty as i32) {
                 for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx as i32) {
-                    let t = (y as usize * tx + x as usize) * 4;
+                    let tile = y as usize * tx + x as usize;
+                    if first_rank != 0 && !cfg!(feature = "mutant_rank_seed") {
+                        let readers = scene.bins.layers(tile);
+                        if readers.last().is_some_and(|&last| z < last) {
+                            let first = readers[readers.partition_point(|&reader| reader <= z)];
+                            first_rank = first_rank.min(ranks[scene.layers.of[first as usize] as usize] as usize);
+                        }
+                    }
+                    let t = tile * 4;
                     (kt[t], kt[t + 1]) = (kt[t].min(z), kt[t + 1].max(z + 1));
                 }
             }
@@ -1192,12 +1333,24 @@ impl Gpu {
         for &t in tiles {
             kt[t as usize * 4 + 2] = era;
         }
+        self.res.rank = ranks;
         let nstages = self.res.stages.len();
-        let args = self.words_mut(24);
-        for i in 0..=nstages {
-            args[8 * i] = 0;
+        // If a reader emits an event, the event's tile also belongs to its own halo.
+        // By the rank invariant, any consumer is above the emitter in stage order.
+        let first_stage = self.res.rank_stage.get(first_rank).copied().unwrap_or(nstages);
+        self.res.first_stage = first_stage;
+        if first_stage < nstages && self.res.commands.is_none() {
+            self.res_commands();
         }
-        self.words_mut(26)[..4].copy_from_slice(&[era, since.unwrap_or(era), all as u32, since.is_some() as u32]);
+        let cached = self.res.commands.is_some() && first_stage < nstages;
+        let args = self.words_mut(24);
+        if !cached {
+            for i in first_stage..nstages {
+                args[8 * i] = 0;
+            }
+        }
+        args[8 * nstages] = 0;
+        self.words_mut(26)[..5].copy_from_slice(&[era, since.unwrap_or(era), all as u32, since.is_some() as u32, nstages as u32]);
         let m = self.words_mut(1);
         m[2] = stride as u32;
         m[M_UNEW..M_UNEW + 64].copy_from_slice(&u.w);
@@ -1219,24 +1372,43 @@ impl Gpu {
             enc.setBuffer_offset_atIndex(self.bufs[25].as_deref(), 0, 17);
             enc.setBuffer_offset_atIndex(Some(args_buf), 12, 27);
         }
-        for (i, st) in self.res.stages.iter().enumerate() {
-            unsafe {
-                enc.setBufferOffset_atIndex(32 * i, 24);
-                enc.setBufferOffset_atIndex(32 * i + 12, 27);
+        let mut dispatches = 1;
+        if cached {
+            let commands = self.res.commands.as_ref().unwrap();
+            let first = self.res.command_at[first_stage];
+            let end = self.res.command_at[nstages];
+            for i in RES_COMMAND_BUFFERS {
+                let used = self.bufs[i].as_ref().unwrap();
+                let usage = if matches!(i, 13 | 21 | 23 | 24 | 25) { MTLResourceUsage::Read | MTLResourceUsage::Write } else { MTLResourceUsage::Read };
+                enc.useResource_usage(ProtocolObject::from_ref(&**used), usage);
             }
-            if st.0 == 0 {
-                enc.setComputePipelineState(&self.rk[0]);
-                enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: (st.1 as usize).div_ceil(64), height: 1, depth: 1 }, g64);
-                enc.setComputePipelineState(&self.rk[1]);
-                unsafe { enc.dispatchThreadgroupsWithIndirectBuffer_indirectBufferOffset_threadsPerThreadgroup(args_buf, 32 * i, g16) };
-            } else {
-                // a threadgroup per slot, a thread per pixel of its block
-                let side = 32usize >> st.0;
-                enc.setComputePipelineState(&self.rk[2]);
-                enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: st.1 as usize, height: 1, depth: 1 }, MTLSize { width: side, height: side, depth: 1 });
+            enc.setComputePipelineState(&self.reset_counts);
+            enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: nstages.div_ceil(64), height: 1, depth: 1 }, g64);
+            // SAFETY: res_commands populated every command in this range and `self` owns the buffers it binds.
+            unsafe { enc.executeCommandsInBuffer_withRange(commands, NSRange::new(first, end - first)) };
+            dispatches += 2;
+        } else {
+            for (i, st) in self.res.stages.iter().enumerate().skip(first_stage) {
+                dispatches += if st.0 == 0 { 2 } else { 1 };
+                unsafe {
+                    enc.setBufferOffset_atIndex(32 * i, 24);
+                    enc.setBufferOffset_atIndex(32 * i + 12, 27);
+                }
+                if st.0 == 0 {
+                    enc.setComputePipelineState(&self.rk[0]);
+                    enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: (st.1 as usize).div_ceil(64), height: 1, depth: 1 }, g64);
+                    enc.setComputePipelineState(&self.rk[1]);
+                    unsafe { enc.dispatchThreadgroupsWithIndirectBuffer_indirectBufferOffset_threadsPerThreadgroup(args_buf, 32 * i, g16) };
+                } else {
+                    // a threadgroup per slot, a thread per pixel of its block
+                    let side = 32usize >> st.0;
+                    enc.setComputePipelineState(&self.rk[2]);
+                    enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: st.1 as usize, height: 1, depth: 1 }, MTLSize { width: side, height: side, depth: 1 });
+                }
             }
         }
         if since.is_some() {
+            dispatches += 2;
             unsafe { enc.setBufferOffset_atIndex(32 * nstages, 24) };
             enc.setComputePipelineState(&self.rk[3]);
             enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: nt.div_ceil(64), height: 1, depth: 1 }, g64);
@@ -1249,31 +1421,77 @@ impl Gpu {
         cmd.commit();
         cmd.waitUntilCompleted();
         // the other paths' resident lanes were not kept up
+        self.res.last_dispatches = dispatches;
         self.first = true;
         (GpuTime { wall: t.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }, era)
     }
     /// What the last `resident` frame ran, read from the stages' counters after the fact (a report; nothing
     /// is scheduled from it): prefix jobs, pyramid blocks, output tiles, dispatches encoded.
     pub fn resident_stats(&self) -> [u32; 4] {
+        if let Some(tiles) = self.res.world_tiles {
+            return [0, 0, tiles, u32::from(tiles != 0)];
+        }
         let args = self.words(24);
         let mut st = [0u32; 4];
-        for (i, s) in self.res.stages.iter().enumerate() {
+        for (i, s) in self.res.stages.iter().enumerate().skip(self.res.first_stage) {
             if s.0 == 0 {
                 st[0] += args[8 * i];
             }
         }
-        st[2] = args[8 * self.res.stages.len()];
-        st[3] = self.resident_dispatches() as u32;
+        st[2] = self.resident_output_tiles();
+        st[3] = self.res.last_dispatches as u32;
         st
     }
-    /// Dispatches a resident frame encodes (0 before the first one).
+    /// Tiles drawn by the last resident frame, read in constant time for the chooser.
+    pub(crate) fn resident_output_tiles(&self) -> u32 {
+        self.res.world_tiles.unwrap_or_else(|| self.words(24)[8 * self.res.stages.len()])
+    }
+    /// Upper bound of dispatches a resident frame encodes (0 before its plan is built).
     pub fn resident_dispatches(&self) -> usize {
-        if self.res.stages.is_empty() { 0 } else { self.res.stages.iter().map(|s| if s.0 == 0 { 2 } else { 1 }).sum::<usize>() + 3 }
+        if self.res.commands.is_some() { 5 } else { self.res.max_dispatches }
     }
     /// Ranks in the resident plan's stage order, and its slots.
     pub fn resident_shape(&self) -> (u32, usize) {
         (self.res.rank.iter().copied().max().map_or(0, |r| r + 1), self.res.nslots)
     }
+    /// Number of world table uploads by the executor. Pure pans reuse the table.
+    pub fn world_uploads(&self) -> u64 {
+        self.world_uploads
+    }
+
+    fn draw_world(&mut self, scene: &Scene, world: &crate::scene::WorldPan, u: &U, stride: usize) -> GpuTime {
+        assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
+        assert!(stride >= scene.fw as usize && (scene.fh as usize - 1) * stride + scene.fw as usize <= self.words(7).len());
+        assert_eq!(scene.order.len(), self.nz, "records were pushed: call sync");
+        let slots = [world.packed[0] as usize, world.packed[1] as usize];
+        if self.world_seen != Some(world.version) {
+            self.buf(28, world.packed.len() * 4);
+            self.words_mut(28)[..world.packed.len()].copy_from_slice(&world.packed);
+            self.world_seen = Some(world.version);
+            self.world_uploads += 1;
+        }
+        let m = self.words_mut(1);
+        m[2] = stride as u32;
+        m[M_UNEW..M_UNEW + 64].copy_from_slice(&u.w);
+        if cfg!(feature = "mutant_world_origin") {
+            m[M_UNEW + slots[0]] = 0;
+            m[M_UNEW + slots[1]] = 0;
+        }
+        let start = std::time::Instant::now();
+        let cmd = self.queue.commandBuffer().expect("command buffer");
+        let enc = cmd.computeCommandEncoder().expect("encoder");
+        self.bind(&enc, None);
+        // SAFETY: buffer 28 contains the fixed and world lists sized for this scene and is retained by self.
+        unsafe { enc.setBuffer_offset_atIndex(self.bufs[28].as_deref(), 0, 28) };
+        enc.setComputePipelineState(&self.pan);
+        enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: self.nt, height: 1, depth: 1 }, MTLSize { width: 16, height: 16, depth: 1 });
+        enc.endEncoding();
+        cmd.commit();
+        cmd.waitUntilCompleted();
+        self.first = true;
+        GpuTime { wall: start.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }
+    }
+
     /// The slots: every (layer, level, block its storage can hold), ordered by (rank, level).
     fn res_slots(&mut self, scene: &Scene) {
         let ls = &scene.layers;
@@ -1284,10 +1502,13 @@ impl Gpu {
         let mut by_rank: Vec<u32> = (0..nl as u32).collect();
         by_rank.sort_by_key(|&l| rank[l as usize]);
         let (mut sl, mut lb, mut stages): (Vec<u32>, Vec<u32>, Vec<(u32, u32, u32)>) = (Vec::new(), vec![0; nl * 8], Vec::new());
+        let mut rank_stage = Vec::new();
         let mut i = 0;
         let mut most = 0;
         while i < nl {
             let j = i + by_rank[i..].iter().take_while(|&&l| rank[l as usize] == rank[by_rank[i] as usize]).count();
+            let r = rank[by_rank[i] as usize] as usize;
+            rank_stage.resize(r + 1, stages.len());
             for k in 0..crate::layer::LEVELS {
                 let at = sl.len();
                 for &lid in &by_rank[i..j] {
@@ -1325,9 +1546,71 @@ impl Gpu {
             sw[8 * i + 3..8 * i + 6].copy_from_slice(&[s.2, s.1, s.0]);
         }
         self.buf(25, most.max(self.nt).max(1) * 32);
+        // The stale-shape mutant deliberately retains only a command buffer with identical stage kinds.
+        // The guards in the kernels keep old grid lengths within the new stage's storage.
+        let stale_shape = cfg!(feature = "mutant_rank_stale")
+            && self.res.stages.len() == stages.len()
+            && self.res.stages.iter().zip(&stages).all(|(old, new)| old.0 == new.0);
+        if !stale_shape {
+            self.res.commands = None;
+        }
+        self.res.max_dispatches = stages.iter().map(|s| if s.0 == 0 { 2 } else { 1 }).sum::<usize>() + 3;
+        self.res.rank_stage = rank_stage;
         self.res.alloc = Some(ls.alloc_epoch);
         (self.res.rank, self.res.lb, self.res.stages, self.res.nslots) = (rank, lb, stages, ns);
     }
+    /// Encode once per slot layout or buffer replacement. Every command after the first depends on
+    /// earlier commands through JOBS, layer pixels, or event stamps. `setBarrier` orders those accesses.
+    fn res_commands(&mut self) {
+        let Some(pipelines) = self.icb_pipelines.as_ref() else { return };
+        let count = self.res.max_dispatches - 3;
+        let desc = MTLIndirectCommandBufferDescriptor::new();
+        desc.setCommandTypes(MTLIndirectCommandType::ConcurrentDispatch);
+        desc.setInheritBuffers(false);
+        desc.setInheritPipelineState(false);
+        desc.setMaxKernelBufferBindCount(28);
+        // SAFETY: three compatible pipeline states were admitted above. The command range is bounded by the
+        // stage vector and the dispatch shapes are the same as on the serial path (the prefix count is guarded).
+        let Some(commands) = (unsafe { self.device.newIndirectCommandBufferWithDescriptor_maxCommandCount_options(&desc, count, MTLResourceOptions::StorageModeShared) }) else { return };
+        let mut at = Vec::with_capacity(self.res.stages.len() + 1);
+        let mut index = 0;
+        for (i, &(level, n, _)) in self.res.stages.iter().enumerate() {
+            at.push(index);
+            let mut record = |pipeline: usize, groups: usize, side: usize, height: usize, bindings: &[usize]| {
+                // SAFETY: count is two commands per prefix stage and one per downsample stage. All bound
+                // buffers live in this executor. Replacement invalidates the stored commands before use.
+                let command = unsafe { commands.indirectComputeCommandAtIndex(index) };
+                for &b in bindings {
+                    let (buffer, offset) = match b {
+                        17 => (25, 0),
+                        24 => (24, i * 32),
+                        27 => (24, i * 32 + 12),
+                        _ => (b, 0),
+                    };
+                    // SAFETY: the stage buffer holds eight words per stage, in its declared shader layout.
+                    // Each other buffer is the same buffer as the direct encoder at its binding index.
+                    unsafe { command.setKernelBuffer_offset_atIndex(self.bufs[buffer].as_ref().unwrap(), offset, b) };
+                }
+                command.setComputePipelineState(&pipelines[pipeline]);
+                command.setBarrier();
+                command.concurrentDispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: groups, height: 1, depth: 1 }, MTLSize { width: side, height, depth: 1 });
+                index += 1;
+            };
+            let n = n as usize;
+            if level == 0 {
+                record(0, n.div_ceil(64), 64, 1, &[1, 3, 4, 5, 14, 16, 17, 19, 20, 21, 22, 23, 24, 26, 27]);
+                record(1, n, 16, 16, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 17, 21, 23, 24, 26]);
+            } else {
+                let side = 32 >> level;
+                record(2, n, side, side, &[1, 13, 14, 19, 20, 21, 22, 23, 26, 27]);
+            }
+        }
+        at.push(index);
+        assert_eq!(index, count);
+        self.res.command_at = at;
+        self.res.commands = Some(commands);
+    }
+
     /// The tile lists as slabs in buffer 5: all of them (`None`), or the tiles that changed (rewritten in
     /// place while they fit, moved to the end otherwise; everything is repacked when the end is reached).
     fn res_lists(&mut self, scene: &Scene, changed: Option<&[u32]>) {

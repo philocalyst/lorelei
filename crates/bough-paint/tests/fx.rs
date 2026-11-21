@@ -1119,3 +1119,604 @@ fn palette_run(mutate: bool) -> (usize, usize, usize, usize, bool) {
     assert!(!s.animating(), "a finished fade still owes frames");
     (bad, bad_gpu, fades, switches, gpu.is_some())
 }
+
+#[test]
+fn spring_hull_matches_discrete_extrema() {
+    let mut rng = Rng(0xf510);
+    let mut cases = 0;
+    for (decay, omega) in [(852, 21_889), (961, 0), (204, 0x8000_059b), (100, 4_000_000), (0, 0)] {
+        let response = Response { decay, omega };
+        for i in 0..20u32 {
+            let t0 = if i % 2 == 0 { 1000 } else { u32::MAX - 10 };
+            let from = (rng.next() % 50_000) as i32 - 25_000;
+            let target = (rng.next() % 100_000) as i32 - 50_000;
+            let mut spring = Spring::launch(response, t0, from, 20.0 - f64::from(i), target);
+            if i % 3 == 0 {
+                spring.retarget(response, t0.wrapping_add(230), target + 5120);
+            }
+            let operand: Spr<Uw<63>, Rec, Rec, I<Rec>, I<Rec>, I<Rec>, Rec, Rec> = Spr { now: Uw, t0: Rec(spring.t0), dur: Rec(spring.dur), to: ri(spring.to), a0: ri(spring.a0), b0: ri(spring.b0), decay: Rec(decay), omega: Rec(omega) };
+            for elapsed in [-77, 0, (spring.dur / 2) as i32, spring.dur as i32 + 1] {
+                let mut u = U::default();
+                u.w[U_TIME] = spring.t0.wrapping_add_signed(elapsed);
+                let actual = operand.time_hull(&Cx::of(&u));
+                let mut expected = (spring.to, spring.to);
+                for tick in elapsed..spring.dur as i32 {
+                    u.w[U_TIME] = spring.t0.wrapping_add_signed(tick);
+                    let v = operand.eval(&Cx::of(&u));
+                    expected = (expected.0.min(v), expected.1.max(v));
+                }
+                assert_eq!(actual, Some(expected), "elapsed {elapsed}, {spring:?}, {response:?}");
+                cases += 1;
+            }
+        }
+    }
+    eprintln!("spring hull: {cases} remaining-motion intervals match the discrete leaf extrema");
+}
+
+#[test]
+fn spring_hull_parks_and_wakes_at_output_ages_one_to_four() {
+    type DotPaint = RRect<Sprung, Ki<768>, Pmo<K<0xffe0_8040>>>;
+    let paint = |sy| DotPaint { b: sprung(&Spring::rest(0), &sy), r: Ki, c: Pmo { c: K } };
+    let rect = [q(12.0), q(800.0), q(32.0), q(812.0)];
+    let initial = Spring::launch(KS, 800, 0, 0.0, q(-568.0));
+    let (fw, fh, stride) = (64, 96, 69);
+    let words = stride * fh as usize;
+    let pool = Pool::new(1);
+    let make = |motion, indexed| {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        let col = scene.column::<DotPaint>(1);
+        scene.push(col, rect, paint(motion));
+        if indexed {
+            scene.scroll(col, 0, 1);
+        }
+        (scene, col)
+    };
+    for age in 1..=4 {
+        let (mut cpu, col) = make(initial, true);
+        let (mut metal, metal_col) = make(initial, true);
+        metal.route_off = true;
+        // SAFETY: `metal` outlives the executor. Writes take place between synchronous calls.
+        let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 16) }.expect("headless Metal");
+        let mut ring = vec![vec![0; words]; age];
+        let mut pending: Vec<_> = (0..age)
+            .map(|_| {
+                let mut d = bough_paint::scene::Damage::new(cpu.tx, cpu.ty);
+                d.all();
+                d
+            })
+            .collect();
+        let mut era = 0;
+        let mut tiles = Vec::new();
+        let mut u = U::default();
+        let mut motion = initial;
+        let mut fresh = vec![0; words];
+        for step in 0..60 {
+            let i = step % age;
+            u.w[U_TIME] = if step < 3 { 100 + step as u32 } else { 800 + (step as u32 - 3) * 24 };
+            if step == 2 {
+                u.w[1] = q(-160.5) as u32;
+            }
+            if step == 39 {
+                u.w[1] = 0;
+            }
+            if step == 40 {
+                motion.retarget(KS, u.w[U_TIME] + 48, q(-760.0));
+                cpu.set(col, 0, rect, paint(motion));
+                metal.set(metal_col, 0, rect, paint(motion));
+            }
+            let stats = cpu.update(&u);
+            if step == 0 || step == 39 {
+                assert!(!cpu.animating(), "age {age}, tick {step} should be parked");
+            }
+            if step == 1 {
+                assert_eq!(stats.recs_visited, 0);
+            }
+            if step == 2 || step == 40 {
+                assert_eq!(cpu.active_records(), 1, "age {age}, tick {step} should wake by its new hull");
+            }
+            let block = *cpu.block();
+            cpu.prepare(&block);
+            for d in &mut pending {
+                for (a, b) in d.bits.iter_mut().zip(&cpu.damage.bits) {
+                    *a |= *b;
+                }
+            }
+            cpu.damage.clear();
+            pending[i].tiles(&mut tiles);
+            pending[i].clear();
+            cpu.shade(&block, &tiles, &mut ring[i], stride, &pool, 0);
+            let (mut oracle, _) = make(motion, false);
+            oracle.frame(&u, &mut fresh, stride, &pool, 0);
+            assert_eq!(diff(&ring[i], &fresh), 0, "CPU age {age}, tick {step}");
+            metal.update(&u);
+            metal.damage.tiles(&mut tiles);
+            metal.damage.clear();
+            let block = *metal.block();
+            let draw = (step + 1) % age == 0;
+            if !tiles.is_empty() || draw {
+                let next = gpu.resident(&mut metal, &block, &tiles, draw.then_some(era), stride).1;
+                if draw {
+                    era = next;
+                    assert_eq!(diff(gpu.out(words), &fresh), 0, "Metal age {age}, tick {step}");
+                }
+            }
+        }
+    }
+    eprintln!("motion hull: 240 CPU frames and 125 Metal draws at ages 1..4, zero mismatching words");
+}
+
+#[test]
+fn resident_layers_have_no_dispatch_when_all_events_are_above_them() {
+    use bough_paint::metal::Gpu;
+    let (fw, fh) = (128, 96);
+    let words = (fw * fh) as usize;
+    let pool = Pool::new(1);
+    let make = || {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        let under = scene.column::<Solid<Lane, Pmo<Uw<4>>>>(1);
+        let glass = scene.column::<Backdrop<Lane, Ki<1024>, Ki<1536>, Filt<K<256>, K<256>, K<256>>>>(8);
+        let above = scene.column::<Solid<Lane, Pmo<Uw<5>>>>(1);
+        scene.push(under, [0, 0, q(128.0), q(96.0)], Solid { b: Lane, c: Pmo { c: Uw } });
+        for i in 0..8 {
+            scene.push(glass, [q(16.0 + i as f32), q(16.0), q(96.0), q(80.0)], Backdrop { b: Lane, r: Ki, blur: Ki, f: V3 { a: K, b: K, c: K } });
+        }
+        scene.push(above, [q(40.0), q(40.0), q(46.0), q(46.0)], Solid { b: Lane, c: Pmo { c: Uw } });
+        scene
+    };
+    let mut scene = make();
+    scene.route_off = true;
+    // SAFETY: `scene` outlives `gpu` and writes occur between synchronous calls.
+    let mut gpu = unsafe { Gpu::new(&scene, words, 64) }.expect("headless Metal");
+    let mut u = U::default();
+    let mut era = 0;
+    let mut fresh = vec![0; words];
+    let mut tiles = Vec::new();
+    for step in 0..8u32 {
+        if step % 2 == 0 {
+            u.w[4] = 0x0020_4060 * (step / 2 + 1);
+        }
+        if step % 2 == 1 {
+            u.w[5] = 0x0000_4040 * step;
+        }
+        scene.update(&u);
+        scene.damage.tiles(&mut tiles);
+        scene.damage.clear();
+        let block = *scene.block();
+        era = gpu.resident(&mut scene, &block, &tiles, Some(era), fw as usize).1;
+        let stat = gpu.resident_stats();
+        if step % 2 == 1 {
+            assert_eq!(stat[0], 0, "above-glass frame repaired a prefix");
+            assert_eq!(stat[3], 3, "above-glass frame encoded a layer dispatch");
+        }
+        let mut oracle = make();
+        oracle.frame(&u, &mut fresh, fw as usize, &pool, 0);
+        assert_eq!(diff(gpu.out(words), &fresh), 0, "step {step}");
+    }
+    eprintln!("rank seeds: 4 above-glass frames used 3 output/reset dispatches each, 8 exact frames");
+}
+
+#[test]
+fn resident_commands_follow_changed_slots() {
+    use bough_paint::metal::Gpu;
+    use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice, MTLGPUFamily};
+    type Pane = Backdrop<Lane, Ki<1024>, Ki<1024>, Filt<K<256>, K<240>, K<256>>>;
+    let pane = || Pane { b: Lane, r: Ki, blur: Ki, f: V3 { a: K, b: K, c: K } };
+    let (fw, fh) = (640, 192);
+    let words = (fw * fh) as usize;
+    let pool = Pool::new(1);
+    let left = |width: f32| [q(96.0), q(64.0), q(96.0 + width), q(128.0)];
+    let right = |width: f32| [q(416.0), q(64.0), q(416.0 + width), q(128.0)];
+    let make = |switched| {
+        let mut s = Scene::new(fw, fh, 16_384);
+        s.broad = 1 << 4;
+        let bg = s.column::<Solid<Lane, Pmo<Uw<4>>>>(1);
+        s.push(bg, [0, 0, q(640.0), q(192.0)], Solid { b: Lane, c: Pmo { c: Uw } });
+        let col = s.column::<Pane>(3);
+        s.push(col, left(32.0), pane());
+        s.push(col, if switched { right(128.0) } else { left(128.0) }, pane());
+        s.push(col, if switched { left(32.0) } else { right(32.0) }, pane());
+        (s, col)
+    };
+    let (mut s, col) = make(false);
+    s.route_off = true;
+    let device = MTLCreateSystemDefaultDevice().expect("headless Metal");
+    // SAFETY: `s` outlives the executor and changes only between its synchronous calls.
+    let mut gpu = unsafe { Gpu::new(&s, words, 64) }.expect("headless Metal");
+    let mut u = U::default();
+    let (mut era, mut tiles, mut expected) = (0, Vec::new(), vec![0; words]);
+    for step in 0..5u32 {
+        let switched = step % 2 == 1;
+        u.w[4] = 0x00e0_2040 - 0x0010_0703 * step;
+        if step > 0 {
+            s.set(col, 1, if switched { right(128.0) } else { left(128.0) }, pane());
+            s.set(col, 2, if switched { left(32.0) } else { right(32.0) }, pane());
+        }
+        s.update(&u);
+        s.damage.tiles(&mut tiles);
+        s.damage.clear();
+        let block = *s.block();
+        era = gpu.resident(&mut s, &block, &tiles, Some(era), fw as usize).1;
+        let (mut oracle, _) = make(switched);
+        oracle.frame(&u, &mut expected, fw as usize, &pool, 0);
+        assert_eq!(diff(gpu.out(words), &expected), 0, "slot reassignment at step {step}");
+        assert_eq!(gpu.resident_shape().0, 2);
+        if device.supportsFamily(MTLGPUFamily::Apple4) {
+            assert_eq!(gpu.resident_stats()[3], 5, "the admitted frame did not use the cached sequence");
+        }
+    }
+    eprintln!("resident commands: 5 exact frames through two ranks and four slot reassignments");
+}
+
+#[test]
+fn a_prefix_change_reaches_the_next_checkpoint_without_a_pyramid_change() {
+    type Pane = Backdrop<Lane, Ki<1024>, Ki<1536>, Filt<K<256>, K<256>, K<256>>>;
+    let pane = || Pane { b: Lane, r: Ki, blur: Ki, f: V3 { a: K, b: K, c: K } };
+    let (fw, fh) = (128, 96);
+    let words = (fw * fh) as usize;
+    let pixel = [q(40.0), q(28.0), q(41.0), q(29.0)];
+    let pool = Pool::new(1);
+    let build = || {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        let bg = scene.column::<Solid<Lane, Pmo<K<0xff40_4040>>>>(1);
+        scene.push(bg, [0, 0, q(128.0), q(96.0)], Solid { b: Lane, c: Pmo { c: K } });
+        let change = scene.column::<Solid<Lane, Pmo<Uw<4>>>>(1);
+        scene.push(change, pixel, Solid { b: Lane, c: Pmo { c: Uw } });
+        let glass = scene.column::<Pane>(2);
+        scene.push(glass, [q(44.0), q(32.0), q(111.0), q(85.0)], pane());
+        scene.push(glass, [q(49.0), q(33.0), q(113.0), q(82.0)], pane());
+        scene
+    };
+    let mut scene = build();
+    let mut u = U::default();
+    u.w[4] = 0x0040_4040;
+    let (mut kept, mut fresh, mut spec) = (vec![0; words], vec![0; words], vec![0; words]);
+    scene.frame(&u, &mut kept, fw as usize, &pool, 0);
+    u.w[4] += 1;
+    let fs = scene.frame(&u, &mut kept, fw as usize, &pool, 0);
+    let mut oracle = build();
+    oracle.frame(&u, &mut fresh, fw as usize, &pool, 0);
+    oracle.spec(&u, &mut spec, fw as usize);
+    assert_eq!(diff(&fresh, &spec), 0);
+    assert_eq!(diff(&kept, &fresh), 0, "the first prefix's unmagnified change must reach the next prefix");
+    assert_eq!(fs.raster.prefix, 2);
+    assert_eq!(fs.raster.blk, fs.raster.blk_same, "a single one-byte impulse should round away in the pyramid");
+    eprintln!("prefix checkpoint: two prefix tiles changed, every recomputed pyramid block was unchanged");
+}
+
+#[test]
+fn shadow_coverage_reuses_exact_samples_and_rejects_a_changed_phase() {
+    type Cached = Clip<Shadow<Pan, I<Rec>, I<Rec>, Any, Tab>, Lane>;
+    let (fw, fh) = (192, 128);
+    let words = (fw * fh) as usize;
+    let pool = Pool::new(1);
+    // The clip follows Lane but the shadow translates. Include both non-overlapping and overlapping corners.
+    let make = |memoise| {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        scene.memoise = memoise;
+        let bg = scene.column::<Solid<Lane, Pmo<K<0xff30_4a9e>>>>(1);
+        scene.push(bg, [0, 0, q(192.0), q(128.0)], Solid { b: Lane, c: Pmo { c: K } });
+        let col = scene.column::<Cached>(12);
+        for i in 0..12 {
+            let phase = i as f32 * 0.125;
+            let rect = if i % 2 == 0 { [q(8.0 + phase), q(8.5), q(165.0 + phase * 0.5), q(111.75)] } else { [q(18.0 + i as f32 * 10.0), q(72.0 + phase), q(26.5 + i as f32 * 10.0), q(86.75)] };
+            scene.push(col, rect, Clip { p: Shadow { b: Off { b: Lane, dx: I { a: Uw }, dy: I { a: Uw } }, r: ri(q(10.0)), blur: ri(q(3.0 + i as f32)), c: pm(0x3a78_b91d), tab: Tab::NONE }, k: Lane });
+        }
+        scene
+    };
+    let mut cpu = make(true);
+    let mut metal = make(true);
+    let retained = cpu.shadow_coverage_bytes();
+    assert!(retained > 0 && retained <= 4 * 1024 * 1024);
+    metal.route_off = true;
+    // SAFETY: the scene outlives the executor and its writes occur between synchronous frame calls.
+    let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 128) }.expect("headless Metal");
+    let (mut actual, mut expected, mut spec) = (vec![0; words], vec![0; words], vec![0; words]);
+    let mut era = 0;
+    let mut tiles = Vec::new();
+    for (dx, dy) in [(0.0, 0.0), (3.0, 5.0), (-4.0, -8.0), (7.375, -2.25), (0.0, 0.0)] {
+        let mut u = U::default();
+        (u.w[0], u.w[1]) = (q(dx) as u32, q(dy) as u32);
+        let stats = cpu.frame(&u, &mut actual, fw as usize, &pool, 0).raster;
+        let mut oracle = make(false);
+        oracle.frame(&u, &mut expected, fw as usize, &pool, 0);
+        oracle.spec(&u, &mut spec, fw as usize);
+        assert_eq!(diff(&expected, &spec), 0, "analytic vs spec at {dx}, {dy}");
+        assert_eq!(diff(&actual, &expected), 0, "retained shadow samples at {dx}, {dy}");
+        if dx.fract() == 0.0 {
+            assert!(stats.px_table > 0);
+        } else {
+            assert_eq!(stats.px_table, 0);
+        }
+        assert_eq!(cpu.shadow_coverage_bytes(), retained);
+        metal.update(&u);
+        metal.damage.tiles(&mut tiles);
+        metal.damage.clear();
+        let block = *metal.block();
+        era = gpu.resident(&mut metal, &block, &tiles, Some(era), fw as usize).1;
+        assert_eq!(diff(gpu.out(words), &expected), 0, "Metal shadow samples at {dx}, {dy}");
+    }
+    eprintln!("shadow coverage: {retained} retained bytes, five exact CPU and Metal frames");
+}
+
+#[test]
+fn a_rigid_world_pans_with_no_record_or_list_rewrites() {
+    type Moving = Hit<RRect<Pan, Ki<1280>, Any>, Rec>;
+    type Fixed = RRect<Lane, Ki<1024>, Pm<Uw<5>>>;
+    let (fw, fh, stride) = (179, 91, 184usize);
+    let words = stride * fh as usize;
+    let pool = Pool::new(1);
+    let make = |uniform| {
+        let mut scene = Scene::new(fw, fh, 32_768);
+        let bg = scene.column::<Solid<Lane, Pmo<K<0xffaa_4466>>>>(1);
+        scene.push(bg, [0, 0, q(179.0), q(91.0)], Solid { b: Lane, c: Pmo { c: K } });
+        let rows = scene.column::<Moving>(400);
+        let fixed = scene.column::<Fixed>(12);
+        for j in 0..240 {
+            let x = (j % 3) as f32 * 66.0 + (j % 5) as f32 * 0.375 - 63.0;
+            let y = (j / 3) as f32 * 34.0 - 92.0;
+            scene.push(rows, [q(x), q(y), q(x + 56.0), q(y + 24.0)], Hit { p: RRect { b: pan(), r: Ki, c: pm(0x9812_8341 + (j as u32) * 307) }, id: Rec(j as u32) });
+            if j < 8 {
+                scene.push(fixed, [q(5.0), q(j as f32 * 8.0), q(175.0), q(j as f32 * 8.0 + 21.0)], Fixed { b: Lane, r: Ki, c: Pm { c: Uw } });
+            }
+        }
+        if uniform {
+            scene.scroll(rows, 0, 1);
+            scene.uniform_pan(0, 1);
+        }
+        scene
+    };
+    let mut cpu = make(true);
+    let mut metal = make(true);
+    metal.route_off = true;
+    // SAFETY: the scene outlives Metal and changes only between synchronous calls.
+    let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 64) }.expect("headless Metal");
+    let (mut actual, mut expected, mut spec) = (vec![0; words], vec![0; words], vec![0; words]);
+    let mut u = U::default();
+    let mut era = 0;
+    let mut tiles = Vec::new();
+    let mut pans = 0;
+    for (step, (x, y)) in [(0.0, 0.0), (10.25, -40.125), (-9.5, -1520.0), (13.875, -1643.0), (42.0, -18.0), (-32.0, -32.0), (0.125, 19.0)].into_iter().enumerate() {
+        (u.w[0], u.w[1]) = (q(x) as u32, q(y) as u32);
+        if step == 0 || step == 4 {
+            u.w[5] = 0x8032_61d3 ^ ((step as u32) << 12);
+        }
+        let fs = cpu.frame(&u, &mut actual, stride, &pool, 0);
+        let mut oracle = make(false);
+        oracle.frame(&u, &mut expected, stride, &pool, 0);
+        oracle.spec(&u, &mut spec, stride);
+        assert_eq!(diff(&expected, &spec), 0);
+        assert_eq!(diff(&actual, &expected), 0, "CPU world frame {step}");
+        assert_eq!(cpu.pick(&u, 44, 53), oracle.pick(&u, 44, 53));
+        if step != 0 && step != 4 {
+            assert_eq!((fs.recs_visited, fs.rebinned), (0, false));
+            pans += 1;
+        }
+        metal.update(&u);
+        metal.damage.tiles(&mut tiles);
+        metal.damage.clear();
+        let block = *metal.block();
+        era = gpu.resident(&mut metal, &block, &tiles, Some(era), stride).1;
+        assert_eq!(diff(gpu.out(words), &expected), 0, "Metal world frame {step}");
+        assert_eq!(
+            gpu.world_uploads(),
+            if step == 0 {
+                0
+            } else if step <= 4 {
+                1
+            } else {
+                2
+            }
+        );
+    }
+    eprintln!("world scroll: {pans} pans visited zero records, 7 exact CPU and Metal frames, 2 uploads across 2 geometry epochs");
+}
+
+#[test]
+fn retained_bgra_publication_preserves_alpha_channels_and_slot_bounds() {
+    let (fw, fh, stride) = (19, 17, 22usize);
+    let words = stride * fh as usize;
+    let pool = Pool::new(1);
+    let make = || {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        let col = scene.column::<Image<Lane, Ki<0>, Rec, Rec, K<32768>>>(1);
+        scene.push(col, [q(4.0), q(4.0), q(6.0), q(6.0)], Image { b: Lane, r: Ki, slot: Rec(u32::MAX), dims: Rec(2 | 2 << 16), op: K });
+        (scene, col)
+    };
+    let sequence = [[0xffd1_2a18, 0x8014_6749, 0x400f_1401, 0x0000_0000], [0x803d_5a66, 0xff04_901c, 0x3d24_0403, 0xffba_3714], [0; 4]];
+    for age in 1..=4 {
+        let (mut cpu, cc) = make();
+        let (mut metal, cm) = make();
+        metal.route_off = true;
+        // SAFETY: metal outlives the GPU and pool writes occur between synchronous frames.
+        let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 16) }.expect("headless Metal");
+        let mut ring = vec![vec![0; words]; age];
+        let mut expected = vec![0; words];
+        let mut tiles = Vec::new();
+        let mut era = 0;
+        let mut prev = None;
+        let u = U::default();
+        for step in 0..12 {
+            let pixels = sequence[step % sequence.len()];
+            let handle = if step % 3 == 2 { u32::MAX } else { cpu.media.publish_bgra(2, 2, &pixels, step as u32, prev).unwrap() };
+            let handle_gpu = if step % 3 == 2 { u32::MAX } else { metal.media.publish_bgra(2, 2, &pixels, step as u32, prev).unwrap() };
+            assert_eq!(handle, handle_gpu);
+            assert_eq!(cpu.media.publish_bgra(2, 2, &[0x0000_00ff; 4], 0, prev), None);
+            if handle != u32::MAX {
+                prev = Some(handle);
+            }
+            let image = Image { b: Lane, r: Ki, slot: Rec(handle), dims: Rec(2 | 2 << 16), op: K };
+            let rect = [q(4.0), q(4.0), q(6.0), q(6.0)];
+            cpu.set(cc, 0, rect, image);
+            metal.set(cm, 0, rect, image);
+            expected.fill(0);
+            expected[stride * 4 + 4..][..2].copy_from_slice(&pixels[..2]);
+            expected[stride * 5 + 4..][..2].copy_from_slice(&pixels[2..]);
+            let retained = &mut ring[step % age];
+            let fs = cpu.frame(&u, retained, stride, &pool, 0);
+            assert!(step == 0 || !fs.rebinned);
+            assert_eq!(diff(retained, &expected), 0, "CPU BGRA age {age}, step {step}");
+            metal.update(&u);
+            metal.damage.tiles(&mut tiles);
+            metal.damage.clear();
+            let draw = (step + 1) % age == 0;
+            let (_, next) = gpu.resident(&mut metal, &u, &tiles, draw.then_some(era), stride);
+            if draw {
+                era = next;
+                assert_eq!(diff(gpu.out(words), &expected), 0, "Metal BGRA age {age}, step {step}");
+            }
+            cpu.media.reclaim();
+            metal.media.reclaim();
+        }
+    }
+    eprintln!("BGRA publication: 48 CPU frames and 25 Metal draws at ages 1..4 match independent bytes");
+}
+
+#[test]
+fn group_opacity_composites_the_isolated_child_once() {
+    use bough_paint::layer::Isolated;
+    use bough_paint::ops::ops as x;
+    let (w, h) = (45, 45);
+    let words = (w * h) as usize;
+    let workers = Pool::new(1);
+    let base = 0xff34_786a;
+    let low = 0x8090_1644;
+    let high = 0x9018_6fda;
+    let make = || {
+        let mut child = Scene::new(w, h, 4096);
+        let pieces = child.column::<Solid<Lane, Any>>(2);
+        child.push(pieces, [q(4.0), q(4.0), q(27.0), q(27.0)], Solid { b: Lane, c: pm(low) });
+        child.push(pieces, [q(12.0), q(12.0), q(34.0), q(34.0)], Solid { b: Lane, c: pm(high) });
+        let mut group = Isolated::new(child).unwrap();
+        let mut parent = Scene::new(w, h, 4096);
+        let bg = parent.column::<Solid<Lane, Any>>(1);
+        let texture = parent.column::<Image<Lane, Ki<0>, Rec, Rec, Uw<4>>>(1);
+        let rect = [0, 0, q(w as f32), q(h as f32)];
+        parent.push(bg, rect, Solid { b: Lane, c: pm(base) });
+        let slot = group.prepare(&U::default(), &mut parent.media, &workers).published.unwrap();
+        parent.push(texture, rect, Image { b: Lane, r: Ki, slot: Rec(slot), dims: Rec(group.dimensions()), op: Uw });
+        (parent, texture, group, pieces, rect)
+    };
+    let (mut cpu, c, mut group, pieces, rect) = make();
+    let (mut metal, mc, mut mgroup, mpieces, _) = make();
+    metal.route_off = true;
+    // SAFETY: metal outlives the GPU. Group and pool writes occur outside synchronous render calls.
+    let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 16) }.expect("headless Metal");
+    let mut era = 0;
+    let mut surface = vec![0; words];
+    let mut u = U::default();
+    let mut tiles = Vec::new();
+    let mut ink = high;
+    let mut committed_ink = high;
+    let mut w_expected = vec![0; words];
+    for step in 0..5u32 {
+        if step == 4 {
+            cpu.media.reclaim();
+            metal.media.reclaim();
+        }
+        u.w[4] = 32768 - step * 3187;
+        if step == 2 || step == 3 {
+            ink ^= 0x0080_8030 + step * 0x0000_0120;
+            let child_rect = [q(12.0), q(12.0), q(34.0), q(34.0)];
+            group.scene_mut().set(pieces, 1, child_rect, Solid { b: Lane, c: pm(ink) });
+            mgroup.scene_mut().set(mpieces, 1, child_rect, Solid { b: Lane, c: pm(ink) });
+        }
+        let a = group.prepare(&U::default(), &mut cpu.media, &workers);
+        let b = mgroup.prepare(&U::default(), &mut metal.media, &workers);
+        assert_eq!((a.published, a.pending), (b.published, b.pending));
+        if step < 2 {
+            assert_eq!((a.child.recs_visited, a.child.tiles, a.published), (0, 0, None));
+        }
+        if step == 3 {
+            assert!(a.pending && a.published.is_none(), "the third slot must wait for reclamation");
+        }
+        if let Some(slot) = a.published {
+            committed_ink = ink;
+            let p = Image { b: Lane, r: Ki, slot: Rec(slot), dims: Rec(group.dimensions()), op: Uw };
+            cpu.set(c, 0, rect, p);
+            metal.set(mc, 0, rect, p);
+        }
+        cpu.frame(&u, &mut surface, w as usize, &workers, 0);
+        metal.update(&u);
+        metal.damage.tiles(&mut tiles);
+        metal.damage.clear();
+        era = gpu.resident(&mut metal, &u, &tiles, Some(era), w as usize).1;
+        for py in 0..h {
+            for px in 0..w {
+                let mut acc = x::x_pm(0);
+                if (4..27).contains(&px) && (4..27).contains(&py) {
+                    acc = x::x_over(acc, x::x_pm(low));
+                }
+                if (12..34).contains(&px) && (12..34).contains(&py) {
+                    acc = x::x_over(acc, x::x_pm(if step == 3 { committed_ink } else { ink }));
+                }
+                let retained = x::x_unstore(x::x_store(acc));
+                w_expected[(py * w + px) as usize] = x::x_store(x::x_over(x::x_pm(base), x::x_fade(retained, u.w[4])));
+            }
+        }
+        assert_eq!(diff(&surface, &w_expected), 0, "isolated group parent step {step}");
+        assert_eq!(diff(gpu.out(words), &w_expected), 0, "isolated group Metal step {step}");
+    }
+    eprintln!("isolated opacity: five exact CPU and Metal frames, idle child under parent opacity, slot refusal retried");
+}
+
+#[wgsl_rs::wgsl(skip_validation)]
+mod custom_colour {
+    use wgsl_rs::std::*;
+    pub fn fx_stripes(x: i32, y: i32, tick: u32, a: Vec4u, b: Vec4u) -> Vec4u {
+        if (((x as u32) + (y as u32) * 3u32 + tick) & 7u32) < 4u32 { a } else { b }
+    }
+}
+
+#[test]
+fn author_shader_uses_only_declared_inputs_on_cpu_and_metal() {
+    use bough_paint::author::{Module, Program};
+    struct Stripes;
+    static MODULE: Module = Module { entry: "fx_stripes", source: &custom_colour::WGSL_SOURCE, cpu: custom_colour::fx_stripes };
+    impl Program for Stripes {
+        const MODULE: &'static Module = &MODULE;
+    }
+    MODULE.validate().unwrap();
+    assert!((Module { entry: "bad_entry", source: &custom_colour::WGSL_SOURCE, cpu: custom_colour::fx_stripes }).validate().is_err());
+    type Printed = Clip<Author<Stripes, Lane, Ki<1024>, Uw<63>, Any, Any>, RectW<K<0>, K<0>, K<7680>, K<4864>>>;
+    let cols = [&*bough_paint::scene::Desc::of::<Printed>()];
+    naga::front::wgsl::parse_str(&bough_paint::emit::wgsl(&cols)).expect("generated WGSL source with author entry");
+    let (w, h) = (40, 36);
+    let words = (w * h) as usize;
+    let make = || {
+        let mut scene = Scene::new(w, h, 4096);
+        let col = scene.column::<Printed>(1);
+        scene.push(col, [q(3.0), q(4.0), q(39.0), q(35.0)], Clip { p: Author::new(Lane, Ki, Uw, pm(0xff14_39ec), pm(0xaa28_b553)), k: RectW { a: K, b: K, c: K, d: K } });
+        scene
+    };
+    let mut cpu = make();
+    let mut metal = make();
+    metal.route_off = true;
+    // SAFETY: metal is retained for the executor's lifetime and accessed only between GPU calls.
+    let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 16) }.expect("headless Metal");
+    let pool = Pool::new(1);
+    let (mut keep, mut spec) = (vec![0; words], vec![0; words]);
+    let mut tiles = Vec::new();
+    let mut era = 0;
+    let mut u = U::default();
+    for step in 0..7u32 {
+        if step != 4 {
+            u.w[U_TIME] = step + 1;
+        } else {
+            u.w[3] ^= 1;
+        }
+        let stats = cpu.frame(&u, &mut keep, w as usize, &pool, 0);
+        assert!(stats.recs_visited <= 1);
+        if step == 4 {
+            assert_eq!((stats.recs_visited, stats.tiles), (0, 0));
+        }
+        cpu.spec(&u, &mut spec, w as usize);
+        assert_eq!(diff(&keep, &spec), 0);
+        metal.update(&u);
+        metal.damage.tiles(&mut tiles);
+        metal.damage.clear();
+        era = gpu.resident(&mut metal, &u, &tiles, Some(era), w as usize).1;
+        assert_eq!(diff(gpu.out(words), &spec), 0, "author shader step {step}");
+        assert_eq!(keep[(22 * w + 6) as usize], 0, "shader escaped its clip");
+    }
+    eprintln!("author shader: 7 exact CPU/Metal/spec frames, one declared reader, unrelated update was idle");
+}

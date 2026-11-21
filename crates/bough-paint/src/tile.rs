@@ -9,6 +9,7 @@
 //! (a row every command agrees is the same as the row above is copied, not shaded), then `Shade` shades the
 //! rows that are left into a Q15 accumulator, which `store` writes out.
 use crate::layer::{self, Layer, Lvl};
+use crate::ops::ops as x;
 use crate::paint::{EMPTY, Sink};
 use bough_kernel::k;
 use bough_kernel::simd;
@@ -18,6 +19,7 @@ use wgsl_rs::std::{Vec4, Vec4i, Vec4u};
 /// One worker's tile state.
 pub struct Tile<'a> {
     acc: Box<[[u16; 4]; 1024]>,
+    pub(crate) world_candidates: Vec<u32>,
     pub ox: i32,
     pub oy: i32,
     cols: i32,
@@ -140,7 +142,7 @@ fn over(row: &mut [[u16; 4]], sh: Vec4u) {
 
 impl<'a> Tile<'a> {
     pub fn new(atlas: &'a [u8], aw: u32, tabs: &'a [u32]) -> Tile<'a> {
-        Tile { acc: Box::new([[0; 4]; 1024]), ox: 0, oy: 0, cols: 0, all: 0, same: 0, need: 0, hide: EMPTY, masks: Vec::new(), cur: 0, atlas, aw: aw as usize, tabs, st: Stats::default() }
+        Tile { acc: Box::new([[0; 4]; 1024]), world_candidates: Vec::new(), ox: 0, oy: 0, cols: 0, all: 0, same: 0, need: 0, hide: EMPTY, masks: Vec::new(), cur: 0, atlas, aw: aw as usize, tabs, st: Stats::default() }
     }
     /// Start a tile at (ox, oy) with `cols` x `nrows` pixels inside the frame.
     pub fn begin(&mut self, ox: i32, oy: i32, cols: usize, nrows: usize, flat: bool) {
@@ -466,6 +468,10 @@ impl Sink for Shade<'_, '_, '_> {
         let m = self.1.media;
         self.each(&c, |x, y| crate::ops::ops::p_video(c, x, y, crate::media::sample(m, c, x, y)))
     }
+    fn author(&mut self, c: Cmd, program: crate::author::ColourFn) {
+        let state = if cfg!(feature = "mutant_author_clock") { 0 } else { c.par.w };
+        self.each(&c, |px, py| x::p_author(c, px, py, program(px, py, state, c.pm, c.pm2)));
+    }
     #[inline(always)]
     fn user(&mut self, c: Cmd) {
         self.each(&c, |x, y| crate::ops::ops::p_user(c, x, y))
@@ -515,6 +521,33 @@ impl Sink for Shade<'_, '_, '_> {
             return;
         }
         let pm = st(c.pm);
+        if let Some((shape, coverage)) = crate::paint::coverage_patch(c, t.tabs) {
+            let (ox, oy) = (t.ox, t.oy);
+            let mut row_cov = [0u16; 32];
+            let mut columns = [0usize; 32];
+            for col in x0..x1 {
+                columns[col as usize] = x::x_patch_axis(ox + col, c.b.x >> 8, c.b.z >> 8, shape.x, shape.z, shape.w) as usize;
+            }
+            let width = (shape.x + 2 * shape.w + 1) as usize;
+            while m != 0 {
+                let y = m.trailing_zeros() as i32;
+                m &= m - 1;
+                let patch_y = x::x_patch_axis(oy + y, c.b.y >> 8, c.b.w >> 8, shape.y, shape.z, shape.w) as usize;
+                for (lo, hi) in t.runs(y, x0, x1) {
+                    for col in lo..hi {
+                        let i = patch_y * width + columns[col as usize];
+                        let i = if cfg!(feature = "mutant_shadow_patch") { i.saturating_sub(1) } else { i };
+                        row_cov[col as usize] = x::t_half(coverage[i / 2], i as u32) as u16;
+                    }
+                    let start = (y * 32 + lo) as usize;
+                    let end = (y * 32 + hi) as usize;
+                    simd::blend_cov(&mut t.acc[start..end], pm, &row_cov[lo as usize..hi as usize]);
+                    t.st.px_shadow += (hi - lo) as u64;
+                    t.st.px_table += (hi - lo) as u64;
+                }
+            }
+            return;
+        }
         let (kx0, kx1) = t.core_x(&c);
         let (ox, oy) = (t.ox, t.oy);
         // the column profile over this tile's columns, made at the first row that needs it

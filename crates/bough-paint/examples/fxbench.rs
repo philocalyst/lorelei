@@ -392,6 +392,7 @@ fn turn(cell: Cell, f: usize, u: &mut U, w: &mut World, slots: &[(usize, u32)]) 
 #[derive(Default)]
 struct Row {
     instr: Vec<u64>,
+    spring_launch_instr: Vec<u64>,
     wall: Vec<f64>,
     gpu: Vec<f64>,
     tiles: u64,
@@ -515,6 +516,9 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
         }
         let wall = t0.elapsed().as_secs_f64();
         let (i1, _) = pmu::instructions_cycles();
+        if matches!(cell, Cell::OneSpring | Cell::AllSprings) && f % 40 == 1 {
+            row.spring_launch_instr.push(i1 - i0);
+        }
         let (fs_prefix, fs_blocks);
         w.s.media.reclaim();
         if f >= warm {
@@ -580,6 +584,7 @@ fn main() {
     let w = make();
     println!("# fxbench {scene} {n}{}; {FW}x{FH}; reps {reps}; load at start: {}", if dense { " dense" } else { "" }, load());
     println!("# scene: {} records in {} columns, {} layers, {} glass / {} dots / {} videos; media pool {} slots", w.s.records(), w.s.cols().len(), w.s.layers.list.len(), w.g_rect.len(), w.d_rect.len(), w.v_rect.len(), w.s.media.stats().0);
+    println!("# retained shadow coverage: {} bytes", w.s.shadow_coverage_bytes());
     drop(w);
     println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch\tturn_med\tran_idle/cpu/gpu\tprefix_same/prefix\tblocks_same/blocks by level 1..5\tranks/slots");
     if scene == "media" {
@@ -603,6 +608,9 @@ fn main() {
             }
             let (r, bad) = run(&*make, cell, exec, reps, &pool);
             bad_total += bad;
+            if !r.spring_launch_instr.is_empty() {
+                println!("# spring launches {scene} {n} {} {name} instructions {:?}", cell.name(), r.spring_launch_instr);
+            }
             let f = r.frames.max(1) as f64;
             println!(
                 "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{}/{}\t{}\t{}/{}",

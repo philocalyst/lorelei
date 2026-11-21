@@ -190,7 +190,7 @@ pub struct Desc {
     /// The backdrop command of a record that owns a layer.
     pub(crate) lay: fn(ColView, i: u32, u: &U) -> Option<Cmd>,
     /// The record's window joined with its halo under `u` (unpacked: for the scroll index).
-    pub(crate) reach: fn(ColView, i: u32, u: &U) -> [i32; 4],
+    pub(crate) reach: fn(ColView, i: u32, u: &U) -> Option<Vec4i>,
     /// The record as the generic kernel's commands.
     pub(crate) stage: fn(ColView, i: u32, u: &U, out: &mut bough_kernel::stage::Scene),
     pub(crate) pick: fn(ColView, i: u32, u: &U) -> u32,
@@ -227,6 +227,21 @@ impl Pass<'_> {
     fn shows(&self, z: usize) -> bool {
         let (w, fh) = (self.win[z], if cfg!(feature = "mutant_park") { self.frame[1] / 2 } else { self.frame[1] });
         w[0] < w[2] && w[1] < w[3] && w[0] < self.frame[0] && w[1] < fh && w[2] > 0 && w[3] > 0
+    }
+    fn clock_visible<P: Paint>(&self, p: &P, z: usize, cx: &Cx) -> bool {
+        if self.shows(z) {
+            return true;
+        }
+        if P::GEOM_READS & (1 << U_TIME) == 0 {
+            return false;
+        }
+        let [x, y, r, b] = self.halo[z];
+        if P::LAYER && x < r && y < b && x < self.frame[0] && y < self.frame[1] && r > 0 && b > 0 {
+            return true;
+        }
+        p.motion_hull(cx).is_none_or(|w| {
+            w.x < w.z && w.y < w.w && w.x < i32::from(self.frame[0]) && w.y < i32::from(self.frame[1]) && w.z > 0 && w.w > 0
+        })
     }
     /// A layer record's halo is now `h`. The halo is where the record flattens the accumulator, so the
     /// tiles a changed halo left and entered are damaged (and are events for the layers above). Returns
@@ -277,9 +292,6 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
             }
             still = !rests;
         }
-        // a reader the clock does not move and whose window is outside the frame is parked: in no set.
-        // Whatever brings it into view is a geometry pass, which decides again
-        let moves = P::GEOM_READS >> U_TIME & 1 != 0;
         if geom {
             let mut ws = WinSink(EMPTY, EMPTY);
             p.paint(&cn, NO_CLIP, &mut ws);
@@ -303,14 +315,14 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
                 (ps.win[z], ps.cover[z]) = (w, cv);
                 ps.rebin.push(z as u32);
                 moved = true;
-                if still && (moves || ps.shows(z)) {
+                if still && ps.clock_visible(p, z, &cn) {
                     ps.active.push(i);
                 }
                 continue;
             }
             moved |= ps.rebin.last() == Some(&(z as u32));
         }
-        if still && (moves || ps.shows(z)) {
+        if still && ps.clock_visible(p, z, &cn) {
             ps.active.push(i);
         }
         if !first {
@@ -344,7 +356,7 @@ fn rewin_one<P: Paint>(c: ColView, i: u32, u: &U, ps: &mut Pass) -> bool {
     if moved {
         ps.rebin.push(z as u32);
     }
-    if P::READS >> U_TIME & 1 != 0 && ahead(p.until(&cx), u.w[U_TIME]) && (P::GEOM_READS >> U_TIME & 1 != 0 || ps.shows(z)) {
+    if P::READS >> U_TIME & 1 != 0 && ahead(p.until(&cx), u.w[U_TIME]) && ps.clock_visible(p, z, &cx) {
         ps.active.push(i);
     }
     moved
@@ -365,12 +377,22 @@ fn shade_run<P: Paint>(c: ColView, zs: &[u32], first: usize, order: &[u32], u: &
         unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut Shade(t, fx, lid));
     }
 }
-fn reach_one<P: Paint>(c: ColView, i: u32, u: &U) -> [i32; 4] {
+fn reach_one<P: Paint>(c: ColView, i: u32, u: &U) -> Option<Vec4i> {
+    // SAFETY: as `window_pass`, this descriptor is only used for its own column's records.
+    let p = unsafe { c.rec::<P>(i) };
+    let cx = Cx { u, rect: c.rect(i), pal: c.pal() };
+    if P::GEOM_READS & (1 << U_TIME) != 0 {
+        let mut w = p.motion_hull(&cx)?;
+        if P::LAYER {
+            // The halo is aligned to the frame tile grid. A fractional pan changes that alignment.
+            w.y -= 32;
+            w.w += 32;
+        }
+        return Some(w);
+    }
     let mut ws = WinSink(EMPTY, EMPTY);
-    // SAFETY: as `window_pass`.
-    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut ws);
-    let w = crate::ops::ops::x_union(ws.0, ws.1);
-    [w.x, w.y, w.z, w.w]
+    p.paint(&cx, NO_CLIP, &mut ws);
+    Some(crate::ops::ops::x_union(ws.0, ws.1))
 }
 fn lay_one<P: Paint>(c: ColView, i: u32, u: &U) -> Option<Cmd> {
     let mut s = LaySink(None);
@@ -723,10 +745,22 @@ struct Scroll {
     rows: std::collections::HashMap<i32, Vec<u32>>,
     /// Per record: the rows it is listed in (first, one past last); empty when it has no reach.
     at: Vec<(i32, i32)>,
+    /// Records without a local pan certificate. Every pan must reconsider them.
+    unbounded: std::collections::BTreeSet<u32>,
 }
 impl Scroll {
     /// Record `i` reaches rows `r` (of the scrolled space) now.
-    fn place(&mut self, i: u32, r: (i32, i32)) {
+    fn place(&mut self, i: u32, rows: Option<(i32, i32)>) {
+        let r = match rows {
+            Some(r) if r.1 - r.0 <= 256 => {
+                self.unbounded.remove(&i);
+                r
+            }
+            _ => {
+                self.unbounded.insert(i);
+                (0, 0)
+            }
+        };
         if self.at.len() <= i as usize {
             self.at.resize(i as usize + 1, (0, 0));
         }
@@ -745,6 +779,51 @@ impl Scroll {
         self.at[i as usize] = r;
     }
 }
+/// Retained geometry for one rigid, clock-free scroll space. The same packed lists reach Metal.
+#[derive(Default)]
+pub(crate) struct WorldPan {
+    slots: [usize; 2],
+    pub(crate) version: u64,
+    pub(crate) packed: Vec<u32>,
+}
+impl WorldPan {
+    fn mask(&self) -> u64 {
+        1 << self.slots[0] | 1 << self.slots[1]
+    }
+
+    fn candidates(&self, t: usize, tx: usize, u: &U) -> (&[u32], &[u32]) {
+        let data = &self.packed;
+        let cell = |coordinate: usize, slot| {
+            let pan = u.w[slot] as i32;
+            coordinate as i32 - (pan >> 13) - i32::from(pan & 8191 != 0)
+        };
+        let (x, y) = (cell(t % tx, self.slots[0]), cell(t / tx, self.slots[1]));
+        let fixed = 4 + 2 * t;
+        let header = 4 + 2 * data[2] as usize;
+        let cells = data[header..header + 4 * data[3] as usize].as_chunks::<4>().0;
+        let at = cells.partition_point(|r| (r[0] as i32, r[1] as i32) < (y, x));
+        let list = |at: u32, len: u32| &data[at as usize..at as usize + len as usize];
+        let world = cells.get(at).filter(|r| (r[0] as i32, r[1] as i32) == (y, x)).map_or(&[][..], |r| list(r[2], r[3]));
+        (list(data[fixed], data[fixed + 1]), world)
+    }
+
+    fn merged(&self, t: usize, tx: usize, u: &U, out: &mut Vec<u32>) {
+        let (mut fixed, mut world) = self.candidates(t, tx, u);
+        out.clear();
+        while let (Some(&f), Some(&w)) = (fixed.first(), world.first()) {
+            if f < w {
+                out.push(f);
+                fixed = &fixed[1..];
+            } else {
+                out.push(w);
+                world = &world[1..];
+            }
+        }
+        out.extend_from_slice(fixed);
+        out.extend_from_slice(world);
+    }
+}
+
 /// A column's key word and its records by key.
 struct Keyed {
     word: usize,
@@ -797,6 +876,8 @@ pub struct Scene {
     lay_todo: std::collections::BTreeSet<u32>,
     /// Per column: its declared pan and the index of its records by where they are in the scrolled space.
     scrolls: Vec<Option<Scroll>>,
+    world_pan: Option<WorldPan>,
+    world_frame: bool,
     /// Per column: the block word its records are compared with, and its records by key.
     keys: Vec<Option<Keyed>>,
     /// Bumped when the bins were rebuilt (an executor that mirrors them re-reads them).
@@ -839,6 +920,8 @@ pub struct Scene {
     /// already has), handles by key, and the tables allocated but not yet filled.
     /// Give memoisable layers their tables (on by default; off: every such layer takes its closed form).
     pub memoise: bool,
+    /// Admit complete shadow patches when mounting or rewriting a record.
+    pub memoise_coverage: bool,
     tab_base: usize,
     /// The palette tables' first word in the arena (they end where the corner tables begin).
     pal_base: usize,
@@ -849,10 +932,13 @@ pub struct Scene {
     tab_used: usize,
     tab_map: std::collections::HashMap<(i32, i32), u32>,
     tab_jobs: Vec<TabJob>,
+    patch_used: usize,
+    patch_map: std::collections::HashMap<[u32; 4], u32>,
 }
 
 /// Words reserved for corner tables (16 MiB of address space; pages are touched only when a table is filled).
 pub const TAB_WORDS: usize = 1 << 22;
+const PATCH_WORDS: usize = 1 << 20;
 /// Slots of a palette table, tables a scene keeps, and their words in all.
 pub const PAL_SLOTS: usize = 256;
 pub const PAL_TABLES: usize = 16;
@@ -901,10 +987,13 @@ impl Scene {
             clocks: Vec::new(),
             block: U::default(),
             memoise: std::env::var("BOUGH_NO_TABS").is_err(),
+            memoise_coverage: true,
             tab_base: arena_words + PAL_WORDS,
             tab_used: 0,
             tab_map: Default::default(),
             tab_jobs: Vec::new(),
+            patch_used: 0,
+            patch_map: Default::default(),
             used: 0,
             cols: Vec::new(),
             order: Vec::new(),
@@ -919,6 +1008,8 @@ impl Scene {
             rebin: Vec::new(),
             lay_todo: Default::default(),
             scrolls: Vec::new(),
+            world_pan: None,
+            world_frame: false,
             keys: Vec::new(),
             bins_epoch: 0,
             lane_dirty: Vec::new(),
@@ -963,9 +1054,92 @@ impl Scene {
     /// to the undeclared one).
     pub fn scroll<P: Paint>(&mut self, col: ColId<P>, wx: usize, wy: usize) {
         assert!(wx < 64 && wy < 64 && wx != wy);
-        self.scrolls[col.0] = Some(Scroll { wx, wy, rows: Default::default(), at: Vec::new() });
+        self.scrolls[col.0] = Some(Scroll { wx, wy, rows: Default::default(), at: Vec::new(), unbounded: Default::default() });
         self.first = true;
     }
+    /// Attempt to keep one declared scroll space in world coordinates. Its scrolled columns must all
+    /// use these block words and their `scroll` translation contract. The scene takes ordinary frame
+    /// bins for clocks, backdrop layers, unbounded hulls, and turns that mix pan with other inputs.
+    /// Use `Scene::frame` or the Metal staged/resident executors. The public window lanes describe the
+    /// last ordinary frame while a pure pan is drawn directly from the world lists.
+    pub fn uniform_pan(&mut self, wx: usize, wy: usize) {
+        assert!(wx < U_TIME && wy < U_TIME && wx != wy);
+        let version = self.world_pan.as_ref().map_or(0, |world| world.version);
+        self.world_pan = Some(WorldPan { slots: [wx, wy], version, packed: Vec::new() });
+        self.first = true;
+    }
+
+    pub(crate) fn world_frame(&self) -> Option<&WorldPan> {
+        self.world_pan.as_ref().filter(|_| self.world_frame)
+    }
+
+    fn build_world_pan(&self, u: &U, slots: [usize; 2]) -> Option<Vec<u32>> {
+        if self.layers.any() || !self.clocks.is_empty() {
+            return None;
+        }
+        let mask = 1 << slots[0] | 1 << slots[1];
+        let mut world = std::collections::BTreeMap::<(i32, i32), Vec<u32>>::new();
+        let mut refs = 0u64;
+        for (ci, col) in self.cols.iter().enumerate() {
+            if col.desc.reads & (1 << U_TIME) != 0 {
+                return None;
+            }
+            let Some(scroll) = &self.scrolls[ci] else {
+                if col.desc.reads & mask != 0 { return None; }
+                continue;
+            };
+            if [scroll.wx, scroll.wy] != slots {
+                return None;
+            }
+            let view = self.view(ci);
+            for i in 0..view.len {
+                let [x0, y0, ..] = view.rect(i);
+                let (px, py) = (-(x0 >> 8), -(y0 >> 8));
+                let mut local = *u;
+                (local.w[slots[0]], local.w[slots[1]]) = ((px << 8) as u32, (py << 8) as u32);
+                let w = (col.desc.reach)(view, i, &local)?;
+                if w.x >= w.z || w.y >= w.w {
+                    // An empty sample at one subpixel phase need not be empty at all phases.
+                    return None;
+                }
+                // At the staging clip we cannot distinguish a clipped object from its full translated footprint.
+                if w.x <= -16000 || w.y <= -16000 || w.z >= 16000 || w.w >= 16000 {
+                    return None;
+                }
+                // A cell starting at a multiple of 32 is 64 pixels wide. Include a one-pixel
+                // margin because the translation can move the pixel-centre rounding by one.
+                let (a, b) = ((w.x - px - 64) >> 5, (w.z - px) >> 5);
+                let (c, d) = ((w.y - py - 64) >> 5, (w.w - py) >> 5);
+                refs += (b - a + 1) as u64 * (d - c + 1) as u64;
+                if refs > 1 << 22 {
+                    return None;
+                }
+                let z = view.z(i);
+                for y in c..=d {
+                    for x in a..=b {
+                        world.entry((y, x)).or_default().push(z);
+                    }
+                }
+            }
+        }
+        let nt = self.tx * self.ty;
+        let mut data = vec![0; 4 + 2 * nt + 4 * world.len()];
+        data[..4].copy_from_slice(&[slots[0] as u32, slots[1] as u32, nt as u32, world.len() as u32]);
+        for (tile, keys) in self.bins.lists.iter().enumerate() {
+            let offset = data.len();
+            data.extend(keys.iter().copied().filter(|&z| self.scrolls[(self.order[z as usize] >> IDX_BITS) as usize].is_none()));
+            let count = data.len() - offset;
+            data[4 + 2 * tile..][..2].copy_from_slice(&[offset as u32, count as u32]);
+        }
+        for (i, ((y, x), mut keys)) in world.into_iter().enumerate() {
+            keys.sort_unstable();
+            let at = data.len() as u32;
+            data[4 + 2 * nt + 4 * i..][..4].copy_from_slice(&[y as u32, x as u32, at, keys.len() as u32]);
+            data.extend(keys);
+        }
+        Some(data)
+    }
+
     /// Declare that column `col`'s records depend on block word `word` only by comparing it with their own
     /// key (`Eq<Uw<word>, Rec>`): a change of the word visits the records keyed by its old and its new
     /// value (`set_key`). Trusted, as `scroll`.
@@ -994,8 +1168,13 @@ impl Scene {
         let (px, py) = (-(rect[0] >> 8), -(rect[1] >> 8));
         let mut at = *u;
         (at.w[scroll.wx], at.w[scroll.wy]) = ((px << 8) as u32, (py << 8) as u32);
-        let w = (d.reach)(v, i, &at);
-        let rows = if w[0] < w[2] && w[1] < w[3] { ((w[1] - py) >> 8, ((w[3] - py - 1) >> 8) + 1) } else { (0, 0) };
+        let rows = (d.reach)(v, i, &at).map(|w| {
+            if w.x < w.z && w.y < w.w {
+                ((w.y - py - 1) >> 8, ((w.w - py) >> 8) + 1)
+            } else {
+                (0, 0)
+            }
+        });
         scroll.place(i, rows);
     }
     /// Append a record: its rect lanes (Q8) and its value. Paint order is mount order. Returns its key.
@@ -1070,7 +1249,7 @@ impl Scene {
             *map.entry((r, w)).or_insert_with(|| {
                 let n = crate::ops::ops::t_n(r, w);
                 let words = 2 + (n * crate::ops::ops::t_stride(n) / 2) as usize;
-                if *used + words > TAB_WORDS {
+                if *used + words > TAB_WORDS - PATCH_WORDS {
                     return crate::ops::ops::T_MISS;
                 }
                 let base = *used as u32;
@@ -1087,8 +1266,54 @@ impl Scene {
                 (words[tb + j.base as usize], words[tb + j.base as usize + 1]) = (u32::MAX, u32::MAX);
             }
         }
+        if self.memoise_coverage {
+            p.memo_coverage(&Cx::at(&zero, rect), &mut |cmd| self.shadow_patch(cmd));
+        }
         p
     }
+    fn shadow_patch(&mut self, cmd: Cmd) -> Option<u32> {
+        use crate::ops::ops as x;
+        let s = x::x_patch_shape(cmd);
+        if cmd.b.x >= cmd.b.z || cmd.b.y >= cmd.b.w || s.x >= 4096 || s.y >= 4096 {
+            return None;
+        }
+        let key = [cmd.rad.x as u32, cmd.rad.y as u32, x::x_patch_phase(cmd), x::x_patch_dims(s)];
+        if let Some(&handle) = self.patch_map.get(&key) {
+            return Some(handle);
+        }
+        let (width, height) = (s.x + 2 * s.w + 1, s.y + 2 * s.w + 1);
+        let samples = width as usize * height as usize;
+        let needed = 4 + samples.div_ceil(2);
+        if self.patch_used + needed > PATCH_WORDS {
+            return None;
+        }
+        self.patch_used += needed;
+        let base = TAB_WORDS - self.patch_used;
+        let phase = key[2] as i32;
+        let local = Vec4 { x: phase & 255, y: (phase >> 8) & 255, z: (s.x << 8) + ((phase >> 16) & 255), w: (s.y << 8) + ((phase >> 24) & 255) };
+        let ink = Vec4 { x: 0, y: 0, z: 0, w: 0 };
+        let canonical = x::mk_shadow(local, cmd.rad.x, cmd.rad.y, ink, x::T_MISS, NO_CLIP);
+        debug_assert_eq!(canonical.rad, cmd.rad);
+        let at = self.tab_base + base;
+        let table = &mut self.arena.words_mut()[at..at + needed];
+        table[..4].copy_from_slice(&key);
+        for (i, word) in table[4..].iter_mut().enumerate() {
+            let sample = |n: usize| {
+                if n >= samples { return 0; }
+                let (x, y) = (n as i32 % width - s.w, n as i32 / width - s.w);
+                bough_kernel::k::shadow(canonical, x * 256 + 128, y * 256 + 128)
+            };
+            *word = sample(2 * i) | (sample(2 * i + 1) << 16);
+        }
+        let handle = x::PATCH_BIT | base as u32;
+        self.patch_map.insert(key, handle);
+        Some(handle)
+    }
+    /// Bytes of retained Q15 shadow coverage in this scene.
+    pub fn shadow_coverage_bytes(&self) -> usize {
+        4 * self.patch_used
+    }
+
     /// The corner tables' words (handles index it).
     pub fn tabs(&self) -> &[u32] {
         &self.arena.words()[self.tab_base..self.tab_base + TAB_WORDS]
@@ -1165,8 +1390,25 @@ impl Scene {
         if !self.tab_jobs.is_empty() {
             self.fill_tabs();
         }
-        let first = self.first;
-        let mask = if first { u64::MAX } else { self.prev.diff(u, 64) };
+        // A backward seek invalidates future-only hulls. Ordinary unsigned wrap is forward time.
+        let changed = self.prev.diff(u, 64);
+        let first = self.first || (u.w[U_TIME].wrapping_sub(self.prev.w[U_TIME]) as i32) < 0;
+        if !first && self.touched.is_empty() {
+            if self.world_frame && changed == 0 {
+                return fs;
+            }
+            if let Some(world) = &self.world_pan {
+                if !world.packed.is_empty() && changed != 0 && changed & !world.mask() == 0 {
+                    self.world_frame = true;
+                    self.prev = *u;
+                    self.damage.all();
+                    return FrameStats { mask: changed, broad: true, ..fs };
+                }
+            }
+        }
+        let first = first || std::mem::take(&mut self.world_frame);
+        let mask = if first { u64::MAX } else { changed };
+        let rebuild_world = self.world_pan.is_some() && (first || !self.touched.is_empty() || self.cols.iter().any(|c| c.desc.geom_reads & mask != 0));
         fs.mask = mask;
         if first {
             self.damage.all();
@@ -1193,10 +1435,14 @@ impl Scene {
                 act.clear();
                 moved |= (self.cols[ci].desc.rewin)(v, o & IDX_MASK, u, &mut pass!());
                 // a rewritten record that now depends on the clock joins its column's active set
-                if let Some(&i) = act.first() {
-                    if !self.cols[ci].active.contains(&i) {
-                        self.cols[ci].active.push(i);
+                let i = o & IDX_MASK;
+                let active = &mut self.cols[ci].active;
+                if act.is_empty() {
+                    if let Some(at) = active.iter().position(|&j| i == j) {
+                        active.swap_remove(at);
                     }
+                } else if !active.contains(&i) {
+                    active.push(i);
                 }
                 if let Some(sc) = self.scrolls[ci].as_mut() {
                     Self::reindex(sc, self.cols[ci].desc, view_of(&self.arena, self.pal_base, &self.cols[ci]), o & IDX_MASK, u);
@@ -1227,6 +1473,7 @@ impl Scene {
                 let (mut rest, mut c) = (bits, Vec::new());
                 if let Some(sc) = self.scrolls[ci].as_ref() {
                     if rest & (1 << sc.wx | 1 << sc.wy) != 0 {
+                        c.extend(sc.unbounded.iter().copied());
                         // the rows of the scrolled space the frame showed and shows
                         for (k, b) in [&self.prev, u].into_iter().enumerate() {
                             if k == 0 && cfg!(feature = "mutant_scroll_band") {
@@ -1269,8 +1516,9 @@ impl Scene {
             if !full && !indexed && !timed {
                 continue;
             }
-            // a pan-only visit leaves a record where it is in the scrolled space; any other visit may move it
-            let pan_only = indexed && self.scrolls[ci].as_ref().is_some_and(|sc| bits & !(1 << sc.wx | 1 << sc.wy) == 0) && !timed;
+            // The index already includes future motion. Refresh it only for changes that can move that
+            // sweep within the scrolled space, rather than when the record moves inside its sweep.
+            let reindex = self.scrolls[ci].as_ref().is_some_and(|sc| first || bits & d.geom_reads & !(1 << sc.wx | 1 << sc.wy) != 0);
             let keep_active = indexed && !timed;
             let only = if full { None } else if indexed { cand } else { Some(std::mem::take(&mut self.cols[ci].active)) };
             fs.cols_visited += 1;
@@ -1279,16 +1527,17 @@ impl Scene {
             act.clear();
             moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
             if keep_active {
-                // the visit was by index: records in motion that it did not reach stay in the set
-                for &i in &act {
-                    if !self.cols[ci].active.contains(&i) && !cfg!(feature = "mutant_park_wake") {
-                        self.cols[ci].active.push(i);
-                    }
+                // Reconsider what was visited and preserve the unvisited indices.
+                let active = &mut self.cols[ci].active;
+                let visited = only.as_deref().unwrap();
+                active.retain(|i| visited.binary_search(i).is_err());
+                if !cfg!(feature = "mutant_park_wake") {
+                    active.extend_from_slice(&act);
                 }
             } else {
                 std::mem::swap(&mut self.cols[ci].active, &mut act);
             }
-            if !pan_only {
+            if reindex {
                 if let Some(sc) = self.scrolls[ci].as_mut() {
                     let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
                     match only.as_deref() {
@@ -1365,8 +1614,15 @@ impl Scene {
             }
             self.lay_todo.extend(regeo.iter().map(|&z| self.layers.lid(z)));
             for &(w, z) in events.iter().filter(|_| !self.route_off) {
-                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, w, z, self.fx_nocache);
             }
+        }
+        if rebuild_world {
+            let slots = self.world_pan.as_ref().unwrap().slots;
+            let packed = self.build_world_pan(u, slots).unwrap_or_default();
+            let world = self.world_pan.as_mut().unwrap();
+            world.packed = packed;
+            world.version = world.version.wrapping_add(1);
         }
         (fs.prefix_tiles, fs.blocks, fs.layer_px) = (self.plan.prefix_tiles, self.plan.blocks, self.plan.px);
         (self.events, self.regeo, self.act, self.rebin) = (events, regeo, act, rebin);
@@ -1374,23 +1630,38 @@ impl Scene {
         self.first = false;
         fs
     }
-    /// An event (a window that changed, and its record's key) reaches the layers above it on the tiles it
-    /// touches: their level-0 tiles there are due.
-    fn route(bins: &Bins, cert: bool, cover: &[[i16; 4]], layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, tx: i32, ty: i32, w: [i32; 4], z: u32) {
+    /// Route an event to the next prefix checkpoint on each tile. Eager scheduling has no repair result,
+    /// so it routes to every later reader. Level-0 windows are tile-aligned and clipped to the frame.
+    /// Any nonempty intersection contains the whole frame portion of the tile.
+    fn route(bins: &Bins, cert: bool, cover: &[[i16; 4]], layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, w: [i32; 4], z: u32, eager: bool) {
+        let (tx, ty) = (bins.tx as i32, bins.ty as i32);
         for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty) {
             for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx) {
                 let t = (y * tx + x) as usize;
-                let ls = bins.layers(t);
-                let from = ls.partition_point(|&k| k <= z);
-                if from == ls.len() {
+                let readers = bins.layers(t);
+                let readers = &readers[readers.partition_point(|&key| key <= z)..];
+                let Some(&last) = readers.last() else { continue };
+                let holds_prefix = |key: u32| {
+                    let level = &layers.list[layers.of[key as usize] as usize].lv[0];
+                    let r = level.r;
+                    !level.empty() && r[0] < (x + 1) * 32 && r[1] < (y + 1) * 32 && r[2] > x * 32 && r[3] > y * 32
+                };
+                let first;
+                let readers = if eager {
+                    readers
+                } else if let Some(&key) = readers.iter().find(|&&key| holds_prefix(key)) {
+                    first = [key];
+                    &first
+                } else {
                     continue;
-                }
-                let stop = if cert { bins.cover_above(t, z, w, cover, *ls.last().unwrap()) } else { u32::MAX };
-                for &lz in &ls[from..] {
-                    if lz > stop {
+                };
+                let below = if eager { last } else { readers[0] };
+                let stop = if cert { bins.cover_above(t, z, w, cover, below) } else { u32::MAX };
+                for &key in readers {
+                    if key > stop {
                         break;
                     }
-                    let lid = layers.of[lz as usize];
+                    let lid = layers.of[key as usize];
                     layers.list[lid as usize].pending.push(t as u32);
                     todo.insert(lid);
                 }
@@ -1404,6 +1675,12 @@ impl Scene {
     /// changed nothing.)
     pub fn plan_eager(&mut self) -> &layer::Plan {
         let mut todo = std::mem::take(&mut self.lay_todo);
+        // `update` may have queued the nearest checkpoints. Replay the original events for the eager plan.
+        if !self.plan.full {
+            for &(w, z) in &self.events {
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, w, z, true);
+            }
+        }
         let mut outs: Vec<[i32; 4]> = Vec::new();
         while let Some(lid) = todo.pop_first() {
             outs.clear();
@@ -1411,7 +1688,7 @@ impl Scene {
             let z = self.layers.list[lid as usize].z;
             for r in &outs {
                 self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, *r, z, true);
             }
         }
         self.lay_todo = todo;
@@ -1446,7 +1723,7 @@ impl Scene {
         let events = std::mem::take(&mut self.events);
         if self.layers.any() && !self.plan.full {
             for &(w, z) in &events {
-                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, w, z, self.fx_nocache);
             }
         }
         self.events = events;
@@ -1581,6 +1858,19 @@ impl Scene {
     fn run_tile(&self, u: &U, ti: u32, t: &mut Tile, pool: &[u32], upto: u32) {
         let (ox, oy) = ((ti as usize % self.tx) as i32 * 32, (ti as usize / self.tx) as i32 * 32);
         let (cols, nrows) = ((self.fw as usize - ox as usize).min(32), (self.fh as usize - oy as usize).min(32));
+        if let Some(world) = self.world_frame() {
+            debug_assert_eq!(upto, layer::NONE);
+            let mut list = std::mem::take(&mut t.world_candidates);
+            world.merged(ti as usize, self.tx, u, &mut list);
+            t.begin(ox, oy, cols, nrows, false);
+            t.cover_masks(&list, &[], false);
+            t.prepare();
+            let fx = self.fx(pool);
+            self.runs(&list, |c, first, zs| (self.cols[c].desc.shade)(self.view(c), zs, first, &self.order, u, t, &fx));
+            t.st.entries += list.len() as u64;
+            t.world_candidates = list;
+            return;
+        }
         let (from, to, init, marked) = self.seg(ti, upto);
         let list = &self.bins.tile(ti as usize)[from..to];
         let flat = self.flat && !marked && upto == layer::NONE;
@@ -1662,6 +1952,11 @@ impl Scene {
                         changed.push(bb);
                     }
                 }
+                // Later tile programs restart at this checkpoint. The backdrop also composites its
+                // input accumulator, including in the halo outside the ink window where it flattens.
+                if !self.fx_nocache && !cfg!(feature = "mutant_prefix_lost") {
+                    outs.extend_from_slice(&changed);
+                }
                 let mut read_changed: Vec<(u32, Vec<[i32; 4]>)> = Vec::new();
                 if l.lvl == 0 {
                     read_changed.push((0, changed.clone()));
@@ -1718,7 +2013,7 @@ impl Scene {
             let z = self.layers.list[lid as usize].z;
             for r in &outs {
                 self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, *r, z, self.fx_nocache);
             }
         }
         self.layers.pool = pool;
@@ -1946,7 +2241,14 @@ impl Scene {
             return NO_HIT;
         }
         let t = (y as usize >> 5) * self.tx + (x as usize >> 5);
-        for &z in self.bins.tile(t).iter().rev() {
+        let mut candidates = Vec::new();
+        let keys = if let Some(world) = self.world_frame() {
+            world.merged(t, self.tx, u, &mut candidates);
+            &candidates[..]
+        } else {
+            self.bins.tile(t)
+        };
+        for &z in keys.iter().rev() {
             let o = self.order[z as usize];
             let c = (o >> IDX_BITS) as usize;
             let d = self.cols[c].desc;

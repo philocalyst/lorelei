@@ -755,6 +755,13 @@ pub trait Expr: Record {
         }
     }
 
+    /// Inclusive component-wise bounds from the current `Time` through the rest of the motion,
+    /// with the other inputs fixed. One-shots use the same forward clock epoch as [`Expr::until`].
+    /// `None` means unknown. Callers must reconsider the bound after a non-clock input changes.
+    fn time_hull(&self, _cx: &Cx) -> Option<(Self::Out, Self::Out)> {
+        None
+    }
+
     /// The fields of the root view this expression's block words are gathered from. A combinator forwards to
     /// its operands; the world checks that every application word a column reads was named by some lens.
     #[inline]

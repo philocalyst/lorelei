@@ -1,0 +1,417 @@
+## repetition 1
+## pbench canvas 4 @slice12-exact  9:46  up 4 days, 12:39, 1 user, load averages: 29.59 24.91 23.12
+# pbench canvas Some(4); reps 24; workers 5; load at start: 29.59 24.91 23.12
+plan: canvas (const PLAN)
+   k  exec      cost     words layers  reads      moves on   cover pick  paint
+   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+   1  GpuSdf    Wide         7      2  0,1        0,1        true  false  Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,Ki<2048>,Pmo<...
+   2  GpuSdf    Wide        12      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,P...
+   3  GpuSdf    Wide        18      3  0,1        0,1        true  false  Clip<Clip<Over<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<...
+   4  GpuSdf    Wide        15      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<...
+   5  GpuSdf    PerPixel     9      1  0,1        0,1        true  false  Clip<Clip<Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<2252...
+   6  CpuSpans  Edge         8      1  0,1        0,1        true  false  Clip<Clip<Border<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<...
+   7  CpuSpans  Flat         6      1  0,1        0,1        false false  Clip<Clip<Glyph<Off<Lane,Un<PanX>,Un<PanY>>,Rec,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<522240>,K<409600>>>
+   8  GpuSdf    Wide        16      2  0,1,2,62   0,1        true  true  Hit<Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Border<Off<Lane,Un<PanX>,Un<PanY>>,I<R...
+   9  CpuSpans  Edge         8      1  0,1,63     0,1        false false  Clip<Clip<RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw<63>,Rec,Rec>>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K...
+  10  CpuSpans  Edge        14      1  0,1,63     0,1,63     false false  Clip<Clip<RRect<MixR<Off<Lane,Un<PanX>,Un<PanY>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>,Smooth<Tri<Uw<63>,Rec,Rec>>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw...
+  11  CpuSpans  Edge         9      1  0,1,3,4,5  0,1,3,4,5  true  true  Hit<Clip<Clip<RRect<Off<Off<Lane,Un<PanX>,Un<PanY>>,SelI<Eq<Un<Sel>,Rec>,Un<DragX>,Ki<0>>,SelI<Eq<Un<Sel>,Rec>,Un<DragY>,Ki<0>>>,I<Rec>,Pmo<Rec>>,Off<...
+  12  CpuSpans  Flat         4      1  2,62       -          true  true  Hit<Clip<Solid<Lane,SelV<Eq<Uw<62>,Rec>,MixV<Pm<K<4285217791>>,Pm<K<4283294207>>,Un<Theme>>,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>>,RectW<K<0>,K<22528>,K<...
+  13  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+  whole: gpu pipeline true; block words {0,1,2,3,4,5,62,63}; bin pass on {0,1,3,4,5,63}; cut true; pick true; one CPU core up to 8 damaged tiles; 131 record words over 14 archetypes
+  dependents by block word (archetype bits): 0->0b111111111110 1->0b111111111110 2->0b11000100000001 3->0b100000000000 4->0b100000000000 5->0b100000000000 62->0b1000100000000 63->0b11000000000
+# corner tables: 145 keys, 2239123 entries (4387 KiB), filled on the GPU in 1.13 ms of GPU time, 11.84 ms wall
+# scene: 2560x1600 px, 4000 tiles, 10101 records in 14 columns, 215488 column words (841 KiB); mount 3.6 ms
+# start-up: whole-scene plan from the mounted columns 1.2 us (gpu true), source assembly 1.16 ms (248559 bytes, of which leaves 83638), Metal compile + 5+14 pipelines 553 ms
+# generic kernel: Metal compile 73 ms (49679 bytes of MSL)
+# generic kernel: restaging every record costs 0.23 ms for 8708 commands (not charged to K rows)
+phase	executor	tiles	wall_min_us	wall_med_us	gpu_med_us	thread_Kinstr	thread_Kcycles	proc_Kinstr	note
+canvas.full	A1 archetype cpu 1 core	4000	42198	45435	-	964870.4	157584.8	0.0	pick + window pass + bins + shade
+canvas.full	A  window pass + bins	4000	292	299	-	4139.1	1071.6	0.0	the per-record part of A1 / AP
+canvas.full	AP archetype cpu 5+1	4000	7834	9588	-	188806.5	31720.4	0.0	shade only
+canvas.full	AG archetype gpu resident	4000	6202	8206	6587	145.9	337.7	0.0	block write + encode + wait
+canvas.full	AD driver, the plan's choice	4000	5766	8448	-	157.4	334.3	0.0	0 frames on one core, 24 on the GPU
+canvas.full	K  generic bin	4000	236	252	-	2975.8	907.8	0.0	6.5 entries per tile after the cut
+canvas.full	K1 generic cpu 1 core	4000	214870	230641	-	3653788.4	788991.5	0.0	raster only; restage free, bin above
+canvas.full	KP generic cpu 5+1	4000	48300	58191	-	654427.4	145879.8	0.0	raster only
+canvas.full	KG generic gpu	4000	3162	4793	3424	1264.9	755.9	0.0	upload + tile kernel + wait
+canvas.hover	A1 archetype cpu 1 core	142	13403	14874	-	302710.0	50662.0	0.0	pick + window pass + bins + shade
+canvas.hover	A  window pass + bins	142	7	9	-	79.4	31.9	0.0	the per-record part of A1 / AP
+canvas.hover	AP archetype cpu 5+1	142	2747	5702	-	87472.5	15116.8	0.0	shade only
+canvas.hover	AG archetype gpu resident	142	2152	3115	1590	88.8	265.0	0.0	block write + encode + wait
+canvas.hover	AD driver, the plan's choice	142	1844	3048	-	259.0	365.1	0.0	0 frames on one core, 24 on the GPU
+canvas.hover	K  generic bin	142	251	315	-	1970.5	957.1	0.0	55.4 entries per tile after the cut
+canvas.hover	K1 generic cpu 1 core	142	89450	100870	-	1496766.4	334816.0	0.0	raster only; restage free, bin above
+canvas.hover	KP generic cpu 5+1	142	23365	28903	-	350577.1	77749.1	0.0	raster only
+canvas.hover	KG generic gpu	142	1782	3245	1978	765.5	630.3	0.0	upload + tile kernel + wait
+canvas.hover1	A1 archetype cpu 1 core	30	30	36	-	318.3	131.8	0.0	pick + window pass + bins + shade
+canvas.hover1	A  window pass + bins	30	4	4	-	68.2	15.3	0.0	the per-record part of A1 / AP
+canvas.hover1	AP archetype cpu 5+1	30	28	48	-	271.2	132.7	0.0	shade only
+canvas.hover1	AG archetype gpu resident	30	427	909	140	77.7	218.9	0.0	block write + encode + wait
+canvas.hover1	AD driver, the plan's choice	30	28	38	-	320.8	135.1	0.0	24 frames on one core, 0 on the GPU
+canvas.hover1	K  generic bin	30	44	53	-	900.7	190.0	0.0	3.2 entries per tile after the cut
+canvas.hover1	K1 generic cpu 1 core	30	26	29	-	331.8	104.1	0.0	raster only; restage free, bin above
+canvas.hover1	KP generic cpu 5+1	30	31	49	-	353.7	140.6	0.0	raster only
+canvas.hover1	KG generic gpu	30	341	490	50	681.0	457.3	0.0	upload + tile kernel + wait
+canvas.theme	A1 archetype cpu 1 core	3936	37375	39616	-	884754.9	140479.4	0.0	pick + window pass + bins + shade
+canvas.theme	A  window pass + bins	3936	56	58	-	984.4	209.0	0.0	the per-record part of A1 / AP
+canvas.theme	AP archetype cpu 5+1	3936	6628	8536	-	169363.3	28096.2	0.0	shade only
+canvas.theme	AG archetype gpu resident	3936	4146	5462	4681	79.2	282.0	0.0	block write + encode + wait
+canvas.theme	AD driver, the plan's choice	3936	3747	5402	-	87.2	237.4	0.0	0 frames on one core, 24 on the GPU
+canvas.theme	K  generic bin	3936	286	303	-	3020.8	1089.8	0.0	6.3 entries per tile after the cut
+canvas.theme	K1 generic cpu 1 core	3936	202317	209461	-	3432080.9	730475.9	0.0	raster only; restage free, bin above
+canvas.theme	KP generic cpu 5+1	3936	46110	52773	-	642104.0	140629.6	0.0	raster only
+canvas.theme	KG generic gpu	3936	2807	4241	3145	1248.3	710.9	0.0	upload + tile kernel + wait
+canvas.pan	A1 archetype cpu 1 core	472	7922	28992	-	630563.5	102647.2	0.0	pick + window pass + bins + shade
+canvas.pan	A  window pass + bins	472	356	752	-	5195.1	2682.4	0.0	the per-record part of A1 / AP
+canvas.pan	AP archetype cpu 5+1	472	1447	4797	-	103273.2	16619.3	0.0	shade only
+canvas.pan	AG archetype gpu resident	472	2972	5217	4477	98.1	253.8	0.0	block write + encode + wait
+canvas.pan	AD driver, the plan's choice	472	3620	5984	-	5486.0	2930.1	0.0	0 frames on one core, 24 on the GPU
+canvas.pan	K  generic bin	472	76	177	-	2045.7	626.3	0.0	31.6 entries per tile after the cut
+canvas.pan	K1 generic cpu 1 core	472	41550	161890	-	2742347.4	579289.7	0.0	raster only; restage free, bin above
+canvas.pan	KP generic cpu 5+1	472	17378	35309	-	442280.7	93797.5	0.0	raster only
+canvas.pan	KG generic gpu	472	1276	3203	2114	810.9	560.4	0.0	upload + tile kernel + wait
+canvas.drag	A1 archetype cpu 1 core	12	586	1198	-	25477.1	4298.0	0.0	pick + window pass + bins + shade
+canvas.drag	A  window pass + bins	12	4	5	-	23.7	19.6	0.0	the per-record part of A1 / AP
+canvas.drag	AP archetype cpu 5+1	12	536	1162	-	25484.8	4157.6	0.0	shade only
+canvas.drag	AG archetype gpu resident	12	2844	4440	3699	75.9	208.3	0.0	block write + encode + wait
+canvas.drag	AD driver, the plan's choice	12	578	1235	-	25492.5	4367.3	0.0	24 frames on one core, 0 on the GPU
+canvas.drag	K  generic bin	12	47	51	-	886.4	185.0	0.0	55.6 entries per tile after the cut
+canvas.drag	K1 generic cpu 1 core	12	4768	8593	-	145544.2	30779.6	0.0	raster only; restage free, bin above
+canvas.drag	KP generic cpu 5+1	12	2076	3619	-	60197.8	12888.9	0.0	raster only
+canvas.drag	KG generic gpu	12	1662	1953	1291	630.2	443.6	0.0	upload + tile kernel + wait
+canvas.time	A1 archetype cpu 1 core	118	9919	13011	-	292784.7	46266.9	0.0	pick + window pass + bins + shade
+canvas.time	A  window pass + bins	118	22	26	-	150.7	95.6	0.0	the per-record part of A1 / AP
+canvas.time	AP archetype cpu 5+1	118	1984	2633	-	49661.4	7998.1	0.0	shade only
+canvas.time	AG archetype gpu resident	118	3527	4684	4068	78.3	219.9	0.0	block write + encode + wait
+canvas.time	AD driver, the plan's choice	118	3123	4457	-	319.1	314.0	0.0	0 frames on one core, 24 on the GPU
+canvas.time	K  generic bin	118	179	189	-	1713.0	678.2	0.0	61.6 entries per tile after the cut
+canvas.time	K1 generic cpu 1 core	118	62618	72375	-	1225500.8	258945.2	0.0	raster only; restage free, bin above
+canvas.time	KP generic cpu 5+1	118	16703	20458	-	93157.6	20138.5	0.0	raster only
+canvas.time	KG generic gpu	118	1889	2308	1570	704.2	537.0	0.0	upload + tile kernel + wait
+# cross-check failures: 0; load at end: 32.06 26.09 23.63
+## exit 0
+ 9:47  up 4 days, 12:39, 1 user, load averages: 32.06 26.09 23.63
+## pbench anim 600 @slice12-exact  9:47  up 4 days, 12:39, 1 user, load averages: 32.06 26.09 23.63
+# pbench anim Some(600); reps 24; workers 5; load at start: 32.06 26.09 23.63
+plan: anim (const PLAN)
+   k  exec      cost     words layers  reads      moves on   cover pick  paint
+   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+   1  CpuSpans  Edge        14      1  63         63         true  false  RRect<MixR<Lane,RectW<Rec,Rec,Rec,Rec>,Smooth<Tri<Uw<63>,Rec,Rec>>>,MixI<I<Rec>,I<Rec>,Tri<Uw<63>,Rec,Rec>>,MixV<Pmo<Rec>,Pmo<Rec>,Tri<Uw<63>,Rec,Rec>...
+   2  GpuSdf    Wide        18      2  63         63         false false  Over<Shadow<Off<MixR<Lane,RectW<Rec,Rec,Rec,Rec>,Smooth<Tri<Uw<63>,Rec,Rec>>>,Ki<0>,Ki<1536>>,Ki<2560>,I<Rec>,Pm<Rec>,Tab>,RRect<MixR<Lane,RectW<Rec,R...
+   3  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+  whole: gpu pipeline true; block words {2,63}; bin pass on {63}; cut true; pick false; one CPU core up to 8 damaged tiles; 37 record words over 4 archetypes
+  dependents by block word (archetype bits): 2->0b1001 63->0b110
+# corner tables: 24 keys, 63749 entries (124 KiB), filled on the GPU in 0.12 ms of GPU time, 10.15 ms wall
+# scene: 1920x1080 px, 2040 tiles, 641 records in 4 columns, 27840 column words (108 KiB); mount 1.3 ms
+# start-up: whole-scene plan from the mounted columns 0.5 us (gpu true), source assembly 0.51 ms (147125 bytes, of which leaves 83638), Metal compile + 5+4 pipelines 297 ms
+# generic kernel: Metal compile 1 ms (49679 bytes of MSL)
+# generic kernel: restaging every record costs 0.02 ms for 941 commands (not charged to K rows)
+phase	executor	tiles	wall_min_us	wall_med_us	gpu_med_us	thread_Kinstr	thread_Kcycles	proc_Kinstr	note
+anim.full	A1 archetype cpu 1 core	2040	69409	70248	-	1218814.6	251505.5	0.0	pick + window pass + bins + shade
+anim.full	A  window pass + bins	2040	70	73	-	907.2	264.9	0.0	the per-record part of A1 / AP
+anim.full	AP archetype cpu 5+1	2040	11684	11787	-	202785.1	41977.8	0.0	shade only
+anim.full	AG archetype gpu resident	2040	2695	3090	2264	101.8	253.6	0.0	block write + encode + wait
+anim.full	AD driver, the plan's choice	2040	2133	2908	-	103.2	204.9	0.0	0 frames on one core, 24 on the GPU
+anim.full	K  generic bin	2040	39	42	-	694.6	150.0	0.0	4.2 entries per tile after the cut
+anim.full	K1 generic cpu 1 core	2040	35342	36166	-	622964.7	129525.9	0.0	raster only; restage free, bin above
+anim.full	KP generic cpu 5+1	2040	5984	6819	-	111119.5	23304.2	0.0	raster only
+anim.full	KG generic gpu	2040	1261	1430	558	383.9	346.3	0.0	upload + tile kernel + wait
+anim.theme	A1 archetype cpu 1 core	2040	70029	70310	-	1217906.6	251115.5	0.0	pick + window pass + bins + shade
+anim.theme	A  window pass + bins	2040	7	8	-	43.2	28.5	0.0	the per-record part of A1 / AP
+anim.theme	AP archetype cpu 5+1	2040	11757	12533	-	206199.3	43883.8	0.0	shade only
+anim.theme	AG archetype gpu resident	2040	2158	2820	1987	73.9	253.6	0.0	block write + encode + wait
+anim.theme	AD driver, the plan's choice	2040	2003	2766	-	74.7	203.3	0.0	0 frames on one core, 24 on the GPU
+anim.theme	K  generic bin	2040	44	45	-	767.5	164.3	0.0	4.2 entries per tile after the cut
+anim.theme	K1 generic cpu 1 core	2040	35946	36308	-	622948.6	129640.3	0.0	raster only; restage free, bin above
+anim.theme	KP generic cpu 5+1	2040	5526	6804	-	110500.8	23187.0	0.0	raster only
+anim.theme	KG generic gpu	2040	767	1427	565	383.9	361.8	0.0	upload + tile kernel + wait
+anim.time	A1 archetype cpu 1 core	1905	70081	70689	-	1226879.8	252574.4	0.0	pick + window pass + bins + shade
+anim.time	A  window pass + bins	1905	85	88	-	1043.0	316.9	0.0	the per-record part of A1 / AP
+anim.time	AP archetype cpu 5+1	1905	12371	13442	-	226082.1	46707.8	0.0	shade only
+anim.time	AG archetype gpu resident	1905	1203	1631	855	78.8	263.9	0.0	block write + encode + wait
+anim.time	AD driver, the plan's choice	1905	976	1556	-	79.9	194.4	0.0	0 frames on one core, 24 on the GPU
+anim.time	K  generic bin	1905	44	45	-	749.3	164.4	0.0	4.4 entries per tile after the cut
+anim.time	K1 generic cpu 1 core	1905	64734	65218	-	1117858.4	232622.7	0.0	raster only; restage free, bin above
+anim.time	KP generic cpu 5+1	1905	11294	12781	-	193841.0	40650.2	0.0	raster only
+anim.time	KG generic gpu	1905	926	1439	619	368.6	367.7	0.0	upload + tile kernel + wait
+# cross-check failures: 0; load at end: 30.17 25.88 23.58
+## exit 0
+ 9:47  up 4 days, 12:39, 1 user, load averages: 30.17 25.88 23.58
+## repetition 2
+## pbench canvas 4 @slice12-exact  9:47  up 4 days, 12:39, 1 user, load averages: 30.17 25.88 23.58
+# pbench canvas Some(4); reps 24; workers 5; load at start: 30.17 25.88 23.58
+plan: canvas (const PLAN)
+   k  exec      cost     words layers  reads      moves on   cover pick  paint
+   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+   1  GpuSdf    Wide         7      2  0,1        0,1        true  false  Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,Ki<2048>,Pmo<...
+   2  GpuSdf    Wide        12      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,P...
+   3  GpuSdf    Wide        18      3  0,1        0,1        true  false  Clip<Clip<Over<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<...
+   4  GpuSdf    Wide        15      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<...
+   5  GpuSdf    PerPixel     9      1  0,1        0,1        true  false  Clip<Clip<Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<2252...
+   6  CpuSpans  Edge         8      1  0,1        0,1        true  false  Clip<Clip<Border<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<...
+   7  CpuSpans  Flat         6      1  0,1        0,1        false false  Clip<Clip<Glyph<Off<Lane,Un<PanX>,Un<PanY>>,Rec,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<522240>,K<409600>>>
+   8  GpuSdf    Wide        16      2  0,1,2,62   0,1        true  true  Hit<Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Border<Off<Lane,Un<PanX>,Un<PanY>>,I<R...
+   9  CpuSpans  Edge         8      1  0,1,63     0,1        false false  Clip<Clip<RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw<63>,Rec,Rec>>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K...
+  10  CpuSpans  Edge        14      1  0,1,63     0,1,63     false false  Clip<Clip<RRect<MixR<Off<Lane,Un<PanX>,Un<PanY>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>,Smooth<Tri<Uw<63>,Rec,Rec>>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw...
+  11  CpuSpans  Edge         9      1  0,1,3,4,5  0,1,3,4,5  true  true  Hit<Clip<Clip<RRect<Off<Off<Lane,Un<PanX>,Un<PanY>>,SelI<Eq<Un<Sel>,Rec>,Un<DragX>,Ki<0>>,SelI<Eq<Un<Sel>,Rec>,Un<DragY>,Ki<0>>>,I<Rec>,Pmo<Rec>>,Off<...
+  12  CpuSpans  Flat         4      1  2,62       -          true  true  Hit<Clip<Solid<Lane,SelV<Eq<Uw<62>,Rec>,MixV<Pm<K<4285217791>>,Pm<K<4283294207>>,Un<Theme>>,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>>,RectW<K<0>,K<22528>,K<...
+  13  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+  whole: gpu pipeline true; block words {0,1,2,3,4,5,62,63}; bin pass on {0,1,3,4,5,63}; cut true; pick true; one CPU core up to 8 damaged tiles; 131 record words over 14 archetypes
+  dependents by block word (archetype bits): 0->0b111111111110 1->0b111111111110 2->0b11000100000001 3->0b100000000000 4->0b100000000000 5->0b100000000000 62->0b1000100000000 63->0b11000000000
+# corner tables: 145 keys, 2239123 entries (4387 KiB), filled on the GPU in 0.67 ms of GPU time, 12.68 ms wall
+# scene: 2560x1600 px, 4000 tiles, 10101 records in 14 columns, 215488 column words (841 KiB); mount 3.6 ms
+# start-up: whole-scene plan from the mounted columns 1.0 us (gpu true), source assembly 1.25 ms (248559 bytes, of which leaves 83638), Metal compile + 5+14 pipelines 5 ms
+# generic kernel: Metal compile 1 ms (49679 bytes of MSL)
+# generic kernel: restaging every record costs 0.35 ms for 8708 commands (not charged to K rows)
+phase	executor	tiles	wall_min_us	wall_med_us	gpu_med_us	thread_Kinstr	thread_Kcycles	proc_Kinstr	note
+canvas.full	A1 archetype cpu 1 core	4000	42259	42854	-	964834.2	152800.0	0.0	pick + window pass + bins + shade
+canvas.full	A  window pass + bins	4000	292	300	-	4139.1	1075.3	0.0	the per-record part of A1 / AP
+canvas.full	AP archetype cpu 5+1	4000	7449	8574	-	177729.5	29665.2	0.0	shade only
+canvas.full	AG archetype gpu resident	4000	6123	8401	7413	145.3	333.9	0.0	block write + encode + wait
+canvas.full	AD driver, the plan's choice	4000	5471	7004	-	145.6	283.3	0.0	0 frames on one core, 24 on the GPU
+canvas.full	K  generic bin	4000	235	249	-	2975.8	890.6	0.0	6.5 entries per tile after the cut
+canvas.full	K1 generic cpu 1 core	4000	215620	218778	-	3653190.4	775471.5	0.0	raster only; restage free, bin above
+canvas.full	KP generic cpu 5+1	4000	48104	51201	-	680920.5	144522.5	0.0	raster only
+canvas.full	KG generic gpu	4000	3078	4239	3331	1255.0	725.9	0.0	upload + tile kernel + wait
+canvas.hover	A1 archetype cpu 1 core	142	13382	13626	-	302677.2	48649.3	0.0	pick + window pass + bins + shade
+canvas.hover	A  window pass + bins	142	7	8	-	79.4	31.0	0.0	the per-record part of A1 / AP
+canvas.hover	AP archetype cpu 5+1	142	2800	3510	-	62088.1	10022.1	0.0	shade only
+canvas.hover	AG archetype gpu resident	142	1864	2740	1817	77.2	243.9	0.0	block write + encode + wait
+canvas.hover	AD driver, the plan's choice	142	1572	2500	-	249.9	310.7	0.0	0 frames on one core, 24 on the GPU
+canvas.hover	K  generic bin	142	248	257	-	1970.5	922.1	0.0	55.4 entries per tile after the cut
+canvas.hover	K1 generic cpu 1 core	142	88326	90090	-	1496499.0	317974.5	0.0	raster only; restage free, bin above
+canvas.hover	KP generic cpu 5+1	142	23326	24414	-	350549.0	74413.8	0.0	raster only
+canvas.hover	KG generic gpu	142	1890	2915	1987	758.0	617.2	0.0	upload + tile kernel + wait
+canvas.hover1	A1 archetype cpu 1 core	30	37	39	-	318.3	144.7	0.0	pick + window pass + bins + shade
+canvas.hover1	A  window pass + bins	30	4	4	-	68.2	16.3	0.0	the per-record part of A1 / AP
+canvas.hover1	AP archetype cpu 5+1	30	35	124	-	281.0	163.3	0.0	shade only
+canvas.hover1	AG archetype gpu resident	30	513	1076	135	95.3	264.4	0.0	block write + encode + wait
+canvas.hover1	AD driver, the plan's choice	30	35	80	-	320.8	201.8	0.0	24 frames on one core, 0 on the GPU
+canvas.hover1	K  generic bin	30	46	56	-	900.7	201.4	0.0	3.2 entries per tile after the cut
+canvas.hover1	K1 generic cpu 1 core	30	29	30	-	331.8	107.1	0.0	raster only; restage free, bin above
+canvas.hover1	KP generic cpu 5+1	30	39	70	-	366.5	159.8	0.0	raster only
+canvas.hover1	KG generic gpu	30	527	1052	46	695.1	550.7	0.0	upload + tile kernel + wait
+canvas.theme	A1 archetype cpu 1 core	3936	38929	39802	-	884727.9	141662.4	0.0	pick + window pass + bins + shade
+canvas.theme	A  window pass + bins	3936	57	58	-	984.4	209.2	0.0	the per-record part of A1 / AP
+canvas.theme	AP archetype cpu 5+1	3936	6898	8209	-	170690.1	28764.3	0.0	shade only
+canvas.theme	AG archetype gpu resident	3936	3671	5140	4300	79.4	279.8	0.0	block write + encode + wait
+canvas.theme	AD driver, the plan's choice	3936	3536	4547	-	82.0	248.7	0.0	0 frames on one core, 24 on the GPU
+canvas.theme	K  generic bin	3936	291	306	-	3020.8	1097.6	0.0	6.3 entries per tile after the cut
+canvas.theme	K1 generic cpu 1 core	3936	202674	206535	-	3432096.3	730672.4	0.0	raster only; restage free, bin above
+canvas.theme	KP generic cpu 5+1	3936	46279	50202	-	569651.4	124866.1	0.0	raster only
+canvas.theme	KG generic gpu	3936	3425	4110	3277	1239.1	741.3	0.0	upload + tile kernel + wait
+canvas.pan	A1 archetype cpu 1 core	472	8658	33853	-	630479.2	107343.5	0.0	pick + window pass + bins + shade
+canvas.pan	A  window pass + bins	472	368	792	-	5195.1	2692.5	0.0	the per-record part of A1 / AP
+canvas.pan	AP archetype cpu 5+1	472	3121	8655	-	135833.4	23096.2	0.0	shade only
+canvas.pan	AG archetype gpu resident	472	3553	5897	4022	101.8	298.6	0.0	block write + encode + wait
+canvas.pan	AD driver, the plan's choice	472	4207	6878	-	5543.4	3117.1	0.0	0 frames on one core, 24 on the GPU
+canvas.pan	K  generic bin	472	75	228	-	2045.7	665.8	0.0	31.6 entries per tile after the cut
+canvas.pan	K1 generic cpu 1 core	472	48429	187606	-	2742876.9	605990.0	0.0	raster only; restage free, bin above
+canvas.pan	KP generic cpu 5+1	472	22009	50379	-	453891.1	108633.6	0.0	raster only
+canvas.pan	KG generic gpu	472	1980	4183	2515	875.9	682.3	0.0	upload + tile kernel + wait
+canvas.drag	A1 archetype cpu 1 core	12	624	1288	-	25472.3	4461.1	0.0	pick + window pass + bins + shade
+canvas.drag	A  window pass + bins	12	5	6	-	23.7	22.8	0.0	the per-record part of A1 / AP
+canvas.drag	AP archetype cpu 5+1	12	573	1243	-	25449.6	4251.3	0.0	shade only
+canvas.drag	AG archetype gpu resident	12	3149	4874	3794	79.1	290.1	0.0	block write + encode + wait
+canvas.drag	AD driver, the plan's choice	12	1143	2277	-	25493.5	5922.3	0.0	24 frames on one core, 0 on the GPU
+canvas.drag	K  generic bin	12	51	57	-	886.4	196.6	0.0	55.6 entries per tile after the cut
+canvas.drag	K1 generic cpu 1 core	12	5622	9560	-	145589.2	32699.4	0.0	raster only; restage free, bin above
+canvas.drag	KP generic cpu 5+1	12	3662	5354	-	60204.4	12958.4	0.0	raster only
+canvas.drag	KG generic gpu	12	1305	2623	1296	642.9	588.6	0.0	upload + tile kernel + wait
+canvas.time	A1 archetype cpu 1 core	118	10382	14400	-	292901.2	48774.3	0.0	pick + window pass + bins + shade
+canvas.time	A  window pass + bins	118	22	27	-	153.5	94.8	0.0	the per-record part of A1 / AP
+canvas.time	AP archetype cpu 5+1	118	4023	5361	-	78385.8	13081.6	0.0	shade only
+canvas.time	AG archetype gpu resident	118	3427	5079	3895	89.9	264.3	0.0	block write + encode + wait
+canvas.time	AD driver, the plan's choice	118	3076	4779	-	332.9	433.1	0.0	0 frames on one core, 24 on the GPU
+canvas.time	K  generic bin	118	180	261	-	1711.3	778.0	0.0	61.6 entries per tile after the cut
+canvas.time	K1 generic cpu 1 core	118	67012	82474	-	1226068.0	272076.6	0.0	raster only; restage free, bin above
+canvas.time	KP generic cpu 5+1	118	21910	26817	-	98987.4	21501.2	0.0	raster only
+canvas.time	KG generic gpu	118	2305	3060	1615	712.7	606.7	0.0	upload + tile kernel + wait
+# cross-check failures: 0; load at end: 35.23 27.48 24.25
+## exit 0
+ 9:47  up 4 days, 12:40, 1 user, load averages: 35.23 27.48 24.25
+## pbench anim 600 @slice12-exact  9:47  up 4 days, 12:40, 1 user, load averages: 35.23 27.48 24.25
+# pbench anim Some(600); reps 24; workers 5; load at start: 35.23 27.48 24.25
+plan: anim (const PLAN)
+   k  exec      cost     words layers  reads      moves on   cover pick  paint
+   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+   1  CpuSpans  Edge        14      1  63         63         true  false  RRect<MixR<Lane,RectW<Rec,Rec,Rec,Rec>,Smooth<Tri<Uw<63>,Rec,Rec>>>,MixI<I<Rec>,I<Rec>,Tri<Uw<63>,Rec,Rec>>,MixV<Pmo<Rec>,Pmo<Rec>,Tri<Uw<63>,Rec,Rec>...
+   2  GpuSdf    Wide        18      2  63         63         false false  Over<Shadow<Off<MixR<Lane,RectW<Rec,Rec,Rec,Rec>,Smooth<Tri<Uw<63>,Rec,Rec>>>,Ki<0>,Ki<1536>>,Ki<2560>,I<Rec>,Pm<Rec>,Tab>,RRect<MixR<Lane,RectW<Rec,R...
+   3  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+  whole: gpu pipeline true; block words {2,63}; bin pass on {63}; cut true; pick false; one CPU core up to 8 damaged tiles; 37 record words over 4 archetypes
+  dependents by block word (archetype bits): 2->0b1001 63->0b110
+# corner tables: 24 keys, 63749 entries (124 KiB), filled on the GPU in 0.14 ms of GPU time, 14.76 ms wall
+# scene: 1920x1080 px, 2040 tiles, 641 records in 4 columns, 27840 column words (108 KiB); mount 1.6 ms
+# start-up: whole-scene plan from the mounted columns 0.5 us (gpu true), source assembly 0.41 ms (147125 bytes, of which leaves 83638), Metal compile + 5+4 pipelines 364 ms
+# generic kernel: Metal compile 86 ms (49679 bytes of MSL)
+# generic kernel: restaging every record costs 0.02 ms for 941 commands (not charged to K rows)
+phase	executor	tiles	wall_min_us	wall_med_us	gpu_med_us	thread_Kinstr	thread_Kcycles	proc_Kinstr	note
+anim.full	A1 archetype cpu 1 core	2040	75948	87653	-	1219411.1	267909.1	0.0	pick + window pass + bins + shade
+anim.full	A  window pass + bins	2040	76	80	-	907.2	274.2	0.0	the per-record part of A1 / AP
+anim.full	AP archetype cpu 5+1	2040	14982	17213	-	243527.1	53850.3	0.0	shade only
+anim.full	AG archetype gpu resident	2040	2866	4452	2801	116.4	311.6	0.0	block write + encode + wait
+anim.full	AD driver, the plan's choice	2040	2586	4106	-	117.4	257.4	0.0	0 frames on one core, 24 on the GPU
+anim.full	K  generic bin	2040	42	79	-	694.6	198.3	0.0	4.2 entries per tile after the cut
+anim.full	K1 generic cpu 1 core	2040	38777	43274	-	623201.1	136811.2	0.0	raster only; restage free, bin above
+anim.full	KP generic cpu 5+1	2040	7886	12129	-	134133.7	28308.9	0.0	raster only
+anim.full	KG generic gpu	2040	853	2209	638	396.3	422.1	0.0	upload + tile kernel + wait
+anim.theme	A1 archetype cpu 1 core	2040	69803	73931	-	1218170.3	256006.6	0.0	pick + window pass + bins + shade
+anim.theme	A  window pass + bins	2040	6	8	-	43.2	27.9	0.0	the per-record part of A1 / AP
+anim.theme	AP archetype cpu 5+1	2040	12728	15605	-	224608.8	50090.2	0.0	shade only
+anim.theme	AG archetype gpu resident	2040	2635	3416	2094	76.8	289.1	0.0	block write + encode + wait
+anim.theme	AD driver, the plan's choice	2040	2010	3043	-	81.6	231.8	0.0	0 frames on one core, 24 on the GPU
+anim.theme	K  generic bin	2040	44	45	-	767.5	163.9	0.0	4.2 entries per tile after the cut
+anim.theme	K1 generic cpu 1 core	2040	36069	37548	-	622999.3	131581.3	0.0	raster only; restage free, bin above
+anim.theme	KP generic cpu 5+1	2040	6910	8457	-	129839.2	27360.0	0.0	raster only
+anim.theme	KG generic gpu	2040	888	1605	571	397.1	392.1	0.0	upload + tile kernel + wait
+anim.time	A1 archetype cpu 1 core	1905	72548	86463	-	1227082.7	272455.2	0.0	pick + window pass + bins + shade
+anim.time	A  window pass + bins	1905	89	92	-	1044.3	328.4	0.0	the per-record part of A1 / AP
+anim.time	AP archetype cpu 5+1	1905	14987	19312	-	238231.9	53273.7	0.0	shade only
+anim.time	AG archetype gpu resident	1905	1454	2349	989	90.5	271.5	0.0	block write + encode + wait
+anim.time	AD driver, the plan's choice	1905	1196	2182	-	90.9	239.6	0.0	0 frames on one core, 24 on the GPU
+anim.time	K  generic bin	1905	44	85	-	749.3	214.2	0.0	4.4 entries per tile after the cut
+anim.time	K1 generic cpu 1 core	1905	65486	80221	-	1117773.7	254230.5	0.0	raster only; restage free, bin above
+anim.time	KP generic cpu 5+1	1905	13134	20594	-	244016.5	55686.2	0.0	raster only
+anim.time	KG generic gpu	1905	1191	1854	713	381.8	385.9	0.0	upload + tile kernel + wait
+# cross-check failures: 0; load at end: 38.07 28.50 24.67
+## exit 0
+ 9:48  up 4 days, 12:40, 1 user, load averages: 38.07 28.50 24.67
+## repetition 3
+## pbench canvas 4 @slice12-exact  9:48  up 4 days, 12:40, 1 user, load averages: 38.07 28.50 24.67
+# pbench canvas Some(4); reps 24; workers 5; load at start: 38.07 28.50 24.67
+plan: canvas (const PLAN)
+   k  exec      cost     words layers  reads      moves on   cover pick  paint
+   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+   1  GpuSdf    Wide         7      2  0,1        0,1        true  false  Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,Ki<2048>,Pmo<...
+   2  GpuSdf    Wide        12      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,P...
+   3  GpuSdf    Wide        18      3  0,1        0,1        true  false  Clip<Clip<Over<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<...
+   4  GpuSdf    Wide        15      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<...
+   5  GpuSdf    PerPixel     9      1  0,1        0,1        true  false  Clip<Clip<Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<2252...
+   6  CpuSpans  Edge         8      1  0,1        0,1        true  false  Clip<Clip<Border<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<...
+   7  CpuSpans  Flat         6      1  0,1        0,1        false false  Clip<Clip<Glyph<Off<Lane,Un<PanX>,Un<PanY>>,Rec,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<522240>,K<409600>>>
+   8  GpuSdf    Wide        16      2  0,1,2,62   0,1        true  true  Hit<Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Border<Off<Lane,Un<PanX>,Un<PanY>>,I<R...
+   9  CpuSpans  Edge         8      1  0,1,63     0,1        false false  Clip<Clip<RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw<63>,Rec,Rec>>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K...
+  10  CpuSpans  Edge        14      1  0,1,63     0,1,63     false false  Clip<Clip<RRect<MixR<Off<Lane,Un<PanX>,Un<PanY>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>,Smooth<Tri<Uw<63>,Rec,Rec>>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw...
+  11  CpuSpans  Edge         9      1  0,1,3,4,5  0,1,3,4,5  true  true  Hit<Clip<Clip<RRect<Off<Off<Lane,Un<PanX>,Un<PanY>>,SelI<Eq<Un<Sel>,Rec>,Un<DragX>,Ki<0>>,SelI<Eq<Un<Sel>,Rec>,Un<DragY>,Ki<0>>>,I<Rec>,Pmo<Rec>>,Off<...
+  12  CpuSpans  Flat         4      1  2,62       -          true  true  Hit<Clip<Solid<Lane,SelV<Eq<Uw<62>,Rec>,MixV<Pm<K<4285217791>>,Pm<K<4283294207>>,Un<Theme>>,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>>,RectW<K<0>,K<22528>,K<...
+  13  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+  whole: gpu pipeline true; block words {0,1,2,3,4,5,62,63}; bin pass on {0,1,3,4,5,63}; cut true; pick true; one CPU core up to 8 damaged tiles; 131 record words over 14 archetypes
+  dependents by block word (archetype bits): 0->0b111111111110 1->0b111111111110 2->0b11000100000001 3->0b100000000000 4->0b100000000000 5->0b100000000000 62->0b1000100000000 63->0b11000000000
+# corner tables: 145 keys, 2239123 entries (4387 KiB), filled on the GPU in 0.69 ms of GPU time, 13.23 ms wall
+# scene: 2560x1600 px, 4000 tiles, 10101 records in 14 columns, 215488 column words (841 KiB); mount 4.9 ms
+# start-up: whole-scene plan from the mounted columns 1.2 us (gpu true), source assembly 1.16 ms (248559 bytes, of which leaves 83638), Metal compile + 5+14 pipelines 580 ms
+# generic kernel: Metal compile 1 ms (49679 bytes of MSL)
+# generic kernel: restaging every record costs 0.25 ms for 8708 commands (not charged to K rows)
+phase	executor	tiles	wall_min_us	wall_med_us	gpu_med_us	thread_Kinstr	thread_Kcycles	proc_Kinstr	note
+canvas.full	A1 archetype cpu 1 core	4000	42129	43256	-	964881.1	153633.5	0.0	pick + window pass + bins + shade
+canvas.full	A  window pass + bins	4000	290	299	-	4139.2	1068.4	0.0	the per-record part of A1 / AP
+canvas.full	AP archetype cpu 5+1	4000	7380	8451	-	166454.7	27745.0	0.0	shade only
+canvas.full	AG archetype gpu resident	4000	5371	7385	7080	147.8	344.4	0.0	block write + encode + wait
+canvas.full	AD driver, the plan's choice	4000	5298	6572	-	145.6	266.2	0.0	0 frames on one core, 24 on the GPU
+canvas.full	K  generic bin	4000	228	248	-	2975.8	888.2	0.0	6.5 entries per tile after the cut
+canvas.full	K1 generic cpu 1 core	4000	214222	216764	-	3652864.9	772528.6	0.0	raster only; restage free, bin above
+canvas.full	KP generic cpu 5+1	4000	47982	50708	-	680894.2	147578.7	0.0	raster only
+canvas.full	KG generic gpu	4000	2768	4241	3316	1315.2	832.1	0.0	upload + tile kernel + wait
+canvas.hover	A1 archetype cpu 1 core	142	13405	14495	-	302715.5	51083.9	0.0	pick + window pass + bins + shade
+canvas.hover	A  window pass + bins	142	7	9	-	79.4	31.8	0.0	the per-record part of A1 / AP
+canvas.hover	AP archetype cpu 5+1	142	2985	5310	-	87473.3	14533.8	0.0	shade only
+canvas.hover	AG archetype gpu resident	142	2165	2612	1604	89.5	283.1	0.0	block write + encode + wait
+canvas.hover	AD driver, the plan's choice	142	1811	2663	-	277.4	381.8	0.0	0 frames on one core, 24 on the GPU
+canvas.hover	K  generic bin	142	245	269	-	1970.5	966.7	0.0	55.4 entries per tile after the cut
+canvas.hover	K1 generic cpu 1 core	142	88223	92220	-	1496641.0	322408.9	0.0	raster only; restage free, bin above
+canvas.hover	KP generic cpu 5+1	142	23689	28802	-	350683.5	79257.2	0.0	raster only
+canvas.hover	KG generic gpu	142	1840	2779	1621	774.2	639.5	0.0	upload + tile kernel + wait
+canvas.hover1	A1 archetype cpu 1 core	30	33	39	-	318.3	143.3	0.0	pick + window pass + bins + shade
+canvas.hover1	A  window pass + bins	30	4	4	-	68.2	16.3	0.0	the per-record part of A1 / AP
+canvas.hover1	AP archetype cpu 5+1	30	42	74	-	280.9	161.0	0.0	shade only
+canvas.hover1	AG archetype gpu resident	30	478	1044	118	87.3	264.2	0.0	block write + encode + wait
+canvas.hover1	AD driver, the plan's choice	30	31	83	-	320.8	205.0	0.0	24 frames on one core, 0 on the GPU
+canvas.hover1	K  generic bin	30	43	74	-	900.7	236.3	0.0	3.2 entries per tile after the cut
+canvas.hover1	K1 generic cpu 1 core	30	28	37	-	331.8	134.6	0.0	raster only; restage free, bin above
+canvas.hover1	KP generic cpu 5+1	30	36	75	-	365.7	194.2	0.0	raster only
+canvas.hover1	KG generic gpu	30	383	983	43	674.4	503.3	0.0	upload + tile kernel + wait
+canvas.theme	A1 archetype cpu 1 core	3936	39592	42444	-	884782.2	146297.7	0.0	pick + window pass + bins + shade
+canvas.theme	A  window pass + bins	3936	55	58	-	984.4	208.8	0.0	the per-record part of A1 / AP
+canvas.theme	AP archetype cpu 5+1	3936	8002	10424	-	187683.8	32401.1	0.0	shade only
+canvas.theme	AG archetype gpu resident	3936	4000	6169	5339	92.0	292.4	0.0	block write + encode + wait
+canvas.theme	AD driver, the plan's choice	3936	3586	6024	-	92.6	261.3	0.0	0 frames on one core, 24 on the GPU
+canvas.theme	K  generic bin	3936	287	306	-	3020.8	1096.1	0.0	6.3 entries per tile after the cut
+canvas.theme	K1 generic cpu 1 core	3936	202307	225985	-	3432576.4	757157.5	0.0	raster only; restage free, bin above
+canvas.theme	KP generic cpu 5+1	3936	47354	56679	-	642420.6	140289.6	0.0	raster only
+canvas.theme	KG generic gpu	3936	2951	4886	3800	1260.8	818.0	0.0	upload + tile kernel + wait
+canvas.pan	A1 archetype cpu 1 core	472	8103	28967	-	630563.9	103139.2	0.0	pick + window pass + bins + shade
+canvas.pan	A  window pass + bins	472	347	741	-	5195.1	2651.9	0.0	the per-record part of A1 / AP
+canvas.pan	AP archetype cpu 5+1	472	1859	7432	-	128259.2	22307.2	0.0	shade only
+canvas.pan	AG archetype gpu resident	472	2915	5528	4800	99.7	295.5	0.0	block write + encode + wait
+canvas.pan	AD driver, the plan's choice	472	3533	5929	-	5486.2	2973.3	0.0	0 frames on one core, 24 on the GPU
+canvas.pan	K  generic bin	472	75	204	-	2045.7	705.3	0.0	31.6 entries per tile after the cut
+canvas.pan	K1 generic cpu 1 core	472	42089	165500	-	2742543.4	582792.5	0.0	raster only; restage free, bin above
+canvas.pan	KP generic cpu 5+1	472	19231	38936	-	442520.8	100154.9	0.0	raster only
+canvas.pan	KG generic gpu	472	1702	3145	2130	823.1	639.3	0.0	upload + tile kernel + wait
+canvas.drag	A1 archetype cpu 1 core	12	591	1224	-	25471.5	4379.9	0.0	pick + window pass + bins + shade
+canvas.drag	A  window pass + bins	12	5	6	-	23.7	21.3	0.0	the per-record part of A1 / AP
+canvas.drag	AP archetype cpu 5+1	12	540	1173	-	25454.5	4197.2	0.0	shade only
+canvas.drag	AG archetype gpu resident	12	3214	4514	3803	77.2	238.7	0.0	block write + encode + wait
+canvas.drag	AD driver, the plan's choice	12	598	1185	-	25479.7	4238.8	0.0	24 frames on one core, 0 on the GPU
+canvas.drag	K  generic bin	12	49	51	-	886.4	185.2	0.0	55.6 entries per tile after the cut
+canvas.drag	K1 generic cpu 1 core	12	4938	8768	-	145517.9	30588.6	0.0	raster only; restage free, bin above
+canvas.drag	KP generic cpu 5+1	12	2139	3612	-	60206.5	12897.2	0.0	raster only
+canvas.drag	KG generic gpu	12	1554	2146	1299	630.2	494.7	0.0	upload + tile kernel + wait
+canvas.time	A1 archetype cpu 1 core	118	9933	12920	-	292773.4	46210.2	0.0	pick + window pass + bins + shade
+canvas.time	A  window pass + bins	118	20	25	-	150.6	90.9	0.0	the per-record part of A1 / AP
+canvas.time	AP archetype cpu 5+1	118	2124	3538	-	62892.1	10011.0	0.0	shade only
+canvas.time	AG archetype gpu resident	118	3573	5176	4381	79.5	268.2	0.0	block write + encode + wait
+canvas.time	AD driver, the plan's choice	118	3231	4808	-	323.1	361.1	0.0	0 frames on one core, 24 on the GPU
+canvas.time	K  generic bin	118	174	189	-	1711.3	677.7	0.0	61.6 entries per tile after the cut
+canvas.time	K1 generic cpu 1 core	118	62961	74077	-	1226101.7	260610.3	0.0	raster only; restage free, bin above
+canvas.time	KP generic cpu 5+1	118	17752	22450	-	98385.0	21177.2	0.0	raster only
+canvas.time	KG generic gpu	118	1612	2714	1871	704.5	584.9	0.0	upload + tile kernel + wait
+# cross-check failures: 0; load at end: 35.00 28.74 24.91
+## exit 0
+ 9:48  up 4 days, 12:41, 1 user, load averages: 35.00 28.74 24.91
+## pbench anim 600 @slice12-exact  9:48  up 4 days, 12:41, 1 user, load averages: 35.00 28.74 24.91
+# pbench anim Some(600); reps 24; workers 5; load at start: 35.00 28.74 24.91
+plan: anim (const PLAN)
+   k  exec      cost     words layers  reads      moves on   cover pick  paint
+   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+   1  CpuSpans  Edge        14      1  63         63         true  false  RRect<MixR<Lane,RectW<Rec,Rec,Rec,Rec>,Smooth<Tri<Uw<63>,Rec,Rec>>>,MixI<I<Rec>,I<Rec>,Tri<Uw<63>,Rec,Rec>>,MixV<Pmo<Rec>,Pmo<Rec>,Tri<Uw<63>,Rec,Rec>...
+   2  GpuSdf    Wide        18      2  63         63         false false  Over<Shadow<Off<MixR<Lane,RectW<Rec,Rec,Rec,Rec>,Smooth<Tri<Uw<63>,Rec,Rec>>>,Ki<0>,Ki<1536>>,Ki<2560>,I<Rec>,Pm<Rec>,Tab>,RRect<MixR<Lane,RectW<Rec,R...
+   3  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>
+  whole: gpu pipeline true; block words {2,63}; bin pass on {63}; cut true; pick false; one CPU core up to 8 damaged tiles; 37 record words over 4 archetypes
+  dependents by block word (archetype bits): 2->0b1001 63->0b110
+# corner tables: 24 keys, 63749 entries (124 KiB), filled on the GPU in 0.21 ms of GPU time, 10.45 ms wall
+# scene: 1920x1080 px, 2040 tiles, 641 records in 4 columns, 27840 column words (108 KiB); mount 1.6 ms
+# start-up: whole-scene plan from the mounted columns 0.6 us (gpu true), source assembly 0.43 ms (147125 bytes, of which leaves 83638), Metal compile + 5+4 pipelines 11 ms
+# generic kernel: Metal compile 2 ms (49679 bytes of MSL)
+# generic kernel: restaging every record costs 0.02 ms for 941 commands (not charged to K rows)
+phase	executor	tiles	wall_min_us	wall_med_us	gpu_med_us	thread_Kinstr	thread_Kcycles	proc_Kinstr	note
+anim.full	A1 archetype cpu 1 core	2040	69504	70346	-	1218878.4	251400.2	0.0	pick + window pass + bins + shade
+anim.full	A  window pass + bins	2040	69	74	-	907.2	268.1	0.0	the per-record part of A1 / AP
+anim.full	AP archetype cpu 5+1	2040	11728	11830	-	202410.3	41900.2	0.0	shade only
+anim.full	AG archetype gpu resident	2040	2421	3657	3114	102.5	236.2	0.0	block write + encode + wait
+anim.full	AD driver, the plan's choice	2040	2072	3410	-	103.5	205.8	0.0	0 frames on one core, 24 on the GPU
+anim.full	K  generic bin	2040	41	42	-	694.6	151.9	0.0	4.2 entries per tile after the cut
+anim.full	K1 generic cpu 1 core	2040	35553	36212	-	622941.5	129515.2	0.0	raster only; restage free, bin above
+anim.full	KP generic cpu 5+1	2040	5580	6886	-	116498.4	24119.9	0.0	raster only
+anim.full	KG generic gpu	2040	790	1459	721	383.4	328.8	0.0	upload + tile kernel + wait
+anim.theme	A1 archetype cpu 1 core	2040	69421	70062	-	1217937.7	250878.9	0.0	pick + window pass + bins + shade
+anim.theme	A  window pass + bins	2040	7	8	-	43.2	27.7	0.0	the per-record part of A1 / AP
+anim.theme	AP archetype cpu 5+1	2040	11776	11857	-	203041.4	42135.9	0.0	shade only
+anim.theme	AG archetype gpu resident	2040	2308	3497	2728	74.4	245.1	0.0	block write + encode + wait
+anim.theme	AD driver, the plan's choice	2040	2003	3192	-	74.7	182.1	0.0	0 frames on one core, 24 on the GPU
+anim.theme	K  generic bin	2040	43	45	-	767.5	162.0	0.0	4.2 entries per tile after the cut
+anim.theme	K1 generic cpu 1 core	2040	35187	36219	-	622952.0	129513.2	0.0	raster only; restage free, bin above
+anim.theme	KP generic cpu 5+1	2040	5703	6470	-	106704.8	22503.5	0.0	raster only
+anim.theme	KG generic gpu	2040	904	1533	643	383.9	346.9	0.0	upload + tile kernel + wait
+anim.time	A1 archetype cpu 1 core	1905	69886	70658	-	1225884.8	252343.5	0.0	pick + window pass + bins + shade
+anim.time	A  window pass + bins	1905	86	88	-	1043.5	316.8	0.0	the per-record part of A1 / AP
+anim.time	AP archetype cpu 5+1	1905	11763	12901	-	212548.4	44208.1	0.0	shade only
+anim.time	AG archetype gpu resident	1905	1480	1944	1105	77.6	255.8	0.0	block write + encode + wait
+anim.time	AD driver, the plan's choice	1905	1002	1830	-	79.0	201.8	0.0	0 frames on one core, 24 on the GPU
+anim.time	K  generic bin	1905	44	46	-	749.3	165.4	0.0	4.4 entries per tile after the cut
+anim.time	K1 generic cpu 1 core	1905	63400	65234	-	1116950.1	232737.6	0.0	raster only; restage free, bin above
+anim.time	KP generic cpu 5+1	1905	11248	12570	-	192676.6	40998.5	0.0	raster only
+anim.time	KG generic gpu	1905	1043	1584	718	367.9	351.8	0.0	upload + tile kernel + wait
+# cross-check failures: 0; load at end: 32.42 28.48 24.88
+## exit 0
+ 9:48  up 4 days, 12:41, 1 user, load averages: 32.42 28.48 24.88

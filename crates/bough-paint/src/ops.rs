@@ -273,6 +273,54 @@ pub mod ops {
         mk(K_SHADOW, shift_of(r), win, core_of(b, bw + bw / 2i32 + r + 2i32, win), b, vec4i(r, bw, inv, curve), tab, pm, splat(0u32))
     }
 
+    /// High bit distinguishes complete coverage patches from the four-corner correction tables.
+    pub const PATCH_BIT: u32 = 0x80000000u32;
+    pub const PATCH_MASK: u32 = 0x7FFFFFFFu32;
+
+    /// Patch dimensions in pixels, the first support-free coordinate, and outside padding.
+    /// An axis too narrow to have a support-free run is kept in full.
+    pub fn x_patch_shape(c: Cmd) -> Vec4i {
+        let reach = c.rad.y() + (c.rad.y() >> 1u32);
+        let middle = ((c.rad.x() + reach + 255i32) >> 8u32) + 2i32;
+        let pad = ((reach + 255i32) >> 8u32) + 2i32;
+        let w = (c.b.z() >> 8u32) - (c.b.x() >> 8u32);
+        let h = (c.b.w() >> 8u32) - (c.b.y() >> 8u32);
+        vec4i(min(w, 2i32 * middle + 1i32), min(h, 2i32 * middle + 1i32), middle, pad)
+    }
+    pub fn x_patch_phase(c: Cmd) -> u32 {
+        (c.b.x() as u32 & 255u32) | ((c.b.y() as u32 & 255u32) << 8u32) |
+            ((c.b.z() as u32 & 255u32) << 16u32) | ((c.b.w() as u32 & 255u32) << 24u32)
+    }
+    pub fn x_patch_dims(s: Vec4i) -> u32 {
+        (s.x() as u32) | ((s.y() as u32) << 16u32)
+    }
+    pub fn x_patch_ok(c: Cmd, s: Vec4i, radius: u32, blur: u32, phase: u32, dims: u32) -> bool {
+        c.b.x() < c.b.z() && c.b.y() < c.b.w() && s.x() < 4096i32 && s.y() < 4096i32 &&
+            c.rad.x() as u32 == radius && c.rad.y() as u32 == blur && x_patch_dims(s) == dims &&
+            x_patch_phase(c) == phase
+    }
+    pub fn x_patch_axis(p: i32, low: i32, high: i32, span: i32, middle: i32, pad: i32) -> i32 {
+        let x = p - low;
+        let gap = high - low - span;
+        if gap > 0i32 && x >= middle {
+            return max(x - gap, middle) + pad;
+        }
+        x + pad
+    }
+    pub fn x_patch_idx(c: Cmd, s: Vec4i, x: i32, y: i32) -> u32 {
+        let ix = x_patch_axis(x, c.b.x() >> 8u32, c.b.z() >> 8u32, s.x(), s.z(), s.w());
+        let iy = x_patch_axis(y, c.b.y() >> 8u32, c.b.w() >> 8u32, s.y(), s.z(), s.w());
+        let width = s.x() + 2i32 * s.w() + 1i32;
+        let height = s.y() + 2i32 * s.w() + 1i32;
+        if ix < 0i32 || iy < 0i32 || ix >= width || iy >= height {
+            return T_MISS;
+        }
+        (iy * width + ix) as u32
+    }
+    pub fn p_shadow_coverage(c: Cmd, value: u32) -> Vec4u {
+        scale(c.pm, value)
+    }
+
     // ---- the corner table: a memo of `corner3`, which depends on the pixel's offset from the corner and on
     // ---- (radius, blur width) only. One table per distinct (radius, blur), entries at whole-pixel steps
     // ---- from a pixel centre, so it serves every box whose corner is on the pixel grid; anything else
@@ -555,8 +603,9 @@ pub mod ops {
     pub fn mk_video(b: Vec4i, r0: i32, slot: u32, dims: u32, op: u32, clip: Vec4i) -> Cmd {
         let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
         let r = radius_in(b, r0);
-        let vw = clamp(dims & 65535u32, 2u32, 2047u32) as i32;
-        let vh = clamp(dims >> 16u32, 2u32, 2047u32) as i32;
+        let smallest = select(2u32, 1u32, slot >= 0x80000000u32);
+        let vw = clamp(dims & 65535u32, smallest, 2047u32) as i32;
+        let vh = clamp(dims >> 16u32, smallest, 2047u32) as i32;
         let kx = min((vw << 20u32) / max(b.z() - b.x(), 1i32), 8388607i32);
         let ky = min((vh << 20u32) / max(b.w() - b.y(), 1i32), 8388607i32);
         mk(K_VIDEO, shift_of(r), win, core_of(b, max(r, 128i32) + 136i32, win), b, vec4i(r, 0i32, kx, ky), slot, vec4u(min(op, ONE), vw as u32, vh as u32, 0u32), splat(0u32))
@@ -617,6 +666,18 @@ pub mod ops {
             xk: vec4i(0i32, 0i32, 0i32, 0i32),
             xs: 0i32,
         }
+    }
+    pub fn mk_author(b: Vec4i, r: i32, state: u32, a: Vec4u, d: Vec4u, clip: Vec4i) -> Cmd {
+        mk_user(b, r, 0u32, state, a, d, clip)
+    }
+    pub fn x_author_state(c: Cmd) -> u32 { c.par.w() }
+    pub fn x_author_a(c: Cmd) -> Vec4u { c.pm }
+    pub fn x_author_d(c: Cmd) -> Vec4u { c.pm2 }
+    pub fn p_author(c: Cmd, x: i32, y: i32, colour: Vec4u) -> Vec4u {
+        let alpha = min(colour.w(), ONE);
+        let pm = vec4u(min(colour.x(), alpha), min(colour.y(), alpha), min(colour.z(), alpha), alpha);
+        if inside(c.core, x, y) { return pm; }
+        scale(pm, cov(sd(x * 256i32 + 128i32, y * 256i32 + 128i32, c.b, c.rad.x(), c.par.y())))
     }
     pub fn p_user(c: Cmd, x: i32, y: i32) -> Vec4u {
         if !inside(c.win, x, y) {
