@@ -199,6 +199,7 @@ mod native {
         fn CGImageSourceGetType(source: Ref) -> Ref;
         fn CGImageSourceCreateThumbnailAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
         static kCGImageSourceThumbnailMaxPixelSize: Ref;
+        static kCGImageSourceTypeIdentifierHint: Ref;
         static kCGImageSourceCreateThumbnailFromImageAlways: Ref;
         fn CGImageSourceCopyPropertiesAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
         fn CGImageSourceCreateImageAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
@@ -403,16 +404,19 @@ mod native {
         let data = Owned::from_created(unsafe {
             CFDataCreate(null(), bytes.as_ptr(), bytes.len() as isize)
         })?;
-        // SAFETY: CFData is owned for the entire ImageIO operation.
-        let source = Owned::from_created(unsafe { CGImageSourceCreateWithData(data.0, null()) })?;
-        // SAFETY: the literal is NUL-terminated and the source and CF strings are retained.
+        // SAFETY: the literal is NUL-terminated. The options dictionary borrows its
+        // string and global key until the source has consumed the type hint.
         let image = unsafe {
-            let format = CGImageSourceGetType(source.0);
             let svg = Owned::from_created(CFStringCreateWithCString(
                 null(),
                 c"public.svg-image".as_ptr(),
                 0x0800_0100,
             ))?;
+            let hint = kCGImageSourceTypeIdentifierHint;
+            let options =
+                Owned::from_created(CFDictionaryCreate(null(), &hint, &svg.0, 1, null(), null()))?;
+            let source = Owned::from_created(CGImageSourceCreateWithData(data.0, options.0))?;
+            let format = CGImageSourceGetType(source.0);
             if format.is_null() || !CFEqual(format, svg.0) {
                 return Err(DecodeError::UnsupportedFormat);
             }
