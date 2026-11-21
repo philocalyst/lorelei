@@ -195,6 +195,20 @@ impl<'a> Spans<'a> {
         Spans { px, stride, w, h, mask, img, st: Stats::default(), _p: core::marker::PhantomData }
     }
 
+    /// The frame cut to the bounding box of the mask's tiles: nothing is written outside it.
+    fn bound(&self) -> Rect {
+        let Some(m) = self.mask else { return Rect { x0: 0, y0: 0, x1: self.w, y1: self.h } };
+        let (mut x0, mut x1) = (i32::MAX, 0);
+        for row in m.bits[m.lo.min(m.hi) * m.stride..m.hi * m.stride].chunks(m.stride.max(1)) {
+            for (k, &wd) in row.iter().enumerate() {
+                if wd != 0 {
+                    x0 = x0.min((k as i32 * 64 + wd.trailing_zeros() as i32) << TILE_SHIFT);
+                    x1 = x1.max((k as i32 * 64 + 64 - wd.leading_zeros() as i32) << TILE_SHIFT);
+                }
+            }
+        }
+        Rect { x0: x0.min(x1).max(0), y0: ((m.lo.min(m.hi) as i32) << TILE_SHIFT).min(self.h), x1: x1.min(self.w), y1: ((m.hi as i32) << TILE_SHIFT).min(self.h) }
+    }
     /// The parts of `r` (cut to the surface) that lie in tiles of the mask, as rectangles: per tile row, one per
     /// maximal run of tiles.
     #[inline(always)]
@@ -415,7 +429,10 @@ impl Prims for Spans<'_> {
 impl Backend for Spans<'static> {
     fn fill<A: FillArch>(&mut self, col: ColRef<'_, A>, u: &U) {
         let (org, clip) = (col.space.origin(u), col.space.clip);
-        col.each(|r, a| {
+        // a fill writes nothing outside its record's rect cut to the clip, the frame and the mask: only the
+        // records that meet that cut (taken back into the store's space) are visited
+        let shown = clip.and(self.bound()).shift((-org.0, -org.1));
+        col.each_in(shown, |r, a| {
             self.st.records += 1;
             self.fill(r.shift(org).and(clip), a.color(u).0)
         });

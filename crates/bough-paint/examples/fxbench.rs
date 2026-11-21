@@ -350,7 +350,8 @@ struct Row {
     turn: Vec<u64>,
     /// Under the chooser: frames idle / on the CPU / on the GPU, and the two device constants it measured.
     ran: [u32; 3],
-    consts: (f64, f64),
+    /// Layer repair that left its words as they were (CPU executor).
+    same: bough_paint::tile::Stats,
 }
 fn med<T: Copy + PartialOrd>(v: &[T]) -> Option<T> {
     let mut v = v.to_vec();
@@ -403,10 +404,6 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
                 row.ran[ran as usize] += 1;
             }
             tiles.resize(fs.tiles as usize, 0);
-            if f == 0 {
-                mx.calibrate(&w.s, &u, pool);
-                row.consts = (mx.cpu_ns_per_weight, mx.gpu_floor_ns);
-            }
             fs
         } else {
             let (j0, _) = pmu::instructions_cycles();
@@ -419,7 +416,10 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
             w.s.damage.clear();
             match gpu.as_mut() {
                 None => {
-                    w.s.prepare(&u);
+                    let st = w.s.prepare(&u);
+                    if f >= warm {
+                        row.same.add(&st);
+                    }
                     w.s.shade(&u, &tiles, &mut out, FW as usize, pool, 0);
                 }
                 Some(g) => gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu,
@@ -489,7 +489,7 @@ fn main() {
     println!("# fxbench {scene} {n}{}; {FW}x{FH}; reps {reps}; load at start: {}", if dense { " dense" } else { "" }, load());
     println!("# scene: {} records in {} columns, {} layers, {} glass / {} dots / {} videos; media pool {} slots", w.s.records(), w.s.cols().len(), w.s.layers.list.len(), w.g_rect.len(), w.d_rect.len(), w.v_rect.len(), w.s.media.stats().0);
     drop(w);
-    println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch\tturn_med\tran_idle/cpu/gpu\tcpu_ns_per_weight\tgpu_floor_ns");
+    println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch\tturn_med\tran_idle/cpu/gpu\tprefix_same/prefix\tblocks_same/blocks by level 1..5");
     if scene == "media" {
         // T3: what the pacer costs per tile per refresh
         let mut sink = NullSink::new(Spec::STEREO_48K, 480, |_: &mut Block| {});
@@ -513,7 +513,7 @@ fn main() {
             bad_total += bad;
             let f = r.frames.max(1) as f64;
             println!(
-                "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{:.1}\t{:.0}",
+                "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{}/{}\t{}",
                 if dense { "d" } else { "" },
                 cell.name(),
                 r.tiles as f64 / f,
@@ -532,8 +532,9 @@ fn main() {
                 r.ran[0],
                 r.ran[1],
                 r.ran[2],
-                r.consts.0,
-                r.consts.1,
+                r.same.prefix_same,
+                r.same.prefix,
+                (1..6).map(|k| format!("{}/{}", r.same.blk_same[k], r.same.blk[k])).collect::<Vec<_>>().join(" "),
             );
         }
     }

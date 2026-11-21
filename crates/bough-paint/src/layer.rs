@@ -487,11 +487,13 @@ pub fn sample(pool: &[u32], l: &Layer, fw: u32, fh: u32, c: Cmd, x: i32, y: i32)
     bough_kernel::k::mix4u(a, read(pool, l, c.rad.y as u32 + 1, fw, fh, x, y), c.rad.z as u32)
 }
 /// Downsample block (bx, by) of level `k` (`32 >> k` pixels a side) of a layer from level `k - 1` (the pixels inside its window).
-pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: i32) {
+/// Returns whether every word it wrote was already there.
+pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: i32) -> bool {
     let (dst, src) = (l.lv[k as usize], l.lv[k as usize - 1]);
     let (sw, sh) = (x::bd_dim(fw, k - 1), x::bd_dim(fh, k - 1));
     let bs = bshift(k);
     let r = cut([bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs], dst.r);
+    let mut same = true;
     for y in r[1]..r[3] {
         for xx in r[0]..r[2] {
             let mut rows = [Vec4 { x: 0, y: 0, z: 0, w: 0 }; 4];
@@ -501,7 +503,10 @@ pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: 
                 *row = x::dn_row(t(0), t(1), t(2), t(3));
             }
             let v = x::dn_fin(rows[0], rows[1], rows[2], rows[3]);
-            pool[at(&dst, xx, y)] = if cfg!(feature = "mutant_layer_weights") { v ^ 1 } else { v };
+            let v = if cfg!(feature = "mutant_layer_weights") { v ^ 1 } else { v };
+            same &= pool[at(&dst, xx, y)] == v;
+            pool[at(&dst, xx, y)] = v;
         }
     }
+    same
 }

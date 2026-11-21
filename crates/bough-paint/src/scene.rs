@@ -1197,7 +1197,8 @@ impl Scene {
                 }
                 for (k, blocks) in &w.blocks {
                     for &(bx, by) in blocks {
-                        layer::down(pool_words, l, *k, s.fw, s.fh, bx, by);
+                        t.st.blk[*k as usize] += 1;
+                        t.st.blk_same[*k as usize] += layer::down(pool_words, l, *k, s.fw, s.fh, bx, by) as u64;
                     }
                 }
             }
