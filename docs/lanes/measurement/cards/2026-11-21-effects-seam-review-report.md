@@ -14,6 +14,12 @@ The replay pin is wave3 `7991e7bd4e`, the merge of the Round 2 measurement branc
 
 The historical Round 2 wave3 matrix contains all 27 classifications at `62d53d3abe`. Its hover and scroll gates passed at all three sizes. Façade video was unavailable at all three sizes. The reference columns in that capture predate the native PNG replay. See [the complete older capture](../../../../bench/results/effects/r3/matrix-round2-completed-wave3.md).
 
+## Native PNG replay
+
+The two reference adapters classified all 54 rows. zgx passed the dynamic gates at every size and supplied 240 observations per changing cell. Its glass-over-video p50/p95/p99 was **0.676/0.838/1.011**, **0.671/0.839/1.119**, and **0.927/1.137/1.221 ms** in increasing card count, with 240/240 renders. zgui's 1,000- and 5,000-card `many` gates failed in `Buffer::map_async` (`zgui.readback` invalid). The `many` retry will record the retained and forced-full outcomes, and time a row only after both gates pass and their hashes match.
+
+Native PNG zgui `one` and 200-card `many` recorded 131 redraw requests over the 239 observable transitions between sampled ticks. The separate 480-tick run tests whether those cells reach 200 distinct redraw steps. Startup for each reference has one observation in the stock matrix. The separate fresh-process 240-repeat capture is queued. Assets share the same decoded RGBA samples. Geometry, motion semantics and GPU completion boundaries still differ across adapters. [27 comparison rows](../../../../bench/results/effects/r3/matrix-native-png.md)
+
 ## Review candidates
 
 1. **Layered driver routing.** `Driver::frame` selects the resident renderer when a GPU is present, while `Gpu::run` rejects a layered scene. The driver's CPU branch calls `shade` without `prepare`. The patch uses the CPU schedule on both branches. Each chosen executor maintains its own layer contents over successive frames. The direct resident refusal remains a separate probe. See [the driver candidate](../../../../bench/results/effects/r3/paint-driver-layered.patch).
