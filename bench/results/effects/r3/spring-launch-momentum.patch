@@ -1,0 +1,34 @@
+--- a/crates/bough-paint/src/motion.rs
++++ b/crates/bough-paint/src/motion.rs
+@@ -65,13 +65,29 @@
+         }
+         x::x_spring(now, self.t0, self.dur, self.to, self.a0, self.b0, k.decay, k.omega)
+     }
+-    /// The velocity at `now`, Q8 per tick, as a central difference of the leaf (0 at rest). The difference
++    /// The velocity at `now`, Q8 per tick. At launch use the right derivative. The later central difference
+     /// spans four ticks either side where the motion has run that long (the leaf's trigonometry is good to
+     /// about 1e-4 of the amplitude, which a two-tick difference would turn into velocity noise).
+     pub fn velocity(&self, k: Response, now: u32) -> f64 {
+         let e = now.wrapping_sub(self.t0);
+-        if self.dur == 0 || (e as i32) <= 0 || e >= self.dur {
++        if self.dur == 0 || (e as i32) < 0 || e >= self.dur {
+             return 0.0;
++        }
++        if e == 0 {
++            // At launch the left sample is still, but the right derivative carries momentum.
++            // Recover that derivative from the same quantized coefficients as the raster leaf.
++            let a = f64::from(self.a0);
++            let b = f64::from(self.b0);
++            let decay = f64::from(k.decay) / 65_536.0;
++            if k.omega >= 0x8000_0000 {
++                let fast_decay = f64::from(k.omega & 65_535) / 65_536.0;
++                return -decay * a - fast_decay * b;
++            }
++            if k.omega == 0 {
++                return b / 1024.0 - decay * a;
++            }
++            let omega = f64::from(k.omega) * (std::f64::consts::TAU / 16_777_216.0);
++            return omega * b - decay * a;
+         }
+         let h = if e >= 4 && e + 4 < self.dur { 4 } else { 1 };
+         (self.value(k, now.wrapping_add(h)) - self.value(k, now.wrapping_sub(h))) as f64 / (2 * h) as f64
