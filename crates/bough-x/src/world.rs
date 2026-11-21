@@ -175,8 +175,9 @@ pub struct World<V, B> {
     cols: Vec<Column>,
     spaces: Vec<(u64, *const Store)>,
     shape: u64,
-    /// Published stores that observe a journal. Their current watcher and seen version are read in place.
-    relations: Vec<*const Store>,
+    /// Published journal bindings. The watched source belongs to the active table. The store carries
+    /// the version consumed by the latest successful list pass.
+    relations: Vec<(*const Store, std::sync::Arc<core::sync::atomic::AtomicU32>)>,
     pub retables: usize,
     /// The fields of the root view the block's words are gathered from, when the view keeps its Frame state
     /// as its own fields (learned from the columns' lenses; empty for a view that declares a block).
@@ -260,14 +261,10 @@ impl<V: View, B: Backend> World<V, B> {
         if self.shape == STALE {
             return self.epoch.wrapping_add(1);
         }
-        if self.relations.iter().any(|&store| {
+        if self.relations.iter().any(|(store, watch)| {
             // SAFETY: the published table is current, and the shared world borrow excludes a view
             // pass. Each pointer is an owning store address recorded when the table was built.
-            let store = unsafe { &*store };
-            store
-                .journal
-                .as_ref()
-                .is_some_and(|watch| watch.load(Ordering::Relaxed) != store.seen)
+            watch.load(Ordering::Relaxed) != unsafe { (**store).seen }
         }) {
             self.epoch.wrapping_add(1)
         } else {
@@ -440,11 +437,11 @@ impl<V: View, B: Backend> World<V, B> {
             owner: &StoreOwner,
             cols: &mut Vec<Column>,
             spaces: &mut Vec<(u64, *const Store)>,
-            relations: &mut Vec<*const Store>,
+            relations: &mut Vec<(*const Store, std::sync::Arc<core::sync::atomic::AtomicU32>)>,
         ) {
             let store = owner.as_ptr();
-            if owner.journal.is_some() {
-                relations.push(store);
+            if let Some(watch) = &owner.journal {
+                relations.push((store, watch.clone()));
             }
             let reads = owner.space.reads();
             if reads != 0 {

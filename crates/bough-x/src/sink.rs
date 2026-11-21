@@ -135,13 +135,14 @@ impl Journal {
     }
     // Once a list is following this journal, its Arc already owns the revision counter.
     // Rebind only when the source journal changes.
-    fn follow(&self, current: &mut Option<std::sync::Arc<AtomicU32>>) {
+    fn follow(&self, current: &mut Option<std::sync::Arc<AtomicU32>>) -> bool {
         if let (Some(watch), Some(current)) = (self.watch.get(), current.as_ref())
             && std::sync::Arc::ptr_eq(watch, current)
         {
-            return;
+            return false;
         }
         *current = Some(self.watch());
+        true
     }
     #[inline(always)]
     pub fn push(&mut self, e: Edit) {
@@ -1287,9 +1288,7 @@ fn list_plan(
     leaves: usize,
     src: crate::store::RowSrc,
 ) -> Mk {
-    let first_watch = st.journal.is_none();
-    l.edits.follow(&mut st.journal);
-    if first_watch {
+    if l.edits.follow(&mut st.journal) {
         st.bump_structure();
     }
     let (from, upd, nupd) = l.edits.since(st.seen);
