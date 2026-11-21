@@ -11,8 +11,8 @@
         "guest-cpus": "10",
         "host-cpu": "Apple M3 Ultra",
         "host-macos": "26.7.3",
-        "load-after": "0.22 0.24 0.56 1/288 149709",
-        "load-before": "5.22 3.32 1.43 2/293 149035",
+        "load-after": "0.22 0.24 0.56",
+        "load-before": "5.22 3.32 1.43",
         "lorelei-head": "cda302287b11a3abb5daf0493c1f0c9ea5552c67 (dirty)",
         "pinning": "taskset -c 0-5 for the runner and every app it launches",
         "runner-exit": "0",
@@ -27,7 +27,11 @@
         "rows/zgui": 2
       },
       "failures": 0,
-      "interactive_wake_max_ms": {},
+      "interactive_wake_max_ms": {
+        "rows/bough-x/interactive": 6.751,
+        "rows/bough/interactive": 12.636,
+        "rows/zgui/interactive": 17.604
+      },
       "invalid_reports": 14,
       "reports": 20,
       "unchecked_reports": 0,
@@ -64,8 +68,8 @@
         "guest-cpus": "4",
         "host-cpu": "Apple M3 Ultra",
         "host-macos": "26.7.3",
-        "load-after": "0.64 0.29 0.52 1/210 38468",
-        "load-before": "2.81 2.35 1.19 1/213 38141",
+        "load-after": "0.64 0.29 0.52",
+        "load-before": "2.81 2.35 1.19",
         "lorelei-head": "cda302287b11a3abb5daf0493c1f0c9ea5552c67 (dirty)",
         "pinning": "taskset -c 0-3 for the runner and every app it launches",
         "runner-exit": "0",
@@ -80,7 +84,11 @@
         "rows/zgui": 1
       },
       "failures": 0,
-      "interactive_wake_max_ms": {},
+      "interactive_wake_max_ms": {
+        "rows/bough-x/interactive": 7.184,
+        "rows/bough/interactive": 7.331,
+        "rows/zgui/interactive": 7.678
+      },
       "invalid_reports": 7,
       "reports": 10,
       "unchecked_reports": 0,
