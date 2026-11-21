@@ -407,22 +407,28 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
             fs
         } else {
             let (j0, _) = pmu::instructions_cycles();
-            let fs = w.s.update(&u);
+            let mut fs = if gpu.is_some() { w.s.update_eager(&u) } else { w.s.update(&u) };
             let (j1, _) = pmu::instructions_cycles();
             if f >= warm {
                 row.turn.push(j1 - j0);
             }
-            w.s.damage.tiles(&mut tiles);
-            w.s.damage.clear();
             match gpu.as_mut() {
                 None => {
+                    // the CPU kernel repairs the layers as it schedules them; the output damage is whole after
                     let st = w.s.prepare(&u);
+                    (fs.prefix_tiles, fs.blocks) = (st.prefix as u32, st.blk.iter().sum::<u64>() as u32);
                     if f >= warm {
                         row.same.add(&st);
                     }
+                    w.s.damage.tiles(&mut tiles);
+                    w.s.damage.clear();
                     w.s.shade(&u, &tiles, &mut out, FW as usize, pool, 0);
                 }
-                Some(g) => gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu,
+                Some(g) => {
+                    w.s.damage.tiles(&mut tiles);
+                    w.s.damage.clear();
+                    gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu;
+                }
             }
             fs
         };

@@ -275,8 +275,9 @@ fn retained_equals_full_redraw_and_the_specification() {
         let mut stale = vec![vec![true; nt]; 4];
         for k in 0..STEPS {
             let name = if k == 0 { "mount" } else { step(&mut g, k, &mut u, &mut wd, &mut b) };
-            let fs = b.s.update(&u);
-            b.s.prepare(&u);
+            let mut fs = b.s.update(&u);
+            let st = b.s.prepare(&u);
+            (fs.prefix_tiles, fs.blocks) = (st.prefix as u32, st.blk.iter().sum::<u64>() as u32);
             let mut tiles = Vec::new();
             b.s.damage.tiles(&mut tiles);
             b.s.damage.clear();
@@ -548,7 +549,7 @@ fn gpu_staged_frame_equals_the_cpu() {
             // The retained scene is drawn by Metal alone (the layers' pool is shared memory now: a CPU
             // `prepare` on the same scene would repair what a broken GPU stage left). The reference is a
             // fresh scene drawn whole by the CPU kernel.
-            b.s.update(&u);
+            b.s.update_eager(&u);
             let mut tiles = Vec::new();
             b.s.damage.tiles(&mut tiles);
             b.s.damage.clear();
@@ -605,7 +606,7 @@ fn gpu_staged_frame_equals_the_cpu() {
         let (mut kept, mut u, mut d) = (vec![0u32; words], U::default(), 0);
         for hover in [0, 1, 0] {
             u.w[2] = hover;
-            s.update(&u);
+            s.update_eager(&u);
             let mut tiles = Vec::new();
             s.damage.tiles(&mut tiles);
             s.damage.clear();

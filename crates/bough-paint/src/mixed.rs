@@ -61,9 +61,8 @@ impl Mixed {
         let mut fs = scene.update(u);
         let mut tiles = std::mem::take(&mut self.tiles);
         scene.damage.tiles(&mut tiles);
-        scene.damage.clear();
-        fs.tiles = tiles.len() as u32;
-        let idle = tiles.is_empty() && !scene.plan.full && scene.plan.work.is_empty();
+        let due = scene.due_weight();
+        let idle = tiles.is_empty() && !scene.plan.full && due == 0;
         let ran = if idle {
             Ran::Idle
         } else if let Some(r) = force {
@@ -72,17 +71,29 @@ impl Mixed {
             // a broad change never touches the CPU painter, and nothing is computed to decide so
             Ran::Gpu
         } else {
-            // the damage's weight: the tiles to shade, the prefix tiles (a tile program each) and the
-            // pyramid pixels (16 taps each, about a flat entry per 16 pixels)
-            let w: u64 = tiles.iter().map(|&t| scene.tile_weight(t) as u64).sum::<u64>() + scene.plan.work.iter().flat_map(|w| w.prefix.iter()).map(|&t| scene.tile_weight(t) as u64).sum::<u64>() + scene.plan.px / 16;
+            // the damage's weight before any repair: the tiles to shade and the layer tiles that are due
+            let w: u64 = tiles.iter().map(|&t| scene.tile_weight(t) as u64).sum::<u64>() + due;
             self.last_weight = w;
             if w * CPU_INSTR_PER_WEIGHT <= GPU_FRAME_INSTR { Ran::Cpu } else { Ran::Gpu }
         };
-        self.last_gpu = 0.0;
+        // the CPU kernel repairs the layers first and lets damage stop where nothing changed; Metal needs
+        // the whole schedule before it runs. Either way the output damage is complete only now.
         match ran {
             Ran::Idle => {}
             Ran::Cpu => {
                 scene.prepare(u);
+            }
+            Ran::Gpu => {
+                scene.plan_eager();
+            }
+        }
+        scene.damage.tiles(&mut tiles);
+        scene.damage.clear();
+        fs.tiles = tiles.len() as u32;
+        self.last_gpu = 0.0;
+        match ran {
+            Ran::Idle => {}
+            Ran::Cpu => {
                 let (words, stride) = (self.words, self.stride);
                 fs.raster = scene.shade(u, &tiles, self.gpu.out_mut(words), stride, pool, 0);
             }

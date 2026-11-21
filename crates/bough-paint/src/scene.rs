@@ -687,6 +687,8 @@ pub struct Scene {
     regeo: Vec<u32>,
     act: Vec<u32>,
     rebin: Vec<u32>,
+    /// Layers with something due (pending tiles, entered strips, or fresh) and not yet scheduled or repaired.
+    lay_todo: std::collections::BTreeSet<u32>,
     /// Bumped when the bins were rebuilt (an executor that mirrors them re-reads them).
     pub bins_epoch: u64,
     /// Measurement switch, never a result's configuration: every layer is recomputed whole on every
@@ -769,6 +771,7 @@ impl Scene {
             regeo: Vec::new(),
             act: Vec::new(),
             rebin: Vec::new(),
+            lay_todo: Default::default(),
             bins_epoch: 0,
             fx_nocache: std::env::var("BOUGH_FX_NOCACHE").is_ok(),
             broad: 0,
@@ -1056,43 +1059,72 @@ impl Scene {
             // every layer whole, said in one word: the executor has (or makes once) the jobs for it
             self.plan.full = true;
         } else if lay_on && (first || relaid || !events.is_empty()) {
-            let mut todo: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+            // what is due, and no more: the events reach, through each tile's own list of layer records,
+            // the layers above them there. What that repair goes on to damage is found when it is done
+            // (`prepare`: only what really changed) or assumed (`plan_eager`: everything it could reach).
             if first || self.fx_nocache {
-                todo.extend(0..self.layers.list.len() as u32);
+                self.lay_todo.extend(0..self.layers.list.len() as u32);
             }
-            todo.extend(regeo.iter().map(|&z| self.layers.lid(z)));
-            let (tx, ty) = (self.tx as i32, self.ty as i32);
-            let route = |bins: &Bins, layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, w: [i32; 4], z: u32| {
-                for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty) {
-                    for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx) {
-                        let t = (y * tx + x) as usize;
-                        let ls = bins.layers(t);
-                        for &lz in &ls[ls.partition_point(|&k| k <= z)..] {
-                            let lid = layers.of[lz as usize];
-                            layers.list[lid as usize].pending.push(t as u32);
-                            todo.insert(lid);
-                        }
-                    }
-                }
-            };
+            self.lay_todo.extend(regeo.iter().map(|&z| self.layers.lid(z)));
             for &(w, z) in &events {
-                route(&self.bins, &mut self.layers, &mut todo, w, z);
-            }
-            let mut outs: Vec<[i32; 4]> = Vec::new();
-            while let Some(lid) = todo.pop_first() {
-                outs.clear();
-                self.layers.schedule(lid, self.tx, &mut self.plan, |r| outs.push(r));
-                let z = self.layers.list[lid as usize].z;
-                for r in &outs {
-                    self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                    route(&self.bins, &mut self.layers, &mut todo, *r, z);
-                }
+                Self::route(&self.bins, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
             }
         }
         (fs.prefix_tiles, fs.blocks, fs.layer_px) = (self.plan.prefix_tiles, self.plan.blocks, self.plan.px);
         (self.events, self.regeo, self.act, self.rebin) = (events, regeo, act, rebin);
         self.prev = *u;
         self.first = false;
+        fs
+    }
+    /// An event (a window that changed, and its record's key) reaches the layers above it on the tiles it
+    /// touches: their level-0 tiles there are due.
+    fn route(bins: &Bins, layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, tx: i32, ty: i32, w: [i32; 4], z: u32) {
+        for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty) {
+            for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx) {
+                let t = (y * tx + x) as usize;
+                let ls = bins.layers(t);
+                for &lz in &ls[ls.partition_point(|&k| k <= z)..] {
+                    let lid = layers.of[lz as usize];
+                    layers.list[lid as usize].pending.push(t as u32);
+                    todo.insert(lid);
+                }
+            }
+        }
+    }
+    /// The layers' stages for this frame, assuming every repair changes everything it could reach: the
+    /// plan an executor needs when it cannot look at results before scheduling (Metal's staged frame). Adds
+    /// the readers' output damage. Call after `update`, before reading the damage; `prepare` then runs
+    /// exactly this plan. (Without this call `prepare` schedules as it repairs and stops where a repair
+    /// changed nothing.)
+    pub fn plan_eager(&mut self) -> &layer::Plan {
+        let mut todo = std::mem::take(&mut self.lay_todo);
+        let mut outs: Vec<[i32; 4]> = Vec::new();
+        while let Some(lid) = todo.pop_first() {
+            outs.clear();
+            self.layers.schedule(lid, self.tx, &mut self.plan, |r| outs.push(r));
+            let z = self.layers.list[lid as usize].z;
+            for r in &outs {
+                self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
+                Self::route(&self.bins, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+            }
+        }
+        self.lay_todo = todo;
+        &self.plan
+    }
+    /// The weight of what is due in the layers before anything is repaired (the tiles events touched, and
+    /// the whole of a fresh layer): the chooser's estimate of layer work, O(due).
+    pub fn due_weight(&self) -> u64 {
+        self.lay_todo.iter().map(|&lid| {
+            let l = &self.layers.list[lid as usize];
+            let fresh = if l.fresh { ((l.lv[0].r[2] - l.lv[0].r[0]) as u64 * (l.lv[0].r[3] - l.lv[0].r[1]) as u64) >> 10 } else { 0 };
+            l.pending.iter().map(|&t| self.tile_weight(t) as u64).sum::<u64>() + fresh * 8
+        }).sum()
+    }
+    /// `update`, then `plan_eager`: for an executor that needs the whole schedule up front.
+    pub fn update_eager(&mut self, u: &U) -> FrameStats {
+        let mut fs = self.update(u);
+        self.plan_eager();
+        (fs.prefix_tiles, fs.blocks, fs.layer_px) = (self.plan.prefix_tiles, self.plan.blocks, self.plan.px);
         fs
     }
     /// Some record still depends on the clock: the host owes the scene a frame at the output's next
@@ -1174,15 +1206,112 @@ impl Scene {
         }
         t.st.entries += list.len() as u64;
     }
+    /// Repair what is due, layer by layer in paint order, and let damage stop where a repair changed
+    /// nothing: a prefix tile whose every stored word came out as it was dirties no pyramid block, a block
+    /// left byte-identical dirties nothing above it, and only the blocks a reader's levels really changed
+    /// become output damage and events for the layers above. Exact (a comparison of words, no tolerance).
+    /// Pixels that newly entered a window, and a fresh layer, count as changed whatever they hold.
+    fn repair(&mut self, u: &U) -> Stats {
+        let mut st = Stats::default();
+        if self.lay_todo.is_empty() {
+            return st;
+        }
+        let mut pool = std::mem::take(&mut self.layers.pool);
+        let mut todo = std::mem::take(&mut self.lay_todo);
+        let mut outs: Vec<[i32; 4]> = Vec::new();
+        let prune = |same: bool, bx: i32| same || (cfg!(feature = "mutant_prune") && bx & 1 == 0);
+        while let Some(lid) = todo.pop_first() {
+            let due = self.layers.take_due(lid);
+            outs.clear();
+            {
+                let s = &*self;
+                let l = &s.layers.list[lid as usize];
+                if l.lv[0].empty() {
+                    continue;
+                }
+                let pw = pool.words_mut();
+                let top = l.top as usize;
+                let mut t = s.worker();
+                // level 0: the tiles due; those that entered, or everything when fresh, are changed by rule
+                let (mut d, mut forced) = (layer::Blocks::new(l.lv[0].r, 0), layer::Blocks::new(l.lv[0].r, 0));
+                if due.fresh {
+                    forced.all();
+                } else {
+                    due.entered[0].iter().for_each(|&r| forced.add_px(r));
+                    if !cfg!(feature = "mutant_layer_event") {
+                        due.pending.iter().for_each(|&ti| d.set((ti as usize % s.tx) as i32, (ti as usize / s.tx) as i32));
+                    }
+                }
+                forced.each(|bx, by| d.set(bx, by));
+                let mut changed = layer::Blocks::new(l.lv[0].r, 0);
+                let mut tiles: Vec<(i32, i32)> = Vec::new();
+                d.each(|bx, by| tiles.push((bx, by)));
+                for &(bx, by) in &tiles {
+                    let ti = by as u32 * s.tx as u32 + bx as u32;
+                    let before = t.st.prefix_same;
+                    s.run_tile(u, ti, &mut t, pw, lid);
+                    t.store_layer(pw, &l.lv[0]);
+                    if !prune(t.st.prefix_same != before, bx) {
+                        changed.set(bx, by);
+                    }
+                }
+                forced.each(|bx, by| changed.set(bx, by));
+                // the levels above: the blocks a changed block beneath reaches, and what entered
+                let mut read_changed: Vec<(u32, layer::Blocks)> = Vec::new();
+                if l.lvl == 0 {
+                    read_changed.push((0, changed.clone()));
+                }
+                for k in 1..=top {
+                    let (mut d, mut forced) = (layer::Blocks::new(l.lv[k].r, k as u32), layer::Blocks::new(l.lv[k].r, k as u32));
+                    layer::dilate(&changed, &mut d, k as u32);
+                    if due.fresh {
+                        forced.all();
+                    } else {
+                        due.entered[k].iter().for_each(|&r| forced.add_px(r));
+                    }
+                    forced.each(|bx, by| d.set(bx, by));
+                    let mut next = layer::Blocks::new(l.lv[k].r, k as u32);
+                    let mut blocks: Vec<(i32, i32)> = Vec::new();
+                    d.each(|bx, by| blocks.push((bx, by)));
+                    for &(bx, by) in &blocks {
+                        t.st.blk[k] += 1;
+                        let same = layer::down(pw, l, k as u32, s.fw, s.fh, bx, by);
+                        t.st.blk_same[k] += same as u64;
+                        if !prune(same, bx) {
+                            next.set(bx, by);
+                        }
+                    }
+                    forced.each(|bx, by| next.set(bx, by));
+                    changed = next;
+                    if k as u32 == l.lvl || k == top {
+                        read_changed.push((k as u32, changed.clone()));
+                    }
+                }
+                for (k, b) in &read_changed {
+                    layer::reach(l, *k, b, &mut |r| outs.push(r));
+                }
+                st.add(&t.st);
+            }
+            let z = self.layers.list[lid as usize].z;
+            for r in &outs {
+                self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
+                Self::route(&self.bins, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+            }
+        }
+        self.layers.pool = pool;
+        self.lay_todo = todo;
+        st
+    }
     /// Run the layers' stages of the frame `update` scheduled, on this thread: per layer in paint order, its
     /// prefix tiles, then its pyramid's dirty blocks level by level. Nothing to do (and nothing done) when
     /// no layer was reached by a change. Call between `update` and `shade`.
     pub fn prepare(&mut self, u: &U) -> Stats {
         if self.plan.full {
             self.plan = self.layers.full_plan(self.tx);
+            self.lay_todo.clear();
         }
         if self.plan.work.is_empty() {
-            return Stats::default();
+            return self.repair(u);
         }
         let mut pool = std::mem::take(&mut self.layers.pool);
         let pool_words = pool.words_mut();

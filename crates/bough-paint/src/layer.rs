@@ -105,6 +105,12 @@ impl Blocks {
             }
         }
     }
+    /// Empty, over the blocks of level `level` that `r` touches.
+    pub fn new(r: [i32; 4], level: u32) -> Blocks {
+        let mut b = Blocks::default();
+        b.over(r, level);
+        b
+    }
     pub fn each(&self, mut f: impl FnMut(i32, i32)) {
         for (k, &wd) in self.bits.iter().enumerate() {
             let mut m = wd;
@@ -209,7 +215,7 @@ pub struct Layers {
 pub const NONE: u32 = u32::MAX;
 
 /// Words reserved for the layers' pool (address space: pages are touched only where a layer is stored).
-pub const POOL_WORDS: usize = 1 << 25;
+pub const POOL_WORDS: usize = 1 << 27;
 /// The pool's memory: nothing until a scene has a layer, then one page-aligned reservation.
 #[derive(Default)]
 pub struct PoolMem(Option<crate::scene::Arena>);
@@ -407,21 +413,9 @@ impl Layers {
         l.pending.clear();
         l.fresh = false;
         l.entered.iter_mut().for_each(Vec::clear);
-        // a dirty block reaches the blocks one level up whose taps touch it: pixel p of a level is read by
-        // pixels ceil((p - 2) / 2) ..= floor((p + 1) / 2) of the next
         for k in 1..=top {
             let (lo, hi) = d.split_at_mut(k);
-            let (src, dst) = (&lo[k - 1], &mut hi[0]);
-            let (bs, ds) = (bshift(k as u32 - 1), bshift(k as u32));
-            src.each(|bx, by| {
-                let span = |b: i32| if cfg!(feature = "mutant_layer_dilate") { ((b << bs) >> 1, (((b + 1) << bs) - 1) >> 1) } else { (((b << bs) - 1) >> 1, ((b + 1) << bs) >> 1) };
-                let ((x0, x1), (y0, y1)) = (span(bx), span(by));
-                for py in y0 >> ds..=y1 >> ds {
-                    for px in x0 >> ds..=x1 >> ds {
-                        dst.set(px, py);
-                    }
-                }
-            });
+            dilate(&lo[k - 1], &mut hi[0], k as u32);
         }
         if d[..=top].iter().all(|b| b.n == 0) {
             return;
@@ -443,18 +437,8 @@ impl Layers {
                 w.blocks.push((k as u32, v));
             }
         }
-        // the frame pixels whose read (taps i, i + 1 at each level read) reaches a dirty block
         for k in [l.lvl as usize, top] {
-            let s = k as u32;
-            let bs = bshift(s);
-            let lo = |b: i32| (((((b << bs) - 1) << (s + 1)) + (1 << s) - 1) + 1) >> 1;
-            let hi = |b: i32| (((((b + 1) << bs) << (s + 1)) + (1 << s) - 1) + 1) >> 1;
-            d[k].each(|bx, by| {
-                let r = cut([lo(bx), lo(by), hi(bx), hi(by)], l.win);
-                if r[0] < r[2] && r[1] < r[3] {
-                    out(r);
-                }
-            });
+            reach(l, k as u32, &d[k], &mut out);
             if l.lvl as usize == top {
                 break;
             }
@@ -463,6 +447,48 @@ impl Layers {
     }
 }
 
+/// A dirty block reaches the blocks one level up whose taps touch it: pixel p of a level is read by pixels
+/// ceil((p - 2) / 2) ..= floor((p + 1) / 2) of the next. `src` is level `k - 1`, `dst` level `k`.
+pub fn dilate(src: &Blocks, dst: &mut Blocks, k: u32) {
+    let (bs, ds) = (bshift(k - 1), bshift(k));
+    src.each(|bx, by| {
+        let span = |b: i32| if cfg!(feature = "mutant_layer_dilate") { ((b << bs) >> 1, (((b + 1) << bs) - 1) >> 1) } else { (((b << bs) - 1) >> 1, ((b + 1) << bs) >> 1) };
+        let ((x0, x1), (y0, y1)) = (span(bx), span(by));
+        for py in y0 >> ds..=y1 >> ds {
+            for px in x0 >> ds..=x1 >> ds {
+                dst.set(px, py);
+            }
+        }
+    });
+}
+/// The frame pixels of layer `l`'s record whose read at level `k` (taps i, i + 1) reaches a block of
+/// `blocks`, as rects cut to the record's window.
+pub fn reach(l: &Layer, k: u32, blocks: &Blocks, out: &mut impl FnMut([i32; 4])) {
+    let bs = bshift(k);
+    let lo = |b: i32| (((((b << bs) - 1) << (k + 1)) + (1 << k) - 1) + 1) >> 1;
+    let hi = |b: i32| (((((b + 1) << bs) << (k + 1)) + (1 << k) - 1) + 1) >> 1;
+    blocks.each(|bx, by| {
+        let r = cut([lo(bx), lo(by), hi(bx), hi(by)], l.win);
+        if r[0] < r[2] && r[1] < r[3] {
+            out(r);
+        }
+    });
+}
+/// What is due for one layer, taken out of it (its flags and lists are cleared): the level-0 tiles an event
+/// touched, the strips that entered each level, and whether it is to be repaired whole.
+pub struct Due {
+    pub fresh: bool,
+    pub pending: Vec<u32>,
+    pub entered: [Vec<[i32; 4]>; LEVELS],
+}
+impl Layers {
+    pub fn take_due(&mut self, lid: u32) -> Due {
+        let l = &mut self.list[lid as usize];
+        let d = Due { fresh: l.fresh, pending: std::mem::take(&mut l.pending), entered: std::mem::take(&mut l.entered) };
+        l.fresh = false;
+        d
+    }
+}
 /// Level-`k` pixel (x, y) of a layer (inside the level and the layer's window).
 #[inline(always)]
 pub fn at(v: &Lvl, x: i32, y: i32) -> usize {
