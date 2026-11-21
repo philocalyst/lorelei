@@ -70,7 +70,7 @@ pub fn words(c: &Code) -> usize {
         Code::Pal(i) => words(i),
         Code::Cpu(a) => a.iter().map(|c| words(c)).sum(),
         Code::Call(_, a) => a.iter().map(|c| words(c)).sum(),
-        _ => 0,
+        Code::U(_) | Code::Lane | Code::Lit(_) => 0,
     }
 }
 pub fn pwords(p: &PCode) -> usize {
@@ -88,7 +88,7 @@ fn reads(c: &Code) -> u64 {
         Code::Pal(i) => reads(i),
         Code::Cpu(a) => a.iter().fold(0, |m, c| m | reads(c)),
         Code::Call(_, a) => a.iter().fold(0, |m, c| m | reads(c)),
-        _ => 0,
+        Code::Rec | Code::Lane | Code::Lit(_) => 0,
     }
 }
 /// Every leaf a code tree names (the gate checks each exists in `LEAVES_MSL` under that name).
@@ -100,7 +100,8 @@ pub fn leaves(p: &PCode, out: &mut Vec<&'static str>) {
                 a.iter().for_each(|c| e(c, out));
             }
             Code::Pal(i) => e(i, out),
-            _ => {}
+            Code::Cpu(a) => a.iter().for_each(|c| e(c, out)),
+            Code::U(_) | Code::UAt(..) | Code::Rec | Code::Lane | Code::Lit(_) => {}
         }
     }
     match p {
@@ -381,7 +382,7 @@ pub fn has_pal(p: &PCode) -> bool {
         match c {
             Code::Pal(_) => true,
             Code::Call(_, a) | Code::Cpu(a) => a.iter().any(|c| e(c)),
-            _ => false,
+            Code::U(_) | Code::UAt(..) | Code::Rec | Code::Lane | Code::Lit(_) => false,
         }
     }
     match p {

@@ -984,7 +984,22 @@ fn eq_words(c: &Code, next: &mut usize, f: &mut impl FnMut(usize, usize)) {
             }
         }
         Code::UAt(..) => *next += 1,
-        _ => {}
+        // a table read holds its index expression's words
+        Code::Pal(i) => eq_words(i, next, f),
+        Code::U(_) | Code::Lane | Code::Lit(_) => {}
+    }
+}
+#[cfg(test)]
+mod eq_words_tests {
+    use super::*;
+    /// A record word under a table read is counted: the comparison after it names the right word.
+    #[test]
+    fn a_rec_under_a_pal_is_counted() {
+        static IX: Code = Code::Call("x_palix", &[&Code::U(4), &Code::Rec]);
+        static TREE: Code = Code::Call("x_selv", &[&Code::Call("x_eq", &[&Code::U(2), &Code::Rec]), &Code::Call("x_pm", &[&Code::Pal(&IX)]), &Code::Call("x_eq", &[&Code::Rec, &Code::U(3)])]);
+        let (mut next, mut seen) = (0usize, Vec::new());
+        eq_words(&TREE, &mut next, &mut |w, k| seen.push((w, k)));
+        assert_eq!((seen, next), (vec![(2, 0), (3, 2)], 3));
     }
 }
 
