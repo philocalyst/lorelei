@@ -22,8 +22,8 @@ struct Column {
     fast: u16,
 }
 
-/// A `shape` no store tree has: structure revisions count up from 0 with a checked add.
-const STALE: u64 = u64::MAX;
+/// An unpublished table. Store structure revisions count up from 1 with a checked add.
+const STALE: u64 = 0;
 
 /// Non-reusable identity of one world instance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -138,10 +138,8 @@ pub struct World<V, B> {
     pub tiles: Tiles,
     /// The words the application uses; the compare stops there.
     nwords: usize,
-    /// The block words that move some list's exposure (scroll offsets), and the relation epoch as of the last
-    /// pass: the two things besides the block that can make the view worth driving.
+    /// The block words that move a list's exposure. A watched relation changing also drives the view.
     lists: u64,
-    epoch: u32,
     /// The block words some column reads: a pointer event that no record reads costs nothing.
     reads: u64,
     /// Every column of the world in paint order: the words each reads (dense, scanned on a block change), its
@@ -222,7 +220,6 @@ impl<V: View, B: Backend> World<V, B> {
             tiles: Tiles::new(w, h),
             nwords,
             lists: 0,
-            epoch: 0,
             reads: 0,
             col_reads: Vec::new(),
             by_word: [0; 65],
@@ -257,19 +254,14 @@ impl<V: View, B: Backend> World<V, B> {
         }
     }
 
-    fn relation_epoch(&self) -> u32 {
-        if self.shape == STALE {
-            return self.epoch.wrapping_add(1);
-        }
-        if self.relations.iter().any(|(store, watch)| {
-            // SAFETY: the published table is current, and the shared world borrow excludes a view
-            // pass. Each pointer is an owning store address recorded when the table was built.
-            watch.load(Ordering::Relaxed) != unsafe { (**store).seen }
-        }) {
-            self.epoch.wrapping_add(1)
-        } else {
-            self.epoch
-        }
+    #[inline]
+    fn relations_changed(&self) -> bool {
+        self.shape == STALE
+            || self.relations.iter().any(|(store, watch)| {
+                // SAFETY: the published table is current, and the shared world borrow excludes a view
+                // pass. Each pointer is an owning store address recorded when the table was built.
+                watch.load(Ordering::Relaxed) != unsafe { (**store).seen }
+            })
     }
 
     pub fn input_revision(&self) -> u64 {
@@ -373,7 +365,6 @@ impl<V: View, B: Backend> World<V, B> {
         self.shown = self.block(v);
         self.tiles.mark_all();
         self.root.row_live[0] = 1;
-        self.epoch = self.relation_epoch();
         let mut cx = Cx {
             tiles: &mut self.tiles,
             u: &self.shown,
@@ -399,7 +390,7 @@ impl<V: View, B: Backend> World<V, B> {
     /// After a pass that made columns: the slots they name are learned, and a word of the view's own fields
     /// that no column named before is gathered now and settled like any other change. Bounded: each round
     /// follows a pass that changed the tree's shape, and a view has finitely many fields to name.
-    #[inline]
+    #[inline(never)]
     fn learn(&mut self, v: &V) {
         for _ in 0..8 {
             if self.shape != STALE {
@@ -414,7 +405,7 @@ impl<V: View, B: Backend> World<V, B> {
             if ch == 0 {
                 return;
             }
-            self.changed(v, ch, self.epoch);
+            self.changed(v, ch, false);
         }
         // eight rounds and the shape still moved: the table must not outlive the tree it was built from
         if self.shape == STALE {
@@ -538,14 +529,15 @@ impl<V: View, B: Backend> World<V, B> {
 
     /// The damage of the block going from what is shown to `u` (`ch`: the changed words). The path from here
     /// to a page is this world, the column's entry, the page: the store tree is not on it.
-    #[inline]
+    #[inline(never)]
     fn delta(&mut self, u: &U, ch: u64) {
         self.delta_stats = DeltaStats::default();
         self.broad_last = None;
         if self.shape == STALE {
             self.retable();
         }
-        if ch & self.reads == 0 {
+        let relevant = ch & self.reads;
+        if relevant == 0 {
             return;
         }
         for &(reads, key) in &self.spaces {
@@ -559,9 +551,9 @@ impl<V: View, B: Backend> World<V, B> {
                 }
             }
         }
-        if ch.is_power_of_two() {
+        if relevant & relevant.wrapping_sub(1) == 0 {
             // A single reader list contains each column at most once.
-            let word = ch.trailing_zeros() as usize;
+            let word = relevant.trailing_zeros() as usize;
             let start = self.by_word[word] as usize;
             let end = self.by_word[word + 1] as usize;
             self.delta_stats.visited_incidences = end - start;
@@ -571,7 +563,7 @@ impl<V: View, B: Backend> World<V, B> {
             return;
         }
 
-        let mut words = ch;
+        let mut words = relevant;
         let mut incidences = 0usize;
         while words != 0 {
             let w = words.trailing_zeros() as usize;
@@ -592,7 +584,7 @@ impl<V: View, B: Backend> World<V, B> {
                 self.union_seen.fill(0);
                 self.union_epoch = 1;
             }
-            let mut words = ch;
+            let mut words = relevant;
             #[cfg(feature = "mutant_sparse_union")]
             if words.count_ones() > 1 {
                 let first = 1u64 << words.trailing_zeros();
@@ -620,37 +612,44 @@ impl<V: View, B: Backend> World<V, B> {
         // SAFETY: the table is current, and no view pass can run while it is borrowed here.
         let st = unsafe { &*route.store };
         let c = &st.cols[route.index as usize];
-        let e = st.ent(c);
-        if e.skip & ch != 0 {
+        let scroll = st.space.scroll;
+        if scroll != crate::store::NO_WORD && ch >> (scroll & 63) & 1 != 0 {
             return;
         }
-        if e.reads & ch & self.broad != 0 && e.timed & ColEnt::STATE == 0 && !self.no_fast {
-            let clip = st.space.clip;
-            #[cfg(not(feature = "mutant_broad"))]
-            if self.broad_last != Some(clip) {
-                self.tiles.mark(clip);
+        if c.reads & ch & self.broad != 0 && !c.desc.state && !self.no_fast {
+            self.damage_broad(st.space.clip);
+        } else {
+            let e = st.ent(c);
+            if route.fast == u16::MAX
+                || !Self::delta_fast(
+                    &mut self.fast[route.fast as usize],
+                    &e,
+                    &self.shown,
+                    u,
+                    ch,
+                    &mut self.tiles,
+                    &mut self.fast_stats,
+                    self.wrote,
+                    self.no_fast,
+                )
+            {
+                // SAFETY: the entry borrows the current column. Its kernel was instantiated for its archetype.
+                unsafe { (e.delta)(&e, &self.shown, u, &mut self.tiles) };
             }
-            self.broad_last = Some(clip);
-            self.fast_stats.broad_hits += 1;
-        } else if route.fast == u16::MAX
-            || !Self::delta_fast(
-                &mut self.fast[route.fast as usize],
-                &e,
-                &self.shown,
-                u,
-                ch,
-                &mut self.tiles,
-                &mut self.fast_stats,
-                self.wrote,
-                self.no_fast,
-            )
-        {
-            // SAFETY: the entry borrows the current column. Its kernel was instantiated for its archetype.
-            unsafe { (e.delta)(&e, &self.shown, u, &mut self.tiles) };
         }
-        if e.timed & ColEnt::TIMED != 0 {
+        if c.desc.timed {
             st.resweep_col(c, u, &mut self.tiles);
         }
+    }
+
+    #[inline(never)]
+    fn damage_broad(&mut self, clip: crate::expr::Rect) {
+        #[cfg(not(feature = "mutant_broad"))]
+        if self.broad_last != Some(clip) {
+            self.tiles.mark(clip);
+        }
+        self.broad_last = Some(clip);
+        self.fast_stats.broad_hits += 1;
     }
 
     #[inline(never)]
@@ -763,22 +762,33 @@ impl<V: View, B: Backend> World<V, B> {
             .shown
             .diff(v.gathered(&self.slots, &mut scratch), self.nwords)
             & !HOT;
-        let epoch = self.relation_epoch();
-        if (ch == 0) & (epoch == self.epoch) {
-            return;
+        let journals = self.relations_changed();
+        if ch != 0 || journals {
+            self.settle_changed(v, ch, journals);
         }
-        if self.changed(v, ch, epoch) {
+    }
+    // Re-learning can drive another description. Keep its stack frame off idle settles.
+    #[inline(never)]
+    fn settle_changed(&mut self, v: &V, ch: u64, journals: bool) {
+        if self.changed(v, ch, journals) {
             self.learn(v);
         }
     }
-    #[inline(never)]
-    fn changed(&mut self, v: &V, ch: u64, epoch: u32) -> bool {
+    #[inline(always)]
+    fn changed(&mut self, v: &V, ch: u64, journals: bool) -> bool {
         let u = &self.block(v);
+        if !journals && ch & self.lists == 0 {
+            // `settle` enters only for a changed word or journal, and `learn` only for a changed word.
+            debug_assert_ne!(ch, 0);
+            self.delta(u, ch);
+            // `block` kept the current surface, raster and derived words. A word-only delta leaves them alone.
+            self.shown.w[..APP_WORDS].copy_from_slice(&u.w[..APP_WORDS]);
+            return false;
+        }
         if ch != 0 {
             self.delta(u, ch);
         }
-        if (epoch != self.epoch) | (ch & self.lists != 0) {
-            self.epoch = epoch;
+        {
             // a list pass may write records and move windows: what was built from them is nothing now
             self.wrote += 1;
             let mut cx = Cx {
@@ -815,11 +825,6 @@ impl<V: View, B: Backend> World<V, B> {
             // Only a description can change the set of observed relations or
             // the descriptors. Uniform-only delta stages neither.
             true
-        } else {
-            if ch != 0 {
-                self.shown = *u;
-            }
-            false
         }
     }
 
@@ -833,7 +838,6 @@ impl<V: View, B: Backend> World<V, B> {
             self.delta(u, ch);
         }
         self.wrote += 1;
-        self.epoch = self.relation_epoch();
         let mut cx = Cx {
             tiles: &mut self.tiles,
             u,

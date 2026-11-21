@@ -52,25 +52,21 @@ impl Tiles {
     /// Replace column `col`'s entry: `until == 0` means none of its records is in motion.
     #[inline]
     pub fn set_sweep(&mut self, col: u32, space: Space, (until, rect): (u32, Rect)) {
-        match self.sweeps.iter().position(|s| s.col == col) {
-            Some(i) if until == 0 => {
+        if until == 0 {
+            if let Some(i) = self.sweeps.iter().position(|s| s.col == col) {
                 self.sweeps.swap_remove(i);
             }
-            Some(i) => {
-                self.sweeps[i] = Sweep {
-                    col,
-                    until,
-                    rect,
-                    space,
-                }
-            }
-            None if until != 0 => self.sweeps.push(Sweep {
+        } else if let Some(sweep) = self.sweeps.iter_mut().find(|s| s.col == col) {
+            sweep.until = until;
+            sweep.rect = rect;
+            sweep.space = space;
+        } else {
+            self.sweeps.push(Sweep {
                 col,
                 until,
                 rect,
                 space,
-            }),
-            None => {}
+            });
         }
     }
     /// A frame at time `now` under block `u`: damage where records in motion may be. The frame in which a
@@ -140,6 +136,51 @@ impl Tiles {
             (y0 >> TILE_SHIFT) as usize,
             ((y1 - 1) >> TILE_SHIFT) as usize,
         );
+        if self.stride == 1 {
+            if (b >= 64) | (d >= self.bits.len()) {
+                invalid_damage();
+            }
+            self.lo = self.lo.min(c);
+            self.hi = self.hi.max(d + 1);
+            let mask = (!0u64 << (a & 63)) & (!0u64 >> (63 - (b & 63)));
+            // SAFETY: clipping a nonempty rect proves c <= d and the check above proves
+            // d < bits.len(). A stride of one places every affected row in this slice.
+            let rows = unsafe { self.bits.get_unchecked_mut(c..d + 1) };
+            for word in rows {
+                *word |= mask;
+            }
+            return;
+        }
+        if self.stride == 2 {
+            let end = 2 * (d + 1);
+            if (b >= 128) | (end > self.bits.len()) {
+                invalid_damage();
+            }
+            self.lo = self.lo.min(c);
+            self.hi = self.hi.max(d + 1);
+            let first = !0u64 << (a & 63);
+            let last = !0u64 >> (63 - (b & 63));
+            let masks = if a >= 64 {
+                [0, first & last]
+            } else if b < 64 {
+                [first & last, 0]
+            } else {
+                [first, last]
+            };
+            // SAFETY: c <= d after clipping, the row stride is two, and end was checked
+            // against the current bitmap. The tile coordinates come from nonnegative i32s.
+            let rows = unsafe { self.bits.get_unchecked_mut(2 * c..end) };
+            for row in rows.as_chunks_mut::<2>().0 {
+                row[0] |= masks[0];
+                row[1] |= masks[1];
+            }
+            return;
+        }
+        self.mark_wide(a, b, c, d);
+    }
+
+    #[inline(never)]
+    fn mark_wide(&mut self, a: usize, b: usize, c: usize, d: usize) {
         let (wa, wb) = (a >> 6, b >> 6);
         // Every field of `Tiles` is public (and so is `World::tiles`): the rect was cut to `w` x `h`, but
         // nothing ties `w`, `h`, `stride` and `bits` together, so the bound is checked against the bitmap
@@ -1124,7 +1165,7 @@ impl Store {
         );
         Store {
             column_count: Default::default(),
-            structure: Default::default(),
+            structure: std::sync::Arc::new(core::sync::atomic::AtomicU64::new(1)),
             journal: None,
             world: None,
             cols: Vec::new(),
