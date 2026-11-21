@@ -88,6 +88,13 @@ builds of the same manifest.
 * The expression dump is the *rows* scene; add a scene by adding a binary next to
   `harness/src/bin/reflect.rs`.
 
+## Frozen compiler flags
+
+Every cargo child runs with `RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`, `CARGO_BUILD_RUSTFLAGS` and
+`CARGO_TARGET_*_RUSTFLAGS` removed; only `--rustflags` reaches the build. Removed variables are named
+with a sha256 prefix of their value in `MANIFEST.txt` (`ambient-flags-ignored`) and on stderr. Flags set in
+a `.cargo/config.toml` are not removed; the repository has none that change codegen.
+
 ## Fast tests
 
 `python3 bench/asm/test_asm.py` exercises the fail-closed paths (mismatched context, empty or

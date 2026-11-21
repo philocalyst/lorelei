@@ -106,6 +106,23 @@ class Diff(unittest.TestCase):
         self.assertNotEqual(run(asm.diff, b, h, -1.0)[0], 0)
 
 
+class Env(unittest.TestCase):
+    def test_ambient_flags_frozen(self):
+        amb = {"PATH": "/bin", "RUSTFLAGS": "-C target-cpu=native", "CARGO_ENCODED_RUSTFLAGS": "-Cx",
+               "CARGO_BUILD_RUSTFLAGS": "-Cy", "CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS": "-Cz", "HOME": "/h"}
+        env, ign = asm.frozen_env(None, amb)
+        self.assertEqual(sorted(env), ["HOME", "PATH"])
+        self.assertEqual(len(ign), 4)
+        self.assertNotIn("native", " ".join(ign))      # digests only
+        env, _ = asm.frozen_env("-C opt-level=2", amb)
+        self.assertEqual(env["RUSTFLAGS"], "-C opt-level=2")
+        self.assertNotIn("CARGO_ENCODED_RUSTFLAGS", env)
+
+    def test_clean_env_untouched(self):
+        env, ign = asm.frozen_env(None, {"PATH": "/bin"})
+        self.assertEqual((env, ign), ({"PATH": "/bin"}, []))
+
+
 class Manifest(unittest.TestCase):
     def test_bad_manifest_rejected(self):
         old = asm.MANIFEST

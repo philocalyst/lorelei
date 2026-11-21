@@ -68,6 +68,23 @@ def cargo():
     return os.environ.get("CARGO", "cargo")
 
 
+def frozen_env(rustflags=None, environ=None):
+    """The environment every cargo child gets: ambient compiler-flag variables are removed so the build
+    depends only on the explicit `--rustflags` argument (recorded in MANIFEST.txt). Returns (env, ignored)
+    where `ignored` lists the removed variables as name:sha256-prefix (the values may be private)."""
+    import hashlib
+    env = dict(os.environ if environ is None else environ)
+    ignored = []
+    for k in sorted(env):
+        if k == "CARGO_ENCODED_RUSTFLAGS" or k.endswith("RUSTFLAGS") and k.startswith(("RUST", "CARGO")):
+            if env[k]:
+                ignored.append(f"{k}:{hashlib.sha256(env[k].encode()).hexdigest()[:12]}")
+            del env[k]
+    if rustflags:
+        env["RUSTFLAGS"] = rustflags
+    return env, ignored
+
+
 def asm_listing(package, kind, artifact, dev, codegen, out, rustflags=None, features=None):
     """Run `cargo asm --everything` for one artifact and return the listing, or raise."""
     flag = {"bin": "--bin=", "example": "--example=", "lib": "--lib"}[kind]
@@ -88,15 +105,18 @@ def asm_listing(package, kind, artifact, dev, codegen, out, rustflags=None, feat
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(" ".join(cmd) + "\n")
     t = time.monotonic()
-    env = dict(os.environ)
-    if rustflags:
-        env["RUSTFLAGS"] = rustflags
+    env, ignored = frozen_env(rustflags)
+    if ignored:
+        sys.stderr.write(f"asm: ignoring ambient compiler flags: {', '.join(ignored)}\n")
+        IGNORED.update(ignored)
     p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
     if p.returncode != 0:
         sys.stderr.write(p.stderr[-4000:])
         raise SystemExit(f"asm: cargo asm failed for {package}/{artifact} ({time.monotonic()-t:.0f}s)")
     return p.stdout
 
+
+IGNORED = set()      # ambient flag variables removed from cargo's environment during this run
 
 HEADER = re.compile(r"^([^\s].*):$")
 
@@ -187,7 +207,7 @@ def emit(out, only=None, dev=False, codegen=None, rustflags=None, features=None,
     load = os.getloadavg()
     (out / "MANIFEST.txt").write_text(
         f"commit {commit}\ndirty {'yes' if dirty else 'no'}\nfeatures {' '.join(features or []) or 'none'}\nmutant {'yes' if mutant else 'no'}\nrustc {rustc}\nprofile {'dev' if dev else 'release'}\n"
-        f"codegen {' '.join(codegen) or 'none'}\nrustflags {rustflags or 'none'}\nhost {os.uname().machine} macOS {os.uname().release}\n"
+        f"codegen {' '.join(codegen) or 'none'}\nrustflags {rustflags or 'none'}\nambient-flags-ignored {' '.join(sorted(IGNORED)) or 'none'}\nhost {os.uname().machine} macOS {os.uname().release}\n"
         f"date {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\nload {load[0]:.2f} {load[1]:.2f} {load[2]:.2f}\n"
         f"target {TARGET}\n")
     totals = {}
