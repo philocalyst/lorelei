@@ -75,6 +75,8 @@ The command checks the font digest before building, runs the complete native sui
 
 For a focused replay, run `bench/baseline/gate.sh --cells sheet_x/rows10000`. The gate still requires every operation in each requested fixture. Use the default invocation for full integration coverage.
 
+To resume a comparison after an interrupted wrapper, use `bench/baseline/gate.sh --check-receipt path/to/integration.json`. It checks complete coverage using the existing capture.
+
 Use the separate commands for historical source comparisons:
 
 ```sh

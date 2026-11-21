@@ -9,15 +9,22 @@ main() {
     out=${BENCH_GATE_OUT:-}
     source=${BENCH_WORKTREE:-$root}
     cells=
-    if [ "$#" -eq 2 ] && [ "$1" = --cells ] && [ -n "$2" ]; then
+    measured=
+    if [ "$#" -eq 2 ] && [ "$1" = --check-receipt ] && [ -n "$2" ]; then
+        measured=$2
+    elif [ "$#" -eq 2 ] && [ "$1" = --cells ] && [ -n "$2" ]; then
         cells=$2
     elif [ "$#" -ne 0 ]; then
-        echo 'usage: bench/baseline/gate.sh [--cells fixture,...]' >&2
+        echo 'usage: bench/baseline/gate.sh [--cells fixture,... | --check-receipt path]' >&2
         exit 2
     fi
     if [ ! -f "$reference" ] || [ ! -f "$limits" ]; then
         echo 'native gate: the reference and thresholds files are required' >&2
         exit 2
+    fi
+    if [ -n "$measured" ]; then
+        exec "$root/bench/baseline/compare.sh" "$reference" "$measured" \
+            --thresholds "$limits" --require-same-cells
     fi
     if [ -z "$out" ]; then
         mkdir -p "$root/runtime/baseline"
