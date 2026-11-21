@@ -1,0 +1,6 @@
+# Driver patch candidate; CPU-only and GPU requested
+running 2 tests
+test gpu::probe_driver_cpu_path_on_layers ... ok
+test gpu::probe_driver_gpu_path_on_layers ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.73s

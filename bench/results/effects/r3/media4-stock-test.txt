@@ -1,0 +1,21 @@
+# Unpatched P6 source selection with the focused regression
+running 1 test
+test tests::one_video_four_sources_updates_an_uncovered_tile ... FAILED
+
+failures:
+
+---- tests::one_video_four_sources_updates_an_uncovered_tile stdout ----
+
+thread 'tests::one_video_four_sources_updates_an_uncovered_tile' panicked at crates/bough-paint/examples/solfx_media4_stock.rs:453:9:
+assertion `left == right` failed: one-video trace did not publish an existing source
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::one_video_four_sources_updates_an_uncovered_tile
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p bough-paint --example solfx_media4_stock`

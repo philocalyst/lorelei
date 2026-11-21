@@ -629,7 +629,8 @@ mod gpu {
         let (fw, fh) = (128u32, 96u32);
         let wd = world(1, fw, fh);
         let b = build(&wd, fw, fh);
-        let Some(mut gpu) = (unsafe { Gpu::new(&b.s, (fw * fh) as usize, 256) }) else { return };
+        // SAFETY: the scene owns the input storage and outlives this executor.
+        let mut gpu = unsafe { Gpu::new(&b.s, (fw * fh) as usize, 256) }.expect("Metal device required for resident refusal probe");
         let u = U::default();
         let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             gpu.frame(&u, None, fw as usize);
@@ -651,7 +652,7 @@ mod gpu {
     /// the layers' stages (`Scene::prepare`) between `update` and `shade`; on the GPU path it must use
     /// `staged`. A driver that does neither draws stale or empty layers (or panics).
     fn drive(gpu: bool, name: &str) {
-        use bough_paint::driver::Driver;
+        use bough_paint::driver::{Driver, Ran};
         use bough_paint::plan::Whole;
         let (fw, fh) = (200u32, 150u32);
         let pool = Pool::new(1);
@@ -662,6 +663,7 @@ mod gpu {
         let whole = Whole { gpu, block: u64::MAX, rebin_on: u64::MAX, cut: true, pick: false, cpu_tiles: 0, words: 0 };
         let Built { s, .. } = b;
         let mut d = Driver::new(s, whole, 1);
+        assert_eq!(d.gpu().is_some(), gpu, "requested executor must be present");
         let mut g = Rng(99);
         let mut u = block(&mut g);
         let mut bad = 0;
@@ -674,7 +676,8 @@ mod gpu {
                     d.set(gc, i, wd.gl[i].rect, gl_rec(&wd.gl[i]));
                     u = block(&mut g);
                 }
-                d.frame(&mut u, None);
+                let ran = d.frame(&mut u, None);
+                assert_eq!(ran, if gpu { Ran::Gpu } else { Ran::Cpu });
                 let mut f = build(&wd, fw, fh);
                 let mut fresh = vec![0u32; (fw * fh) as usize];
                 f.s.frame(&u, &mut fresh, fw as usize, &pool, 0);
