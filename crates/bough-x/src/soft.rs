@@ -140,6 +140,12 @@ impl Soft {
             *d = ch(16) | ch(8) | ch(0);
         }
     }
+    /// The part of a column's own space this painter can show anything in: its clip and the frame, cut to
+    /// the space's clip, taken back by the space's origin. A record whose rect misses it paints nothing.
+    #[inline(always)]
+    fn shown(&self, org: (i32, i32), clip: Rect) -> Rect {
+        self.cut(clip).shift((-org.0, -org.1))
+    }
     /// With real text: where painting is allowed for a record's rect (its space's clip, the tile, the frame).
     fn cut(&self, clip: Rect) -> Rect {
         clip.and(self.clip).and(Rect {
@@ -173,11 +179,34 @@ impl Soft {
     /// Repair the damaged tiles of `tiles` from `paint` (which paints everything, cut to `self.clip`).
     pub fn repair(&mut self, tiles: &Tiles, mut paint: impl FnMut(&mut Soft)) {
         let whole = self.clip;
-        tiles.each(|t| {
-            self.clip = t;
-            self.rect(t, 0);
-            paint(self);
+        let mut bounds: Option<Rect> = None;
+        let mut area = 0;
+        let pixels = |r: Rect| i64::from(r.x1 - r.x0) * i64::from(r.y1 - r.y0);
+        tiles.each(|tile| {
+            area += pixels(tile);
+            bounds = Some(match bounds {
+                Some(r) => Rect {
+                    x0: r.x0.min(tile.x0),
+                    y0: r.y0.min(tile.y0),
+                    x1: r.x1.max(tile.x1),
+                    y1: r.y1.max(tile.y1),
+                },
+                None => tile,
+            });
         });
+        let Some(bounds) = bounds else { return };
+        let mut repair = |this: &mut Self, clip| {
+            this.clip = clip;
+            this.rect(clip, 0);
+            paint(this);
+        };
+        // Distinct tile rectangles are disjoint. Equal areas prove that their bounding
+        // rectangle has no hole, so the painter can walk the store once for that repair.
+        if area == pixels(bounds) || cfg!(feature = "mutant_repair_bounds") {
+            repair(self, bounds);
+        } else {
+            tiles.each(|tile| repair(self, tile));
+        }
         self.clip = whole;
     }
 }
@@ -206,7 +235,7 @@ impl Backend for Soft {
     }
     fn fill<A: FillArch>(&mut self, col: ColRef<'_, A>, u: &U) {
         let (org, clip) = (col.space.origin(u), col.space.clip);
-        col.each(|r, a| {
+        col.each_in(self.shown(org, clip), |r, a| {
             self.records += 1;
             self.rect(r.shift(org).and(clip), a.color(u).0)
         });
@@ -214,7 +243,7 @@ impl Backend for Soft {
     fn num<A: NumArch>(&mut self, col: ColRef<'_, A>, u: &U) {
         let (org, clip) = (col.space.origin(u), col.space.clip);
         let text = self.text.clone();
-        col.each(|r, a| {
+        col.each_in(self.shown(org, clip), |r, a| {
             self.records += 1;
             let r = r.shift(org);
             if let Some(t) = &text {
@@ -242,7 +271,7 @@ impl Backend for Soft {
             glyphs: &g,
         };
         let (org, clip) = (col.space.origin(u), col.space.clip);
-        col.each(|r, a| {
+        col.each_in(self.shown(org, clip), |r, a| {
             self.records += 1;
             let r = r.shift(org);
             let cut = self.cut(r.and(clip));
@@ -253,7 +282,7 @@ impl Backend for Soft {
     }
     fn label<A: LabelArch>(&mut self, col: ColRef<'_, A>, u: &U) {
         let (org, clip) = (col.space.origin(u), col.space.clip);
-        col.each(|r, a| {
+        col.each_in(self.shown(org, clip), |r, a| {
             self.records += 1;
             let r = r.shift(org);
             self.text(r, r.and(clip), a.str(), a.color(u).0)

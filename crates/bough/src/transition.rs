@@ -182,6 +182,9 @@ impl<T: Lerp> Running for State<T> {
 #[derive(Default)]
 pub struct Transitions {
     items: Vec<Box<dyn Running>>,
+    // A resting operand is absent. In mount order this is also the order in which its
+    // writers previously ran when the clock traversed the entire operand table.
+    running_ids: Vec<u32>,
     /// Seconds since the runtime started, advanced by `App::tick`.
     pub now: f64,
     pub active: u32,
@@ -218,6 +221,7 @@ impl Transitions {
         s.t0 = now;
         if !s.active {
             s.active = true;
+            self.running_ids.push(id);
             self.active += 1;
         }
         self.retargets += 1;
@@ -252,23 +256,25 @@ impl Rt {
         }
         let now = self.transitions.now;
         let mut items = std::mem::take(&mut self.transitions.items);
-        let mut active = 0;
-        for it in items.iter_mut() {
-            if !it.is_active() {
-                continue;
-            }
-            if it.step(now).is_some() {
+        let mut active = std::mem::take(&mut self.transitions.running_ids);
+        if !active.is_sorted() {
+            active.sort_unstable();
+        }
+        active.retain(|&id| {
+            let it = &mut items[id as usize];
+            if !cfg!(feature = "mutant_skip_transition") && it.step(now).is_some() {
                 it.apply_shown(self);
             }
             self.transitions.steps += 1;
-            if it.is_active() {
-                active += 1;
-            }
-        }
-        // transitions added while stepping (none today) would be in self.transitions.items
+            it.is_active()
+        });
+        // The appliers currently write paint and layout. Preserve the existing path
+        // for appending any operands added while applying those writes.
+        debug_assert!(self.transitions.running_ids.is_empty());
         items.append(&mut self.transitions.items);
         self.transitions.items = items;
-        self.transitions.active = active;
+        self.transitions.active = active.len() as u32;
+        self.transitions.running_ids = active;
         true
     }
 }

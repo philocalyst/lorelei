@@ -621,6 +621,14 @@ impl Rt {
     /// A one-line text as a retained label (`None`: the label kernel does not cover it: a codepoint
     /// outside its set, or a line taller than the label's damage rows hold).
     pub(crate) fn build_label(&mut self, ti: u32) -> Option<u32> {
+        // Back-to-back descriptions can replace a large set of labels before an idle frame
+        // repays deferred reclamation. Return dead blocks before trying to extend a full column.
+        // A new label needs at least 16 slots and may immediately grow on its first text write.
+        if self.glyphs.x.capacity().saturating_sub(self.glyphs.x.len()) < 32
+            && (!self.reclaim_q.is_empty() || !self.lay.eng.orphans.is_empty())
+        {
+            self.reclaim(crate::app::RECLAIM_BUDGET);
+        }
         let strike = self.texts[ti as usize].strike as StrikeId;
         let lb = self.text.bounds(strike);
         if lb.bottom - lb.top > 3 * 32 + 1 {

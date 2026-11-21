@@ -1,0 +1,350 @@
+# after: the tree of the commit that adds this file (profile dist, instructions p50, under the bench lock)
+ 4:58  up 4 days,  7:51, 5 users, load averages: 25.45 26.87 23.00
+## anim_x H=10288
+# H=10288: 4097 records in 129 pages; sweeps 1
+scene	phase	steps	instr_p50	cycles_p50	tiles_p50
+anim_x	frame_endless	64	2061	424	10272
+anim_x	frame_endless_and_fade	64	2170	457	10304
+anim_x	fade_start_turn	64	835	155	0
+anim_x	pointer_words	64	65354	10505	112
+anim_x	scroll_3_rows	64	17994	4477	10272
+## anim_x H=10288 NEAR=1
+# H=10288: 4097 records in 129 pages; sweeps 1
+scene	phase	steps	instr_p50	cycles_p50	tiles_p50
+anim_x	frame_endless	64	2061	422	10272
+anim_x	frame_endless_and_fade	64	2170	458	10304
+anim_x	fade_start_turn	64	835	161	0
+anim_x	pointer_words	64	21585	3640	108
+anim_x	scroll_3_rows	64	18124	4529	10272
+## anim_x H=10288 SWEPT=1
+# H=10288: 4097 records in 129 pages; sweeps 1
+scene	phase	steps	instr_p50	cycles_p50	tiles_p50
+anim_x	frame_endless	64	96	19	1
+anim_x	frame_endless_and_fade	64	150	25	2
+anim_x	fade_start_turn	64	835	158	0
+anim_x	pointer_words	64	65354	10511	110
+anim_x	scroll_3_rows	64	17994	4465	10272
+## anim_x H=208
+# H=208: 65 records in 17 pages; sweeps 1
+scene	phase	steps	instr_p50	cycles_p50	tiles_p50
+anim_x	frame_endless	64	171	57	192
+anim_x	frame_endless_and_fade	64	280	70	224
+anim_x	fade_start_turn	64	835	161	0
+anim_x	pointer_words	64	4230	926	82
+anim_x	scroll_3_rows	64	3876	614	192
+## sheet_x
+# rows=10000 cells=100000 reps=32 window=2560x1600 device px
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	tiles_p50
+# model built in 0.11 ms (1570627 instructions): the data, not the UI
+# mounted: 764 records in 32 pages, 43776 bytes of columns, 66.6 us wall
+sheet_x	mount	1	414672	414672	236805	4000
+sheet_x	floor	32	0	0	2	0
+sheet_x	idle	32	76	76	17	0
+sheet_x	hover	32	13537	13537	2389	329
+sheet_x	hover_move	32	14943	15082	2805	705
+sheet_x	theme	32	42451	42451	8542	4000
+sheet_x	edit_exposed	32	2921	2931	602	32
+sheet_x	edit_unexposed	32	2398	2403	416	16
+sheet_x	part_model_edit	32	58	58	42	0
+sheet_x	part_total_word	32	906	911	195	16
+sheet_x	part_delta_total	32	623	628	136	16
+sheet_x	part_diff_only	32	163	163	56	0
+sheet_x	part_journal_only	32	1779	1779	283	0
+sheet_x	part_mark_cell	32	59	63	11	16
+sheet_x	part_pointer_same	32	438	438	73	0
+sheet_x	select	32	1005	1005	180	0
+sheet_x	frame_in_motion	8	186	186	68	252
+sheet_x	frame_at_rest	32	10	10	1	0
+sheet_x	scroll_3_rows	32	7015	7016	1133	3600
+sheet_x	scroll_6px	32	1591	1591	304	3600
+sheet_x	scroll_page	32	34489	34489	5352	3600
+sheet_x	insert_row	32	88992	92317	28608	2390
+sheet_x	remove_row	32	88693	92337	28456	2390
+sheet_x	redescribe_idle	32	17791	17792	2660	0
+sheet_x	redescribe_edit	32	17851	18587	2881	0
+# at the end: 764 records in 32 pages, 43776 bytes of columns
+## sheet_x again (mount is one sample)
+# mounted: 764 records in 32 pages, 43776 bytes of columns, 42.8 us wall
+sheet_x	mount	1	347470	347470	152134	4000
+# mounted: 764 records in 32 pages, 43776 bytes of columns, 57.0 us wall
+sheet_x	mount	1	372278	372278	202190	4000
+## text_x
+# rows=100000 reps=64 cold=false window=1280x800 device px, DejaVu Sans 14 px from the prepared face
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	tiles_p50
+rows	mount	16	114270	211350	33318	0
+# rows mount: 14 lines shaped, 37 found again, 6912 bytes of glyph state
+rows	idle	64	64	64	11	0
+rows	hover	64	4493	4493	742	120
+rows	tint (text colour alone, every line)	64	2352	2352	423	341
+rows	scroll 3 rows	64	4992	5006	890	960
+rows	scroll a page (24 rows enter)	64	19398	19398	2938	960
+rows	label edit (toggle a suffix on an exposed row)	64	2594	4247	538	28
+rows	value edit (an exposed row's number)	64	1918	1922	347	12
+rows	remove a row then insert one	64	615308	615318	192083	766
+rows	collect the glyph memo (clear, re-describe what is exposed)	64	43084	43084	6365	389
+# rows end: 922 lines shaped, 9177 found again, 9728 bytes of glyph state
+typing	type a character (event, handler, settle)	64	3030	4193	487	26
+typing	caret move	64	1646	1775	306	1
+# typing: 4000 keys grew the memo by 3584 bytes: a 256 KiB budget is reached every 292571 keys
+# typing end: 51 lines shaped, 8109 found again, 15360 bytes of glyph state
+search	type a character (event, handler, settle)	64	27645813	27672043	7126314	26
+search	caret move	64	1646	1775	303	1
+search	narrow by a key, widen by a backspace (24 rows re-enter)	64	6464779	6466597	995382	976
+# search re-entry: 1 lines shaped during the phase
+# search end: 33 lines shaped, 1107 found again, 12288 bytes of glyph state
+## ops_x
+scene	part	phase	steps	instr_p50	instr_p95	cycles_p50
+# select opaque h=2048: 4096 records in 128 pages; 2048 keyed and 2048 pointer readers
+ops_x	select	opaque h=2048 selection change	64	33768	33768	5122
+ops_x	select	opaque h=2048 pointer event	64	63628	64238	10855
+ops_x	select	opaque h=2048 pointer event far from every reader	64	57703	57703	9179
+ops_x	select	opaque h=2048 scroll 1 row then selection change	64	13904	13905	3666
+ops_x	select	opaque h=2048 scroll 1 row	64	13847	13848	3645
+ops_x	select	opaque h=2048 theme	64	81383	81383	15345
+# select declared h=2048: 4096 records in 128 pages; 2048 keyed and 2048 pointer readers
+ops_x	select	declared h=2048 selection change	64	1294	1294	379
+ops_x	select	declared h=2048 pointer event	64	40105	41714	6501
+ops_x	select	declared h=2048 pointer event far from every reader	64	2030	2030	249
+ops_x	select	declared h=2048 scroll 1 row then selection change	64	13941	13941	3676
+ops_x	select	declared h=2048 scroll 1 row	64	13884	13884	3648
+ops_x	select	declared h=2048 theme	64	81431	81431	15555
+# select declared h=2048: FastStats { key_hits: 65, key_records: 130, key_builds: 1, key_scans: 1, near_hits: 130, near_records: 23324, near_builds: 1 }
+# select opaque h=16384: 32768 records in 1024 pages; 16384 keyed and 16384 pointer readers
+ops_x	select	opaque h=16384 selection change	64	264040	264041	43370
+ops_x	select	opaque h=16384 pointer event	64	465932	466542	84505
+ops_x	select	opaque h=16384 pointer event far from every reader	64	460007	460007	80114
+ops_x	select	opaque h=16384 scroll 1 row then selection change	64	94859	94859	25843
+ops_x	select	opaque h=16384 scroll 1 row	64	94802	94802	25977
+ops_x	select	opaque h=16384 theme	64	647263	647263	123835
+# select declared h=16384: 32768 records in 1024 pages; 16384 keyed and 16384 pointer readers
+ops_x	select	declared h=16384 selection change	64	1348	1348	423
+ops_x	select	declared h=16384 pointer event	64	52201	53810	7684
+ops_x	select	declared h=16384 pointer event far from every reader	64	14126	14126	1652
+ops_x	select	declared h=16384 scroll 1 row then selection change	64	94891	94892	26016
+ops_x	select	declared h=16384 scroll 1 row	64	94834	94835	26037
+ops_x	select	declared h=16384 theme	64	647306	647306	123649
+# select declared h=16384: FastStats { key_hits: 65, key_records: 130, key_builds: 1, key_scans: 1, near_hits: 130, near_records: 23324, near_builds: 1 }
+ops_x	lane	Rel n=10000 insert + remove in the middle	64	74858	75068	20574
+ops_x	lane	Seq n=10000 insert + remove in the middle	64	1528	1738	372
+ops_x	lane	Rel n=10000 insert at the front	64	75284	75493	25234
+ops_x	lane	Seq n=10000 insert at the front	64	991	1201	391
+ops_x	lane	Rel n=10000 read a window of 50	64	410	410	178
+ops_x	lane	Seq n=10000 read a window of 50	64	1001	1005	366
+# lane n=10000: Seq holds 546640 bytes in 106 blocks; Rel holds 402560
+ops_x	lane	Rel n=100000 insert + remove in the middle	64	749870	750080	251082
+ops_x	lane	Seq n=100000 insert + remove in the middle	64	1812	2022	534
+ops_x	lane	Rel n=100000 insert at the front	64	750285	750500	253918
+ops_x	lane	Seq n=100000 insert at the front	64	1075	1285	514
+ops_x	lane	Rel n=100000 read a window of 50	64	410	410	372
+ops_x	lane	Seq n=100000 read a window of 50	64	1057	1070	972
+# lane n=100000: Seq holds 5397656 bytes in 1043 blocks; Rel holds 4002560
+ops_x	lane	Rel n=1000000 insert + remove in the middle	64	7499912	7509547	2537230
+ops_x	lane	Seq n=1000000 insert + remove in the middle	64	1423	1633	464
+ops_x	lane	Rel n=1000000 insert at the front	64	7500350	7514680	2557861
+ops_x	lane	Seq n=1000000 insert at the front	64	1138	1348	557
+ops_x	lane	Rel n=1000000 read a window of 50	64	410	410	891
+ops_x	lane	Seq n=1000000 read a window of 50	64	1112	1112	1598
+# lane n=1000000: Seq holds 53816720 bytes in 10418 blocks; Rel holds 40002560
+ops_x	ops	Filter n=10000 recompute	1	291018	291018	0
+ops_x	ops	Sort n=10000 recompute	1	3299594	3299594	0
+ops_x	ops	Group n=10000 recompute	1	3077762	3077762	0
+ops_x	ops	Join n=1000 x 200 recompute (200 pairs)	1	1074957	1074957	0
+ops_x	ops	Filter n=10000 one row edited	64	566	1771	382
+ops_x	ops	Sort n=10000 one row edited (it moves)	64	1528	1697	1210
+ops_x	ops	Group n=10000 one row edited (another group)	64	572	628	439
+ops_x	ops	Filter n=10000 a row inserted and one removed	64	644	1098	283
+ops_x	ops	Join n=1000 x 200 one left row's key edited	64	2751	4024	704
+ops_x	ops	Filter n=100000 recompute	1	2531929	2531929	0
+ops_x	ops	Sort n=100000 recompute	1	38511229	38511229	0
+ops_x	ops	Group n=100000 recompute	1	36497525	36497525	0
+ops_x	ops	Join n=10000 x 200 recompute (1000 pairs)	1	4652591	4652591	0
+ops_x	ops	Filter n=100000 one row edited	64	664	1671	673
+ops_x	ops	Sort n=100000 one row edited (it moves)	64	1817	1983	3034
+ops_x	ops	Group n=100000 one row edited (another group)	64	628	628	189
+ops_x	ops	Filter n=100000 a row inserted and one removed	64	738	9562	514
+ops_x	ops	Join n=10000 x 200 one left row's key edited	64	2618	3878	894
+ops_x	ops	Filter n=1000000 recompute	1	25076645	25076645	0
+ops_x	ops	Sort n=1000000 recompute	1	465689186	465689186	0
+ops_x	ops	Group n=1000000 recompute	1	425665614	425665614	0
+ops_x	ops	Join n=100000 x 200 recompute (10000 pairs)	1	24564191	24564191	0
+ops_x	ops	Filter n=1000000 one row edited	64	785	1770	6202
+ops_x	ops	Sort n=1000000 one row edited (it moves)	64	2053	2245	5551
+ops_x	ops	Group n=1000000 one row edited (another group)	64	628	628	200
+ops_x	ops	Filter n=1000000 a row inserted and one removed	64	831	2503	396
+ops_x	ops	Join n=100000 x 200 one left row's key edited	64	2792	3859	2146
+ops_x	search	scan n=100000 type "a" (needle "a", 62500 hits)	1	11161607	11161607	0
+ops_x	search	scan n=100000 type "m" (needle "am", 12500 hits)	1	16786182	16786182	0
+ops_x	search	scan n=100000 type "b" (needle "amb", 12500 hits)	1	23051264	23051264	0
+ops_x	search	scan n=100000 type "e" (needle "ambe", 12500 hits)	1	36026940	36026940	0
+ops_x	search	scan n=100000 type "r" (needle "amber", 12500 hits)	1	41191934	41191934	0
+ops_x	search	scan n=100000 type " " (needle "amber ", 12500 hits)	1	42155202	42155202	0
+ops_x	search	scan n=100000 type "r" (needle "amber r", 0 hits)	1	46039625	46039625	0
+ops_x	search	scan n=100000 type "i" (needle "amber ri", 0 hits)	1	40395401	40395401	0
+ops_x	search	scan n=100000 type "v" (needle "amber riv", 0 hits)	1	37268805	37268805	0
+ops_x	search	scan n=100000 type "e" (needle "amber rive", 0 hits)	1	34162928	34162928	0
+ops_x	search	scan n=100000 type "r" (needle "amber river", 0 hits)	1	31077178	31077178	0
+ops_x	search	scan n=100000 backspace (needle "amber rive", 0 hits)	1	34161975	34161975	0
+ops_x	search	scan n=100000 backspace (needle "amber riv", 0 hits)	1	37267514	37267514	0
+ops_x	search	scan n=100000 backspace (needle "amber ri", 0 hits)	1	40369531	40369531	0
+ops_x	search	scan n=100000 backspace (needle "amber r", 0 hits)	1	46028537	46028537	0
+ops_x	search	scan n=100000 backspace (needle "amber ", 12500 hits)	1	42164186	42164186	0
+ops_x	search	scan n=100000 backspace (needle "amber", 12500 hits)	1	41191566	41191566	0
+ops_x	search	scan n=100000 backspace (needle "ambe", 12500 hits)	1	36001698	36001698	0
+ops_x	search	scan n=100000 backspace (needle "amb", 12500 hits)	1	23053051	23053051	0
+ops_x	search	scan n=100000 backspace (needle "am", 12500 hits)	1	16785752	16785752	0
+ops_x	search	scan n=100000 backspace (needle "a", 62500 hits)	1	10841852	10841852	0
+ops_x	search	scan n=100000 backspace (needle "", 100000 hits)	1	1014694	1014694	0
+ops_x	search	scan n=100000 type "i" (needle "i", 66666 hits)	1	11671722	11671722	0
+ops_x	search	scan n=100000 type "v" (needle "iv", 29166 hits)	1	17196895	17196895	0
+ops_x	search	scan n=100000 type "o" (needle "ivo", 16666 hits)	1	21664936	21664936	0
+ops_x	search	scan n=100000 type "r" (needle "ivor", 16666 hits)	1	33346175	33346175	0
+ops_x	search	scan n=100000 type "y" (needle "ivory", 16666 hits)	1	40788427	40788427	0
+ops_x	search	scan n=100000 backspace (needle "ivor", 16666 hits)	1	33340090	33340090	0
+ops_x	search	scan n=100000 backspace (needle "ivo", 16666 hits)	1	21675276	21675276	0
+ops_x	search	scan n=100000 backspace (needle "iv", 29166 hits)	1	17198931	17198931	0
+ops_x	search	scan n=100000 backspace (needle "i", 66666 hits)	1	11618148	11618148	0
+ops_x	search	scan n=100000 backspace (needle "", 100000 hits)	1	1074600	1074600	0
+ops_x	search	scan n=100000 type a character / backspace at 'quick river'	64	31062135	31067762	7456775
+ops_x	search	scan n=100000 middle edit: type / backspace inside the needle	64	31061850	31086856	7471438
+ops_x	search	scan n=100000 dataset edit under 'quick river'	64	31066917	31093019	7462388
+ops_x	search	scan n=100000 narrow by 'z' to nothing, widen by a backspace to everything	64	47094371	47108745	11871687
+ops_x	search	operator n=100000 type "a" (needle "a", 62500 hits)	1	12533192	12533192	0
+ops_x	search	operator n=100000 type "m" (needle "am", 12500 hits)	1	12662120	12662120	0
+ops_x	search	operator n=100000 type "b" (needle "amb", 12500 hits)	1	1596638	1596638	0
+ops_x	search	operator n=100000 type "e" (needle "ambe", 12500 hits)	1	1665557	1665557	0
+ops_x	search	operator n=100000 type "r" (needle "amber", 12500 hits)	1	1732448	1732448	0
+ops_x	search	operator n=100000 type " " (needle "amber ", 12500 hits)	1	1541241	1541241	0
+ops_x	search	operator n=100000 type "r" (needle "amber r", 0 hits)	1	1515447	1515447	0
+ops_x	search	operator n=100000 type "i" (needle "amber ri", 0 hits)	1	6269	6269	0
+ops_x	search	operator n=100000 type "v" (needle "amber riv", 0 hits)	1	7565	7565	0
+ops_x	search	operator n=100000 type "e" (needle "amber rive", 0 hits)	1	7095	7095	0
+ops_x	search	operator n=100000 type "r" (needle "amber river", 0 hits)	1	8450	8450	0
+ops_x	search	operator n=100000 backspace (needle "amber rive", 0 hits)	1	4397	4397	0
+ops_x	search	operator n=100000 backspace (needle "amber riv", 0 hits)	1	4285	4285	0
+ops_x	search	operator n=100000 backspace (needle "amber ri", 0 hits)	1	4166	4166	0
+ops_x	search	operator n=100000 backspace (needle "amber r", 0 hits)	1	4305	4305	0
+ops_x	search	operator n=100000 backspace (needle "amber ", 12500 hits)	1	324186	324186	0
+ops_x	search	operator n=100000 backspace (needle "amber", 12500 hits)	1	286746	286746	0
+ops_x	search	operator n=100000 backspace (needle "ambe", 12500 hits)	1	286013	286013	0
+ops_x	search	operator n=100000 backspace (needle "amb", 12500 hits)	1	285946	285946	0
+ops_x	search	operator n=100000 backspace (needle "am", 12500 hits)	1	285801	285801	0
+ops_x	search	operator n=100000 backspace (needle "a", 62500 hits)	1	9804896	9804896	0
+ops_x	search	operator n=100000 backspace (needle "", 100000 hits)	1	2298963	2298963	0
+ops_x	search	operator n=100000 type "i" (needle "i", 66666 hits)	1	13126481	13126481	0
+ops_x	search	operator n=100000 type "v" (needle "iv", 29166 hits)	1	14636155	14636155	0
+ops_x	search	operator n=100000 type "o" (needle "ivo", 16666 hits)	1	3328116	3328116	0
+ops_x	search	operator n=100000 type "r" (needle "ivor", 16666 hits)	1	3134158	3134158	0
+ops_x	search	operator n=100000 type "y" (needle "ivory", 16666 hits)	1	3232728	3232728	0
+ops_x	search	operator n=100000 backspace (needle "ivor", 16666 hits)	1	376105	376105	0
+ops_x	search	operator n=100000 backspace (needle "ivo", 16666 hits)	1	374181	374181	0
+ops_x	search	operator n=100000 backspace (needle "iv", 29166 hits)	1	889167	889167	0
+ops_x	search	operator n=100000 backspace (needle "i", 66666 hits)	1	10742091	10742091	0
+ops_x	search	operator n=100000 backspace (needle "", 100000 hits)	1	2119077	2119077	0
+ops_x	search	operator n=100000 type a character / backspace at 'quick river'	64	4634	7614	782
+ops_x	search	operator n=100000 middle edit: type / backspace inside the needle	64	4270	4387	1247
+ops_x	search	operator n=100000 dataset edit under 'quick river'	64	22575	32802	27355
+ops_x	search	operator n=100000 narrow by 'z' to nothing, widen by a backspace to everything	64	317951	318108	50341
+# search n=100000: text 1808331 bytes; index 6961184 bytes (1604449 postings, 143 trigrams); result and kept 90185 bytes; index/text 3.85
+ops_x	corpus	repetitive n=10000 build the index	1	20210946	20210946	0
+ops_x	corpus	repetitive n=10000 a scan with String::contains ("mble i")	1	4564290	4564290	0
+ops_x	corpus	repetitive n=10000 needle "m": Narrow, 10000 verified, 3750 hits	1	1174640	1174640	0
+ops_x	corpus	repetitive n=10000 needle "mb": Narrow, 3750 verified, 2500 hits	1	677270	677270	0
+ops_x	corpus	repetitive n=10000 needle "mbl": Index, 1250 verified, 1250 hits	1	215809	215809	0
+ops_x	corpus	repetitive n=10000 needle "mble": Narrow, 1250 verified, 1250 hits	1	196389	196389	0
+ops_x	corpus	repetitive n=10000 needle "mble ": Narrow, 1250 verified, 1250 hits	1	204032	204032	0
+ops_x	corpus	repetitive n=10000 needle "mble i": Index, 416 verified, 416 hits	1	89376	89376	0
+ops_x	corpus	repetitive n=10000 back to "mble ": Kept, 0 verified, 1250 hits	1	43222	43222	0
+ops_x	corpus	repetitive n=10000 back to "mble": Kept, 0 verified, 1250 hits	1	32213	32213	0
+ops_x	corpus	repetitive n=10000 back to "mbl": Kept, 0 verified, 1250 hits	1	32240	32240	0
+ops_x	corpus	repetitive n=10000 back to "mb": Kept, 0 verified, 2500 hits	1	81636	81636	0
+ops_x	corpus	repetitive n=10000 back to "m": Scan, 10000 verified, 3750 hits	1	912554	912554	0
+ops_x	corpus	repetitive n=10000 back to "": Scan, 0 verified, 10000 hits	1	272773	272773	0
+ops_x	corpus	repetitive n=10000 replaced by "rand ": Index, 1250 verified, 1250 hits	1	193010	193010	0
+ops_x	corpus	repetitive n=10000 dataset edit under the needle	64	6150	7048	5910
+# corpus repetitive n=10000: text 180832 bytes; index 662876 bytes (160479 postings, 151 trigrams); index/text 3.67
+ops_x	corpus	repetitive n=100000 build the index	1	193612573	193612573	0
+ops_x	corpus	repetitive n=100000 a scan with String::contains ("mble i")	1	45638040	45638040	0
+ops_x	corpus	repetitive n=100000 needle "m": Narrow, 100000 verified, 37500 hits	1	11424731	11424731	0
+ops_x	corpus	repetitive n=100000 needle "mb": Narrow, 37500 verified, 25000 hits	1	6555965	6555965	0
+ops_x	corpus	repetitive n=100000 needle "mbl": Index, 12500 verified, 12500 hits	1	2065620	2065620	0
+ops_x	corpus	repetitive n=100000 needle "mble": Narrow, 12500 verified, 12500 hits	1	1913753	1913753	0
+ops_x	corpus	repetitive n=100000 needle "mble ": Narrow, 12500 verified, 12500 hits	1	1978873	1978873	0
+ops_x	corpus	repetitive n=100000 needle "mble i": Index, 4166 verified, 4166 hits	1	753467	753467	0
+ops_x	corpus	repetitive n=100000 back to "mble ": Kept, 0 verified, 12500 hits	1	370465	370465	0
+ops_x	corpus	repetitive n=100000 back to "mble": Kept, 0 verified, 12500 hits	1	292718	292718	0
+ops_x	corpus	repetitive n=100000 back to "mbl": Kept, 0 verified, 12500 hits	1	285504	285504	0
+ops_x	corpus	repetitive n=100000 back to "mb": Kept, 0 verified, 25000 hits	1	734985	734985	0
+ops_x	corpus	repetitive n=100000 back to "m": Scan, 100000 verified, 37500 hits	1	8982551	8982551	0
+ops_x	corpus	repetitive n=100000 back to "": Scan, 0 verified, 100000 hits	1	2452001	2452001	0
+ops_x	corpus	repetitive n=100000 replaced by "rand ": Index, 12500 verified, 12500 hits	1	1872512	1872512	0
+ops_x	corpus	repetitive n=100000 dataset edit under the needle	64	6882	7866	17496
+# corpus repetitive n=100000: text 1808332 bytes; index 6526820 bytes (1604229 postings, 151 trigrams); index/text 3.61
+ops_x	corpus	repetitive n=1000000 build the index	1	1940592871	1940592871	0
+ops_x	corpus	repetitive n=1000000 a scan with String::contains ("mble i")	1	456562851	456562851	0
+ops_x	corpus	repetitive n=1000000 needle "m": Narrow, 1000000 verified, 375000 hits	1	118008639	118008639	0
+ops_x	corpus	repetitive n=1000000 needle "mb": Narrow, 375000 verified, 250000 hits	1	65725076	65725076	0
+ops_x	corpus	repetitive n=1000000 needle "mbl": Index, 125000 verified, 125000 hits	1	20677194	20677194	0
+ops_x	corpus	repetitive n=1000000 needle "mble": Narrow, 125000 verified, 125000 hits	1	18624127	18624127	0
+ops_x	corpus	repetitive n=1000000 needle "mble ": Narrow, 125000 verified, 125000 hits	1	19399674	19399674	0
+ops_x	corpus	repetitive n=1000000 needle "mble i": Index, 41666 verified, 41666 hits	1	7326625	7326625	0
+ops_x	corpus	repetitive n=1000000 back to "mble ": Kept, 0 verified, 125000 hits	1	3482186	3482186	0
+ops_x	corpus	repetitive n=1000000 back to "mble": Kept, 0 verified, 125000 hits	1	2704279	2704279	0
+ops_x	corpus	repetitive n=1000000 back to "mbl": Kept, 0 verified, 125000 hits	1	2685214	2685214	0
+ops_x	corpus	repetitive n=1000000 back to "mb": Kept, 0 verified, 250000 hits	1	7143823	7143823	0
+ops_x	corpus	repetitive n=1000000 back to "m": Scan, 1000000 verified, 375000 hits	1	88865957	88865957	0
+ops_x	corpus	repetitive n=1000000 back to "": Scan, 0 verified, 1000000 hits	1	25254995	25254995	0
+ops_x	corpus	repetitive n=1000000 replaced by "rand ": Index, 125000 verified, 125000 hits	1	18661124	18661124	0
+ops_x	corpus	repetitive n=1000000 dataset edit under the needle	64	7441	8518	33958
+# corpus repetitive n=1000000: text 18083332 bytes; index 65179868 bytes (16041729 postings, 151 trigrams); index/text 3.60
+ops_x	corpus	unique n=10000 build the index	1	50582003	50582003	0
+ops_x	corpus	unique n=10000 a scan with String::contains ("cbqbpo")	1	2736189	2736189	0
+ops_x	corpus	unique n=10000 needle "c": Narrow, 10000 verified, 6290 hits	1	1431559	1431559	0
+ops_x	corpus	unique n=10000 needle "cb": Narrow, 6290 verified, 445 hits	1	1564988	1564988	0
+ops_x	corpus	unique n=10000 needle "cbq": Index, 16 verified, 16 hits	1	70907	70907	0
+ops_x	corpus	unique n=10000 needle "cbqb": Narrow, 16 verified, 2 hits	1	12362	12362	0
+ops_x	corpus	unique n=10000 needle "cbqbp": Narrow, 2 verified, 1 hits	1	4820	4820	0
+ops_x	corpus	unique n=10000 needle "cbqbpo": Narrow, 1 verified, 1 hits	1	1819	1819	0
+ops_x	corpus	unique n=10000 back to "cbqbp": Kept, 0 verified, 1 hits	1	2044	2044	0
+ops_x	corpus	unique n=10000 back to "cbqb": Kept, 0 verified, 2 hits	1	3820	3820	0
+ops_x	corpus	unique n=10000 back to "cbq": Kept, 0 verified, 16 hits	1	6838	6838	0
+ops_x	corpus	unique n=10000 back to "cb": Kept, 0 verified, 445 hits	1	43614	43614	0
+ops_x	corpus	unique n=10000 back to "c": Scan, 10000 verified, 6290 hits	1	1121107	1121107	0
+ops_x	corpus	unique n=10000 back to "": Scan, 0 verified, 10000 hits	1	233212	233212	0
+ops_x	corpus	unique n=10000 replaced by "etnnh": Index, 16 verified, 1 hits	1	8638	8638	0
+ops_x	corpus	unique n=10000 dataset edit under the needle	64	5930	9298	4943
+# corpus unique n=10000: text 200133 bytes; index 1254704 bytes (180004 postings, 8000 trigrams); index/text 6.27
+ops_x	corpus	unique n=100000 build the index	1	260459978	260459978	0
+ops_x	corpus	unique n=100000 a scan with String::contains ("cbqbpo")	1	27361879	27361879	0
+ops_x	corpus	unique n=100000 needle "c": Narrow, 100000 verified, 63145 hits	1	14147494	14147494	0
+ops_x	corpus	unique n=100000 needle "cb": Narrow, 63145 verified, 4649 hits	1	15537778	15537778	0
+ops_x	corpus	unique n=100000 needle "cbq": Index, 225 verified, 225 hits	1	127194	127194	0
+ops_x	corpus	unique n=100000 needle "cbqb": Index, 208 verified, 7 hits	1	88180	88180	0
+ops_x	corpus	unique n=100000 needle "cbqbp": Narrow, 7 verified, 1 hits	1	7818	7818	0
+ops_x	corpus	unique n=100000 needle "cbqbpo": Narrow, 1 verified, 1 hits	1	1806	1806	0
+ops_x	corpus	unique n=100000 back to "cbqbp": Kept, 0 verified, 1 hits	1	2337	2337	0
+ops_x	corpus	unique n=100000 back to "cbqb": Kept, 0 verified, 7 hits	1	5290	5290	0
+ops_x	corpus	unique n=100000 back to "cbq": Kept, 0 verified, 225 hits	1	26019	26019	0
+ops_x	corpus	unique n=100000 back to "cb": Kept, 0 verified, 4649 hits	1	140286	140286	0
+ops_x	corpus	unique n=100000 back to "c": Scan, 100000 verified, 63145 hits	1	10967363	10967363	0
+ops_x	corpus	unique n=100000 back to "": Scan, 0 verified, 100000 hits	1	2148730	2148730	0
+ops_x	corpus	unique n=100000 replaced by "etnnh": Index, 208 verified, 2 hits	1	50594	50594	0
+ops_x	corpus	unique n=100000 dataset edit under the needle	64	6936	12347	12900
+# corpus unique n=100000: text 1999084 bytes; index 7773768 bytes (1797112 postings, 8000 trigrams); index/text 3.89
+ops_x	corpus	unique n=1000000 build the index	1	2285451920	2285451920	0
+ops_x	corpus	unique n=1000000 a scan with String::contains ("cbqbpo")	1	273264531	273264531	0
+ops_x	corpus	unique n=1000000 needle "c": Narrow, 1000000 verified, 629944 hits	1	140263064	140263064	0
+ops_x	corpus	unique n=1000000 needle "cb": Narrow, 629944 verified, 46381 hits	1	155898214	155898214	0
+ops_x	corpus	unique n=1000000 needle "cbq": Index, 2273 verified, 2273 hits	1	1112009	1112009	0
+ops_x	corpus	unique n=1000000 needle "cbqb": Index, 2231 verified, 108 hits	1	554421	554421	0
+ops_x	corpus	unique n=1000000 needle "cbqbp": Narrow, 108 verified, 3 hits	1	53311	53311	0
+ops_x	corpus	unique n=1000000 needle "cbqbpo": Narrow, 3 verified, 1 hits	1	5398	5398	0
+ops_x	corpus	unique n=1000000 back to "cbqbp": Kept, 0 verified, 3 hits	1	4767	4767	0
+ops_x	corpus	unique n=1000000 back to "cbqb": Kept, 0 verified, 108 hits	1	16715	16715	0
+ops_x	corpus	unique n=1000000 back to "cbq": Kept, 0 verified, 2273 hits	1	145643	145643	0
+ops_x	corpus	unique n=1000000 back to "cb": Kept, 0 verified, 46381 hits	1	1327616	1327616	0
+ops_x	corpus	unique n=1000000 back to "c": Scan, 1000000 verified, 629944 hits	1	109756085	109756085	0
+ops_x	corpus	unique n=1000000 back to "": Scan, 0 verified, 1000000 hits	1	22012217	22012217	0
+ops_x	corpus	unique n=1000000 replaced by "etnnh": Index, 2217 verified, 7 hits	1	497719	497719	0
+ops_x	corpus	unique n=1000000 dataset edit under the needle	64	8245	12709	29974
+# corpus unique n=1000000: text 19993143 bytes; index 73690432 bytes (17972574 postings, 8000 trigrams); index/text 3.69
+ 4:58  up 4 days,  7:51, 5 users, load averages: 25.58 26.87 23.02

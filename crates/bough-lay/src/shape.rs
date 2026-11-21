@@ -603,25 +603,20 @@ impl<'a> Sink<'a> for SaveSink<'_> {
         self.0.push(n);
     }
 }
-struct MatchSink<'s> {
-    exp: &'s [Nd],
-    idx: usize,
-    eq: bool,
-}
+struct MatchSink<'s>(Option<&'s [Nd]>);
 impl<'a> Sink<'a> for MatchSink<'_> {
+    #[inline(always)]
     fn node(&mut self, n: Nd) {
-        self.eq &= self.exp.get(self.idx).is_some_and(|e| *e == n);
-        self.idx += 1;
+        self.0 = match self.0.and_then(|remaining| remaining.split_first()) {
+            Some((expected, tail)) if *expected == n => Some(tail),
+            _ => None,
+        };
     }
 }
 fn matches<T: Shape>(t: &T, exp: &[Nd]) -> bool {
-    let mut ms = MatchSink {
-        exp,
-        idx: 0,
-        eq: true,
-    };
-    t.emit(&mut ms);
-    ms.eq && ms.idx == exp.len()
+    let mut sink = MatchSink(Some(exp));
+    t.emit(&mut sink);
+    matches!(sink.0, Some([]))
 }
 
 /// The rects of the last shape a list laid out, with the widths they hold over. A row of the same shape at a
@@ -659,7 +654,8 @@ impl Memo {
             misses: 0,
         }
     }
-    /// Whether a row of shape `hash` at `width` is the kept answer.
+    /// Whether `hash` and `width` match the kept answer's candidate hint.
+    /// Use [`Self::row`] to check exact shape, scale and input equality.
     #[inline(always)]
     pub fn holds(&self, hash: u64, width: f32) -> bool {
         (hash == self.hash) & (width >= self.valid.lo[0]) & (width <= self.valid.hi[0])
@@ -687,6 +683,12 @@ impl Memo {
         (self.hash, self.valid, self.h) = (hash, v, h);
         self.misses += 1;
     }
+    #[cold]
+    #[inline(never)]
+    fn lay_miss<T: Shape>(&mut self, t: &T, s: f32, u: &U, width: f32) {
+        self.lay(t, hash(t), s, u, width);
+    }
+
     /// The rects of row `t` at `at`, into `out`; returns the row's height. The whole of a row's layout on the
     /// path of a list: a compare of the shape, a compare of the width, a copy.
     #[inline(always)]
@@ -699,16 +701,21 @@ impl Memo {
         at: (i32, i32),
         out: &mut O,
     ) -> i32 {
-        let hash = hash(t);
-        if !self.holds(hash, width)
-            || (!cfg!(feature = "mutant_memo_hash_only")
-                && (!matches(t, &self.canonical)
-                    || self.scale != s.to_bits()
-                    || self.inputs != u.w))
-        {
-            self.lay(t, hash, s, u, width);
-        } else {
+        #[cfg(feature = "mutant_memo_hash_only")]
+        let hit = self.holds(hash(t), width);
+        #[cfg(not(feature = "mutant_memo_hash_only"))]
+        let hit = width >= self.valid.lo[0]
+            && width <= self.valid.hi[0]
+            && self.rects.len() == T::LEAVES
+            && self.scale == s.to_bits()
+            && self.inputs == u.w
+            && matches(t, &self.canonical);
+        if hit {
             self.hits += 1;
+        } else {
+            // The hash is a public candidate hint. The exact hit check already
+            // establishes shape equality, so compute the hint only on a miss.
+            self.lay_miss(t, s, u, width);
         }
         for (k, r) in self.rects.iter().enumerate() {
             out.put(k, [r[0] + at.0, r[1] + at.1, r[2] + at.0, r[3] + at.1]);
@@ -886,6 +893,36 @@ mod memo_tests {
         nodes.push(nodes[0]);
         assert!(!matches(&t, &nodes));
     }
+    #[test]
+    fn exact_memo_hit_emits_shape_once() {
+        struct Counted<'a>(&'a Cell<usize>);
+        impl Shape for Counted<'_> {
+            const LEAVES: usize = 1;
+            const WRAPS: bool = false;
+            const VARIES: bool = true;
+            const HK: Hk = Hk::Fixed;
+
+            fn emit<'a, S: Sink<'a>>(&'a self, s: &mut S) {
+                self.0.set(self.0.get() + 1);
+                Leaf(10.0).emit(s);
+            }
+        }
+
+        let calls = Cell::new(0);
+        let shape = Counted(&calls);
+        let u = U::default();
+        let mut memo = Memo::new();
+        let mut out = [[0; 4]; 1];
+        let width = 100.0;
+        memo.row(&shape, 1.0, &u, width, (0, 0), &mut out[..]);
+        let want = out;
+        calls.set(0);
+        memo.row(&shape, 1.0, &u, width, (0, 0), &mut out[..]);
+        assert_eq!(out, want);
+        assert_eq!(memo.hits, 1);
+        assert_eq!(calls.get(), 1);
+    }
+
     #[test]
     fn memo_collision_and_scale_match_uncached() {
         let u = U::default();
