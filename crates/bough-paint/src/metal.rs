@@ -306,6 +306,25 @@ static inline uint tab_v(const device uint* T, uint base, uint idx) {
     if (idx == 0xFFFFFFFFu) { return 0xFFFFFFFFu; }
     return (T[base + 2u + (idx >> 1u)] >> ((idx & 1u) * 16u)) & 0xFFFFu;
 }
+static inline bool tab_patch_ready(const device uint* T, Cmd c, metal::int4 shape) {
+    uint handle = c_tab(c), base = handle & 0x7FFFFFFFu;
+    if ((handle & 0x80000000u) == 0u || base >= TABLIM - 1u) { return false; }
+    return x_patch_ok(c, shape, T[base], T[base + 1u], T[base + 2u], T[base + 3u]);
+}
+static inline metal::uint4 tab_shadow(const device uint* T, Cmd c, metal::int4 shape, bool patch, bool corners, int x, int y) {
+    if (!x_in(c.win, x, y)) { return metal::uint4(0u); }
+    if (x_in(c.core, x, y)) { return c.pm; }
+    uint handle = c_tab(c);
+    if (patch) {
+        uint index = x_patch_idx(c, shape, x, y);
+        uint base = (handle & 0x7FFFFFFFu) + 4u, word = index >> 1u;
+        if (index != 0xFFFFFFFFu && base + word < TABLIM + 2u) {
+            return p_shadow_coverage(c, t_half(T[base + word], index));
+        }
+    }
+    metal::uint4 taps = x_ctaps(c, x, y, corners);
+    return p_shadowm(c, x, y, tab_v(T, handle, taps.x), tab_v(T, handle, taps.y), tab_v(T, handle, taps.z), tab_v(T, handle, taps.w));
+}
 "#,
     );
     s.push_str(FX_GLUE);

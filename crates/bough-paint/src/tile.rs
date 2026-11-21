@@ -9,6 +9,7 @@
 //! (a row every command agrees is the same as the row above is copied, not shaded), then `Shade` shades the
 //! rows that are left into a Q15 accumulator, which `store` writes out.
 use crate::layer::{self, Layer, Lvl};
+use crate::ops::ops as x;
 use crate::paint::{EMPTY, Sink};
 use bough_kernel::k;
 use bough_kernel::simd;
@@ -515,6 +516,33 @@ impl Sink for Shade<'_, '_, '_> {
             return;
         }
         let pm = st(c.pm);
+        if let Some((shape, coverage)) = crate::paint::coverage_patch(c, t.tabs) {
+            let (ox, oy) = (t.ox, t.oy);
+            let mut row_cov = [0u16; 32];
+            let mut columns = [0usize; 32];
+            for col in x0..x1 {
+                columns[col as usize] = x::x_patch_axis(ox + col, c.b.x >> 8, c.b.z >> 8, shape.x, shape.z, shape.w) as usize;
+            }
+            let width = (shape.x + 2 * shape.w + 1) as usize;
+            while m != 0 {
+                let y = m.trailing_zeros() as i32;
+                m &= m - 1;
+                let patch_y = x::x_patch_axis(oy + y, c.b.y >> 8, c.b.w >> 8, shape.y, shape.z, shape.w) as usize;
+                for (lo, hi) in t.runs(y, x0, x1) {
+                    for col in lo..hi {
+                        let i = patch_y * width + columns[col as usize];
+                        let i = if cfg!(feature = "mutant_shadow_patch") { i.saturating_sub(1) } else { i };
+                        row_cov[col as usize] = x::t_half(coverage[i / 2], i as u32) as u16;
+                    }
+                    let start = (y * 32 + lo) as usize;
+                    let end = (y * 32 + hi) as usize;
+                    simd::blend_cov(&mut t.acc[start..end], pm, &row_cov[lo as usize..hi as usize]);
+                    t.st.px_shadow += (hi - lo) as u64;
+                    t.st.px_table += (hi - lo) as u64;
+                }
+            }
+            return;
+        }
         let (kx0, kx1) = t.core_x(&c);
         let (ox, oy) = (t.ox, t.oy);
         // the column profile over this tile's columns, made at the first row that needs it

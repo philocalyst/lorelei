@@ -273,6 +273,54 @@ pub mod ops {
         mk(K_SHADOW, shift_of(r), win, core_of(b, bw + bw / 2i32 + r + 2i32, win), b, vec4i(r, bw, inv, curve), tab, pm, splat(0u32))
     }
 
+    /// High bit distinguishes complete coverage patches from the four-corner correction tables.
+    pub const PATCH_BIT: u32 = 0x80000000u32;
+    pub const PATCH_MASK: u32 = 0x7FFFFFFFu32;
+
+    /// Patch dimensions in pixels, the first support-free coordinate, and outside padding.
+    /// An axis too narrow to have a support-free run is kept in full.
+    pub fn x_patch_shape(c: Cmd) -> Vec4i {
+        let reach = c.rad.y() + (c.rad.y() >> 1u32);
+        let middle = ((c.rad.x() + reach + 255i32) >> 8u32) + 2i32;
+        let pad = ((reach + 255i32) >> 8u32) + 2i32;
+        let w = (c.b.z() >> 8u32) - (c.b.x() >> 8u32);
+        let h = (c.b.w() >> 8u32) - (c.b.y() >> 8u32);
+        vec4i(min(w, 2i32 * middle + 1i32), min(h, 2i32 * middle + 1i32), middle, pad)
+    }
+    pub fn x_patch_phase(c: Cmd) -> u32 {
+        (c.b.x() as u32 & 255u32) | ((c.b.y() as u32 & 255u32) << 8u32) |
+            ((c.b.z() as u32 & 255u32) << 16u32) | ((c.b.w() as u32 & 255u32) << 24u32)
+    }
+    pub fn x_patch_dims(s: Vec4i) -> u32 {
+        (s.x() as u32) | ((s.y() as u32) << 16u32)
+    }
+    pub fn x_patch_ok(c: Cmd, s: Vec4i, radius: u32, blur: u32, phase: u32, dims: u32) -> bool {
+        c.b.x() < c.b.z() && c.b.y() < c.b.w() && s.x() < 4096i32 && s.y() < 4096i32 &&
+            c.rad.x() as u32 == radius && c.rad.y() as u32 == blur && x_patch_dims(s) == dims &&
+            x_patch_phase(c) == phase
+    }
+    pub fn x_patch_axis(p: i32, low: i32, high: i32, span: i32, middle: i32, pad: i32) -> i32 {
+        let x = p - low;
+        let gap = high - low - span;
+        if gap > 0i32 && x >= middle {
+            return max(x - gap, middle) + pad;
+        }
+        x + pad
+    }
+    pub fn x_patch_idx(c: Cmd, s: Vec4i, x: i32, y: i32) -> u32 {
+        let ix = x_patch_axis(x, c.b.x() >> 8u32, c.b.z() >> 8u32, s.x(), s.z(), s.w());
+        let iy = x_patch_axis(y, c.b.y() >> 8u32, c.b.w() >> 8u32, s.y(), s.z(), s.w());
+        let width = s.x() + 2i32 * s.w() + 1i32;
+        let height = s.y() + 2i32 * s.w() + 1i32;
+        if ix < 0i32 || iy < 0i32 || ix >= width || iy >= height {
+            return T_MISS;
+        }
+        (iy * width + ix) as u32
+    }
+    pub fn p_shadow_coverage(c: Cmd, value: u32) -> Vec4u {
+        scale(c.pm, value)
+    }
+
     // ---- the corner table: a memo of `corner3`, which depends on the pixel's offset from the corner and on
     // ---- (radius, blur width) only. One table per distinct (radius, blur), entries at whole-pixel steps
     // ---- from a pixel centre, so it serves every box whose corner is on the pixel grid; anything else

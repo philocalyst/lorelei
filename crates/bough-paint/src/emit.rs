@@ -240,6 +240,13 @@ impl Fn<'_> {
                 if *tab {
                     self.decl(T::Bool, &ok, &format!("x_tabok({c}, tab_h({tb}c_tab({c}), 0u), tab_h({tb}c_tab({c}), 1u))"), false);
                 }
+                let patch = *tab && self.lang == Lang::Msl;
+                let shape = self.fresh("shape");
+                let covered = self.fresh("covered");
+                if patch {
+                    self.decl(T::V4i, &shape, &format!("x_patch_shape({c})"), false);
+                    self.decl(T::Bool, &covered, &format!("tab_patch_ready(TAB, {c}, {shape})"), false);
+                }
                 for [a, x, y, cov] in px {
                     // a primitive that reads a layer or a media frame goes through the executor's glue
                     if *glue != Glue::None {
@@ -255,7 +262,9 @@ impl Fn<'_> {
                         .unwrap();
                         continue;
                     }
-                    let call = if *tab {
+                    let call = if patch {
+                        format!("tab_shadow(TAB, {c}, {shape}, {covered}, {ok}, {x}, {y})")
+                    } else if *tab {
                         let t = self.fresh("t");
                         self.decl(T::V4u, &t, &format!("x_ctaps({c}, {x}, {y}, {ok})"), false);
                         let taps: Vec<String> = ["x", "y", "z", "w"].iter().map(|q| format!("tab_v({tb}c_tab({c}), {t}.{q})")).collect();

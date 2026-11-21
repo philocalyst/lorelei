@@ -883,10 +883,13 @@ pub struct Scene {
     tab_used: usize,
     tab_map: std::collections::HashMap<(i32, i32), u32>,
     tab_jobs: Vec<TabJob>,
+    patch_used: usize,
+    patch_map: std::collections::HashMap<[u32; 4], u32>,
 }
 
 /// Words reserved for corner tables (16 MiB of address space; pages are touched only when a table is filled).
 pub const TAB_WORDS: usize = 1 << 22;
+const PATCH_WORDS: usize = 1 << 20;
 /// Slots of a palette table, tables a scene keeps, and their words in all.
 pub const PAL_SLOTS: usize = 256;
 pub const PAL_TABLES: usize = 16;
@@ -939,6 +942,8 @@ impl Scene {
             tab_used: 0,
             tab_map: Default::default(),
             tab_jobs: Vec::new(),
+            patch_used: 0,
+            patch_map: Default::default(),
             used: 0,
             cols: Vec::new(),
             order: Vec::new(),
@@ -1109,7 +1114,7 @@ impl Scene {
             *map.entry((r, w)).or_insert_with(|| {
                 let n = crate::ops::ops::t_n(r, w);
                 let words = 2 + (n * crate::ops::ops::t_stride(n) / 2) as usize;
-                if *used + words > TAB_WORDS {
+                if *used + words > TAB_WORDS - PATCH_WORDS {
                     return crate::ops::ops::T_MISS;
                 }
                 let base = *used as u32;
@@ -1126,8 +1131,52 @@ impl Scene {
                 (words[tb + j.base as usize], words[tb + j.base as usize + 1]) = (u32::MAX, u32::MAX);
             }
         }
+        p.memo_coverage(&Cx::at(&zero, rect), &mut |cmd| self.shadow_patch(cmd));
         p
     }
+    fn shadow_patch(&mut self, cmd: Cmd) -> Option<u32> {
+        use crate::ops::ops as x;
+        let s = x::x_patch_shape(cmd);
+        if cmd.b.x >= cmd.b.z || cmd.b.y >= cmd.b.w || s.x >= 4096 || s.y >= 4096 {
+            return None;
+        }
+        let key = [cmd.rad.x as u32, cmd.rad.y as u32, x::x_patch_phase(cmd), x::x_patch_dims(s)];
+        if let Some(&handle) = self.patch_map.get(&key) {
+            return Some(handle);
+        }
+        let (width, height) = (s.x + 2 * s.w + 1, s.y + 2 * s.w + 1);
+        let samples = width as usize * height as usize;
+        let needed = 4 + samples.div_ceil(2);
+        if self.patch_used + needed > PATCH_WORDS {
+            return None;
+        }
+        self.patch_used += needed;
+        let base = TAB_WORDS - self.patch_used;
+        let phase = key[2] as i32;
+        let local = Vec4 { x: phase & 255, y: (phase >> 8) & 255, z: (s.x << 8) + ((phase >> 16) & 255), w: (s.y << 8) + ((phase >> 24) & 255) };
+        let ink = Vec4 { x: 0, y: 0, z: 0, w: 0 };
+        let canonical = x::mk_shadow(local, cmd.rad.x, cmd.rad.y, ink, x::T_MISS, NO_CLIP);
+        debug_assert_eq!(canonical.rad, cmd.rad);
+        let at = self.tab_base + base;
+        let table = &mut self.arena.words_mut()[at..at + needed];
+        table[..4].copy_from_slice(&key);
+        for (i, word) in table[4..].iter_mut().enumerate() {
+            let sample = |n: usize| {
+                if n >= samples { return 0; }
+                let (x, y) = (n as i32 % width - s.w, n as i32 / width - s.w);
+                bough_kernel::k::shadow(canonical, x * 256 + 128, y * 256 + 128)
+            };
+            *word = sample(2 * i) | (sample(2 * i + 1) << 16);
+        }
+        let handle = x::PATCH_BIT | base as u32;
+        self.patch_map.insert(key, handle);
+        Some(handle)
+    }
+    /// Bytes of retained Q15 shadow coverage in this scene.
+    pub fn shadow_coverage_bytes(&self) -> usize {
+        4 * self.patch_used
+    }
+
     /// The corner tables' words (handles index it).
     pub fn tabs(&self) -> &[u32] {
         &self.arena.words()[self.tab_base..self.tab_base + TAB_WORDS]

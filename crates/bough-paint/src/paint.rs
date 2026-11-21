@@ -163,6 +163,9 @@ pub trait Paint: Words {
     /// the handle in its own record word. `m(radius, blur)` returns a handle.
     #[inline(always)]
     fn memo(&mut self, _cx: &Cx, _m: &mut dyn FnMut(i32, i32) -> u32) {}
+    /// Give each eligible shadow a retained coverage handle where space permits.
+    fn memo_coverage(&mut self, _cx: &Cx, _patch: &mut dyn FnMut(Cmd) -> Option<u32>) {}
+
 }
 
 fn swept_window<B: Expr<Out = Vec4i>>(b: &B, cx: &Cx, margin: i32) -> Option<Vec4i> {
@@ -349,6 +352,15 @@ impl<
     #[inline(always)]
     fn cover(&self, _: &Cx, _: Vec4i) -> Vec4i {
         EMPTY
+    }
+    fn memo_coverage(&mut self, cx: &Cx, patch: &mut dyn FnMut(Cmd) -> Option<u32>) {
+        if T::ON && R::READS == 0 && S::READS == 0 {
+            let clear = Vec4 { x: 0, y: 0, z: 0, w: 0 };
+            let c = x::mk_shadow(self.b.eval(cx), self.r.eval(cx), self.blur.eval(cx), clear, x::T_MISS, NO_CLIP);
+            if let Some(handle) = patch(c) {
+                self.tab.put(handle);
+            }
+        }
     }
     fn memo(&mut self, cx: &Cx, m: &mut dyn FnMut(i32, i32) -> u32) {
         // radius and blur fixed for the record's life: its corners are one table's. (A box whose size is
@@ -553,6 +565,10 @@ impl<A: Paint, B: Paint> Paint for Over<A, B> {
         }
     }
     #[inline(always)]
+    fn memo_coverage(&mut self, cx: &Cx, patch: &mut dyn FnMut(Cmd) -> Option<u32>) {
+        self.0.memo_coverage(cx, patch);
+        self.1.memo_coverage(cx, patch);
+    }
     fn memo(&mut self, cx: &Cx, m: &mut dyn FnMut(i32, i32) -> u32) {
         self.0.memo(cx, m);
         self.1.memo(cx, m);
@@ -611,6 +627,9 @@ impl<P: Paint, K: Expr<Out = Vec4i> + Words> Paint for Clip<P, K> {
         self.p.pick_id(cx)
     }
     #[inline(always)]
+    fn memo_coverage(&mut self, cx: &Cx, patch: &mut dyn FnMut(Cmd) -> Option<u32>) {
+        self.p.memo_coverage(cx, patch);
+    }
     fn memo(&mut self, cx: &Cx, m: &mut dyn FnMut(i32, i32) -> u32) {
         self.p.memo(cx, m);
     }
@@ -661,6 +680,9 @@ impl<P: Paint, I: Expr<Out = u32> + Words> Paint for Hit<P, I> {
         self.id.eval(cx)
     }
     #[inline(always)]
+    fn memo_coverage(&mut self, cx: &Cx, patch: &mut dyn FnMut(Cmd) -> Option<u32>) {
+        self.p.memo_coverage(cx, patch);
+    }
     fn memo(&mut self, cx: &Cx, m: &mut dyn FnMut(i32, i32) -> u32) {
         self.p.memo(cx, m);
     }
@@ -756,6 +778,22 @@ pub struct SpecSink<'a> {
     pub bd: &'a dyn Fn(Cmd, i32, i32) -> Vec4u,
     pub media: &'a [u32],
 }
+/// Resolve a retained coverage patch. A changed key means the record uses the analytic profile.
+pub(crate) fn coverage_patch(c: Cmd, tabs: &[u32]) -> Option<(Vec4i, &[u32])> {
+    let handle = c.par.z;
+    if handle & x::PATCH_BIT == 0 {
+        return None;
+    }
+    let table = tabs.get((handle & x::PATCH_MASK) as usize..)?;
+    let [r, w, phase, dims] = *table.first_chunk::<4>()?;
+    let s = x::x_patch_shape(c);
+    if !x::x_patch_ok(c, s, r, w, phase, dims) {
+        return None;
+    }
+    let (width, height) = (s.x + 2 * s.w + 1, s.y + 2 * s.w + 1);
+    Some((s, table.get(4..4 + (width as usize * height as usize).div_ceil(2))?))
+}
+
 /// The four corner taps of a shadow at one pixel, read from `tabs`.
 #[inline(always)]
 pub fn corner_taps(c: Cmd, x: i32, y: i32, ok: bool, tabs: &[u32]) -> [u32; 4] {
@@ -801,8 +839,7 @@ impl Sink for SpecSink<'_> {
     }
     #[inline(always)]
     fn shadow(&mut self, c: Cmd) {
-        let v = corner_taps(c, self.x, self.y, tab_ok(c, self.tabs), self.tabs);
-        self.put(x::p_shadowm(c, self.x, self.y, v[0], v[1], v[2], v[3]))
+        self.put(x::p_shadow(c, self.x, self.y))
     }
     #[inline(always)]
     fn grad(&mut self, c: Cmd) {

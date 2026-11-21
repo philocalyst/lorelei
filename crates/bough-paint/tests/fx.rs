@@ -1382,3 +1382,58 @@ fn a_prefix_change_reaches_the_next_checkpoint_without_a_pyramid_change() {
     assert_eq!(fs.raster.blk, fs.raster.blk_same, "a single one-byte impulse should round away in the pyramid");
     eprintln!("prefix checkpoint: two prefix tiles changed, every recomputed pyramid block was unchanged");
 }
+
+#[test]
+fn shadow_coverage_reuses_exact_samples_and_rejects_a_changed_phase() {
+    type Cached = Clip<Shadow<Pan, I<Rec>, I<Rec>, Any, Tab>, Lane>;
+    let (fw, fh) = (192, 128);
+    let words = (fw * fh) as usize;
+    let pool = Pool::new(1);
+    // The clip follows Lane but the shadow translates. Include both non-overlapping and overlapping corners.
+    let make = |memoise| {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        scene.memoise = memoise;
+        let bg = scene.column::<Solid<Lane, Pmo<K<0xff30_4a9e>>>>(1);
+        scene.push(bg, [0, 0, q(192.0), q(128.0)], Solid { b: Lane, c: Pmo { c: K } });
+        let col = scene.column::<Cached>(12);
+        for i in 0..12 {
+            let phase = i as f32 * 0.125;
+            let rect = if i % 2 == 0 { [q(8.0 + phase), q(8.5), q(165.0 + phase * 0.5), q(111.75)] } else { [q(18.0 + i as f32 * 10.0), q(72.0 + phase), q(26.5 + i as f32 * 10.0), q(86.75)] };
+            scene.push(col, rect, Clip { p: Shadow { b: Off { b: Lane, dx: I { a: Uw }, dy: I { a: Uw } }, r: ri(q(10.0)), blur: ri(q(3.0 + i as f32)), c: pm(0x3a78_b91d), tab: Tab::NONE }, k: Lane });
+        }
+        scene
+    };
+    let mut cpu = make(true);
+    let mut metal = make(true);
+    let retained = cpu.shadow_coverage_bytes();
+    assert!(retained > 0 && retained <= 4 * 1024 * 1024);
+    metal.route_off = true;
+    // SAFETY: the scene outlives the executor and its writes occur between synchronous frame calls.
+    let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 128) }.expect("headless Metal");
+    let (mut actual, mut expected, mut spec) = (vec![0; words], vec![0; words], vec![0; words]);
+    let mut era = 0;
+    let mut tiles = Vec::new();
+    for (dx, dy) in [(0.0, 0.0), (3.0, 5.0), (-4.0, -8.0), (7.375, -2.25), (0.0, 0.0)] {
+        let mut u = U::default();
+        (u.w[0], u.w[1]) = (q(dx) as u32, q(dy) as u32);
+        let stats = cpu.frame(&u, &mut actual, fw as usize, &pool, 0).raster;
+        let mut oracle = make(false);
+        oracle.frame(&u, &mut expected, fw as usize, &pool, 0);
+        oracle.spec(&u, &mut spec, fw as usize);
+        assert_eq!(diff(&expected, &spec), 0, "analytic vs spec at {dx}, {dy}");
+        assert_eq!(diff(&actual, &expected), 0, "retained shadow samples at {dx}, {dy}");
+        if dx.fract() == 0.0 {
+            assert!(stats.px_table > 0);
+        } else {
+            assert_eq!(stats.px_table, 0);
+        }
+        assert_eq!(cpu.shadow_coverage_bytes(), retained);
+        metal.update(&u);
+        metal.damage.tiles(&mut tiles);
+        metal.damage.clear();
+        let block = *metal.block();
+        era = gpu.resident(&mut metal, &block, &tiles, Some(era), fw as usize).1;
+        assert_eq!(diff(gpu.out(words), &expected), 0, "Metal shadow samples at {dx}, {dy}");
+    }
+    eprintln!("shadow coverage: {retained} retained bytes, five exact CPU and Metal frames");
+}
