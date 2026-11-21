@@ -2142,7 +2142,10 @@ impl<V: View> App<V> {
     fn after_since(&mut self, ran: bool, motion: u32) {
         self.ty.ran.set(false);
         self.lists_sync();
-        if ran && !self.once {
+        // (the mutant is Card 4's skip: a turn that changed a bound word is settled and not described)
+        let skip = cfg!(feature = "mutant_typed_skip")
+            && self.world.changed_words(&self.ty) & !(1 << HOVER) != 0;
+        if ran && !self.once && !skip {
             self.ty.sh.pass.set(PassStats::default());
             // Every run shown is asked for again at least every 128 descriptions (the run store drops a run
             // nobody asked for in 256): the rows are then described and compared whether logged or not.
