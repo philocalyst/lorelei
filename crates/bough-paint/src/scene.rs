@@ -518,6 +518,23 @@ impl Bins {
     pub fn layers(&self, t: usize) -> &[u32] {
         &self.lay[t]
     }
+    /// The certificate: the least key above `z` in tile `t` whose opaque cover holds all of window `w`
+    /// inside the tile (`u32::MAX`: none). Whatever is stored for this tile above that record cannot depend
+    /// on a change of record `z` confined to `w`: every pixel of the change is under an opaque pixel.
+    pub fn cover_above(&self, t: usize, z: u32, w: [i32; 4], cover: &[[i16; 4]]) -> u32 {
+        let (ox, oy) = ((t % self.tx) as i32 * 32, (t / self.tx) as i32 * 32);
+        let r = [w[0].max(ox), w[1].max(oy), w[2].min(ox + 32), w[3].min(oy + 32)];
+        let l = &self.lists[t];
+        for &k in &l[l.partition_point(|&k| k <= z)..] {
+            let c = cover[k as usize];
+            let holds = c[0] as i32 <= r[0] && c[1] as i32 <= r[1] && c[2] as i32 >= r[2] && c[3] as i32 >= r[3];
+            let meets = (c[0] as i32) < r[2] && (c[1] as i32) < r[3] && c[2] as i32 > r[0] && c[3] as i32 > r[1];
+            if c[0] < c[2] && (holds || (cfg!(feature = "mutant_cert") && meets)) {
+                return k;
+            }
+        }
+        u32::MAX
+    }
     #[inline]
     fn span(&self, w: &[i16; 4]) -> (usize, usize, usize, usize) {
         if w[0] >= w[2] || w[1] >= w[3] {
@@ -1246,7 +1263,7 @@ impl Scene {
             }
             self.lay_todo.extend(regeo.iter().map(|&z| self.layers.lid(z)));
             for &(w, z) in &events {
-                Self::route(&self.bins, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
+                Self::route(&self.bins, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
             }
         }
         (fs.prefix_tiles, fs.blocks, fs.layer_px) = (self.plan.prefix_tiles, self.plan.blocks, self.plan.px);
@@ -1257,12 +1274,20 @@ impl Scene {
     }
     /// An event (a window that changed, and its record's key) reaches the layers above it on the tiles it
     /// touches: their level-0 tiles there are due.
-    fn route(bins: &Bins, layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, tx: i32, ty: i32, w: [i32; 4], z: u32) {
+    fn route(bins: &Bins, cover: &[[i16; 4]], layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, tx: i32, ty: i32, w: [i32; 4], z: u32) {
         for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty) {
             for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx) {
                 let t = (y * tx + x) as usize;
                 let ls = bins.layers(t);
-                for &lz in &ls[ls.partition_point(|&k| k <= z)..] {
+                let from = ls.partition_point(|&k| k <= z);
+                if from == ls.len() {
+                    continue;
+                }
+                let stop = bins.cover_above(t, z, w, cover);
+                for &lz in &ls[from..] {
+                    if lz > stop {
+                        break;
+                    }
                     let lid = layers.of[lz as usize];
                     layers.list[lid as usize].pending.push(t as u32);
                     todo.insert(lid);
@@ -1284,7 +1309,7 @@ impl Scene {
             let z = self.layers.list[lid as usize].z;
             for r in &outs {
                 self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                Self::route(&self.bins, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+                Self::route(&self.bins, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
             }
         }
         self.lay_todo = todo;
@@ -1432,59 +1457,80 @@ impl Scene {
                     }
                 }
                 forced.each(|bx, by| d.set(bx, by));
-                let mut changed = layer::Blocks::new(l.lv[0].r, 0);
+                // what changed is kept as pixel boxes (of the words that really differ), not blocks: a block
+                // is a tile at every level, so block-grain dilation grows a change by a tile ring per level
+                // where its true footprint grows by a pixel or two of that level
+                let ne = |r: &[i32; 4]| r[0] < r[2] && r[1] < r[3];
+                let mut changed: Vec<[i32; 4]> = Vec::new();
                 let mut tiles: Vec<(i32, i32)> = Vec::new();
                 d.each(|bx, by| tiles.push((bx, by)));
                 for &(bx, by) in &tiles {
                     let ti = by as u32 * s.tx as u32 + bx as u32;
-                    let before = t.st.prefix_same;
                     s.run_tile(u, ti, &mut t, pw, lid);
-                    t.store_layer(pw, &l.lv[0]);
-                    if !prune(t.st.prefix_same != before, bx) {
-                        changed.set(bx, by);
+                    let bb = t.store_layer(pw, &l.lv[0]);
+                    if forced.has(bx, by) {
+                        changed.push(layer::cut([bx << 5, by << 5, (bx + 1) << 5, (by + 1) << 5], l.lv[0].r));
+                    } else if let Some(bb) = bb.filter(|_| !prune(false, bx)) {
+                        changed.push(bb);
                     }
                 }
-                forced.each(|bx, by| changed.set(bx, by));
-                // the levels above: the blocks a changed block beneath reaches, and what entered
-                let mut read_changed: Vec<(u32, layer::Blocks)> = Vec::new();
+                let mut read_changed: Vec<(u32, Vec<[i32; 4]>)> = Vec::new();
                 if l.lvl == 0 {
                     read_changed.push((0, changed.clone()));
                 }
+                let mut aff: Vec<([i32; 4], bool)> = Vec::new();
                 for k in 1..=top {
-                    let (mut d, mut forced) = (layer::Blocks::new(l.lv[k].r, k as u32), layer::Blocks::new(l.lv[k].r, k as u32));
-                    layer::dilate(&changed, &mut d, k as u32);
+                    // the pixels a changed pixel beneath reaches, and what entered (changed by rule)
+                    let r = l.lv[k].r;
+                    aff.clear();
+                    aff.extend(changed.iter().map(|c| (layer::cut(layer::up_px(*c), r), false)).filter(|a| ne(&a.0)));
                     if due.fresh {
-                        forced.all();
+                        aff.push((r, true));
                     } else {
-                        due.entered[k].iter().for_each(|&r| forced.add_px(r));
+                        aff.extend(due.entered[k].iter().map(|e| (layer::cut(*e, r), true)).filter(|a| ne(&a.0)));
                     }
-                    forced.each(|bx, by| d.set(bx, by));
-                    let mut next = layer::Blocks::new(l.lv[k].r, k as u32);
+                    let mut d = layer::Blocks::new(r, k as u32);
+                    aff.iter().for_each(|a| d.add_px(a.0));
                     let mut blocks: Vec<(i32, i32)> = Vec::new();
                     d.each(|bx, by| blocks.push((bx, by)));
+                    let bs = layer::bshift(k as u32);
+                    changed.clear();
                     for &(bx, by) in &blocks {
+                        let b = [bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs];
+                        let (mut clip, mut fclip) = ([i32::MAX, i32::MAX, i32::MIN, i32::MIN], [i32::MAX, i32::MAX, i32::MIN, i32::MIN]);
+                        let join = |a: &mut [i32; 4], c: [i32; 4]| *a = [a[0].min(c[0]), a[1].min(c[1]), a[2].max(c[2]), a[3].max(c[3])];
+                        for (a, f) in &aff {
+                            let c = layer::cut(*a, b);
+                            if ne(&c) {
+                                join(&mut clip, c);
+                                if *f {
+                                    join(&mut fclip, c);
+                                }
+                            }
+                        }
                         t.st.blk[k] += 1;
-                        let same = layer::down(pw, l, k as u32, s.fw, s.fh, bx, by);
-                        t.st.blk_same[k] += same as u64;
-                        if !prune(same, bx) {
-                            next.set(bx, by);
+                        let bb = layer::down_rect(pw, l, k as u32, s.fw, s.fh, clip);
+                        t.st.blk_same[k] += bb.is_none() as u64;
+                        if let Some(bb) = bb.filter(|_| !prune(false, bx)) {
+                            join(&mut fclip, bb);
+                        }
+                        if ne(&fclip) {
+                            changed.push(fclip);
                         }
                     }
-                    forced.each(|bx, by| next.set(bx, by));
-                    changed = next;
                     if k as u32 == l.lvl || k == top {
                         read_changed.push((k as u32, changed.clone()));
                     }
                 }
-                for (k, b) in &read_changed {
-                    layer::reach(l, *k, b, &mut |r| outs.push(r));
+                for (k, rs) in &read_changed {
+                    outs.extend(rs.iter().map(|r| layer::reach_px(l, *k, *r)).filter(ne));
                 }
                 st.add(&t.st);
             }
             let z = self.layers.list[lid as usize].z;
             for r in &outs {
                 self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                Self::route(&self.bins, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+                Self::route(&self.bins, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
             }
         }
         self.layers.pool = pool;

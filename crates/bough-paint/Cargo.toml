@@ -68,3 +68,4 @@ mutant_prune = []
 mutant_scroll_band = []
 # a change of a key word visits the records of its new value only (tests/fx.rs must fail)
 mutant_key_old = []
+mutant_cert = []

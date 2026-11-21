@@ -111,6 +111,14 @@ impl Blocks {
         b.over(r, level);
         b
     }
+    pub fn has(&self, bx: i32, by: i32) -> bool {
+        let (ix, iy) = (bx - self.x0, by - self.y0);
+        if ix < 0 || iy < 0 || ix >= self.w || iy >= self.h {
+            return false;
+        }
+        let i = (iy * self.w + ix) as usize;
+        self.bits[i / 64] >> (i % 64) & 1 != 0
+    }
     pub fn each(&self, mut f: impl FnMut(i32, i32)) {
         for (k, &wd) in self.bits.iter().enumerate() {
             let mut m = wd;
@@ -146,7 +154,7 @@ pub fn halo(c: Cmd) -> Vec4i {
     let r = rects(c)[0];
     Vec4 { x: r[0], y: r[1], z: r[2], w: r[3] }
 }
-fn cut(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
+pub fn cut(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
 fn arr(v: Vec4i) -> [i32; 4] {
@@ -512,14 +520,28 @@ pub fn sample(pool: &[u32], l: &Layer, fw: u32, fh: u32, c: Cmd, x: i32, y: i32)
     }
     bough_kernel::k::mix4u(a, read(pool, l, c.rad.y as u32 + 1, fw, fh, x, y), c.rad.z as u32)
 }
-/// Downsample block (bx, by) of level `k` (`32 >> k` pixels a side) of a layer from level `k - 1` (the pixels inside its window).
-/// Returns whether every word it wrote was already there.
-pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: i32) -> bool {
+/// The pixels of level `k` whose [1 3 3 1] taps (2x - 1 ..= 2x + 2) reach the pixel rect `r` of level
+/// `k - 1`. Not cut to the level's window.
+pub fn up_px(r: [i32; 4]) -> [i32; 4] {
+    if cfg!(feature = "mutant_layer_dilate") {
+        return [r[0] >> 1, r[1] >> 1, ((r[2] - 1) >> 1) + 1, ((r[3] - 1) >> 1) + 1];
+    }
+    [(r[0] - 1) >> 1, (r[1] - 1) >> 1, (r[2] >> 1) + 1, (r[3] >> 1) + 1]
+}
+/// The frame pixels of layer `l`'s record whose read at level `k` reaches the level's pixel rect `r`, cut
+/// to the record's window (empty: none).
+pub fn reach_px(l: &Layer, k: u32, r: [i32; 4]) -> [i32; 4] {
+    let lo = |p: i32| (((((p - 1) << (k + 1)) + (1 << k) - 1) + 1)) >> 1;
+    let hi = |p: i32| (((p << (k + 1)) + (1 << k) - 1) + 1) >> 1;
+    cut([lo(r[0]), lo(r[1]), hi(r[2]), hi(r[3])], l.win)
+}
+/// Downsample the pixels `r` of level `k` of a layer from level `k - 1` (cut to its window). Returns the
+/// box of the words that were not already there (`None`: all of them were).
+pub fn down_rect(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, r: [i32; 4]) -> Option<[i32; 4]> {
     let (dst, src) = (l.lv[k as usize], l.lv[k as usize - 1]);
     let (sw, sh) = (x::bd_dim(fw, k - 1), x::bd_dim(fh, k - 1));
-    let bs = bshift(k);
-    let r = cut([bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs], dst.r);
-    let mut same = true;
+    let r = cut(r, dst.r);
+    let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
     for y in r[1]..r[3] {
         for xx in r[0]..r[2] {
             let mut rows = [Vec4 { x: 0, y: 0, z: 0, w: 0 }; 4];
@@ -530,9 +552,17 @@ pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: 
             }
             let v = x::dn_fin(rows[0], rows[1], rows[2], rows[3]);
             let v = if cfg!(feature = "mutant_layer_weights") { v ^ 1 } else { v };
-            same &= pool[at(&dst, xx, y)] == v;
-            pool[at(&dst, xx, y)] = v;
+            if pool[at(&dst, xx, y)] != v {
+                pool[at(&dst, xx, y)] = v;
+                bb = [bb[0].min(xx), bb[1].min(y), bb[2].max(xx + 1), bb[3].max(y + 1)];
+            }
         }
     }
-    same
+    (bb[0] < bb[2]).then_some(bb)
+}
+/// Downsample block (bx, by) of level `k` (`32 >> k` pixels a side) of a layer from level `k - 1` (the
+/// pixels inside its window). Returns whether every word it wrote was already there.
+pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: i32) -> bool {
+    let bs = bshift(k);
+    down_rect(pool, l, k, fw, fh, [bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs]).is_none()
 }
