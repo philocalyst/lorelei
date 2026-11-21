@@ -12,6 +12,9 @@ pub mod expr;
 #[cfg(target_os = "macos")]
 pub mod driver;
 pub mod emit;
+pub mod layer;
+pub mod media;
+pub mod motion;
 #[cfg(target_os = "macos")]
 pub mod metal;
 pub mod ops;

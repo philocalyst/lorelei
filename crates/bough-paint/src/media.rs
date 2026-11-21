@@ -1,0 +1,192 @@
+//! Media: video frames as leased, immutable slots of one pool the kernel samples directly.
+//!
+//! A frame source (a decoder; here a deterministic synthetic one) never hands the raster a copy. It asks the
+//! pool for a **lease** (a slot nobody shows), writes its NV12 planes there, and **publishes** it: the slot
+//! becomes immutable until it is retired, and the slot's header offset is what the video's record carries
+//! in its `slot` word. "A new frame arrived" is therefore one record word rewritten (`Scene::set`), which
+//! damages the video's visible window and nothing else; the frame it replaced is retired after the frame
+//! that stopped showing it. The pool is one page-aligned allocation, which the Metal executor wraps without
+//! a copy: a decoder that writes into a lease has written into the GPU's buffer.
+//!
+//! Frame layout (words at `slot`): width, height, byte offset of the Y plane, byte offset of the
+//! interleaved CbCr plane, Y stride, CbCr stride, sequence number, 0. Planes follow, each row padded to
+//! its stride. BT.709, limited range.
+use crate::ops::ops as x;
+use crate::scene::{Arena, VM_PAGE};
+use bough_kernel::Cmd;
+use wgsl_rs::std::Vec4u;
+
+pub const HDR: usize = 8;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum State {
+    Free,
+    /// Being written by a source: not readable.
+    Leased,
+    /// Readable, immutable.
+    Shown,
+    /// Replaced: free after the next `reclaim` (the frame that stopped showing it has been drawn).
+    Retired,
+}
+struct Slot {
+    at: usize,
+    words: usize,
+    state: State,
+}
+/// A slot being written. Publishing consumes it.
+pub struct Lease {
+    slot: usize,
+    pub at: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+pub struct Pool {
+    arena: Arena,
+    used: usize,
+    slots: Vec<Slot>,
+}
+pub fn frame_words(w: u32, h: u32) -> usize {
+    let (ys, cs) = (w.next_multiple_of(4), w.div_ceil(2) * 2);
+    HDR + ((ys * h + cs.next_multiple_of(4) * h.div_ceil(2)) as usize).div_ceil(4)
+}
+impl Pool {
+    pub fn new(words: usize) -> Pool {
+        Pool { arena: Arena::new(words.max(VM_PAGE / 4)), used: 0, slots: Vec::new() }
+    }
+    pub fn words(&self) -> &[u32] {
+        self.arena.words()
+    }
+    pub fn arena(&self) -> &Arena {
+        &self.arena
+    }
+    /// A slot for a `w` x `h` frame that no record shows. `None` when the pool is full (the source keeps its
+    /// frame and tries after the next `reclaim`: a frame is dropped, never torn).
+    pub fn lease(&mut self, w: u32, h: u32) -> Option<Lease> {
+        assert!((2..=2047).contains(&w) && (2..=2047).contains(&h), "a video plane of {w} x {h}");
+        let need = frame_words(w, h);
+        let slot = match self.slots.iter().position(|s| s.state == State::Free && s.words == need) {
+            Some(i) => i,
+            None => {
+                if self.used + need > self.arena.words().len() {
+                    return None;
+                }
+                self.slots.push(Slot { at: self.used, words: need, state: State::Free });
+                self.used += need;
+                self.slots.len() - 1
+            }
+        };
+        self.slots[slot].state = State::Leased;
+        let at = self.slots[slot].at;
+        let (ys, cs) = (w.next_multiple_of(4), (w.div_ceil(2) * 2).next_multiple_of(4));
+        let yoff = (at + HDR) as u32 * 4;
+        let hdr = [w, h, yoff, yoff + ys * h, ys, cs, 0, 0];
+        self.arena_mut()[at..at + HDR].copy_from_slice(&hdr);
+        Some(Lease { slot, at: at as u32, w, h })
+    }
+    fn arena_mut(&mut self) -> &mut [u32] {
+        // SAFETY: the arena's words are initialised and this pool owns them; `&mut self` is exclusive.
+        unsafe { std::slice::from_raw_parts_mut(self.arena.ptr(), self.arena.words().len()) }
+    }
+    /// The leased frame's planes: (Y: `stride * h` bytes, CbCr: `stride * ceil(h / 2)` bytes, strides).
+    pub fn planes(&mut self, l: &Lease) -> (&mut [u8], &mut [u8], usize, usize) {
+        let (at, w, h) = (l.at as usize, l.w, l.h);
+        let (ys, cs) = (w.next_multiple_of(4) as usize, (w.div_ceil(2) * 2).next_multiple_of(4) as usize);
+        let words = &mut self.arena_mut()[at + HDR..at + frame_words(w, h)];
+        // SAFETY: a `[u32]` viewed as its bytes (alignment 1, same length in bytes, any bits valid).
+        let bytes = unsafe { std::slice::from_raw_parts_mut(words.as_mut_ptr() as *mut u8, words.len() * 4) };
+        let (y, c) = bytes.split_at_mut(ys * h as usize);
+        (y, &mut c[..cs * (h as usize).div_ceil(2)], ys, cs)
+    }
+    /// Make the leased frame readable, replacing `prev` (the slot word the record showed, if any), which is
+    /// retired. Returns the new slot word for the record.
+    pub fn publish(&mut self, l: Lease, seq: u32, prev: Option<u32>) -> u32 {
+        self.arena_mut()[l.at as usize + 6] = seq;
+        self.slots[l.slot].state = State::Shown;
+        if let Some(p) = prev {
+            if let Some(s) = self.slots.iter_mut().find(|s| s.at == p as usize && s.state == State::Shown) {
+                s.state = State::Retired;
+            }
+        }
+        l.at
+    }
+    /// Call after a frame has been drawn (on every executor that reads this pool): frames retired before
+    /// it are no longer read by anything and become leasable.
+    pub fn reclaim(&mut self) {
+        for s in self.slots.iter_mut() {
+            if s.state == State::Retired {
+                s.state = State::Free;
+            }
+        }
+    }
+    pub fn stats(&self) -> (usize, usize) {
+        (self.slots.len(), self.used)
+    }
+}
+
+#[inline(always)]
+fn byte(m: &[u32], i: u32) -> u32 {
+    let w = m[(i as usize >> 2).min(m.len() - 1)];
+    (w >> ((i & 3) * 8)) & 255
+}
+/// The frame a video command names, sampled at frame pixel (x, y): bilinear luma and chroma, BT.709.
+/// Every index is clamped to the pool, so a stale or forged slot word reads pool words, never beyond.
+#[inline(always)]
+pub fn sample(m: &[u32], c: Cmd, px: i32, py: i32) -> Vec4u {
+    let at = (c.par.z as usize).min(m.len() - HDR);
+    let (yoff, coff, ys, cs) = (m[at + 2], m[at + 3], m[at + 4], m[at + 5]);
+    let (vw, vh) = (c.pm.y as i32, c.pm.z as i32);
+    let t = x::vd_pos(c, px, py);
+    let (x0, x1, y0, y1) = (x::vd_ix(t.x, 0, vw), x::vd_ix(t.x, 1, vw), x::vd_ix(t.y, 0, vh), x::vd_ix(t.y, 1, vh));
+    let ya = |ix: u32, iy: u32| byte(m, yoff.wrapping_add(iy.wrapping_mul(ys)).wrapping_add(ix));
+    let y = x::vd_bil(ya(x0, y0), ya(x1, y0), ya(x0, y1), ya(x1, y1), t.x, t.y);
+    let (cw, ch) = ((vw + 1) >> 1, (vh + 1) >> 1);
+    let (ux, uy) = ((t.x - 128) >> 1, (t.y - 128) >> 1);
+    let (u0, u1, v0, v1) = (x::vd_ix(ux, 0, cw), x::vd_ix(ux, 1, cw), x::vd_ix(uy, 0, ch), x::vd_ix(uy, 1, ch));
+    let ca = |ix: u32, iy: u32, k: u32| byte(m, coff.wrapping_add(iy.wrapping_mul(cs)).wrapping_add(2 * ix + k));
+    let cb = x::vd_bil(ca(u0, v0, 0), ca(u1, v0, 0), ca(u0, v1, 0), ca(u1, v1, 0), ux, uy);
+    let cr = x::vd_bil(ca(u0, v0, 1), ca(u1, v0, 1), ca(u0, v1, 1), ca(u1, v1, 1), ux, uy);
+    x::vd_rgb(y, cb, cr)
+}
+
+/// A deterministic frame source: moving colour bars and a bouncing box, a function of (seed, sequence).
+/// It stands where a decoder would: lease, write the planes, publish.
+pub struct Synth {
+    pub w: u32,
+    pub h: u32,
+    pub seed: u32,
+    pub seq: u32,
+    /// The slot word its record shows.
+    pub shown: Option<u32>,
+}
+impl Synth {
+    pub fn new(w: u32, h: u32, seed: u32) -> Synth {
+        Synth { w, h, seed, seq: 0, shown: None }
+    }
+    /// Produce the next frame into the pool. Returns the record's new slot word, or `None` if no slot was
+    /// free (the frame is skipped).
+    pub fn next(&mut self, pool: &mut Pool) -> Option<u32> {
+        let l = pool.lease(self.w, self.h)?;
+        let (w, h, seq, seed) = (self.w as usize, self.h as usize, self.seq, self.seed);
+        let (y, c, ys, cs) = pool.planes(&l);
+        let (bx, by) = ((seq as usize * 3 + seed as usize * 7) % w.max(1), (seq as usize * 2 + seed as usize * 5) % h.max(1));
+        for j in 0..h {
+            for i in 0..w {
+                let bar = ((i + seq as usize * 2) * 8 / w + seed as usize) % 8;
+                let inbox = i.abs_diff(bx) < w / 8 && j.abs_diff(by) < h / 8;
+                y[j * ys + i] = if inbox { 235 } else { (40 + bar * 24 + (j * 16 / h)) as u8 };
+            }
+        }
+        for j in 0..h.div_ceil(2) {
+            for i in 0..w.div_ceil(2) {
+                let bar = ((2 * i + seq as usize * 2) * 8 / w + seed as usize) % 8;
+                c[j * cs + 2 * i] = (64 + bar * 20) as u8;
+                c[j * cs + 2 * i + 1] = (200 - bar * 18 + (j * 2 * 12 / h)) as u8;
+            }
+        }
+        self.seq += 1;
+        let at = pool.publish(l, seq, self.shown);
+        self.shown = Some(at);
+        Some(at)
+    }
+}

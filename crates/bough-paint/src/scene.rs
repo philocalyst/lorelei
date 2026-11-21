@@ -7,9 +7,12 @@
 //! window moved; shade the damaged tiles. A column's kernels are reached through its `&'static Desc`:
 //! once per column for the window pass, once per run of a tile's entries for shading. Nothing is decoded,
 //! restaged or looked up per record.
-use crate::expr::{Cx, U};
-use crate::paint::{Cost, EMPTY, NO_CLIP, NO_HIT, PCode, Paint, SpecSink, StageSink, WinSink};
-use crate::tile::{Flat, Shade, Stats, Tile};
+use crate::expr::{Cx, U, U_TIME};
+use crate::layer::{self, Layers};
+use crate::paint::{Cost, EMPTY, LaySink, NO_CLIP, NO_HIT, PCode, Paint, SpecSink, StageSink, WinSink};
+use crate::tile::{Flat, Fx, Shade, Stats, Tile};
+use bough_expr::ahead;
+use bough_kernel::Cmd;
 use bough_kernel::cpu::Pool;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
@@ -157,37 +160,83 @@ pub struct Desc {
     pub hit: bool,
     pub cost: Cost,
     pub layers: usize,
+    /// Its records own a layer each (`Paint::LAYER`).
+    pub layer: bool,
     pub code: &'static PCode,
     /// The window pass: for every record, its window and cover under `new` into the lanes (by key), and
     /// damage for a record whose window moved or whose operands' values changed. Returns whether a window or
     /// cover moved.
-    pub(crate) window: fn(ColView, old: &U, new: &U, mask: u64, first: bool, win: &mut [[i16; 4]], cover: &mut [[i16; 4]], dmg: &mut Damage, floor: &[u32]) -> bool,
+    /// `only`: the records to visit (a time-only frame: the column's active set); `None`: all of them.
+    pub(crate) window: fn(ColView, old: &U, new: &U, mask: u64, first: bool, only: Option<&[u32]>, p: &mut Pass) -> bool,
     pub(crate) flat: fn(ColView, zs: &[u32], order: &[u32], u: &U, t: &mut Tile),
     /// `first`: the index of `zs[0]` in the tile's list (its occlusion mask).
-    pub(crate) shade: fn(ColView, zs: &[u32], first: usize, order: &[u32], u: &U, t: &mut Tile),
+    pub(crate) shade: fn(ColView, zs: &[u32], first: usize, order: &[u32], u: &U, t: &mut Tile, fx: &Fx),
     /// The specification at one pixel: (blended accumulator, some layer inked the pixel).
-    pub(crate) spec: fn(ColView, i: u32, u: &U, x: i32, y: i32, acc: Vec4u, atlas: &[u8], aw: u32, tabs: &[u32]) -> (Vec4u, bool),
+    pub(crate) spec: fn(ColView, i: u32, u: &U, x: i32, y: i32, acc: Vec4u, atlas: &[u8], aw: u32, tabs: &[u32], bd: &dyn Fn(Cmd, i32, i32) -> Vec4u, media: &[u32]) -> (Vec4u, bool),
+    /// The backdrop command of a record that owns a layer.
+    pub(crate) lay: fn(ColView, i: u32, u: &U) -> Option<Cmd>,
     /// The record as the generic kernel's commands.
     pub(crate) stage: fn(ColView, i: u32, u: &U, out: &mut bough_kernel::stage::Scene),
     pub(crate) pick: fn(ColView, i: u32, u: &U) -> u32,
     /// One rewritten record: damage where it was and where it is now, its lanes brought up to date. Returns
     /// whether its window or cover moved.
-    pub(crate) rewin: fn(ColView, i: u32, u: &U, win: &mut [[i16; 4]], cover: &mut [[i16; 4]], dmg: &mut Damage, floor: &[u32]) -> bool,
+    pub(crate) rewin: fn(ColView, i: u32, u: &U, p: &mut Pass) -> bool,
+}
+
+/// What a window pass writes: the lanes (by key), the damage, and what the frame's later steps need to
+/// know about the records it visited.
+pub(crate) struct Pass<'a> {
+    pub win: &'a mut [[i16; 4]],
+    pub cover: &'a mut [[i16; 4]],
+    pub halo: &'a mut [[i16; 4]],
+    pub dmg: &'a mut Damage,
+    pub floor: &'a [u32],
+    /// Every damaged window with its record's key, for the layers above it (kept only when the scene has
+    /// layers).
+    pub events: &'a mut Vec<([i32; 4], u32)>,
+    pub track: bool,
+    /// Keys of layer-owning records whose geometry was evaluated.
+    pub regeo: &'a mut Vec<u32>,
+    /// Indices of the visited records that still depend on the clock after this frame.
+    pub active: &'a mut Vec<u32>,
+}
+impl Pass<'_> {
+    #[inline(always)]
+    fn mark(&mut self, w: [i16; 4], z: u32) {
+        self.dmg.add_vis(w, z, self.floor);
+        if self.track && w[0] < w[2] {
+            self.events.push(([w[0] as i32, w[1] as i32, w[2] as i32, w[3] as i32], z));
+        }
+    }
 }
 
 fn i16s(v: Vec4i) -> [i16; 4] {
     [v.x as i16, v.y as i16, v.z as i16, v.w as i16]
 }
 
-fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, win: &mut [[i16; 4]], cover: &mut [[i16; 4]], dmg: &mut Damage, floor: &[u32]) -> bool {
+fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, only: Option<&[u32]>, ps: &mut Pass) -> bool {
     let geom = first || P::GEOM_READS & mask != 0;
+    let timed = P::READS >> U_TIME & 1 != 0;
+    let now = new.w[U_TIME];
     let mut moved = false;
-    for i in 0..c.len {
-        // SAFETY: this function is only stored in `Desc::of::<P>()`, which a column of `P` holds.
+    let n = only.map_or(c.len, |o| o.len() as u32);
+    for k in 0..n {
+        let i = only.map_or(k, |o| o[k as usize]);
+        // SAFETY: this function is only stored in `Desc::of::<P>()`, which a column of `P` holds; the
+        // active set holds indices below the column's length (`Scene::update` keeps it so).
         let (rect, z, p) = (c.rect(i), c.z(i) as usize, unsafe { c.rec::<P>(i) });
         let cn = Cx { u: new, rect };
+        if timed {
+            let rests = !ahead(p.until(&cn), now);
+            if cfg!(feature = "mutant_settle") && only.is_some() && rests {
+                continue;
+            }
+            if !rests {
+                ps.active.push(i);
+            }
+        }
         if geom {
-            let mut ws = WinSink(EMPTY);
+            let mut ws = WinSink(EMPTY, EMPTY);
             p.paint(&cn, NO_CLIP, &mut ws);
             let w = i16s(ws.0);
             let cv = if !P::OPAQUE_CORE {
@@ -197,12 +246,17 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, w
             } else {
                 i16s(p.cover(&cn, NO_CLIP))
             };
-            if first || w != win[z] || cv != cover[z] {
+            if P::LAYER {
+                moved |= ps.halo[z] != i16s(ws.1);
+                ps.halo[z] = i16s(ws.1);
+                ps.regeo.push(z as u32);
+            }
+            if first || w != ps.win[z] || cv != ps.cover[z] {
                 if !first {
-                    dmg.add_vis(win[z], z as u32, floor);
+                    ps.mark(ps.win[z], z as u32);
                 }
-                dmg.add_vis(w, z as u32, floor);
-                (win[z], cover[z]) = (w, cv);
+                ps.mark(w, z as u32);
+                (ps.win[z], ps.cover[z]) = (w, cv);
                 moved = true;
                 continue;
             }
@@ -210,24 +264,35 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, w
         if !first {
             let cw = p.changed_win(&Cx { u: old, rect }, &cn, mask, NO_CLIP);
             if cw.x < cw.z {
-                dmg.add_vis(i16s(cw), z as u32, floor);
+                ps.mark(i16s(cw), z as u32);
             }
         }
     }
     moved
 }
-fn rewin_one<P: Paint>(c: ColView, i: u32, u: &U, win: &mut [[i16; 4]], cover: &mut [[i16; 4]], dmg: &mut Damage, floor: &[u32]) -> bool {
+fn rewin_one<P: Paint>(c: ColView, i: u32, u: &U, ps: &mut Pass) -> bool {
     // SAFETY: as `window_pass`.
     let (rect, z, p) = (c.rect(i), c.z(i) as usize, unsafe { c.rec::<P>(i) });
     let cx = Cx { u, rect };
-    let mut ws = WinSink(EMPTY);
+    let mut ws = WinSink(EMPTY, EMPTY);
     p.paint(&cx, NO_CLIP, &mut ws);
     let w = i16s(ws.0);
     let cv = if P::OPAQUE_CORE { i16s(p.cover(&cx, NO_CLIP)) } else { [0; 4] };
-    dmg.add_vis(win[z], z as u32, floor);
-    dmg.add_vis(w, z as u32, floor);
-    let moved = w != win[z] || cv != cover[z];
-    (win[z], cover[z]) = (w, cv);
+    let mut moved = w != ps.win[z] || cv != ps.cover[z];
+    // (the mutant: a rewritten record that stayed where it was, a video showing a new frame, damages nothing)
+    if !(cfg!(feature = "mutant_video") && !moved) {
+        ps.mark(ps.win[z], z as u32);
+        ps.mark(w, z as u32);
+    }
+    (ps.win[z], ps.cover[z]) = (w, cv);
+    if P::LAYER {
+        moved |= ps.halo[z] != i16s(ws.1);
+        ps.halo[z] = i16s(ws.1);
+        ps.regeo.push(z as u32);
+    }
+    if P::READS >> U_TIME & 1 != 0 && ahead(p.until(&cx), u.w[U_TIME]) {
+        ps.active.push(i);
+    }
     moved
 }
 fn flat_run<P: Paint>(c: ColView, zs: &[u32], order: &[u32], u: &U, t: &mut Tile) {
@@ -237,16 +302,23 @@ fn flat_run<P: Paint>(c: ColView, zs: &[u32], order: &[u32], u: &U, t: &mut Tile
         unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut Flat(t));
     }
 }
-fn shade_run<P: Paint>(c: ColView, zs: &[u32], first: usize, order: &[u32], u: &U, t: &mut Tile) {
+fn shade_run<P: Paint>(c: ColView, zs: &[u32], first: usize, order: &[u32], u: &U, t: &mut Tile, fx: &Fx) {
     for (j, &z) in zs.iter().enumerate() {
         t.cur = first + j;
         let i = order[z as usize] & IDX_MASK;
+        let lid = if P::LAYER { fx.lid(z) } else { layer::NONE };
         // SAFETY: as `flat_run`.
-        unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut Shade(t));
+        unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut Shade(t, fx, lid));
     }
 }
-fn spec_one<P: Paint>(c: ColView, i: u32, u: &U, x: i32, y: i32, acc: Vec4u, atlas: &[u8], aw: u32, tabs: &[u32]) -> (Vec4u, bool) {
-    let mut s = SpecSink { x, y, acc, atlas, aw, tabs, ink: false };
+fn lay_one<P: Paint>(c: ColView, i: u32, u: &U) -> Option<Cmd> {
+    let mut s = LaySink(None);
+    // SAFETY: as `window_pass`.
+    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut s);
+    s.0
+}
+fn spec_one<P: Paint>(c: ColView, i: u32, u: &U, x: i32, y: i32, acc: Vec4u, atlas: &[u8], aw: u32, tabs: &[u32], bd: &dyn Fn(Cmd, i32, i32) -> Vec4u, media: &[u32]) -> (Vec4u, bool) {
+    let mut s = SpecSink { x, y, acc, atlas, aw, tabs, ink: false, bd, media };
     // SAFETY: as `window_pass`.
     unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut s);
     (s.acc, s.ink)
@@ -274,6 +346,8 @@ impl<P: Paint> D<P> {
         hit: P::HIT,
         cost: P::COST,
         layers: P::LAYERS,
+        layer: P::LAYER,
+        lay: lay_one::<P>,
         code: P::CODE,
         window: window_pass::<P>,
         flat: flat_run::<P>,
@@ -297,6 +371,9 @@ pub struct Col {
     /// Capacity in records (a multiple of 64).
     pub cap: usize,
     pub len: usize,
+    /// Indices of its records that still depend on the clock (`Paint::until` ahead of the block last
+    /// seen): what a time-only frame visits.
+    pub active: Vec<u32>,
 }
 pub struct ColId<P>(pub usize, PhantomData<P>);
 impl<P> Clone for ColId<P> {
@@ -353,6 +430,9 @@ pub struct Bins {
     count: Vec<u32>,
     /// Per tile: the key of the opaque cover its list is cut at (0: not cut).
     pub floor: Vec<u32>,
+    /// Per tile: a layer-owning record is listed (a later cover does not cut the list: the layer's prefix
+    /// needs what is beneath).
+    mark: Vec<bool>,
 }
 impl Bins {
     #[inline]
@@ -360,22 +440,43 @@ impl Bins {
         &self.list[self.off[t] as usize..self.off[t + 1] as usize]
     }
     /// Walk the window lane in paint order (plain data: no archetype is consulted).
-    pub fn build(&mut self, win: &[[i16; 4]], cover: &[[i16; 4]], tx: usize, ty: usize, cut: bool) {
+    /// `halo`, `lay`: the halo lane and the layer-of-key table (both empty in a scene without layers): a
+    /// layer's record is listed over its halo too.
+    pub fn build(&mut self, win: &[[i16; 4]], cover: &[[i16; 4]], halo: &[[i16; 4]], lay: &[u32], tx: usize, ty: usize, cut: bool) {
         let nt = tx * ty;
+        self.mark.clear();
+        self.mark.resize(nt, false);
+        let is_lay = |z: usize| lay.get(z).is_some_and(|&l| l != layer::NONE);
+        let bin = |z: usize| -> [i16; 4] {
+            let (w, h) = (win[z], if is_lay(z) { halo[z] } else { [0; 4] });
+            if h[0] >= h[2] {
+                w
+            } else if w[0] >= w[2] {
+                h
+            } else {
+                [w[0].min(h[0]), w[1].min(h[1]), w[2].max(h[2]), w[3].max(h[3])]
+            }
+        };
         self.count.clear();
         self.count.resize(nt, 0);
         self.floor.clear();
         self.floor.resize(nt, 0);
         let span = |w: &[i16; 4]| ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(tx), ((w[3].max(0) as usize + 31) >> 5).min(ty));
-        for (z, w) in win.iter().enumerate() {
-            let (x0, y0, x1, y1) = span(w);
+        for z in 0..win.len() {
+            let b = bin(z);
+            if b[0] >= b[2] {
+                continue;
+            }
+            let (x0, y0, x1, y1) = span(&b);
             let c = cover[z];
             let covers = cut && c[0] < c[2];
+            let lz = is_lay(z);
             for y in y0..y1 {
                 for x in x0..x1 {
                     let t = y * tx + x;
+                    self.mark[t] |= lz;
                     let (ox, oy) = (x as i32 * 32, y as i32 * 32);
-                    if covers && c[0] as i32 <= ox && c[1] as i32 <= oy && c[2] as i32 >= ox + 32 && c[3] as i32 >= oy + 32 {
+                    if covers && !self.mark[t] && c[0] as i32 <= ox && c[1] as i32 <= oy && c[2] as i32 >= ox + 32 && c[3] as i32 >= oy + 32 {
                         self.floor[t] = z as u32;
                         self.count[t] = 1;
                     } else {
@@ -395,8 +496,12 @@ impl Bins {
         self.off.push(at);
         self.list.clear();
         self.list.resize(at as usize, 0);
-        for (z, w) in win.iter().enumerate() {
-            let (x0, y0, x1, y1) = span(w);
+        for z in 0..win.len() {
+            let b = bin(z);
+            if b[0] >= b[2] {
+                continue;
+            }
+            let (x0, y0, x1, y1) = span(&b);
             for y in y0..y1 {
                 for x in x0..x1 {
                     let t = y * tx + x;
@@ -420,6 +525,10 @@ pub struct FrameStats {
     pub cols_visited: u32,
     pub recs_visited: u32,
     pub rebinned: bool,
+    /// Layer work scheduled: prefix tiles, pyramid blocks, pyramid pixels.
+    pub prefix_tiles: u32,
+    pub blocks: u32,
+    pub layer_px: u64,
     pub tiles: u32,
     pub raster: Stats,
 }
@@ -437,6 +546,21 @@ pub struct Scene {
     /// By key: the record's pixel window and its opaque cover under the block last seen.
     pub win: Vec<[i16; 4]>,
     pub cover: Vec<[i16; 4]>,
+    /// By key: the halo of a layer-owning record (frame pixels whose prefix its layer keeps).
+    pub halo: Vec<[i16; 4]>,
+    /// The layers (`layer.rs`), this frame's stages for them, and the events that scheduled them.
+    pub layers: Layers,
+    pub plan: layer::Plan,
+    events: Vec<([i32; 4], u32)>,
+    regeo: Vec<u32>,
+    act: Vec<u32>,
+    /// Bumped when the bins were rebuilt (an executor that mirrors them re-reads them).
+    pub bins_epoch: u64,
+    /// Measurement switch, never a result's configuration: every layer is recomputed whole on every
+    /// frame and no tile restarts from a stored prefix (what a compositor that redraws its layers does).
+    pub fx_nocache: bool,
+    /// The media pool video records sample.
+    pub media: crate::media::Pool,
     pub bins: Bins,
     pub damage: Damage,
     /// The block the surface shows.
@@ -500,6 +624,15 @@ impl Scene {
             order: Vec::new(),
             win: Vec::new(),
             cover: Vec::new(),
+            halo: Vec::new(),
+            layers: Layers::default(),
+            plan: layer::Plan::default(),
+            events: Vec::new(),
+            regeo: Vec::new(),
+            act: Vec::new(),
+            bins_epoch: 0,
+            fx_nocache: std::env::var("BOUGH_FX_NOCACHE").is_ok(),
+            media: crate::media::Pool::new(0),
             bins: Bins::default(),
             damage: Damage::new(tx, ty),
             prev: U::default(),
@@ -519,7 +652,7 @@ impl Scene {
         let words = cap * (LANES + desc.words);
         assert!(self.used + words <= self.tab_base, "arena too small");
         assert!(self.cols.len() < 1 << (32 - IDX_BITS) && cap <= 1 << IDX_BITS);
-        self.cols.push(Col { desc, base: self.used, cap, len: 0 });
+        self.cols.push(Col { desc, base: self.used, cap, len: 0, active: Vec::new() });
         self.used += words;
         ColId(self.cols.len() - 1, PhantomData)
     }
@@ -545,6 +678,10 @@ impl Scene {
         self.order.push((col.0 as u32) << IDX_BITS | i as u32);
         self.win.push([0; 4]);
         self.cover.push([0; 4]);
+        self.halo.push([0; 4]);
+        if P::LAYER {
+            self.layers.mount(z);
+        }
         self.first = true;
         z
     }
@@ -665,7 +802,8 @@ impl Scene {
         self.used
     }
 
-    /// Steps 1 to 3 of a frame: the mask, the window passes, the bins. Leaves the damage in `self.damage`.
+    /// Steps 1 to 3 of a frame: the mask, the window passes, the bins; then the layers' schedule (their
+    /// stages are in `self.plan`: `prepare` runs them). Leaves the output damage in `self.damage`.
     pub fn update(&mut self, u: &U) -> FrameStats {
         let mut fs = FrameStats::default();
         if !self.tab_jobs.is_empty() {
@@ -676,36 +814,203 @@ impl Scene {
         fs.mask = mask;
         if first {
             self.damage.all();
+            // a full redraw recomputes every layer whole
+            self.layers.list.iter_mut().for_each(|l| l.fresh = true);
         }
         let mut moved = first;
         let mut touched = std::mem::take(&mut self.touched);
+        let (mut events, mut regeo, mut act) = (std::mem::take(&mut self.events), std::mem::take(&mut self.regeo), std::mem::take(&mut self.act));
+        events.clear();
+        regeo.clear();
+        let track = self.layers.any() && !first;
+        macro_rules! pass {
+            () => {
+                Pass { win: &mut self.win, cover: &mut self.cover, halo: &mut self.halo, dmg: &mut self.damage, floor: &self.bins.floor, events: &mut events, track, regeo: &mut regeo, active: &mut act }
+            };
+        }
         if !first {
             for &z in &touched {
                 let o = self.order[z as usize];
                 let ci = (o >> IDX_BITS) as usize;
                 let v = view_of(&self.arena, &self.cols[ci]);
-                moved |= (self.cols[ci].desc.rewin)(v, o & IDX_MASK, u, &mut self.win, &mut self.cover, &mut self.damage, &self.bins.floor);
+                act.clear();
+                moved |= (self.cols[ci].desc.rewin)(v, o & IDX_MASK, u, &mut pass!());
+                // a rewritten record that now depends on the clock joins its column's active set
+                if let Some(&i) = act.first() {
+                    if !self.cols[ci].active.contains(&i) {
+                        self.cols[ci].active.push(i);
+                    }
+                }
             }
         }
         touched.clear();
         self.touched = touched;
+        // the clock alone never sends a pass over a whole column: its readers said when they stop
+        let tbit = 1u64 << U_TIME;
         for ci in 0..self.cols.len() {
             let d = self.cols[ci].desc;
-            if !first && d.reads & mask == 0 {
+            let full = first || d.reads & (mask & !tbit) != 0;
+            if !full && (mask & d.reads & tbit == 0 || self.cols[ci].active.is_empty()) {
                 continue;
             }
+            let only = (!full).then(|| std::mem::take(&mut self.cols[ci].active));
             fs.cols_visited += 1;
-            fs.recs_visited += self.cols[ci].len as u32;
+            fs.recs_visited += only.as_ref().map_or(self.cols[ci].len, Vec::len) as u32;
             let v = view_of(&self.arena, &self.cols[ci]);
-            moved |= (d.window)(v, &self.prev, u, mask, first, &mut self.win, &mut self.cover, &mut self.damage, &self.bins.floor);
+            act.clear();
+            moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
+            std::mem::swap(&mut self.cols[ci].active, &mut act);
+        }
+        // the layers follow their records
+        let lay_on = self.layers.any();
+        let mut relaid = false;
+        if lay_on {
+            if self.fx_nocache {
+                self.layers.list.iter_mut().for_each(|l| l.fresh = true);
+                relaid = true;
+            }
+            for &z in &regeo {
+                let o = self.order[z as usize];
+                let ci = (o >> IDX_BITS) as usize;
+                let c = (self.cols[ci].desc.lay)(view_of(&self.arena, &self.cols[ci]), o & IDX_MASK, u);
+                self.layers.regeo(self.layers.lid(z), c, self.fw, self.fh);
+                relaid = true;
+            }
+            relaid |= self.layers.repack();
+            if self.layers.pool.len() < self.layers.used {
+                self.layers.pool.resize(self.layers.used, 0);
+            }
         }
         if moved {
-            self.bins.build(&self.win, &self.cover, self.tx, self.ty, self.cut);
+            self.bins.build(&self.win, &self.cover, &self.halo, &self.layers.of, self.tx, self.ty, self.cut);
+            self.bins_epoch += 1;
             fs.rebinned = true;
         }
+        // the layers' stages, in paint order: a layer's repair is output damage of its record, and an
+        // event for the layers above it
+        self.plan = layer::Plan::default();
+        if lay_on && (first || relaid || !events.is_empty()) {
+            let mut outs: Vec<[i32; 4]> = Vec::new();
+            for lid in 0..self.layers.list.len() as u32 {
+                outs.clear();
+                self.layers.schedule(lid, &events, self.tx, &mut self.plan, |r| outs.push(r));
+                let z = self.layers.list[lid as usize].z;
+                for r in &outs {
+                    self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
+                    events.push((*r, z));
+                }
+            }
+        }
+        (fs.prefix_tiles, fs.blocks, fs.layer_px) = (self.plan.prefix_tiles, self.plan.blocks, self.plan.px);
+        (self.events, self.regeo, self.act) = (events, regeo, act);
         self.prev = *u;
         self.first = false;
         fs
+    }
+    /// Some record still depends on the clock: the host owes the scene a frame at the output's next
+    /// refresh. False: nothing moves, and no frame is owed until a block word or a record is written.
+    pub fn animating(&self) -> bool {
+        self.cols.iter().any(|c| !c.active.is_empty())
+    }
+    /// The records in motion (the size of the active sets).
+    pub fn active_records(&self) -> usize {
+        self.cols.iter().map(|c| c.active.len()).sum()
+    }
+    fn fx<'a>(&'a self, pool: &'a [u32]) -> Fx<'a> {
+        Fx { layers: &self.layers.list, of: &self.layers.of, pool, media: self.media.words(), fw: self.fw, fh: self.fh }
+    }
+    /// The part of tile `ti`'s list a job runs: entries `from..to`, started from the stored prefix of layer
+    /// `init` (`layer::NONE`: from nothing). `upto`: the layer whose prefix the job computes (its entries
+    /// beneath that layer's record), or `layer::NONE` for an output tile (all of them). The job starts at
+    /// the topmost layer record in its range whose window holds the whole tile: inside its window that
+    /// record flattened every pixel, so its stored prefix is the accumulator there. The last value: some
+    /// layer record is in the range.
+    pub fn seg(&self, ti: u32, upto: u32) -> (usize, usize, u32, bool) {
+        let (ox, oy) = ((ti as usize % self.tx) as i32 * 32, (ti as usize / self.tx) as i32 * 32);
+        let (cols, nrows) = ((self.fw as usize - ox as usize).min(32), (self.fh as usize - oy as usize).min(32));
+        let list = self.bins.tile(ti as usize);
+        let (mut from, mut to, mut init, mut marked) = (0, list.len(), layer::NONE, false);
+        if self.layers.any() {
+            if upto != layer::NONE {
+                let zb = self.layers.list[upto as usize].z;
+                to = list.partition_point(|&z| z < zb);
+            }
+            for j in (0..to).rev() {
+                let lid = self.layers.lid(list[j]);
+                if lid == layer::NONE {
+                    continue;
+                }
+                marked = true;
+                let (r, h) = (self.layers.list[lid as usize].win, self.layers.list[lid as usize].lv[0].r);
+                let holds = |r: [i32; 4]| r[0] <= ox && r[1] <= oy && r[2] >= ox + cols as i32 && r[3] >= oy + nrows as i32;
+                if !self.fx_nocache && holds(r) && holds(h) {
+                    (from, init) = (j, lid);
+                    break;
+                }
+            }
+        }
+        (from, to, init, marked)
+    }
+    /// The tile program of tile `ti` into `t`'s accumulator: its entries beneath layer `upto`'s record (a
+    /// prefix job), or all of them (`layer::NONE`: an output tile). It starts from the stored prefix of
+    /// the topmost layer beneath whose record's window holds the whole tile, when there is one.
+    fn run_tile(&self, u: &U, ti: u32, t: &mut Tile, pool: &[u32], upto: u32) {
+        let (ox, oy) = ((ti as usize % self.tx) as i32 * 32, (ti as usize / self.tx) as i32 * 32);
+        let (cols, nrows) = ((self.fw as usize - ox as usize).min(32), (self.fh as usize - oy as usize).min(32));
+        let (from, to, init, marked) = self.seg(ti, upto);
+        let list = &self.bins.tile(ti as usize)[from..to];
+        let flat = self.flat && !marked && upto == layer::NONE;
+        t.begin(ox, oy, cols, nrows, flat);
+        if flat {
+            self.runs(list, |c, _, zs| (self.cols[c].desc.flat)(self.view(c), zs, &self.order, u, t));
+        }
+        t.cover_masks(list, &self.cover, self.cut && list.len() > 1);
+        t.prepare();
+        if init != layer::NONE {
+            t.load(pool, &self.layers.list[init as usize].lv[0]);
+        }
+        let fx = self.fx(pool);
+        let prof = *PROF_ON.get_or_init(|| std::env::var("BOUGH_PAINT_PROF").is_ok());
+        if prof {
+            self.runs(list, |c, first, zs| {
+                let t0 = std::time::Instant::now();
+                (self.cols[c].desc.shade)(self.view(c), zs, first, &self.order, u, t, &fx);
+                let mut p = PROF.lock().unwrap();
+                p[c].0 += t0.elapsed().as_nanos() as u64;
+                p[c].1 += zs.len() as u64;
+            });
+        } else {
+            self.runs(list, |c, first, zs| (self.cols[c].desc.shade)(self.view(c), zs, first, &self.order, u, t, &fx));
+        }
+        t.st.entries += list.len() as u64;
+    }
+    /// Run the layers' stages of the frame `update` scheduled, on this thread: per layer in paint order, its
+    /// prefix tiles, then its pyramid's dirty blocks level by level. Nothing to do (and nothing done) when
+    /// no layer was reached by a change. Call between `update` and `shade`.
+    pub fn prepare(&mut self, u: &U) -> Stats {
+        if self.plan.work.is_empty() {
+            return Stats::default();
+        }
+        let mut pool = std::mem::take(&mut self.layers.pool);
+        let st = {
+            let s = &*self;
+            let mut t = s.worker();
+            for w in &s.plan.work {
+                let l = &s.layers.list[w.lid as usize];
+                for &ti in &w.prefix {
+                    s.run_tile(u, ti, &mut t, &pool, w.lid);
+                    t.store_layer(&mut pool, &l.lv[0]);
+                }
+                for (k, blocks) in &w.blocks {
+                    for &(bx, by) in blocks {
+                        layer::down(&mut pool, l, *k, s.fw, s.fh, bx, by);
+                    }
+                }
+            }
+            t.st
+        };
+        self.layers.pool = pool;
+        st
     }
 
     /// One worker's scratch: the 32 x 32 Q15 accumulator and the tile's occlusion masks. Keep one per core.
@@ -724,30 +1029,10 @@ impl Scene {
     /// `out` is valid for `(fh - 1) * stride + fw` words, and no other thread reads or writes the pixels of
     /// these tiles during the call (tiles given to concurrent callers are disjoint).
     pub unsafe fn shade_into(&self, u: &U, tiles: &[u32], out: *mut u32, stride: usize, t: &mut Tile) {
-        let prof = *PROF_ON.get_or_init(|| std::env::var("BOUGH_PAINT_PROF").is_ok());
         for &ti in tiles {
-            let (ox, oy) = ((ti as usize % self.tx) as i32 * 32, (ti as usize / self.tx) as i32 * 32);
-            let (cols, nrows) = ((self.fw as usize - ox as usize).min(32), (self.fh as usize - oy as usize).min(32));
-            let list = self.bins.tile(ti as usize);
-            t.begin(ox, oy, cols, nrows, self.flat);
-            if self.flat {
-                self.runs(list, |c, _, zs| (self.cols[c].desc.flat)(self.view(c), zs, &self.order, u, t));
-            }
-            t.cover_masks(list, &self.cover, self.cut && list.len() > 1);
-            t.prepare();
-            if prof {
-                self.runs(list, |c, first, zs| {
-                    let t0 = std::time::Instant::now();
-                    (self.cols[c].desc.shade)(self.view(c), zs, first, &self.order, u, t);
-                    let mut p = PROF.lock().unwrap();
-                    p[c].0 += t0.elapsed().as_nanos() as u64;
-                    p[c].1 += zs.len() as u64;
-                });
-            } else {
-                self.runs(list, |c, first, zs| (self.cols[c].desc.shade)(self.view(c), zs, first, &self.order, u, t));
-            }
-            t.st.entries += list.len() as u64;
-            let at = oy as usize * stride + ox as usize;
+            self.run_tile(u, ti, t, &self.layers.pool, layer::NONE);
+            let (ox, oy) = ((ti as usize % self.tx) * 32, (ti as usize / self.tx) * 32);
+            let at = oy * stride + ox;
             // SAFETY: the tile's rows [oy, oy + nrows) x columns [ox, ox + cols) lie inside `out` (the
             // caller's contract), and nothing else touches them during the call.
             unsafe { t.store(out.add(at), stride) };
@@ -808,11 +1093,13 @@ impl Scene {
     /// A whole CPU frame: update, then shade what the update damaged. `out` holds the previous frame.
     pub fn frame(&mut self, u: &U, out: &mut [u32], stride: usize, pool: &Pool, extra: usize) -> FrameStats {
         let mut fs = self.update(u);
+        let st = self.prepare(u);
         let mut tiles = std::mem::take(&mut self.tiles);
         self.damage.tiles(&mut tiles);
         self.damage.clear();
         fs.tiles = tiles.len() as u32;
         fs.raster = self.shade(u, &tiles, out, stride, pool, extra);
+        fs.raster.add(&st);
         self.tiles = tiles;
         fs
     }
@@ -835,16 +1122,72 @@ impl Scene {
         }
         s
     }
-    /// The archetypes' specification, pixel by pixel over every record (small frames only).
+    /// The archetypes' specification, pixel by pixel over every record (small frames only). A scene with
+    /// layers is folded record by record over the whole frame instead, each backdrop record reading a plain
+    /// mip chain of the frame beneath it: no tiles, no layer store, no damage (the retained path's oracle).
     pub fn spec(&self, u: &U, out: &mut [u32], stride: usize) {
-        for y in 0..self.fh as i32 {
-            for x in 0..self.fw as i32 {
-                let mut acc = Vec4 { x: 0, y: 0, z: 0, w: 0 };
-                for &o in &self.order {
-                    let c = (o >> IDX_BITS) as usize;
-                    acc = (self.cols[c].desc.spec)(self.view(c), o & IDX_MASK, u, x, y, acc, &self.atlas, self.aw, self.tabs()).0;
+        let none = |_: Cmd, _: i32, _: i32| Vec4 { x: 0, y: 0, z: 0, w: 0 };
+        let media = self.media.words();
+        if !self.layers.any() {
+            for y in 0..self.fh as i32 {
+                for x in 0..self.fw as i32 {
+                    let mut acc = Vec4 { x: 0, y: 0, z: 0, w: 0 };
+                    for &o in &self.order {
+                        let c = (o >> IDX_BITS) as usize;
+                        acc = (self.cols[c].desc.spec)(self.view(c), o & IDX_MASK, u, x, y, acc, &self.atlas, self.aw, self.tabs(), &none, media).0;
+                    }
+                    out[y as usize * stride + x as usize] = crate::ops::ops::x_store(acc);
                 }
-                out[y as usize * stride + x as usize] = crate::ops::ops::x_store(acc);
+            }
+            return;
+        }
+        use crate::ops::ops as x;
+        let (fw, fh) = (self.fw as i32, self.fh as i32);
+        let mut acc = vec![Vec4 { x: 0u32, y: 0, z: 0, w: 0 }; (fw * fh) as usize];
+        for (z, &o) in self.order.iter().enumerate() {
+            let c = (o >> IDX_BITS) as usize;
+            let d = self.cols[c].desc;
+            // the mip chain of what is beneath a backdrop record: level l + 1 from level l, whole frame
+            let mut lev: Vec<(i32, i32, Vec<u32>)> = Vec::new();
+            if d.layer && self.layers.lid(z as u32) != layer::NONE {
+                lev.push((fw, fh, acc.iter().map(|a| x::x_store(*a)).collect()));
+                for k in 1..layer::LEVELS as u32 {
+                    let (sw, sh, src) = &lev[k as usize - 1];
+                    let (dw, dh) = (x::bd_dim(self.fw, k), x::bd_dim(self.fh, k));
+                    let mut dst = vec![0u32; (dw * dh) as usize];
+                    for yy in 0..dh {
+                        for xx in 0..dw {
+                            let row = |j: i32| {
+                                let sy = (2 * yy - 1 + j).clamp(0, sh - 1);
+                                let t = |i: i32| src[(sy * sw + (2 * xx - 1 + i).clamp(0, sw - 1)) as usize];
+                                x::dn_row(t(0), t(1), t(2), t(3))
+                            };
+                            dst[(yy * dw + xx) as usize] = x::dn_fin(row(0), row(1), row(2), row(3));
+                        }
+                    }
+                    lev.push((dw, dh, dst));
+                }
+            }
+            let read = |k: u32, px: i32, py: i32| {
+                let (dw, dh, v) = &lev[k as usize];
+                let (i, j) = (x::bd_i(px, k), x::bd_i(py, k));
+                let t = |a: i32, b: i32| v[(b.clamp(0, dh - 1) * dw + a.clamp(0, dw - 1)) as usize];
+                x::bd_bil(t(i, j), t(i + 1, j), t(i, j + 1), t(i + 1, j + 1), x::bd_f(px, k), x::bd_f(py, k))
+            };
+            let bd = |cm: Cmd, px: i32, py: i32| {
+                let a = read(cm.rad.y as u32, px, py);
+                if cm.rad.z == 0 { a } else { bough_kernel::k::mix4u(a, read(cm.rad.y as u32 + 1, px, py), cm.rad.z as u32) }
+            };
+            for y in 0..fh {
+                for xx in 0..fw {
+                    let a = &mut acc[(y * fw + xx) as usize];
+                    *a = (d.spec)(self.view(c), o & IDX_MASK, u, xx, y, *a, &self.atlas, self.aw, self.tabs(), if lev.is_empty() { &none } else { &bd }, media).0;
+                }
+            }
+        }
+        for y in 0..fh {
+            for xx in 0..fw {
+                out[y as usize * stride + xx as usize] = x::x_store(acc[(y * fw + xx) as usize]);
             }
         }
     }
@@ -859,7 +1202,7 @@ impl Scene {
             let o = self.order[z as usize];
             let c = (o >> IDX_BITS) as usize;
             let d = self.cols[c].desc;
-            let (_, ink) = (d.spec)(self.view(c), o & IDX_MASK, u, x, y, Vec4 { x: 0, y: 0, z: 0, w: 0 }, &self.atlas, self.aw, self.tabs());
+            let (_, ink) = (d.spec)(self.view(c), o & IDX_MASK, u, x, y, Vec4 { x: 0, y: 0, z: 0, w: 0 }, &self.atlas, self.aw, self.tabs(), &|_, _, _| Vec4 { x: 0, y: 0, z: 0, w: 0 }, self.media.words());
             if ink {
                 return if d.hit { (d.pick)(self.view(c), o & IDX_MASK, u) } else { NO_HIT };
             }

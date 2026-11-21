@@ -7,7 +7,8 @@
 //! staged primitives, in paint order, the kind of each call fixed by the type. The tile rasteriser, the
 //! flat-row classifier, the window pass, the per-pixel specification, the oracle's stager and the pick are
 //! six sinks; each is monomorphised per archetype, so none of them tests a kind.
-use crate::expr::{Alpha, Code, Cx, Expr, Ty, Val, Words};
+use crate::expr::{Alpha, Code, Cx, Expr, Ty, U_TIME, Val, Words};
+use bough_expr::latest;
 use crate::ops::ops as x;
 use bough_kernel::Cmd;
 use wgsl_rs::std::{Vec4, Vec4i, Vec4u};
@@ -70,6 +71,8 @@ pub enum PCode {
         full: &'static [usize],
         /// Its last operand is a table handle (`Shadow`): the generated function reads the corner table.
         tab: bool,
+        /// What it reads besides its own record, through hand-written glue (`metal.rs`, `tile.rs`).
+        glue: Glue,
     },
     /// `a` then `b`; `cut`: `b`'s core is opaque, so `a` is skipped inside it.
     Over {
@@ -87,6 +90,16 @@ pub enum PCode {
     },
 }
 
+/// A resource a primitive reads that is not its record: the executor's glue fetches it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Glue {
+    None,
+    /// The layer the record owns: the flattened prefix beneath it and its pyramid (`layer.rs`).
+    Backdrop,
+    /// A leased frame of the media pool (`media.rs`).
+    Video,
+}
+
 /// Where a paint's staged primitives go. Every method has the kind in its name: the caller is a paint
 /// type, so the callee is chosen when the archetype is compiled.
 pub trait Sink {
@@ -96,6 +109,13 @@ pub trait Sink {
     fn shadow(&mut self, c: Cmd);
     fn grad(&mut self, c: Cmd);
     fn glyph(&mut self, c: Cmd);
+    /// A backdrop: inside its window it replaces what is beneath by the flattened (8-bit) accumulator mixed
+    /// with the blurred prefix through its filter, so a sink that blends needs the layer, not only the
+    /// command. Outside its window it changes nothing (its halo is only where its layer keeps the prefix).
+    fn backdrop(&mut self, c: Cmd);
+    fn video(&mut self, c: Cmd);
+    /// A user shader node (`ops::p_user`).
+    fn user(&mut self, c: Cmd);
     /// The pixels of `core` are about to be replaced by an opaque layer of the same record: what is painted
     /// until `show` may skip them. Returns what to hand back to `show`.
     #[inline(always)]
@@ -115,7 +135,13 @@ pub trait Paint: Words {
     const COST: Cost;
     const LAYERS: usize;
     const HIT: bool = false;
+    /// Some layer is a backdrop: the record owns a layer (`layer.rs`). Such a primitive must be the record's
+    /// first (bottom) layer, so "beneath the primitive" is "beneath the record".
+    const LAYER: bool = false;
     const CODE: &'static PCode;
+    /// From which value of `Time` on the record no longer changes with time alone (`Expr::until`: 0 at
+    /// rest, `u32::MAX` never). A time-only frame visits only the records still ahead of it.
+    fn until(&self, cx: &Cx) -> u32;
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk);
     /// The pixels a change of block words `mask` can alter without moving anything: the windows (under
     /// `new`) of the layers one of whose operands has a different value under the two blocks. A hovered
@@ -154,10 +180,17 @@ macro_rules! prim {
             const OPAQUE_CORE: bool = $cov $(&& $FT::MAY)*;
             const COST: Cost = $cost;
             const LAYERS: usize = 1;
-            const CODE: &'static PCode = &PCode::Prim { mk: stringify!($mk), p: stringify!($p), args: &[$($T::CODE),*], tys: &[$(<$ty as Val>::TY),*], glyph: $gl, opaque: Self::OPAQUE_CORE, full: &[$($fi),*], tab: false };
+            const CODE: &'static PCode = &PCode::Prim { mk: stringify!($mk), p: stringify!($p), args: &[$($T::CODE),*], tys: &[$(<$ty as Val>::TY),*], glyph: $gl, opaque: Self::OPAQUE_CORE, full: &[$($fi),*], tab: false, glue: Glue::None };
             #[inline(always)]
             fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
                 s.$sink(x::$mk($(self.$f.eval(cx)),*, clip))
+            }
+            #[inline(always)]
+            fn until(&self, cx: &Cx) -> u32 {
+                let (now, t) = (cx.u.w[U_TIME], 0u32);
+                $(let t = latest(t, self.$f.until(cx), now);)*
+                let _ = now;
+                t
             }
             #[inline(always)]
             fn changed_win(&self, old: &Cx, new: &Cx, mask: u64, clip: Vec4i) -> Vec4i {
@@ -255,7 +288,13 @@ impl<
         opaque: false,
         full: &[],
         tab: T::ON,
+        glue: Glue::None,
     };
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        let now = cx.u.w[U_TIME];
+        latest(latest(self.b.until(cx), self.r.until(cx), now), latest(self.blur.until(cx), self.c.until(cx), now), now)
+    }
     #[inline(always)]
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
         s.shadow(x::mk_shadow(
@@ -321,6 +360,101 @@ prim!(/// A two-stop linear gradient in a rounded box.
 prim!(/// One glyph: `b` is its texels' box, `texel` its first texel in the atlas.
     Glyph: glyph = mk_glyph, p_glyph(b: B: Vec4i: true, texel: T: u32: false, c: C: Vec4u: false); full = []; cover = false; cost = Cost::Flat; glyph = true);
 
+prim!(/// An author shader node filling a rounded box: `id` picks the function (`bough_kernel::fx::user_shade`),
+    /// `now` is its clock (any expression: the frame clock, a scaled clock, a constant for a still), `c`
+    /// and `c2` its two colours. It is damaged where it shows and only when one of these moves.
+    Shader: user = mk_user, p_user(b: B: Vec4i: true, r: R: i32: true, id: I: u32: false, now: N: u32: false, c: C: Vec4u: false, c2: D: Vec4u: false); full = []; cover = false; cost = Cost::PerPixel; glyph = false);
+
+/// A video frame scaled into a rounded box. `slot` names the leased frame in the media pool
+/// (`media::Pool::publish` rewrites this word, which is the whole of "a new frame arrived"), `dims` its luma
+/// size (width | height << 16), `op` its opacity (Q15).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Video<B, R, S, M, O> {
+    pub b: B,
+    pub r: R,
+    pub slot: S,
+    pub dims: M,
+    pub op: O,
+}
+// SAFETY: `repr(C)` over `Words` operands.
+unsafe impl<B: Words, R: Words, S: Words, M: Words, O: Words> Words for Video<B, R, S, M, O> {}
+impl<B: Expr<Out = Vec4i> + Words, R: Expr<Out = i32> + Words, S: Expr<Out = u32> + Words, M: Expr<Out = u32> + Words, O: Expr<Out = u32> + Words> Paint for Video<B, R, S, M, O> {
+    const READS: u64 = B::READS | R::READS | S::READS | M::READS | O::READS;
+    const GEOM_READS: u64 = B::READS | R::READS;
+    const OPAQUE_CORE: bool = false;
+    const COST: Cost = Cost::PerPixel;
+    const LAYERS: usize = 1;
+    const CODE: &'static PCode = &PCode::Prim { mk: "mk_video", p: "p_video", args: &[B::CODE, R::CODE, S::CODE, M::CODE, O::CODE], tys: &[Ty::V4i, Ty::I32, Ty::U32, Ty::U32, Ty::U32], glyph: false, opaque: false, full: &[], tab: false, glue: Glue::Video };
+    #[inline(always)]
+    fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
+        s.video(x::mk_video(self.b.eval(cx), self.r.eval(cx), self.slot.eval(cx), self.dims.eval(cx), self.op.eval(cx), clip))
+    }
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        let now = cx.u.w[U_TIME];
+        latest(latest(self.b.until(cx), self.r.until(cx), now), latest(self.slot.until(cx), self.op.until(cx), now), now)
+    }
+    #[inline(always)]
+    fn changed_win(&self, old: &Cx, new: &Cx, mask: u64, clip: Vec4i) -> Vec4i {
+        if (B::READS & mask != 0 && self.b.eval(old) != self.b.eval(new)) || (R::READS & mask != 0 && self.r.eval(old) != self.r.eval(new)) || (S::READS & mask != 0 && self.slot.eval(old) != self.slot.eval(new)) || (M::READS & mask != 0 && self.dims.eval(old) != self.dims.eval(new)) || (O::READS & mask != 0 && self.op.eval(old) != self.op.eval(new)) {
+            x::mk_video(self.b.eval(new), self.r.eval(new), self.slot.eval(new), self.dims.eval(new), self.op.eval(new), clip).win
+        } else {
+            EMPTY
+        }
+    }
+    #[inline(always)]
+    fn cover(&self, _: &Cx, _: Vec4i) -> Vec4i {
+        EMPTY
+    }
+}
+
+/// What is beneath the rounded box `b`, blurred by `blur` (Q8 px, a standard deviation; 0: sharp) and passed
+/// through brightness, saturation and contrast (`f`: a `Vec4u` of Q8 factors, 256 each for none). Frosted
+/// glass is `Over(Backdrop { .. }, RRect { translucent tint })`. The record owns a layer (`layer.rs`).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Backdrop<B, R, S, F> {
+    pub b: B,
+    pub r: R,
+    pub blur: S,
+    pub f: F,
+}
+// SAFETY: `repr(C)` over `Words` operands.
+unsafe impl<B: Words, R: Words, S: Words, F: Words> Words for Backdrop<B, R, S, F> {}
+impl<B: Expr<Out = Vec4i> + Words, R: Expr<Out = i32> + Words, S: Expr<Out = i32> + Words, F: Expr<Out = Vec4u> + Words> Paint for Backdrop<B, R, S, F> {
+    const READS: u64 = B::READS | R::READS | S::READS | F::READS;
+    const GEOM_READS: u64 = B::READS | R::READS | S::READS;
+    const OPAQUE_CORE: bool = false;
+    const COST: Cost = Cost::PerPixel;
+    const LAYERS: usize = 1;
+    const LAYER: bool = true;
+    const CODE: &'static PCode = &PCode::Prim { mk: "mk_backdrop", p: "p_bdrop", args: &[B::CODE, R::CODE, S::CODE, F::CODE], tys: &[Ty::V4i, Ty::I32, Ty::I32, Ty::V4u], glyph: false, opaque: false, full: &[], tab: false, glue: Glue::Backdrop };
+    #[inline(always)]
+    fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
+        s.backdrop(x::mk_backdrop(self.b.eval(cx), self.r.eval(cx), self.blur.eval(cx), self.f.eval(cx), clip))
+    }
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        let now = cx.u.w[U_TIME];
+        latest(latest(self.b.until(cx), self.r.until(cx), now), latest(self.blur.until(cx), self.f.until(cx), now), now)
+    }
+    #[inline(always)]
+    fn changed_win(&self, old: &Cx, new: &Cx, mask: u64, clip: Vec4i) -> Vec4i {
+        if (B::READS & mask != 0 && self.b.eval(old) != self.b.eval(new)) || (R::READS & mask != 0 && self.r.eval(old) != self.r.eval(new)) || (S::READS & mask != 0 && self.blur.eval(old) != self.blur.eval(new)) || (F::READS & mask != 0 && self.f.eval(old) != self.f.eval(new)) {
+            x::mk_backdrop(self.b.eval(new), self.r.eval(new), self.blur.eval(new), self.f.eval(new), clip).win
+        } else {
+            EMPTY
+        }
+    }
+    #[inline(always)]
+    fn cover(&self, _: &Cx, _: Vec4i) -> Vec4i {
+        EMPTY
+    }
+}
+/// A backdrop's three filter factors (Q8: brightness, saturation, contrast) from one record word each.
+pub type Filt<A, B, C> = crate::expr::V3<A, B, C>;
+
 /// `A` beneath `B`, one record. Where `B`'s core is opaque, `A` is not evaluated: the cut between a record's
 /// own layers is decided by the types, not found by a binner.
 #[repr(C)]
@@ -335,6 +469,14 @@ impl<A: Paint, B: Paint> Paint for Over<A, B> {
     const COST: Cost = worst(A::COST, B::COST);
     const LAYERS: usize = A::LAYERS + B::LAYERS;
     const HIT: bool = A::HIT || B::HIT;
+    const LAYER: bool = {
+        assert!(!B::LAYER, "a backdrop must be the bottom layer of its record");
+        A::LAYER
+    };
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        latest(self.0.until(cx), self.1.until(cx), cx.u.w[U_TIME])
+    }
     const CODE: &'static PCode = &PCode::Over {
         a: A::CODE,
         b: B::CODE,
@@ -399,6 +541,11 @@ impl<P: Paint, K: Expr<Out = Vec4i> + Words> Paint for Clip<P, K> {
     const COST: Cost = P::COST;
     const LAYERS: usize = P::LAYERS;
     const HIT: bool = P::HIT;
+    const LAYER: bool = P::LAYER;
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        latest(self.p.until(cx), self.k.until(cx), cx.u.w[U_TIME])
+    }
     const CODE: &'static PCode = &PCode::Clip {
         p: P::CODE,
         k: K::CODE,
@@ -443,6 +590,11 @@ impl<P: Paint, I: Expr<Out = u32> + Words> Paint for Hit<P, I> {
     const COST: Cost = P::COST;
     const LAYERS: usize = P::LAYERS;
     const HIT: bool = true;
+    const LAYER: bool = P::LAYER;
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        latest(self.p.until(cx), self.id.until(cx), cx.u.w[U_TIME])
+    }
     const CODE: &'static PCode = &PCode::Hit {
         p: P::CODE,
         id: I::CODE,
@@ -469,15 +621,54 @@ impl<P: Paint, I: Expr<Out = u32> + Words> Paint for Hit<P, I> {
     }
 }
 
-/// The union of the staged primitives' windows (the record's window lane).
-pub struct WinSink(pub Vec4i);
+/// The union of the staged primitives' windows (the record's window lane), and the halo of its backdrop
+/// (the frame pixels whose prefix its layer keeps: the bins list the record there too).
+pub struct WinSink(pub Vec4i, pub Vec4i);
 impl WinSink {
     #[inline(always)]
     fn add(&mut self, c: Cmd) {
         self.0 = x::x_union(self.0, c.win);
     }
 }
+/// The backdrop command of a record that owns a layer.
+pub struct LaySink(pub Option<Cmd>);
+impl Sink for LaySink {
+    #[inline(always)]
+    fn solid(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn rrect(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn border(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn shadow(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn grad(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn glyph(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn backdrop(&mut self, c: Cmd) {
+        self.0 = Some(c);
+    }
+    #[inline(always)]
+    fn video(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn user(&mut self, _: Cmd) {}
+}
 impl Sink for WinSink {
+    #[inline(always)]
+    fn backdrop(&mut self, c: Cmd) {
+        self.add(c);
+        let h = crate::layer::halo(c);
+        self.1 = Vec4 { x: h.x.clamp(-32768, 32767), y: h.y.clamp(-32768, 32767), z: h.z.clamp(-32768, 32767), w: h.w.clamp(-32768, 32767) };
+    }
+    #[inline(always)]
+    fn video(&mut self, c: Cmd) {
+        self.add(c)
+    }
+    #[inline(always)]
+    fn user(&mut self, c: Cmd) {
+        self.add(c)
+    }
     #[inline(always)]
     fn solid(&mut self, c: Cmd) {
         self.add(c)
@@ -516,6 +707,9 @@ pub struct SpecSink<'a> {
     pub tabs: &'a [u32],
     /// Some layer inked this pixel (the pick's test).
     pub ink: bool,
+    /// The blurred prefix a backdrop command reads at this pixel (the caller's reference pyramid).
+    pub bd: &'a dyn Fn(Cmd, i32, i32) -> Vec4u,
+    pub media: &'a [u32],
 }
 /// The four corner taps of a shadow at one pixel, read from `tabs`.
 #[inline(always)]
@@ -570,6 +764,23 @@ impl Sink for SpecSink<'_> {
         self.put(x::p_grad(c, self.x, self.y))
     }
     #[inline(always)]
+    fn backdrop(&mut self, c: Cmd) {
+        if x::x_in(c.win, self.x, self.y) {
+            self.ink = true;
+            self.acc = x::p_bdrop(x::x_flat(self.acc), c, self.x, self.y, (self.bd)(c, self.x, self.y));
+        }
+    }
+    #[inline(always)]
+    fn video(&mut self, c: Cmd) {
+        if x::x_in(c.win, self.x, self.y) {
+            self.put(x::p_video(c, self.x, self.y, crate::media::sample(self.media, c, self.x, self.y)))
+        }
+    }
+    #[inline(always)]
+    fn user(&mut self, c: Cmd) {
+        self.put(x::p_user(c, self.x, self.y))
+    }
+    #[inline(always)]
     fn glyph(&mut self, c: Cmd) {
         let t = x::x_texel(c, self.x, self.y, self.aw);
         let cov = if t == bough_kernel::k::NO_TEXEL || self.atlas.is_empty() {
@@ -592,6 +803,13 @@ impl StageSink<'_> {
     }
 }
 impl Sink for StageSink<'_> {
+    /// The round-7 kernel knows no backdrop and no video: a scene with them has no generic-kernel form
+    /// (its oracle is `Scene::spec`). A user node is the kernel's own.
+    fn backdrop(&mut self, _: Cmd) {}
+    fn video(&mut self, _: Cmd) {}
+    fn user(&mut self, c: Cmd) {
+        self.add(c)
+    }
     fn solid(&mut self, c: Cmd) {
         self.add(c)
     }
