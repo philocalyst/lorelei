@@ -1,6 +1,6 @@
 # Native baseline and regression gate
 
-Run from the harness checkout on macOS with the workspace's Rust toolchain. Use a separate worktree and target for each source revision. The runner takes the shared benchmark lock for the build and timed batch.
+Run from the harness checkout on macOS with the workspace's Rust toolchain. Use a separate worktree and target for each source revision. The runner records three repetitions unlocked for instructions. Use `--timing` to take the shared benchmark lock around each measured process when collecting wall time and RSS. Builds are unlocked.
 
 ```sh
 bench/baseline/run.sh --name baseline --worktree "$BASE_WORKTREE" --reps 3
@@ -35,7 +35,7 @@ Set `BOUGH_FONT` to a known TrueType face for the façade and effects comparison
 
 ## Thresholds
 
-The gate allows a 2% increase in the primary instruction counters by default. Process wall time and RSS are secondary. Their default limits are 10% and 5%. They are unqualified above the load ceiling and wall is unqualified when either run already spreads more than its tolerance. A positive allocation count where the baseline is zero fails.
+The gate allows a 2% increase in the primary instruction counters by default. Process wall time and RSS are secondary. Their default limits are 10% and 5%. They are unqualified for unlocked captures or above the load ceiling and wall is unqualified when either run already spreads more than its tolerance. A positive allocation count where the baseline is zero fails.
 
 Use `--thresholds limits.json` for preregistered per-fixture and per-operation overrides. For example, an override on `hover` leaves every other sheet operation under the fixture default.
 

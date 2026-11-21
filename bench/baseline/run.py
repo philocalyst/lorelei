@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Run the native measurement matrix. Use run.sh to hold the batch lock."""
+"""Run the native measurement matrix with optional per-fixture timing locks."""
 import argparse
+from contextlib import nullcontext
 from dataclasses import dataclass
+import fcntl
 import hashlib
 import json
 import os
@@ -56,6 +58,10 @@ def cells(worktree):
             args += ("--blocks", "3")
         matrix.append(Cell(f"guibench/{label}-{rows}-{op}", "headless", args, {}, "guibench"))
     unavailable = {}
+    if 'var("BROAD")' in (worktree / "crates/bough-x/examples/sheet_x.rs").read_text():
+        matrix.append(example("sheet_x/rows10000/broad", "sheet", ROWS="10000", REPS="32", BROAD="1"))
+    else:
+        unavailable["sheet_x/rows10000/broad"] = "this checkout lacks the BROAD sheet fixture"
     if (worktree / "crates/bough-x/examples/ops_x.rs").is_file():
         for part in ("select", "lane", "ops", "search", "corpus"):
             matrix.append(example(f"ops_x/{part}", "ops", PART=part, REPS="64", ROWS="100000"))
@@ -188,7 +194,7 @@ def build(worktree, target, binaries, toolchain, log, reuse):
     return after, manifest
 
 
-ENV_KEYS = set("ROWS REPS H NEAR SWEPT PART COLD WORKERS BOUGH_PMU SKIP_K".split())
+ENV_KEYS = set("ROWS REPS H NEAR SWEPT BROAD PART COLD WORKERS BOUGH_PMU SKIP_K".split())
 SCOPES = {
     "sheet": "calling-thread instructions per operation",
     "events": "calling-thread dispatch and dispatch-plus-settle instructions per operation",
@@ -213,16 +219,21 @@ def check_cell(cell, binary, cwd, log):
                        stdout=stream, stderr=subprocess.STDOUT, check=True)
 
 
-def measure(cell, binary, cwd, log):
+def measure(cell, binary, cwd, log, timing_lock):
     command = ["/usr/bin/time", "-l", str(binary), *cell.argv]
-    start = time.monotonic_ns()
+    lock = timing_lock.open("a") if timing_lock is not None else nullcontext()
     with log.with_suffix(".stdout").open("w+") as out, log.with_suffix(".stderr").open("w+") as err:
-        proc = subprocess.run(command, cwd=cwd, env=cell_env(cell), stdout=out, stderr=err, timeout=600, check=True)
-        elapsed = time.monotonic_ns() - start
+        with lock as lock_file:
+            if lock_file is not None:
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+            load_before = os.getloadavg()[0]
+            start = time.monotonic_ns()
+            subprocess.run(command, cwd=cwd, env=cell_env(cell), stdout=out, stderr=err, timeout=600, check=True)
+            elapsed = time.monotonic_ns() - start
+            load_after = os.getloadavg()[0]
         out.seek(0)
         err.seek(0)
         stdout, stderr = out.read(), err.read()
-    assert proc.returncode == 0
     process = {"wall_ms": elapsed / 1_000_000}
     for key, label in (("instructions", "instructions retired"), ("rss_bytes", "maximum resident set size")):
         match = re.search(rf"^\s*(\d+)\s+{label}\s*$", stderr, re.M)
@@ -230,7 +241,7 @@ def measure(cell, binary, cwd, log):
             raise ValueError(f"missing process {key}")
         process[key] = int(match[1])
     return {"process": process, "operations": parse(cell.parser, stdout, stderr, cell.argv, cell.env),
-            "load": os.getloadavg()[0]}
+            "load": max(load_before, load_after)}
 
 
 def summary(values):
@@ -258,6 +269,7 @@ def main():
     parser.add_argument("--reps", type=int, default=3)
     parser.add_argument("--out")
     parser.add_argument("--no-build", action="store_true")
+    parser.add_argument("--timing", action="store_true", help="lock each process sample for wall time and RSS")
     parser.add_argument("--expected-inputs-from", help="fail before building if reference input digests differ")
     args = parser.parse_args()
     if not 1 <= args.reps or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.name):
@@ -292,6 +304,11 @@ def main():
     harness = {name: digest(Path(__file__).with_name(name)) for name in ("run.py", "operations.py")}
     host = {"os": platform.mac_ver()[0], "machine": platform.machine(),
             "cpu": fetch(["sysctl", "-n", "machdep.cpu.brand_string"]), "cpus": os.cpu_count()}
+    timing_lock = None
+    if args.timing:
+        timing_lock = Path(os.environ.get("BENCH_LOCK", Path.home() / "work/locks/bench.lock")).resolve()
+        timing_lock.parent.mkdir(parents=True, exist_ok=True)
+        timing_lock.touch()
     load_before = os.getloadavg()
     records = {cell.name: [] for cell in matrix}
     errors = []
@@ -326,7 +343,7 @@ def main():
             binary = target / manifest[cell.binary]["path"]
             path = log / f"{rep}-{cell.name.replace('/', '_')}"
             try:
-                measured = measure(cell, binary, worktree, path)
+                measured = measure(cell, binary, worktree, path, timing_lock)
                 records[cell.name].append(measured)
                 print(f"{cell.name} rep {rep}: {len(measured['operations'])} operation rows", flush=True)
             except (OSError, ValueError, subprocess.SubprocessError, KeyError) as error:
@@ -355,7 +372,7 @@ def main():
     doc = {
         "format": 2, "name": args.name, "commit": build_source["commit"], "source": build_source,
         "rustc": toolchain, "host": host, "harness": harness, "reps": args.reps, "order": order,
-        "load": {"before": load_before, "after": load_after, "peak": peak_load, "ceiling": 2.0, "ok": peak_load <= 2.0},
+        "load": {"before": load_before, "after": load_after, "peak": peak_load, "ceiling": 2.0, "ok": peak_load <= 2.0, "timing_locked": args.timing},
         "runtime_inputs": runtime_inputs, "binaries": manifest, "cells": results, "errors": errors,
         "unavailable": unavailable, "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "contract": "Native headless macOS. Typed core: prepared Latin-1 DejaVu Sans 14/28 px, opaque colors, "

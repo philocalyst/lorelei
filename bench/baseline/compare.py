@@ -112,11 +112,11 @@ def main():
     identity = ("host", "rustc", "profile", "features") if legacy else ("host", "rustc", "contract", "runtime_inputs")
     if any(base.get(key) != head.get(key) for key in identity):
         raise ValueError("receipts differ in host, build toolchain or workload contract")
-    quiet = base["load"]["ok"] and head["load"]["ok"]
+    quiet = all(run["load"]["ok"] and run["load"].get("timing_locked", True) for run in (base, head))
     if args.require_quiet and not quiet:
-        raise ValueError("at least one run exceeded the load limit")
+        raise ValueError("at least one run exceeded the load limit or omitted the timing lock")
     if not quiet:
-        print("LOADED: elapsed time and process RSS are unqualified")
+        print("UNQUALIFIED: at least one run exceeded the load limit or omitted the timing lock")
     if legacy:
         print("Legacy receipt: process totals")
     thresholds = read_limits(args.thresholds)

@@ -1,20 +1,26 @@
 #!/bin/sh
 # The style-motion-media lane's benchmarks (card 2026-11-21-layers-motion-media-slice1), one command.
-# Builds bough-paint's fxbench and pbench in the dist profile and runs every cell under the shared bench
-# lock, writing raw output to runtime/fx/. Set CARGO_TARGET_DIR to your own target directory.
+# Builds both fixtures and writes raw output to runtime/fx/. Use FX_BENCH_TIMING=1 to lock each
+# measured child for timing. Set CARGO_TARGET_DIR to your own target directory.
 #   bench/fx/run.sh [tag]        (tag defaults to the short commit)
 set -eu
 cd "$(dirname "$0")/../.."
 tag="${1:-$(git rev-parse --short HEAD)}"
 out=${FX_BENCH_OUT:-runtime/fx}
 lock="${BENCH_LOCK:-$HOME/work/locks/bench.lock}"
-mkdir -p "$out" "$(dirname "$lock")"
+mkdir -p "$out"
+if [ "${FX_BENCH_TIMING:-0}" = 1 ]; then
+  mkdir -p "$(dirname "$lock")"
+fi
 export RUSTC_WRAPPER=
-lockf -k "$lock" nice -n 15 cargo build --locked --profile dist -p bough-paint --example fxbench --example pbench -j "${JOBS:-3}"
+nice -n 15 cargo build --locked --profile dist -p bough-paint --example fxbench --example pbench -j "${JOBS:-3}"
 bin="${CARGO_TARGET_DIR:-target}/dist/examples"
 status=0
 run_cell() {
-  if lockf -k "$lock" "$@"; then
+  if [ "${FX_BENCH_TIMING:-0}" = 1 ]; then
+    set -- lockf -k "$lock" "$@"
+  fi
+  if "$@"; then
     return 0
   else
     code=$?

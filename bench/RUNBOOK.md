@@ -33,10 +33,8 @@ and for rustup, and the reference checkouts under `$HOME/work/reactivity/ref` pl
 `$HOME/work/ref-extra/{fakeland,zgui-fakeland-marks}` (see `bench/vm/README.md` for why).
 
 ```sh
-lock="${BENCH_LOCK:-$HOME/work/locks/bench.lock}"
-mkdir -p "$(dirname "$lock")"
 bench/vm/up.sh
-FRAMEWORKS=bough,bough-x,zgui lockf -k "$lock" bench/vm/build.sh
+FRAMEWORKS=bough,bough-x,zgui bench/vm/build.sh
 FRAMEWORKS=bough,bough-x,zgui SCENARIOS=rows,table,search,spinner,ticker,typing,virtual,resize bench/vm/run.sh
 ```
 
@@ -61,7 +59,7 @@ python3 bench/asm/asm.py check
 
 The example uses a self-diff. For a source comparison, pass the two emission directories in base-to-head order. Use the same toolchain, profile, codegen settings and host contract. An entry grows past the default limit only when its increase exceeds both 2% and 16 instructions. Use `--threshold` to override the relative limit.
 
-`emit` builds the GUI rows and canvas fixtures and the layout memo and writes symbol assembly, a `stats.tsv` and `MANIFEST.txt`. `check` uses an `asm_mutant` build to confirm that a change in the control wrappers moves the counts. Run the build commands under the shared benchmark lock when other lanes are active. See [the assembly harness](asm/README.md) for symbol coverage and the inlining and reflection boundaries.
+`emit` builds the GUI rows and canvas fixtures and the layout memo and writes symbol assembly, a `stats.tsv` and `MANIFEST.txt`. `check` uses an `asm_mutant` build to confirm that a change in the control wrappers moves the counts. Build and count instructions directly. See [the assembly harness](asm/README.md) for symbol coverage and the inlining and reflection boundaries.
 
 ## 3. Reproducible macOS baselines and the regression gate
 
@@ -85,11 +83,11 @@ bench/baseline/compare.sh runtime/baseline/base/base.json runtime/baseline/head/
 
 Set `BASE_WORKTREE` and `HEAD_WORKTREE` to the checkouts being compared. Omit `--worktree` to use the harness checkout. Use `--cells sheet_x/rows10000` to run the sheet alone or `--cells sheet_x/rows10000/hover` with `compare.sh` to isolate the hover counter. Use the same face override `BOUGH_FONT` in both runs when measuring façade or effects workloads.
 
-`run.sh` takes the lock around the build and replay. The native gate compares named per-operation counters emitted by `sheet_x`, `events_x`, `text_x`, `anim_x`, `ops_x`, and the effects adapters. The current matrix includes near/swept animation variants, retained-pixel correctness checks for both effects adapters, and the staged paint, panes and video rows from `bench/fx/run.sh`. The JSON also keeps whole-process instructions, wall time and RSS as separate metrics. Results default to `runtime/baseline/<name>/`, with raw logs in `raw/`. `--no-build` requires matching source, toolchain and binary fingerprints.
+`run.sh` builds and records instruction counts without the lock. Use three repetitions. `--timing` takes the shared lock around each timed child. Unlocked wall and RSS columns are diagnostic. The native gate compares named per-operation counters emitted by `sheet_x`, `events_x`, `text_x`, `anim_x`, `ops_x`, and the effects adapters. The current matrix includes near/swept animation variants, retained-pixel correctness checks for both effects adapters, and the staged paint, panes and video rows from `bench/fx/run.sh`. The JSON also keeps whole-process instructions, wall time and RSS as separate metrics. Results default to `runtime/baseline/<name>/`, with raw logs in `raw/`. `--no-build` requires matching source, toolchain and binary fingerprints.
 
 Default limits are 2% for instructions, 10% for wall time and 5% for process RSS. Wall and RSS are unqualified above the load ceiling. Wall is also unqualified if either input spreads more than the tolerance. See [native measurement scope and threshold overrides](baseline/README.md).
 
-Run `bench/fx/run.sh` for the standalone staged paint replay. It writes the eight `fxbench` invocations and two `pbench` invocations under `runtime/fx/`. The native gate includes the same workloads and verifies the pixel verdicts.
+Run `bench/fx/run.sh` for the standalone staged paint replay. It writes the eight `fxbench` invocations and two `pbench` invocations under `runtime/fx/`. The native gate includes the same workloads and verifies the pixel verdicts. Set `FX_BENCH_TIMING=1` for a timing replay with the lock held per invocation.
 
 ## 4. The older headless jobs on macOS
 
@@ -107,8 +105,8 @@ The slope and micro jobs also require the corresponding `zgx` binaries. Point `B
 ## 5. Validity rules (fail closed)
 
 * Freeze the card before measuring; report every preregistered cell, losses included.
-* One lock for every timed batch; load average recorded with every run (baseline) or every contract
-  (VM). Above the ceiling the run is marked, never silently ranked.
+* Take the lock only for commands measuring time, GPU time or RSS. Build outside it. Record load for
+  each native repetition and every VM contract. Above the ceiling, time and RSS are unqualified.
 * `validity.valid` from fakeland is the VM cell's authority. Missing validity is not valid.
 * Instructions are the primary column; wall time is secondary and is compared only inside its own
   spread. Retained state is compared with the output's own counters, not inferred.
