@@ -1290,7 +1290,13 @@ fn list_plan(
     l.edits.follow(&mut st.journal);
     let (from, upd, nupd) = l.edits.since(st.seen);
     // inserts and removes since the last pass, for whoever holds a row by its index (focus, a press)
-    st.moved_ok = l.edits.moves_since(st.seen, &mut st.moved);
+    st.moved_ok = if l.edits.ver.wrapping_sub(st.seen) == nupd as u32 {
+        // `since` found every outstanding entry, and each one is an update.
+        st.moved.clear();
+        true
+    } else {
+        l.edits.moves_since(st.seen, &mut st.moved)
+    };
     st.moved_from = st.seen;
     #[cfg(feature = "mutant_journal")]
     let (from, nupd) = (u32::MAX, 0 * nupd);

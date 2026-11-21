@@ -1659,8 +1659,15 @@ impl<V: View, B: Backend> World<V, B> {
                 return None;
             }
             let rec = s.base + f.row % st.cap;
-            let i = self.col_index(st, s.col)?;
-            Some(i << PLACE_REC_BITS | rec)
+            let old_column = self.shown.w[U_FOCUS] >> PLACE_REC_BITS;
+            let column = if self.cols.get(old_column as usize).is_some_and(|entry| {
+                core::ptr::eq(entry.store, st) && u32::from(entry.index) == s.col
+            }) {
+                old_column
+            } else {
+                self.col_index(st, s.col)?
+            };
+            Some(column << PLACE_REC_BITS | rec)
         })()
         .unwrap_or(NONE);
         self.core_word(U_FOCUS, place);
