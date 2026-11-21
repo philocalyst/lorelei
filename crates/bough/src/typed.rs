@@ -144,6 +144,11 @@ struct ListEnt {
     /// The list's log of this turn as journal edits (`ops::<T>`), and the end of its turn.
     ops: unsafe fn(*const u8, &mut Journal),
     end: unsafe fn(*mut u8, u32),
+    /// The list's log from entry `from` on, published for `View::changed` (`list_pubs::<T>`); returns the
+    /// log's length.
+    pubs: unsafe fn(*const u8, usize, &mut crate::changed::Pubs) -> usize,
+    /// How much of this turn's log `View::changed` has been shown.
+    shown: usize,
     /// What the list's head holds while it is this list: a `List` put in the field's place (assigned, swapped)
     /// has another head, and every row of it is another row.
     tag: u32,
@@ -176,6 +181,17 @@ unsafe fn list_ops<T>(p: *const u8, j: &mut Journal) {
             }
         }
     }
+}
+/// The log of the `List<T>` at `p` from entry `from` on, as a publication of the turn (what `View::changed`
+/// reads through `Changed::list`). Returns the log's length.
+///
+/// SAFETY: `p` is a live `List<T>`, not mutably borrowed.
+unsafe fn list_pubs<T>(p: *const u8, from: usize, pubs: &mut crate::changed::Pubs) -> usize {
+    // SAFETY: the caller's contract.
+    let l = unsafe { &*(p as *const List<T>) };
+    let (log, _) = l.log();
+    pubs.list(p as usize, &log[from.min(log.len())..]);
+    log.len()
 }
 /// The end of the turn for the `List<T>` at `p`: its log is dropped and its head is `tag` (non-zero: displayed,
 /// so it keeps a log; 0: not displayed, no log kept).
@@ -1662,6 +1678,8 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
                             journal: Box::new(Journal::by_item()),
                             ops: list_ops::<T>,
                             end: list_end::<T>,
+                            pubs: list_pubs::<T>,
+                            shown: 0,
                             tag,
                         });
                     }
@@ -1929,6 +1947,8 @@ pub struct App<V: View> {
     once: bool,
     /// The run store's pass at the last description that asked for every exposed row's runs.
     full_at: u32,
+    /// The turn's publications for `View::changed` (kept: its buffers are reused).
+    pubs: crate::changed::Pubs,
     ring: Vec<(Canvas, Tiles)>,
     next: usize,
     shown: usize,
@@ -1988,6 +2008,7 @@ impl<V: View> App<V> {
             scale: cfg.scale,
             once: cfg.mount_once,
             full_at: 0,
+            pubs: crate::changed::Pubs::default(),
             ring: Vec::new(),
             next: 0,
             shown: 0,
@@ -2045,6 +2066,7 @@ impl<V: View> App<V> {
     /// whose head is not the tag it was given is another `List` value in the field's place: it kept no log,
     /// and every row of it is another row.
     fn lists_sync(&mut self) {
+        self.effects();
         {
             let base = &self.ty.v as *const V as *const u8;
             let mut lists = self.ty.sh.lists.borrow_mut();
@@ -2065,6 +2087,44 @@ impl<V: View> App<V> {
         }
         self.lists_end(true);
     }
+    /// `View::changed`, the effect site: while a list of the view has log entries the owner has not been
+    /// shown, it is shown them and may write state in return (at most 8 waves, as on the legacy runtime).
+    /// A turn that edited no list does not call it.
+    fn effects(&mut self) {
+        for _ in 0..8 {
+            let mut pubs = std::mem::take(&mut self.pubs);
+            pubs.clear();
+            {
+                let base = &self.ty.v as *const V as *const u8;
+                let mut lists = self.ty.sh.lists.borrow_mut();
+                for k in 0..lists.len() {
+                    if lists[..k].iter().any(|o| o.off == lists[k].off) {
+                        continue;
+                    }
+                    let e = &mut lists[k];
+                    // SAFETY: as `lists_end`: `off` is a `List<T>` field of `V` and `pubs` was instantiated
+                    // for that `T`; the view is not mutably borrowed here.
+                    e.shown = unsafe { (e.pubs)(base.add(e.off as usize), e.shown, &mut pubs) };
+                }
+            }
+            if pubs.is_empty() {
+                self.pubs = pubs;
+                for e in self.ty.sh.lists.borrow_mut().iter_mut() {
+                    e.shown = 0;
+                }
+                return;
+            }
+            self.ty.v.changed(crate::changed::Changed {
+                pubs: &pubs,
+                readers: &[],
+                _v: PhantomData,
+            });
+            self.pubs = pubs;
+        }
+        panic!(
+            "View::changed did not settle in 8 waves (a cycle between changed and its own boundaries)"
+        );
+    }
     /// What the last description did (count bands).
     pub fn pass_stats(&self) -> PassStats {
         self.ty.sh.pass.get()
@@ -2075,8 +2135,12 @@ impl<V: View> App<V> {
     /// the words last solved, its records against their columns, and of each list the rows its log names.
     /// Under `Config::mount_once` only the block is compared, as on the legacy runtime.
     fn after(&mut self, ran: bool) {
-        self.ty.ran.set(false);
         let motion = self.world.motion();
+        self.after_since(ran, motion)
+    }
+    /// As [`App::after`], where `motion` is the world's motion count from before the event.
+    fn after_since(&mut self, ran: bool, motion: u32) {
+        self.ty.ran.set(false);
         self.lists_sync();
         if ran && !self.once {
             self.ty.sh.pass.set(PassStats::default());
@@ -2112,6 +2176,11 @@ impl<V: View> App<V> {
     fn rehover(&mut self, motion: u32) {
         if self.world.motion() == motion {
             return;
+        }
+        // content that got shorter than where it is scrolled to: the offset comes back within it
+        if self.world.clamp_scroll(&mut self.ty) {
+            self.ty.sync();
+            self.world.settle(&self.ty);
         }
         self.world.repick(&mut self.ty);
         if self.ty.ran.replace(false) && !self.once {
@@ -2176,9 +2245,12 @@ impl<V: View> App<V> {
     /// goes back to the view's signal. No author code runs, so nothing is described.
     pub fn wheel(&mut self, x: f32, y: f32, dx: f32, dy: f32) {
         let (px, py) = self.dev(x, y);
+        let motion = self.world.motion();
         self.world.wheel(&mut self.ty, px, py, dx, dy);
         self.ty.sync();
-        self.after(self.ty.ran.get());
+        // the offset is written back to its signal, and the pass that moves the space follows: what is
+        // under the pointer afterwards is taken again (`rehover`), from the motion count before the wheel
+        self.after_since(self.ty.ran.get(), motion.wrapping_sub(1));
     }
     /// The window is `w` x `h` points now: the world is kept and the view described at the new size.
     pub fn resize(&mut self, w_pt: f32, h_pt: f32) {
@@ -2189,7 +2261,9 @@ impl<V: View> App<V> {
         self.surfaces(n);
         self.lists_sync();
         self.ty.sh.pass.set(PassStats::default());
+        let motion = self.world.motion().wrapping_sub(1);
         self.world.redescribe(&self.ty);
+        self.rehover(motion);
     }
     /// Where a typed description's instructions go, measured apart (thread instructions, bracket subtracted):
     /// (running the view and converting its fixed part with no sink; one whole re-description; the same with

@@ -1840,6 +1840,50 @@ impl<V: View, B: Backend> World<V, B> {
         }
     }
 
+    /// Bring every scrolled space's offset back within its content: after a resize or an edit that made the
+    /// content shorter than where it was scrolled to, the port would otherwise show nothing past the last
+    /// row. The limit is the wheel's (the lists' extent less the port's height). Returns whether an offset
+    /// was written (into the view's block, as the wheel writes it: the caller settles). Cold: a walk of the
+    /// stores.
+    pub fn clamp_scroll(&mut self, v: &mut V) -> bool {
+        fn go(st: &Store, scale: f32, u: &mut U, any: &mut bool) {
+            if st.space.scroll != crate::store::NO_WORD && st.src.is_none() {
+                let points = st.space.scroll & crate::store::POINTS != 0;
+                let word = st.space.scroll as usize & 63;
+                let lists = st.subs.iter().filter(|s| s.src.is_some());
+                let (extent, some) = lists.fold((0i32, false), |(e, _), s| {
+                    (e.max(s.geo.1 + s.n as i32 * s.geo.2), true)
+                });
+                if some {
+                    let max = (extent - (st.space.clip.y1 - st.space.clip.y0)).max(0);
+                    let at = if points {
+                        (f32::from_bits(u.w[word]) * scale).round() as i32
+                    } else {
+                        u.w[word] as i32
+                    };
+                    if at > max {
+                        u.w[word] = if points {
+                            (max as f32 / scale).to_bits()
+                        } else {
+                            max as u32
+                        };
+                        *any = true;
+                    }
+                }
+            }
+            for s in &st.subs {
+                go(s, scale, u, any);
+            }
+        }
+        let scale = f32::from_bits(self.shown.w[U_SCALE]);
+        let Some(u) = v.block_mut() else {
+            return false;
+        };
+        let mut any = false;
+        go(&self.root, scale, u, &mut any);
+        any
+    }
+
     /// Activate a place as a click would, with no pointer: what an assistive technology's "press" does. The
     /// place's own click handler runs, or the nearest under its centre.
     pub fn activate(&mut self, v: &mut V, place: u32) -> Dispatch {
@@ -2021,7 +2065,53 @@ impl<V: View, B: Backend> World<V, B> {
     }
     /// After a pass that may have moved a window: where the focused row is now, or that it is not exposed
     /// (`Focus` holds `NONE` until it comes back). Nothing to do when nothing is focused.
+    /// After a pass: the pressed row follows its item through the inserts and removes the pass replayed, as
+    /// the focused row does. If its item was removed, or the edits are more than the journal kept, nothing
+    /// is pressed any more (a release then activates nothing): a press is on an item, and the row that
+    /// later has its index, or its slot, was not pressed.
+    fn rehold(&mut self) {
+        let Some(mut h) = self.held else { return };
+        let Some(mut w) = h.what else { return };
+        self.columns();
+        let Some(st) = self.root.at(&w.path) else {
+            return;
+        };
+        if st.src.is_none() || st.seen == w.seen {
+            return;
+        }
+        let mut alive = st.moved_from == w.seen && st.moved_ok;
+        if alive {
+            for e in &st.moved {
+                match *e {
+                    crate::sink::Edit::Insert(at) if at <= w.row => w.row += 1,
+                    crate::sink::Edit::Remove(at) if at < w.row => w.row -= 1,
+                    crate::sink::Edit::Remove(at) if at == w.row => {
+                        alive = false;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        w.seen = st.seen;
+        h.what = alive.then_some(w);
+        if alive {
+            // where the row is now (the same record if the list kept it, another slot if it wrote it again)
+            h.place = (|| {
+                let s = st.sites.get(w.site as usize)?;
+                if !(w.row >= st.lo && w.row < st.hi) {
+                    return None;
+                }
+                let rec = s.base + st.slot_of(w.row);
+                let i = self.col_index(st, s.col)?;
+                Some(i << PLACE_REC_BITS | rec)
+            })()
+            .unwrap_or(NONE);
+        }
+        self.held = Some(h);
+    }
     fn refocus(&mut self) {
+        self.rehold();
         let Some(mut f) = self.focus else { return };
         self.columns();
         // the focused row follows its item through the inserts and removes the last pass replayed
