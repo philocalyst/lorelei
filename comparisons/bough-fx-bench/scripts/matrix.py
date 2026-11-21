@@ -27,6 +27,8 @@ def facade(out, cards, cell):
             samples, draws = map(int, x[3:5])
             if cell == "idle":
                 return f"{draws} frames"
+            if samples < 200:
+                return f"short run ({samples} observations)"
             suffix = "/".join(ms(int(v)) for v in x[5:8])
             return f"{suffix} ({draws}/{samples})"
     gate = read_lines(stem.with_suffix(".gate"))
@@ -60,6 +62,8 @@ def reference(out, framework, cards, cell):
     samples = [int(r[4]) for r in records]
     if len(samples) == 1:
         return f"{ms(samples[0])} (1 observation)"
+    if len(samples) < 200:
+        return f"short run ({len(samples)} observations)"
     return "/".join(ms(nearest_rank(samples, p)) for p in (50, 95, 99)) + (f" (Δ{draws}/{len(samples)})" if framework == "zgui" else f" ({draws}/{len(samples)})")
 
 
