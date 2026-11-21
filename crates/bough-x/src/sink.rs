@@ -1313,12 +1313,48 @@ fn list_plan(
     }
     st.lo = lo;
     st.hi = hi;
-    st.row_live.fill(0);
-    for r in lo..hi {
-        let s = r & mask;
-        st.row_live[s as usize >> 6] |= 1 << (s & 63);
-    }
+    publish_window(&mut st.row_live, (lo & mask) as usize, (hi - lo) as usize);
     mk
+}
+
+/// A live window has at most two ranges in the ring bitmap. Fill its whole words in one pass.
+/// This records exposure only. Record and capture access still requires initialization.
+#[inline]
+fn publish_window(words: &mut [u64], start: usize, rows: usize) {
+    let cap = words.len() * 64;
+    let end = start + rows;
+    let wrapped = end.saturating_sub(cap);
+    let low_bits = |n: usize| -> u64 { if n >= 64 { u64::MAX } else { (1u64 << n) - 1 } };
+    for (index, word) in words.iter_mut().enumerate() {
+        let origin = index * 64;
+        let top = low_bits(end.saturating_sub(origin));
+        let bottom = low_bits(start.saturating_sub(origin));
+        *word = (top & !bottom) | low_bits(wrapped.saturating_sub(origin));
+    }
+}
+
+#[cfg(test)]
+mod window_tests {
+    use super::publish_window;
+
+    #[test]
+    fn window_masks_match_each_exposed_slot() {
+        for cap in [64, 128, 256] {
+            let mut actual = vec![0; cap / 64];
+            let mut expected = actual.clone();
+            for start in 0..cap {
+                for len in [0, 1, 2, 63, 64, cap - 1, cap] {
+                    expected.fill(0);
+                    for off in 0..len {
+                        let slot = (start + off) & (cap - 1);
+                        expected[slot >> 6] |= 1 << (slot & 63);
+                    }
+                    publish_window(&mut actual, start, len);
+                    assert_eq!(actual, expected, "start {start}, len {len}, cap {cap}");
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
