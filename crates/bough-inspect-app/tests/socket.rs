@@ -544,3 +544,21 @@ fn frame_barrier_reports_idle_rows_and_moving_spinner() {
     assert!(pending.get("moving_columns").and_then(J::as_u32).unwrap() > 0);
     call(&mut moving, "shutdown", J::obj());
 }
+
+#[test]
+fn search_text_and_key_turns_change_results_and_pixels() {
+    let search = spawn("search-input", "search", 100);
+    let mut client = Client::open(&search.path).unwrap();
+    let barrier = |client: &mut Client| call(client, "wait_for_idle", J::obj());
+    let initial = barrier(&mut client);
+    call(&mut client, "text", J::obj().set("text", "~"));
+    let changed = barrier(&mut client);
+    assert_ne!(initial.get("pixels"), changed.get("pixels"));
+    let tree = call(&mut client, "tree", J::obj().set("nodes", false));
+    let lists = tree.get("lists").unwrap().arr();
+    assert_eq!(lists.last().unwrap().get("n").and_then(J::as_u32), Some(0));
+    call(&mut client, "key", J::obj().set("key", "backspace"));
+    let restored = barrier(&mut client);
+    assert_eq!(initial.get("pixels"), restored.get("pixels"));
+    call(&mut client, "shutdown", J::obj());
+}
