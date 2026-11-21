@@ -133,6 +133,16 @@ impl Journal {
             .get_or_init(|| std::sync::Arc::new(AtomicU32::new(self.ver)))
             .clone()
     }
+    // Once a list is following this journal, its Arc already owns the revision counter.
+    // Rebind only when the source journal changes.
+    fn follow(&self, current: &mut Option<std::sync::Arc<AtomicU32>>) {
+        if let (Some(watch), Some(current)) = (self.watch.get(), current.as_ref())
+            && std::sync::Arc::ptr_eq(watch, current)
+        {
+            return;
+        }
+        *current = Some(self.watch());
+    }
     #[inline(always)]
     pub fn push(&mut self, e: Edit) {
         self.log[self.ver as usize & 7] = e;
@@ -1141,14 +1151,13 @@ fn list_plan(
     leaves: usize,
     src: crate::store::RowSrc,
 ) -> Mk {
-    st.journal = Some(l.edits.watch());
+    l.edits.follow(&mut st.journal);
     let (from, upd, nupd) = l.edits.since(st.seen);
     // inserts and removes since the last pass, for whoever holds a row by its index (focus, a press)
     st.moved_ok = l.edits.moves_since(st.seen, &mut st.moved);
     st.moved_from = st.seen;
     #[cfg(feature = "mutant_journal")]
     let (from, nupd) = (u32::MAX, 0 * nupd);
-    st.journal = Some(l.edits.watch());
     st.seen = l.edits.ver;
     st.space = space;
     st.n = l.n;
@@ -1242,4 +1251,29 @@ fn list_plan(
         st.row_live[s as usize >> 6] |= 1 << (s & 63);
     }
     mk
+}
+
+#[cfg(test)]
+mod journal_watch_tests {
+    use super::*;
+
+    #[test]
+    fn follow_keeps_existing_watch_and_rebinds_to_new_journal() {
+        let mut first = Journal::new();
+        let mut second = Journal::new();
+        let mut followed = None;
+        first.follow(&mut followed);
+        let old = followed.as_ref().unwrap().clone();
+        first.follow(&mut followed);
+        assert!(std::sync::Arc::ptr_eq(followed.as_ref().unwrap(), &old));
+        first.push(Edit::Update(0));
+        assert_eq!(followed.as_ref().unwrap().load(Ordering::Relaxed), 1);
+
+        second.follow(&mut followed);
+        assert!(!std::sync::Arc::ptr_eq(followed.as_ref().unwrap(), &old));
+        first.push(Edit::Update(0));
+        assert_eq!(followed.as_ref().unwrap().load(Ordering::Relaxed), 0);
+        second.push(Edit::Update(0));
+        assert_eq!(followed.as_ref().unwrap().load(Ordering::Relaxed), 1);
+    }
 }
