@@ -1108,6 +1108,7 @@ pub struct Store {
     /// someone holds by its place (the hovered set) is still the record they were given exactly while its
     /// slot's stamp is the one they saw: a row described again in place (an edit) keeps it, a row written
     /// over another does not.
+    pub(crate) stamps_observed: core::sync::atomic::AtomicBool,
     pub(crate) row_stamp: Vec<u32>,
     pub(crate) stamp: u32,
     /// The relation version this window was last brought up to.
@@ -1229,6 +1230,7 @@ impl Store {
             memo: bough_lay::Memo::new(),
             spill: false,
             bias: 0,
+            stamps_observed: core::sync::atomic::AtomicBool::new(false),
             row_stamp: Vec::new(),
             stamp: 0,
         }

@@ -1709,7 +1709,6 @@ fn list_plan(
     };
     // The owner may mutate the template in place. Compare whole rects even
     // if the template still lives at the address used on the last pass.
-    st.tmpl_at = l.shape.as_ptr() as usize;
     if st.geo != geo || !same_template(&st.tmpl, l.shape) {
         // the layout of the rows changed: every exposed row is laid out again
         st.geo = geo;
@@ -1842,22 +1841,36 @@ fn list_plan(
             }
             cx.tiles.mark(row_rect(r));
             st.plan.push(r | 1 << 31 | (fresh as u32) << 30);
-            // another row is in this slot from now on
-            if st.row_stamp.len() != st.cap as usize {
-                st.row_stamp.resize(st.cap as usize, 0);
-            }
-            st.stamp = st.stamp.checked_add(1).expect("row stamp exhausted");
-            let slot = st.slot_of(r) as usize;
-            st.row_stamp[slot] = st.stamp;
         } else if all | upd[..nupd].contains(&r) {
             st.plan.push(r);
         }
+    }
+    if st.stamps_observed.load(Ordering::Relaxed) {
+        stamp_replaced_slots(st);
     }
     st.lo = lo;
     st.hi = hi;
     let slot = st.slot_of(lo) as usize;
     publish_window(&mut st.row_live, slot, (hi - lo) as usize);
     mk
+}
+
+/// A token identifies its slot as well as its generation, so all slots replaced
+/// by one pass can share a stamp. Unobserved stores need no stamp storage.
+#[cold]
+#[inline(never)]
+fn stamp_replaced_slots(st: &mut Store) {
+    if !st.plan.iter().any(|&row| row >> 31 != 0) {
+        return;
+    }
+    st.row_stamp.resize(st.cap as usize, 0);
+    st.stamp = st.stamp.checked_add(1).expect("row stamp exhausted");
+    for &row in &st.plan {
+        if row >> 31 != 0 {
+            let slot = st.slot_of(row & 0x3fff_ffff) as usize;
+            st.row_stamp[slot] = st.stamp;
+        }
+    }
 }
 
 /// Rows `rows.0..rows.1` of a list (indices as they are now, slots by the store's bias as it is now) are `dy`
