@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run all author cells. Refuse timing for any cell whose oracle failed.
 set -eu
-: "${CARGO_TARGET_DIR:?Set the lane's isolated target directory}"
+: "${CARGO_TARGET_DIR:?Set the isolated target directory}"
 lock=${BOUGH_BENCH_LOCK:-$HOME/work/locks/bench.lock}
 bin=$CARGO_TARGET_DIR/release/bough-fx-bench
 out=${1:?Pass a directory for logs}
