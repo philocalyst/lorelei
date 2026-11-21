@@ -140,6 +140,14 @@ def staged(out, cards, cell):
         return "staged draw count mismatch"
     if cell == "idle":
         return f"{draws} frames" if records else "missing samples"
+    if cell == "startup":
+        cold = read_lines(out / f"startup-cold-{cards}.tsv")
+        if cold and cold[0] == "sample\tchild_mount_first_frame_ns\tspawn_to_exit_ns":
+            repeats = [line.split("\t") for line in cold[1:]]
+            if len(repeats) >= MIN_SAMPLES:
+                if any(len(r) != 3 or r[0] != str(i) for i, r in enumerate(repeats)):
+                    return "invalid fresh-process samples"
+                return summarize([int(r[1]) for r in repeats], len(repeats))
     value = summarize([int(r[3]) for r in records], draws)
     if cell == "resize":
         return resize_boundary + (f"; remount {value}" if len(records) >= MIN_SAMPLES else "")

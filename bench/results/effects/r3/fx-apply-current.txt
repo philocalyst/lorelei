@@ -1,0 +1,7 @@
+c376f57a8706a3b8315dccfe1f676eab6fcb85b0
+paint-driver-layered
+patching file 'crates/bough-paint/src/driver.rs'
+spring-launch-momentum
+patching file 'crates/bough-paint/src/motion.rs'
+fxbench-media4-test
+patching file 'crates/bough-paint/examples/fxbench.rs'
