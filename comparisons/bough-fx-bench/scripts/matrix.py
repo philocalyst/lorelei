@@ -121,8 +121,13 @@ def staged(out, cards, cell):
         if cell == "resize":
             return resize_boundary
         return "gate failed" if any(l.startswith("check_exit=") for l in gate) else "pending"
-    if "mutation_check_exit=1" in gate:
-        return resize_boundary if cell == "resize" else "negative control failed"
+    if "mutation_check_exit=0" not in gate:
+        if cell == "resize":
+            return resize_boundary
+        return "negative control failed" if "mutation_check_exit=1" in gate else "pending"
+    mutants = ("input",) if cell == "idle" else ("input", "damage")
+    if cell != "startup" and any(f"mutant_{kind}=killed" not in gate for kind in mutants):
+        return resize_boundary if cell == "resize" else "missing negative control"
     if "measure_exit=0" not in lines:
         if cell == "resize":
             return resize_boundary

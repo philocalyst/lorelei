@@ -58,9 +58,12 @@ def main():
     result("P4 hover beneath", f"{row[2]:.0f} prefix tiles, {row[4]:,.0f} pyramid px, "
            f"{coverage:.2%} of {row[5]:,.0f} level pixels", coverage <= 0.25)
     moves = cell("pane", 300, "glass moves 1 px")
-    # Like the historical report, use total layer pixels as the explicitly named denominator.
-    print(f"| P5 glass moves | {moves[2]:.1f} prefix tiles, {moves[4]:,.0f} pyramid px, "
-          f"{moves[4] / moves[5]:.2%} of all levels | See pyramid-only denominator in report |")
+    # An idle frame forced to redraw its entire static pane gives the full pyramid size.
+    whole_pyramid = cell("pane", 300, "idle", "cpu1-nocache")[4]
+    print(f"| P5 glass moves | {moves[2]:.1f} mean prefix tiles, {moves[4]:,.0f} / "
+          f"{whole_pyramid:,.0f} pyramid px ({moves[4] / whole_pyramid:.2%}) | "
+          f"{'pyramid held' if moves[4] <= 0.15 * whole_pyramid else 'pyramid missed'}. "
+          "Prefix mean below the perimeter. Per-tick maximum unavailable. |")
     a, b, c = [cell("media", size, "one video frame") for size in (4, 24, 48)]
     p6 = f"tiles {a[0]:.0f}/{b[0]:.0f}/{c[0]:.0f}, 48/24 instructions {c[7] / b[7]:.5f}×"
     if not a[0]:
