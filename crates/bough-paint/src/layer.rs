@@ -161,6 +161,8 @@ pub struct Layer {
     pub lv: [Lvl; LEVELS],
     /// Its storage holds nothing yet (new, re-allocated, or the pool was repacked).
     pub fresh: bool,
+    /// Frame tiles of level 0 that an event beneath the record touched since the last schedule.
+    pub pending: Vec<u32>,
     /// The pixels of each level that entered its window since the last frame (at most four strips).
     entered: [Vec<[i32; 4]>; LEVELS],
 }
@@ -182,6 +184,9 @@ pub struct Plan {
     pub prefix_tiles: u32,
     pub blocks: u32,
     pub px: u64,
+    /// Everything: every layer whole (a broad change). `work` is then empty and stands for
+    /// `Layers::full_plan`: nothing was enumerated to say so.
+    pub full: bool,
 }
 
 /// The scene's layers and their pool.
@@ -194,13 +199,38 @@ pub struct Layers {
     /// Words in use, and words of the live layers (the rest is what moved layers left behind).
     pub used: usize,
     pub live: usize,
-    /// The CPU executor's storage.
-    pub pool: Vec<u32>,
+    /// The layers' storage: one reservation that never moves, so the Metal executor wraps it without a copy
+    /// and both executors repair the same words.
+    pub pool: PoolMem,
     /// Bumped when the table changed (the GPU re-uploads it).
     pub epoch: u64,
     dirty: [Blocks; LEVELS],
 }
 pub const NONE: u32 = u32::MAX;
+
+/// Words reserved for the layers' pool (address space: pages are touched only where a layer is stored).
+pub const POOL_WORDS: usize = 1 << 25;
+/// The pool's memory: nothing until a scene has a layer, then one page-aligned reservation.
+#[derive(Default)]
+pub struct PoolMem(Option<crate::scene::Arena>);
+impl PoolMem {
+    /// Make room for `words` (the reservation is made once; a scene that outgrows it is refused).
+    pub fn ensure(&mut self, words: usize) {
+        assert!(words <= POOL_WORDS, "the layers need {words} words, more than the pool's reservation of {POOL_WORDS}");
+        if self.0.is_none() && words > 0 {
+            self.0 = Some(crate::scene::Arena::new(POOL_WORDS));
+        }
+    }
+    pub fn words(&self) -> &[u32] {
+        self.0.as_ref().map_or(&[], |a| a.words())
+    }
+    pub fn words_mut(&mut self) -> &mut [u32] {
+        self.0.as_mut().map_or(&mut [], |a| a.words_mut())
+    }
+    pub fn arena(&self) -> Option<&crate::scene::Arena> {
+        self.0.as_ref()
+    }
+}
 
 impl Layers {
     pub fn any(&self) -> bool {
@@ -293,6 +323,42 @@ impl Layers {
         self.epoch += 1;
         true
     }
+    /// Every layer's whole repair, in paint order: what a broad change schedules, enumerated only by the
+    /// executor that needs the jobs (and cached there while the bins and the table stand).
+    pub fn full_plan(&self, tx: usize) -> Plan {
+        let mut plan = Plan::default();
+        for (lid, l) in self.list.iter().enumerate() {
+            if l.lv[0].empty() {
+                continue;
+            }
+            let mut w = Work { lid: lid as u32, ..Default::default() };
+            let r = l.lv[0].r;
+            for by in r[1] >> 5..(r[3] + 31) >> 5 {
+                for bx in r[0] >> 5..(r[2] + 31) >> 5 {
+                    w.prefix.push(by as u32 * tx as u32 + bx as u32);
+                }
+            }
+            plan.prefix_tiles += w.prefix.len() as u32;
+            for k in 1..=l.top {
+                let (r, bs) = (l.lv[k as usize].r, bshift(k));
+                if r[0] >= r[2] {
+                    continue;
+                }
+                let m = (1 << bs) - 1;
+                let mut v = Vec::new();
+                for by in r[1] >> bs..(r[3] + m) >> bs {
+                    for bx in r[0] >> bs..(r[2] + m) >> bs {
+                        v.push((bx, by));
+                    }
+                }
+                plan.blocks += v.len() as u32;
+                plan.px += ((r[2] - r[0]) * (r[3] - r[1])) as u64;
+                w.blocks.push((k, v));
+            }
+            plan.work.push(w);
+        }
+        plan
+    }
     /// The table as the GPU reads it: per layer `ROW` words.
     pub fn table(&self, out: &mut Vec<u32>) {
         out.clear();
@@ -306,11 +372,10 @@ impl Layers {
         }
     }
 
-    /// Turn this frame's events into layer `lid`'s work, and its consequences for what is above it:
-    /// `out(rect)` receives the frame-pixel rects of the record's ink whose blurred value changed.
-    /// `events`: (window, key) of every record change this frame, those of lower layers' consequences
-    /// included (the caller appends what `out` reports before the next layer).
-    pub fn schedule(&mut self, lid: u32, events: &[([i32; 4], u32)], tx: usize, plan: &mut Plan, mut out: impl FnMut([i32; 4])) {
+    /// Turn what reached layer `lid` this frame (its pending tiles, the pixels that entered its windows)
+    /// into its work, and its consequences for what is above it: `out(rect)` receives the frame-pixel rects
+    /// of the record's ink whose blurred value changed (the caller routes them to the layers above).
+    pub fn schedule(&mut self, lid: u32, tx: usize, plan: &mut Plan, mut out: impl FnMut([i32; 4])) {
         let l = &mut self.list[lid as usize];
         let d = &mut self.dirty;
         let top = l.top as usize;
@@ -318,6 +383,7 @@ impl Layers {
             d[k].over(l.lv[k].r, k as u32);
         }
         if l.lv[0].empty() {
+            l.pending.clear();
             l.fresh = false;
             l.entered.iter_mut().for_each(Vec::clear);
             return;
@@ -333,13 +399,12 @@ impl Layers {
                 }
             }
             if !cfg!(feature = "mutant_layer_event") {
-                for &(w, z) in events {
-                    if z < l.z {
-                        d[0].add_px(cut(w, l.lv[0].r));
-                    }
+                for &t in &l.pending {
+                    d[0].set((t as usize % tx) as i32, (t as usize / tx) as i32);
                 }
             }
         }
+        l.pending.clear();
         l.fresh = false;
         l.entered.iter_mut().for_each(Vec::clear);
         // a dirty block reaches the blocks one level up whose taps touch it: pixel p of a level is read by

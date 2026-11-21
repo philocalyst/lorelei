@@ -93,8 +93,10 @@ impl Damage {
         self.bits.fill(0);
     }
     pub fn all(&mut self) {
-        for t in 0..self.tx * self.ty {
-            self.bits[t / 64] |= 1 << (t % 64);
+        let nt = self.tx * self.ty;
+        self.bits.fill(u64::MAX);
+        if nt % 64 != 0 {
+            *self.bits.last_mut().unwrap() = (1u64 << (nt % 64)) - 1;
         }
     }
     /// The tiles a pixel window touches.
@@ -199,8 +201,26 @@ pub(crate) struct Pass<'a> {
     pub regeo: &'a mut Vec<u32>,
     /// Indices of the visited records that still depend on the clock after this frame.
     pub active: &'a mut Vec<u32>,
+    /// Keys of the records whose window, halo or cover changed: the bins are edited for these.
+    pub rebin: &'a mut Vec<u32>,
 }
 impl Pass<'_> {
+    /// A layer record's halo is now `h`. The halo is where the record flattens the accumulator, so the
+    /// tiles a changed halo left and entered are damaged (and are events for the layers above). Returns
+    /// whether it changed.
+    #[inline]
+    fn halo_to(&mut self, z: usize, h: [i16; 4], first: bool) -> bool {
+        if self.halo[z] == h {
+            return false;
+        }
+        if !first && !cfg!(feature = "mutant_halo_damage") {
+            self.mark(self.halo[z], z as u32);
+            self.mark(h, z as u32);
+        }
+        self.halo[z] = h;
+        self.rebin.push(z as u32);
+        true
+    }
     #[inline(always)]
     fn mark(&mut self, w: [i16; 4], z: u32) {
         self.dmg.add_vis(w, z, self.floor);
@@ -247,8 +267,7 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
                 i16s(p.cover(&cn, NO_CLIP))
             };
             if P::LAYER {
-                moved |= ps.halo[z] != i16s(ws.1);
-                ps.halo[z] = i16s(ws.1);
+                ps.halo_to(z, i16s(ws.1), first);
                 ps.regeo.push(z as u32);
             }
             if first || w != ps.win[z] || cv != ps.cover[z] {
@@ -257,9 +276,11 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
                 }
                 ps.mark(w, z as u32);
                 (ps.win[z], ps.cover[z]) = (w, cv);
+                ps.rebin.push(z as u32);
                 moved = true;
                 continue;
             }
+            moved |= ps.rebin.last() == Some(&(z as u32));
         }
         if !first {
             let cw = p.changed_win(&Cx { u: old, rect }, &cn, mask, NO_CLIP);
@@ -286,9 +307,11 @@ fn rewin_one<P: Paint>(c: ColView, i: u32, u: &U, ps: &mut Pass) -> bool {
     }
     (ps.win[z], ps.cover[z]) = (w, cv);
     if P::LAYER {
-        moved |= ps.halo[z] != i16s(ws.1);
-        ps.halo[z] = i16s(ws.1);
+        moved |= ps.halo_to(z, i16s(ws.1), false);
         ps.regeo.push(z as u32);
+    }
+    if moved {
+        ps.rebin.push(z as u32);
     }
     if P::READS >> U_TIME & 1 != 0 && ahead(p.until(&cx), u.w[U_TIME]) {
         ps.active.push(i);
@@ -407,7 +430,7 @@ impl Arena {
         // SAFETY: `ptr` is `words` initialised (zeroed) words owned by this arena.
         unsafe { std::slice::from_raw_parts(self.ptr, self.words) }
     }
-    fn words_mut(&mut self) -> &mut [u32] {
+    pub(crate) fn words_mut(&mut self) -> &mut [u32] {
         // SAFETY: as `words`, uniquely borrowed.
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.words) }
     }
@@ -422,97 +445,204 @@ impl Drop for Arena {
 unsafe impl Send for Arena {}
 unsafe impl Sync for Arena {}
 
-/// Per-tile entry lists (paint-order keys, back to front, cut at the last opaque cover).
+/// Per-tile entry lists (paint-order keys, back to front). The lists are kept whole and edited in place
+/// when a record's window moves (`update`: removed from the tiles it left, inserted in those it entered);
+/// the cut at the last opaque cover is a start index per tile, recomputed for the tiles a change touched.
+/// Each tile also keeps the layer-owning records listed in it: how an event finds the layers above it.
 #[derive(Default)]
 pub struct Bins {
-    pub off: Vec<u32>,
-    pub list: Vec<u32>,
-    count: Vec<u32>,
+    lists: Vec<Vec<u32>>,
+    /// Per tile: the first visible entry of its list (the cover it is cut at, or 0).
+    start: Vec<u32>,
     /// Per tile: the key of the opaque cover its list is cut at (0: not cut).
     pub floor: Vec<u32>,
-    /// Per tile: a layer-owning record is listed (a later cover does not cut the list: the layer's prefix
-    /// needs what is beneath).
+    /// Per tile: the layer-owning records listed in it, ascending.
+    lay: Vec<Vec<u32>>,
+    /// By key: the window the lists hold the record under.
+    binned: Vec<[i16; 4]>,
+    tx: usize,
+    ty: usize,
+    /// Tiles whose list or cut changed since `take_changed` (an executor that mirrors the bins).
+    changed: Vec<u32>,
+    /// Tiles edited since the last `recut_touched`, and a flag per tile for it.
+    touched: Vec<u32>,
     mark: Vec<bool>,
+}
+/// The lanes the bins are made from.
+pub struct Lanes<'a> {
+    pub win: &'a [[i16; 4]],
+    pub cover: &'a [[i16; 4]],
+    /// The halo lane and the layer-of-key table (both empty in a scene without layers): a layer's record is
+    /// listed over its halo too.
+    pub halo: &'a [[i16; 4]],
+    pub lay: &'a [u32],
+    pub cut: bool,
+}
+impl Lanes<'_> {
+    #[inline]
+    fn is_lay(&self, z: usize) -> bool {
+        self.lay.get(z).is_some_and(|&l| l != layer::NONE)
+    }
+    #[inline]
+    fn bin(&self, z: usize) -> [i16; 4] {
+        let (w, h) = (self.win[z], if self.is_lay(z) { self.halo[z] } else { [0; 4] });
+        if h[0] >= h[2] {
+            w
+        } else if w[0] >= w[2] {
+            h
+        } else {
+            [w[0].min(h[0]), w[1].min(h[1]), w[2].max(h[2]), w[3].max(h[3])]
+        }
+    }
 }
 impl Bins {
     #[inline]
     pub fn tile(&self, t: usize) -> &[u32] {
-        &self.list[self.off[t] as usize..self.off[t + 1] as usize]
+        &self.lists[t][self.start[t] as usize..]
     }
-    /// Walk the window lane in paint order (plain data: no archetype is consulted).
-    /// `halo`, `lay`: the halo lane and the layer-of-key table (both empty in a scene without layers): a
-    /// layer's record is listed over its halo too.
-    pub fn build(&mut self, win: &[[i16; 4]], cover: &[[i16; 4]], halo: &[[i16; 4]], lay: &[u32], tx: usize, ty: usize, cut: bool) {
-        let nt = tx * ty;
-        self.mark.clear();
-        self.mark.resize(nt, false);
-        let is_lay = |z: usize| lay.get(z).is_some_and(|&l| l != layer::NONE);
-        let bin = |z: usize| -> [i16; 4] {
-            let (w, h) = (win[z], if is_lay(z) { halo[z] } else { [0; 4] });
-            if h[0] >= h[2] {
-                w
-            } else if w[0] >= w[2] {
-                h
-            } else {
-                [w[0].min(h[0]), w[1].min(h[1]), w[2].max(h[2]), w[3].max(h[3])]
+    /// The layer-owning records listed in tile `t`, ascending.
+    #[inline]
+    pub fn layers(&self, t: usize) -> &[u32] {
+        &self.lay[t]
+    }
+    #[inline]
+    fn span(&self, w: &[i16; 4]) -> (usize, usize, usize, usize) {
+        if w[0] >= w[2] || w[1] >= w[3] {
+            return (0, 0, 0, 0);
+        }
+        ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(self.tx), ((w[3].max(0) as usize + 31) >> 5).min(self.ty))
+    }
+    /// The cut of tile `t`: its list starts at the topmost opaque cover holding the whole tile that lies
+    /// beneath every layer record listed there (a layer's prefix needs what is under a later cover).
+    fn recut(&mut self, t: usize, l: &Lanes) {
+        let (ox, oy) = ((t % self.tx) as i32 * 32, (t / self.tx) as i32 * 32);
+        let (mut start, mut floor) = (0, 0);
+        if l.cut {
+            for (i, &z) in self.lists[t].iter().enumerate() {
+                if l.is_lay(z as usize) {
+                    break;
+                }
+                let c = l.cover[z as usize];
+                if c[0] < c[2] && c[0] as i32 <= ox && c[1] as i32 <= oy && c[2] as i32 >= ox + 32 && c[3] as i32 >= oy + 32 {
+                    (start, floor) = (i as u32, z);
+                }
             }
-        };
-        self.count.clear();
-        self.count.resize(nt, 0);
+        }
+        (self.start[t], self.floor[t]) = (start, floor);
+        self.changed.push(t as u32);
+    }
+    /// From nothing: every record, in paint order.
+    pub fn build(&mut self, l: &Lanes, tx: usize, ty: usize) {
+        let nt = tx * ty;
+        (self.tx, self.ty) = (tx, ty);
+        for v in [&mut self.lists, &mut self.lay] {
+            v.iter_mut().for_each(Vec::clear);
+            v.resize_with(nt, Vec::new);
+        }
+        self.start.clear();
+        self.start.resize(nt, 0);
         self.floor.clear();
         self.floor.resize(nt, 0);
-        let span = |w: &[i16; 4]| ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(tx), ((w[3].max(0) as usize + 31) >> 5).min(ty));
-        for z in 0..win.len() {
-            let b = bin(z);
-            if b[0] >= b[2] {
-                continue;
-            }
-            let (x0, y0, x1, y1) = span(&b);
-            let c = cover[z];
-            let covers = cut && c[0] < c[2];
-            let lz = is_lay(z);
+        self.binned.clear();
+        self.binned.resize(l.win.len(), [0; 4]);
+        self.touched.clear();
+        self.mark.clear();
+        self.mark.resize(nt, false);
+        for z in 0..l.win.len() {
+            let b = l.bin(z);
+            self.binned[z] = b;
+            let (x0, y0, x1, y1) = self.span(&b);
+            let lz = l.is_lay(z);
             for y in y0..y1 {
                 for x in x0..x1 {
-                    let t = y * tx + x;
-                    self.mark[t] |= lz;
-                    let (ox, oy) = (x as i32 * 32, y as i32 * 32);
-                    if covers && !self.mark[t] && c[0] as i32 <= ox && c[1] as i32 <= oy && c[2] as i32 >= ox + 32 && c[3] as i32 >= oy + 32 {
-                        self.floor[t] = z as u32;
-                        self.count[t] = 1;
-                    } else {
-                        self.count[t] += 1;
+                    self.lists[y * tx + x].push(z as u32);
+                    if lz {
+                        self.lay[y * tx + x].push(z as u32);
                     }
                 }
             }
         }
-        self.off.clear();
-        self.off.reserve(nt + 1);
-        let mut at = 0u32;
+        self.changed.clear();
         for t in 0..nt {
-            self.off.push(at);
-            at += self.count[t];
-            self.count[t] = 0;
+            self.recut(t, l);
         }
-        self.off.push(at);
-        self.list.clear();
-        self.list.resize(at as usize, 0);
-        for z in 0..win.len() {
-            let b = bin(z);
-            if b[0] >= b[2] {
-                continue;
-            }
-            let (x0, y0, x1, y1) = span(&b);
-            for y in y0..y1 {
-                for x in x0..x1 {
-                    let t = y * tx + x;
-                    if (z as u32) < self.floor[t] {
-                        continue;
+    }
+    /// Record `z`'s window, halo or cover changed: edit the lists of the tiles it left and entered, and
+    /// note every tile it was or is in for `recut_touched` (the cut is recomputed once per tile, however many
+    /// records moved there). Cost: those tiles, not the scene.
+    pub fn update(&mut self, z: u32, l: &Lanes) {
+        let (old, new) = (self.binned[z as usize], l.bin(z as usize));
+        let (o, n) = (self.span(&old), self.span(&new));
+        let inside = |s: (usize, usize, usize, usize), x: usize, y: usize| x >= s.0 && x < s.2 && y >= s.1 && y < s.3;
+        let lz = l.is_lay(z as usize);
+        for y in o.1..o.3 {
+            for x in o.0..o.2 {
+                let t = y * self.tx + x;
+                if !inside(n, x, y) {
+                    if let Ok(i) = self.lists[t].binary_search(&z) {
+                        self.lists[t].remove(i);
                     }
-                    self.list[(self.off[t] + self.count[t]) as usize] = z as u32;
-                    self.count[t] += 1;
+                    if lz {
+                        self.lay[t].retain(|&k| k != z);
+                    }
                 }
+                self.touch(t);
             }
         }
+        for y in n.1..n.3 {
+            for x in n.0..n.2 {
+                if inside(o, x, y) || cfg!(feature = "mutant_bins_stale") {
+                    continue;
+                }
+                let t = y * self.tx + x;
+                if let Err(i) = self.lists[t].binary_search(&z) {
+                    self.lists[t].insert(i, z);
+                }
+                if lz {
+                    if let Err(i) = self.lay[t].binary_search(&z) {
+                        self.lay[t].insert(i, z);
+                    }
+                }
+                self.touch(t);
+            }
+        }
+        self.binned[z as usize] = new;
+    }
+    #[inline]
+    fn touch(&mut self, t: usize) {
+        if !self.mark[t] {
+            self.mark[t] = true;
+            self.touched.push(t as u32);
+        }
+    }
+    /// Recompute the cut of the tiles `update` touched since the last call.
+    pub fn recut_touched(&mut self, l: &Lanes) {
+        let touched = std::mem::take(&mut self.touched);
+        for &t in &touched {
+            self.mark[t as usize] = false;
+            self.recut(t as usize, l);
+        }
+        self.touched = touched;
+        self.touched.clear();
+    }
+    /// The visible lists as one array and an offset per tile (plus the end): what a GPU executor uploads.
+    pub fn csr(&self) -> (Vec<u32>, Vec<u32>) {
+        let mut list = Vec::with_capacity(self.lists.iter().map(Vec::len).sum());
+        let mut off = Vec::with_capacity(self.lists.len() + 1);
+        for t in 0..self.lists.len() {
+            off.push(list.len() as u32);
+            list.extend_from_slice(self.tile(t));
+        }
+        off.push(list.len() as u32);
+        (list, off)
+    }
+    /// Entries of the visible lists in all.
+    pub fn total(&self) -> usize {
+        (0..self.lists.len()).map(|t| self.tile(t).len()).sum()
+    }
+    /// Forget which tiles changed (after an executor mirrored them).
+    pub fn take_changed(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.changed)
     }
 }
 
@@ -525,6 +655,8 @@ pub struct FrameStats {
     pub cols_visited: u32,
     pub recs_visited: u32,
     pub rebinned: bool,
+    /// A broad word changed: the frame is damaged whole and no record was asked about it.
+    pub broad: bool,
     /// Layer work scheduled: prefix tiles, pyramid blocks, pyramid pixels.
     pub prefix_tiles: u32,
     pub blocks: u32,
@@ -554,11 +686,17 @@ pub struct Scene {
     events: Vec<([i32; 4], u32)>,
     regeo: Vec<u32>,
     act: Vec<u32>,
+    rebin: Vec<u32>,
     /// Bumped when the bins were rebuilt (an executor that mirrors them re-reads them).
     pub bins_epoch: u64,
     /// Measurement switch, never a result's configuration: every layer is recomputed whole on every
     /// frame and no tile restarts from a stored prefix (what a compositor that redraws its layers does).
     pub fx_nocache: bool,
+    /// Block words declared **broad**: a change of one (a theme's mix, a palette word) is never
+    /// differentiated. The frame is damaged as one fact and every layer is due as one fact; no record is
+    /// visited, no bins are rebuilt, nothing is enumerated. Only for words no geometry operand reads (a
+    /// column whose geometry reads the word takes its window pass regardless).
+    pub broad: u64,
     /// The media pool video records sample.
     pub media: crate::media::Pool,
     pub bins: Bins,
@@ -630,8 +768,10 @@ impl Scene {
             events: Vec::new(),
             regeo: Vec::new(),
             act: Vec::new(),
+            rebin: Vec::new(),
             bins_epoch: 0,
             fx_nocache: std::env::var("BOUGH_FX_NOCACHE").is_ok(),
+            broad: 0,
             media: crate::media::Pool::new(0),
             bins: Bins::default(),
             damage: Damage::new(tx, ty),
@@ -819,13 +959,14 @@ impl Scene {
         }
         let mut moved = first;
         let mut touched = std::mem::take(&mut self.touched);
-        let (mut events, mut regeo, mut act) = (std::mem::take(&mut self.events), std::mem::take(&mut self.regeo), std::mem::take(&mut self.act));
+        let (mut events, mut regeo, mut act, mut rebin) = (std::mem::take(&mut self.events), std::mem::take(&mut self.regeo), std::mem::take(&mut self.act), std::mem::take(&mut self.rebin));
+        rebin.clear();
         events.clear();
         regeo.clear();
         let track = self.layers.any() && !first;
         macro_rules! pass {
             () => {
-                Pass { win: &mut self.win, cover: &mut self.cover, halo: &mut self.halo, dmg: &mut self.damage, floor: &self.bins.floor, events: &mut events, track, regeo: &mut regeo, active: &mut act }
+                Pass { win: &mut self.win, cover: &mut self.cover, halo: &mut self.halo, dmg: &mut self.damage, floor: &self.bins.floor, events: &mut events, track, regeo: &mut regeo, active: &mut act, rebin: &mut rebin }
             };
         }
         if !first {
@@ -847,8 +988,17 @@ impl Scene {
         self.touched = touched;
         // the clock alone never sends a pass over a whole column: its readers said when they stop
         let tbit = 1u64 << U_TIME;
+        // a broad word is not differentiated: it damages the frame as one fact (below)
+        let bword = if first { 0 } else { mask & self.broad };
+        let mut broad_hit = false;
         for ci in 0..self.cols.len() {
             let d = self.cols[ci].desc;
+            let mask = if d.geom_reads & bword == 0 {
+                broad_hit |= d.reads & bword != 0;
+                mask & !bword
+            } else {
+                mask
+            };
             let full = first || d.reads & (mask & !tbit) != 0;
             if !full && (mask & d.reads & tbit == 0 || self.cols[ci].active.is_empty()) {
                 continue;
@@ -877,32 +1027,70 @@ impl Scene {
                 relaid = true;
             }
             relaid |= self.layers.repack();
-            if self.layers.pool.len() < self.layers.used {
-                self.layers.pool.resize(self.layers.used, 0);
-            }
+            self.layers.pool.ensure(self.layers.used);
         }
         if moved {
-            self.bins.build(&self.win, &self.cover, &self.halo, &self.layers.of, self.tx, self.ty, self.cut);
+            let lanes = Lanes { win: &self.win, cover: &self.cover, halo: &self.halo, lay: &self.layers.of, cut: self.cut };
+            // edits pay per moved record and tile; when a good part of the scene moved (a pan) one pass over
+            // every record is cheaper (measured on the canvas's pan: edits alone were 12x the rebuild)
+            if first || rebin.len() * 4 > self.order.len() {
+                self.bins.build(&lanes, self.tx, self.ty);
+            } else {
+                for &z in &rebin {
+                    self.bins.update(z, &lanes);
+                }
+                self.bins.recut_touched(&lanes);
+            }
             self.bins_epoch += 1;
             fs.rebinned = true;
         }
-        // the layers' stages, in paint order: a layer's repair is output damage of its record, and an
-        // event for the layers above it
+        // the layers' stages, in paint order. An event reaches, through each tile's own list of layer
+        // records, the layers above it there; a layer's repair is output damage of its record and an event
+        // for the layers above that
         self.plan = layer::Plan::default();
-        if lay_on && (first || relaid || !events.is_empty()) {
+        if broad_hit {
+            self.damage.all();
+            fs.broad = true;
+        }
+        if broad_hit && lay_on && !cfg!(feature = "mutant_broad_layers") {
+            // every layer whole, said in one word: the executor has (or makes once) the jobs for it
+            self.plan.full = true;
+        } else if lay_on && (first || relaid || !events.is_empty()) {
+            let mut todo: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+            if first || self.fx_nocache {
+                todo.extend(0..self.layers.list.len() as u32);
+            }
+            todo.extend(regeo.iter().map(|&z| self.layers.lid(z)));
+            let (tx, ty) = (self.tx as i32, self.ty as i32);
+            let route = |bins: &Bins, layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, w: [i32; 4], z: u32| {
+                for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty) {
+                    for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx) {
+                        let t = (y * tx + x) as usize;
+                        let ls = bins.layers(t);
+                        for &lz in &ls[ls.partition_point(|&k| k <= z)..] {
+                            let lid = layers.of[lz as usize];
+                            layers.list[lid as usize].pending.push(t as u32);
+                            todo.insert(lid);
+                        }
+                    }
+                }
+            };
+            for &(w, z) in &events {
+                route(&self.bins, &mut self.layers, &mut todo, w, z);
+            }
             let mut outs: Vec<[i32; 4]> = Vec::new();
-            for lid in 0..self.layers.list.len() as u32 {
+            while let Some(lid) = todo.pop_first() {
                 outs.clear();
-                self.layers.schedule(lid, &events, self.tx, &mut self.plan, |r| outs.push(r));
+                self.layers.schedule(lid, self.tx, &mut self.plan, |r| outs.push(r));
                 let z = self.layers.list[lid as usize].z;
                 for r in &outs {
                     self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                    events.push((*r, z));
+                    route(&self.bins, &mut self.layers, &mut todo, *r, z);
                 }
             }
         }
         (fs.prefix_tiles, fs.blocks, fs.layer_px) = (self.plan.prefix_tiles, self.plan.blocks, self.plan.px);
-        (self.events, self.regeo, self.act) = (events, regeo, act);
+        (self.events, self.regeo, self.act, self.rebin) = (events, regeo, act, rebin);
         self.prev = *u;
         self.first = false;
         fs
@@ -922,9 +1110,10 @@ impl Scene {
     /// The part of tile `ti`'s list a job runs: entries `from..to`, started from the stored prefix of layer
     /// `init` (`layer::NONE`: from nothing). `upto`: the layer whose prefix the job computes (its entries
     /// beneath that layer's record), or `layer::NONE` for an output tile (all of them). The job starts at
-    /// the topmost layer record in its range whose window holds the whole tile: inside its window that
-    /// record flattened every pixel, so its stored prefix is the accumulator there. The last value: some
-    /// layer record is in the range.
+    /// the topmost layer record in its range: a layer record flattens the accumulator over the whole tiles
+    /// of its halo, which are the tiles it is listed in, so its stored prefix is the accumulator there.
+    /// Depth therefore costs a job the records between two readers, not everything beneath. The last
+    /// value: some layer record is in the range.
     pub fn seg(&self, ti: u32, upto: u32) -> (usize, usize, u32, bool) {
         let (ox, oy) = ((ti as usize % self.tx) as i32 * 32, (ti as usize / self.tx) as i32 * 32);
         let (cols, nrows) = ((self.fw as usize - ox as usize).min(32), (self.fh as usize - oy as usize).min(32));
@@ -941,9 +1130,10 @@ impl Scene {
                     continue;
                 }
                 marked = true;
-                let (r, h) = (self.layers.list[lid as usize].win, self.layers.list[lid as usize].lv[0].r);
-                let holds = |r: [i32; 4]| r[0] <= ox && r[1] <= oy && r[2] >= ox + cols as i32 && r[3] >= oy + nrows as i32;
-                if !self.fx_nocache && holds(r) && holds(h) {
+                // the record is listed here, so the tile is one of its halo's whole tiles: it flattened every
+                // pixel of it and its level 0 holds them
+                let h = self.layers.list[lid as usize].lv[0].r;
+                if !self.fx_nocache && h[0] <= ox && h[1] <= oy && h[2] >= ox + cols as i32 && h[3] >= oy + nrows as i32 {
                     (from, init) = (j, lid);
                     break;
                 }
@@ -988,22 +1178,26 @@ impl Scene {
     /// prefix tiles, then its pyramid's dirty blocks level by level. Nothing to do (and nothing done) when
     /// no layer was reached by a change. Call between `update` and `shade`.
     pub fn prepare(&mut self, u: &U) -> Stats {
+        if self.plan.full {
+            self.plan = self.layers.full_plan(self.tx);
+        }
         if self.plan.work.is_empty() {
             return Stats::default();
         }
         let mut pool = std::mem::take(&mut self.layers.pool);
+        let pool_words = pool.words_mut();
         let st = {
             let s = &*self;
             let mut t = s.worker();
             for w in &s.plan.work {
                 let l = &s.layers.list[w.lid as usize];
                 for &ti in &w.prefix {
-                    s.run_tile(u, ti, &mut t, &pool, w.lid);
-                    t.store_layer(&mut pool, &l.lv[0]);
+                    s.run_tile(u, ti, &mut t, pool_words, w.lid);
+                    t.store_layer(pool_words, &l.lv[0]);
                 }
                 for (k, blocks) in &w.blocks {
                     for &(bx, by) in blocks {
-                        layer::down(&mut pool, l, *k, s.fw, s.fh, bx, by);
+                        layer::down(pool_words, l, *k, s.fw, s.fh, bx, by);
                     }
                 }
             }
@@ -1030,7 +1224,7 @@ impl Scene {
     /// these tiles during the call (tiles given to concurrent callers are disjoint).
     pub unsafe fn shade_into(&self, u: &U, tiles: &[u32], out: *mut u32, stride: usize, t: &mut Tile) {
         for &ti in tiles {
-            self.run_tile(u, ti, t, &self.layers.pool, layer::NONE);
+            self.run_tile(u, ti, t, self.layers.pool.words(), layer::NONE);
             let (ox, oy) = ((ti as usize % self.tx) * 32, (ti as usize / self.tx) * 32);
             let at = oy * stride + ox;
             // SAFETY: the tile's rows [oy, oy + nrows) x columns [ox, ox + cols) lie inside `out` (the

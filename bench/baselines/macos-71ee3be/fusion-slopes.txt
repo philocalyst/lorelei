@@ -1,0 +1,19 @@
+# bough façade per-frame instructions, slope method (zgx's), RENDER=0, commit 71ee3be0aa
+# host: Apple M3 Ultra, macOS 26.7.3, load 20.13 22.56 22.70; binaries: dist built from <baseline-worktree> in <dist-target-dir>
+# command (from the bench worktree):
+#   BOUGH_DIST=<dist-target-dir> BOUGH_REF=<ref-checkouts> python3 bench/integrate/slope.py bough 0 heavy|lab|animate
+
+heavy:
+  idle    1299 instr/frame  [-541 .. 13777]
+  stream  160443 instr/frame  [158924 .. 163220]
+  scroll  26132 instr/frame  [25996 .. 28463]
+  both    197126 instr/frame  [193934 .. 198044]
+lab:
+  idle    1015 instr/frame  [-134 .. 16948]
+  stream  18933 instr/frame  [18146 .. 19808]
+  scroll  12852 instr/frame  [12069 .. 12930]
+  both    28614 instr/frame  [27959 .. 30776]
+animate:
+  -       14373 instr/frame  [13813 .. 21961]
+
+# idle is ~0 in truth; a negative lower bound is slope noise (TICKS 300 vs 600).
