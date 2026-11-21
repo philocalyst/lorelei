@@ -14,6 +14,7 @@
 use crate::ops::ops as x;
 use crate::scene::{Arena, VM_PAGE};
 use bough_kernel::Cmd;
+use std::sync::atomic::{AtomicU64, Ordering};
 use wgsl_rs::std::Vec4u;
 
 pub const HDR: usize = 8;
@@ -44,6 +45,7 @@ pub struct Lease {
 }
 
 pub struct Pool {
+    identity: u64,
     arena: Arena,
     used: usize,
     slots: Vec<Slot>,
@@ -54,7 +56,11 @@ pub fn frame_words(w: u32, h: u32) -> usize {
 }
 impl Pool {
     pub fn new(words: usize) -> Pool {
-        Pool { arena: Arena::new(words.max(VM_PAGE / 4)), used: 0, slots: Vec::new() }
+        static NEXT_POOL: AtomicU64 = AtomicU64::new(1);
+        Pool { identity: NEXT_POOL.fetch_add(1, Ordering::Relaxed), arena: Arena::new(words.max(VM_PAGE / 4)), used: 0, slots: Vec::new() }
+    }
+    pub(crate) fn identity(&self) -> u64 {
+        self.identity
     }
     pub fn words(&self) -> &[u32] {
         self.arena.words()

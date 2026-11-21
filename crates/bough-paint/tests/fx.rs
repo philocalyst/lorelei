@@ -1570,3 +1570,91 @@ fn retained_bgra_publication_preserves_alpha_channels_and_slot_bounds() {
     }
     eprintln!("BGRA publication: 48 CPU frames and 25 Metal draws at ages 1..4 match independent bytes");
 }
+
+#[test]
+fn group_opacity_composites_the_isolated_child_once() {
+    use bough_paint::layer::Isolated;
+    use bough_paint::ops::ops as x;
+    let (w, h) = (45, 45);
+    let words = (w * h) as usize;
+    let workers = Pool::new(1);
+    let base = 0xff34_786a;
+    let low = 0x8090_1644;
+    let high = 0x9018_6fda;
+    let make = || {
+        let mut child = Scene::new(w, h, 4096);
+        let pieces = child.column::<Solid<Lane, Any>>(2);
+        child.push(pieces, [q(4.0), q(4.0), q(27.0), q(27.0)], Solid { b: Lane, c: pm(low) });
+        child.push(pieces, [q(12.0), q(12.0), q(34.0), q(34.0)], Solid { b: Lane, c: pm(high) });
+        let mut group = Isolated::new(child).unwrap();
+        let mut parent = Scene::new(w, h, 4096);
+        let bg = parent.column::<Solid<Lane, Any>>(1);
+        let texture = parent.column::<Image<Lane, Ki<0>, Rec, Rec, Uw<4>>>(1);
+        let rect = [0, 0, q(w as f32), q(h as f32)];
+        parent.push(bg, rect, Solid { b: Lane, c: pm(base) });
+        let slot = group.prepare(&U::default(), &mut parent.media, &workers).published.unwrap();
+        parent.push(texture, rect, Image { b: Lane, r: Ki, slot: Rec(slot), dims: Rec(group.dimensions()), op: Uw });
+        (parent, texture, group, pieces, rect)
+    };
+    let (mut cpu, c, mut group, pieces, rect) = make();
+    let (mut metal, mc, mut mgroup, mpieces, _) = make();
+    metal.route_off = true;
+    // SAFETY: metal outlives the GPU. Group and pool writes occur outside synchronous render calls.
+    let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 16) }.expect("headless Metal");
+    let mut era = 0;
+    let mut surface = vec![0; words];
+    let mut u = U::default();
+    let mut tiles = Vec::new();
+    let mut ink = high;
+    let mut committed_ink = high;
+    let mut w_expected = vec![0; words];
+    for step in 0..5u32 {
+        if step == 4 {
+            cpu.media.reclaim();
+            metal.media.reclaim();
+        }
+        u.w[4] = 32768 - step * 3187;
+        if step == 2 || step == 3 {
+            ink ^= 0x0080_8030 + step * 0x0000_0120;
+            let child_rect = [q(12.0), q(12.0), q(34.0), q(34.0)];
+            group.scene_mut().set(pieces, 1, child_rect, Solid { b: Lane, c: pm(ink) });
+            mgroup.scene_mut().set(mpieces, 1, child_rect, Solid { b: Lane, c: pm(ink) });
+        }
+        let a = group.prepare(&U::default(), &mut cpu.media, &workers);
+        let b = mgroup.prepare(&U::default(), &mut metal.media, &workers);
+        assert_eq!((a.published, a.pending), (b.published, b.pending));
+        if step < 2 {
+            assert_eq!((a.child.recs_visited, a.child.tiles, a.published), (0, 0, None));
+        }
+        if step == 3 {
+            assert!(a.pending && a.published.is_none(), "the third slot must wait for reclamation");
+        }
+        if let Some(slot) = a.published {
+            committed_ink = ink;
+            let p = Image { b: Lane, r: Ki, slot: Rec(slot), dims: Rec(group.dimensions()), op: Uw };
+            cpu.set(c, 0, rect, p);
+            metal.set(mc, 0, rect, p);
+        }
+        cpu.frame(&u, &mut surface, w as usize, &workers, 0);
+        metal.update(&u);
+        metal.damage.tiles(&mut tiles);
+        metal.damage.clear();
+        era = gpu.resident(&mut metal, &u, &tiles, Some(era), w as usize).1;
+        for py in 0..h {
+            for px in 0..w {
+                let mut acc = x::x_pm(0);
+                if (4..27).contains(&px) && (4..27).contains(&py) {
+                    acc = x::x_over(acc, x::x_pm(low));
+                }
+                if (12..34).contains(&px) && (12..34).contains(&py) {
+                    acc = x::x_over(acc, x::x_pm(if step == 3 { committed_ink } else { ink }));
+                }
+                let retained = x::x_unstore(x::x_store(acc));
+                w_expected[(py * w + px) as usize] = x::x_store(x::x_over(x::x_pm(base), x::x_fade(retained, u.w[4])));
+            }
+        }
+        assert_eq!(diff(&surface, &w_expected), 0, "isolated group parent step {step}");
+        assert_eq!(diff(gpu.out(words), &w_expected), 0, "isolated group Metal step {step}");
+    }
+    eprintln!("isolated opacity: five exact CPU and Metal frames, idle child under parent opacity, slot refusal retried");
+}

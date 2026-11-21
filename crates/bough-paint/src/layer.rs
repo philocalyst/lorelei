@@ -622,3 +622,63 @@ pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: 
     let bs = bshift(k);
     down_rect(pool, l, k, fw, fh, [bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs]).is_none()
 }
+
+/// One isolated layer with a child scene in its own coordinate space. Children blend into transparent
+/// before the image paint applies the group's opacity. The caller supplies the parent's media arena
+/// and updates the parent image record only after a new handle is published.
+pub struct Isolated {
+    child: crate::scene::Scene,
+    pixels: Vec<u32>,
+    shown: Option<(u64, u32)>,
+    serial: u32,
+    pending: bool,
+}
+
+/// One isolated layer repair. `published` is the handle for the parent's Image paint.
+#[derive(Debug)]
+pub struct IsolatedFrame {
+    pub child: crate::scene::FrameStats,
+    pub published: Option<u32>,
+    /// The child surface is ready but its parent pool had no replacement slot.
+    pub pending: bool,
+}
+
+impl Isolated {
+    pub fn new(mut child: crate::scene::Scene) -> Option<Self> {
+        let (w, h) = (child.fw, child.fh);
+        if !(1..=2047).contains(&w) || !(1..=2047).contains(&h) {
+            return None;
+        }
+        child.invalidate();
+        Some(Self { child, pixels: vec![0; (w * h) as usize], shown: None, serial: 0, pending: true })
+    }
+
+    pub fn scene_mut(&mut self) -> &mut crate::scene::Scene {
+        &mut self.child
+    }
+
+    pub fn dimensions(&self) -> u32 {
+        self.child.fw | self.child.fh << 16
+    }
+
+    pub fn prepare(&mut self, u: &crate::expr::U, media: &mut crate::media::Pool, workers: &bough_kernel::cpu::Pool) -> IsolatedFrame {
+        let (w, h) = (self.child.fw, self.child.fh);
+        let child = self.child.frame(u, &mut self.pixels, w as usize, workers, 0);
+        let identity = media.identity();
+        let previous = self.shown.filter(|&(pool, _)| pool == identity).map(|(_, slot)| slot);
+        let changed = child.tiles != 0 && !(cfg!(feature = "mutant_group_stale") && previous.is_some());
+        self.pending |= changed || previous.is_none();
+        let published = if self.pending {
+            let slot = media.publish_bgra(w, h, &self.pixels, self.serial, previous);
+            if let Some(slot) = slot {
+                self.serial = self.serial.wrapping_add(1);
+                self.shown = Some((identity, slot));
+                self.pending = false;
+            }
+            slot
+        } else {
+            None
+        };
+        IsolatedFrame { child, published, pending: self.pending }
+    }
+}
