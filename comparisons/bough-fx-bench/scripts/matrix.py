@@ -68,6 +68,19 @@ def reference(out, framework, cards, cell):
     if not records:
         return "missing samples"
     draws = int(records[-1][5]) - (int(records[0][5]) if framework == "zgui" and cell != "startup" else 0)
+    counted = [line.split(",") for line in lines if line.startswith("zgui_frames,")]
+    if framework == "zgui" and counted:
+        if [r[1:4] for r in counted] != [r[1:4] for r in records]:
+            return "frame counter rows do not match samples"
+        if cell == "startup":
+            draws = sum(int(r[4]) for r in counted)
+            requests = sum(int(r[5]) for r in counted)
+        else:
+            draws, requests = map(int, counted[-1][4:6])
+        if cell == "idle":
+            return f"{draws} frames ({requests} requests)"
+        value = summarize([int(r[4]) for r in records], draws)
+        return value[:-1] + f"; {requests} req)" if len(records) >= MIN_SAMPLES else value
     if cell == "idle":
         return f"{draws} frames"
     samples = [int(r[4]) for r in records]

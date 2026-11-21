@@ -1,5 +1,5 @@
 //! Offscreen zgui canvas probe using painted CSS effects and a framework animation.
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::{Cell, RefCell}, rc::Rc};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -44,12 +44,13 @@ static SDF: ShaderEffect<Mask> = shader! {
 
 type Witness = Rc<RefCell<Vec<u64>>>;
 
-struct PixelGate {
+struct ObservedRenderer {
     renderer: zgui_render_wgpu::WgpuRenderer,
-    pixels: Witness,
+    pixels: Option<Witness>,
+    presented: Rc<Cell<u64>>,
 }
 
-impl Renderer for PixelGate {
+impl Renderer for ObservedRenderer {
     fn capabilities(&self) -> RenderCapabilities {
         self.renderer.capabilities()
     }
@@ -61,15 +62,20 @@ impl Renderer for PixelGate {
     }
     fn draw(&mut self, scene: &zgui::scene::Scene, damage: &DamageSet) -> FrameOutcome {
         let outcome = self.renderer.draw(scene, damage);
-        let retained = self.renderer.read_composed();
-        assert!(!retained.bytes().is_empty());
-        let hash = retained
-            .bytes()
-            .iter()
-            .fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
-                (h ^ u64::from(*b)).wrapping_mul(0x100_0000_01b3)
-            });
-        self.pixels.borrow_mut().push(hash);
+        if matches!(outcome, FrameOutcome::Presented(_)) {
+            self.presented.set(self.presented.get() + 1);
+        }
+        if let Some(ref pixels) = self.pixels {
+            let retained = self.renderer.read_composed();
+            assert!(!retained.bytes().is_empty());
+            let hash = retained
+                .bytes()
+                .iter()
+                .fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+                    (h ^ u64::from(*b)).wrapping_mul(0x100_0000_01b3)
+                });
+            pixels.borrow_mut().push(hash);
+        }
         outcome
     }
     fn register_external(&mut self, texture: ExternalTexture) -> TextureHandle {
@@ -86,7 +92,11 @@ impl Renderer for PixelGate {
     }
 }
 
-fn renderer(target: RenderTarget, gate: Option<Witness>) -> Result<Box<dyn Renderer>, AppError> {
+fn renderer(
+    target: RenderTarget,
+    pixels: Option<Witness>,
+    presented: Rc<Cell<u64>>,
+) -> Result<Box<dyn Renderer>, AppError> {
     let renderer = zgui_render_wgpu::Builder::new()
         .offscreen(
             target,
@@ -94,10 +104,7 @@ fn renderer(target: RenderTarget, gate: Option<Witness>) -> Result<Box<dyn Rende
             false,
         )
         .map_err(AppError::GpuUnavailable)?;
-    Ok(match gate {
-        Some(pixels) => Box::new(PixelGate { renderer, pixels }),
-        None => Box::new(renderer),
-    })
+    Ok(Box::new(ObservedRenderer { renderer, pixels, presented }))
 }
 
 fn main() {
@@ -136,6 +143,8 @@ fn main() {
     let theme = RwSignal::new_local(false);
     let witness = gate.then(Witness::default);
     let renderer_witness = witness.clone();
+    let presented = Rc::new(Cell::new(0));
+    let renderer_presented = presented.clone();
     let moving = RwSignal::new_local(false);
     let css = "
         :root { background-color: #142638; }
@@ -154,7 +163,9 @@ fn main() {
                --zgui-shape: effects-circle-difference; background-color: #ec8f6fa6; }
     ";
     let handler = App::new().with_size(640.0, 400.0).with_stylesheet(css)
-        .with_renderer(Box::new(move |_: &Arc<dyn Surface>, target| renderer(target, renderer_witness.clone())))
+        .with_renderer(Box::new(move |_: &Arc<dyn Surface>, target| {
+            renderer(target, renderer_witness.clone(), renderer_presented.clone())
+        }))
         .into_handler(move |cx: &mut BuildCx<'_>| -> Box<dyn Anchor> {
             let _effect = SDF.register();
             let mut layer = zgui::elements::column().class("layer");
@@ -230,12 +241,15 @@ fn main() {
         }
     }
     let baseline = harness.redraws_requested();
+    let presented_before_trace = presented.get();
+    assert!(presented_before_trace > 0, "startup produced no offscreen frame");
     if cell == "startup" {
         println!(
             "zgui_sample,{cards},{cell},0,{},{}",
             startup.elapsed().as_nanos(),
             baseline
         );
+        println!("zgui_frames,{cards},{cell},0,{presented_before_trace},{baseline}");
         return;
     }
     if cell == "idle" {
@@ -243,10 +257,12 @@ fn main() {
         harness.advance(Duration::from_secs(1));
         harness.pump();
         assert_eq!(baseline, harness.redraws_requested());
+        assert_eq!(presented_before_trace, presented.get());
         println!(
             "zgui_sample,{cards},{cell},0,{},0",
             time.elapsed().as_nanos()
         );
+        println!("zgui_frames,{cards},{cell},0,0,0");
         return;
     }
     for k in 0..count {
@@ -299,6 +315,9 @@ fn main() {
             start.elapsed().as_nanos(),
             harness.redraws_requested()
         );
+        let draws = presented.get() - presented_before_trace;
+        let requests = harness.redraws_requested() - baseline;
+        println!("zgui_frames,{cards},{cell},{k},{draws},{requests}");
     }
     if let Some(witness) = witness {
         let pixels = witness.borrow();
