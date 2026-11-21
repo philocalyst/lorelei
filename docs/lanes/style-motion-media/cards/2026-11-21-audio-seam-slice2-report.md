@@ -1,7 +1,15 @@
 # Report: the audio seam (card 2026-11-21-audio-seam-slice2)
 
-State reached: **MEASURED** (not independently replayed). Host as slice 1 (M3 Ultra, load 17 to 19 during the
-runs; instructions ranked). Raw: `bench/results/fx/fxbench-media-audio.txt` (`REPS=240 fxbench media 4|24|48`, dist).
+State reached: **MEASURED** (not independently replayed). Host as slice 1 (M3 Ultra; instructions ranked).
+Raw output, two files, because the first run stopped itself:
+
+* `bench/results/fx/fxbench-media-audio-aborted.txt` (`REPS=240`, dist, under the bench lock, load 17 to 19):
+  the source of every instruction count below. Each of its three runs **panicked after the a/v cell's CPU
+  row**: my own T1 assertion also fired in the redraw-every-layer control, which does work on idle refreshes
+  by construction. So that file has no control or Metal row for the a/v cell and no final validity line.
+* `bench/results/fx/fxbench-media-audio-validity.txt` (`REPS=24`, assertion scoped to the cached executors,
+  **without the bench lock**, load 42: the lock had a queue of ten by then): every cell on all three
+  executors, exit 0, "mismatching words in total: 0" at 4 / 24 / 48 tiles. Its timings are not used.
 
 Reproduce: `cargo test --release -p bough-audio` (add `--features coreaudio` on a Mac with an output device;
 `--features mutant_wall_clock` must fail); `REPS=240 fxbench media 24`.
@@ -16,14 +24,14 @@ Reproduce: `cargo test --release -p bough-audio` (add `--features coreaudio` on 
 | A4 `mutant_wall_clock` | fails A3 ("fast: video frame 299 against audio 10.050 s") |
 | A5 CoreAudio | ran headless with no prompt: 70 callbacks in about 0.55 s, period 512 frames, reported latency 0, 48,405 frames/s measured against 48,000 (0.8 %); silence rendered; no callback after drop |
 | A6 no dependency | `cargo tree -p bough-paint -e normal` has no bough-audio (it is a dev-dependency for the benchmark) |
-| A7 media scene with audio clocks | 0 mismatching words against a full redraw, CPU and Metal, at 4 / 24 / 48 tiles |
+| A7 media scene with audio clocks | 0 mismatching words against a full redraw on CPU, control and Metal at 4 / 24 / 48 tiles (the validity run; 31 refreshes each) |
 
 ## Thresholds
 
 | | prediction | measured | verdict |
 |---|---|---|---|
-| T1 a refresh with no new frame | 0 tiles, 0 records | asserted on every such refresh: 173 / 101 / 101 of 247 refreshes at 4 / 24 / 48 tiles | held |
-| T2 frames published == frames the audio clocks crossed | exact | 249 == 249, 1,491 == 1,491, 2,981 == 2,981 | held |
+| T1 a refresh with no new frame | 0 tiles, 0 records | asserted on every such refresh of the CPU run: 173 / 101 / 101 of 247 at 4 / 24 / 48 tiles; and on CPU and Metal in the validity run (23 / 16 / 16 of 31) | held |
+| T2 frames published == frames the audio clocks crossed | exact | 249 == 249, 1,491 == 1,491, 2,981 == 2,981 (247 refreshes); 32, 192, 384 in the validity run | held |
 | T3 pacer cost per tile per refresh | <= 100 instructions | 99.0 (126.0 before the clock stopped reading its stamp twice and dropped a 128-bit product) | held, barely |
 
 a/v playback, CPU one core, mean K instructions per refresh (medians are near-idle refreshes at 4 tiles):
@@ -38,6 +46,8 @@ but because in the larger scenes the cards of the next row cast shadows into tha
 does not isolate "number of videos" as the card intended.
 
 ## Not verified
+
+Metal timing for the a/v cell (the timed run stopped before it); a timed re-run under the lock.
 
 Capture, loopback, application capture, device enumeration, resampling, mixing; audible output (only silence
 was rendered); a real decoder; lip-sync against real content; CoreAudio's reported latency (it said 0, which

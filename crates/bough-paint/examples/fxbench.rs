@@ -395,8 +395,9 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
             }
             Some(g) => gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu,
         }
-        if cell == Cell::AvPlayback && f > 0 && slots.is_empty() {
-            // T1: a refresh at which no tile has a new frame is an idle frame
+        if cell == Cell::AvPlayback && f > 0 && slots.is_empty() && exec != Exec::CpuNoCache {
+            // T1: a refresh at which no tile has a new frame is an idle frame (the control redraws its
+            // layers regardless: that is what it is)
             assert_eq!((tiles.len(), fs.recs_visited), (0, 0), "a refresh with no new video frame did work");
         }
         let wall = t0.elapsed().as_secs_f64();
