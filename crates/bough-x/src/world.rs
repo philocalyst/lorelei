@@ -79,6 +79,8 @@ pub struct FastStats {
     pub near_hits: u64,
     pub near_records: u64,
     pub near_builds: u64,
+    /// Column deltas answered as "the whole space" because a broad word changed ([`World::broad`]).
+    pub broad_hits: u64,
 }
 
 /// A column's bounded deltas and what the world keeps for them. The index and the boxes are of the records as
@@ -148,6 +150,16 @@ pub struct World<V, B> {
     wrote: u64,
     /// Switch the bounded deltas off (every delta is the page scan): what the gates compare them against.
     pub no_fast: bool,
+    /// The block words whose change is taken to change everything that reads them (a theme, a density, a
+    /// scale): a column that reads one is not differentiated record by record when it changes; its space is
+    /// damaged as a whole, one mark, whatever the column holds. What is shown is the same (a superset of the
+    /// scan's damage is repaired); the trade is evaluations in the turn for tiles in the frame, the right one
+    /// when nearly every reader changes and the frame goes to an executor that shades a full surface cheaply.
+    /// Columns with core-written state ([`Arch::STATE`]) keep the scan (their transitions start from what
+    /// each record shows). Zero by default: nothing is broad unless the application says so.
+    pub broad: u64,
+    /// The clip the current delta last marked for a broad word (so a space is marked once a delta).
+    broad_last: Option<crate::store::Rect>,
     cols: Vec<ColEnt>,
     cold: Vec<(*const Store, u32)>,
     spaces: Vec<(u64, *const Store)>,
@@ -210,6 +222,8 @@ impl<V: View, B: Backend> World<V, B> {
             fast: Vec::new(),
             wrote: 1,
             no_fast: false,
+            broad: 0,
+            broad_last: None,
             cols: Vec::new(),
             cold: Vec::new(),
             spaces: Vec::new(),
@@ -488,6 +502,7 @@ impl<V: View, B: Backend> World<V, B> {
     #[inline]
     fn delta(&mut self, u: &U, ch: u64) {
         self.delta_stats = DeltaStats::default();
+        self.broad_last = None;
         if self.shape != self.root.structure_revision() {
             self.retable();
         }
@@ -566,7 +581,17 @@ impl<V: View, B: Backend> World<V, B> {
         if e.skip & ch != 0 {
             return;
         }
-        if self.fast_of[k] != u32::MAX && self.delta_fast(k, u, ch) {
+        if e.reads & ch & self.broad != 0 && e.timed & ColEnt::STATE == 0 && !self.no_fast {
+            // SAFETY: the table is current: `space` is the column's store's.
+            let clip = unsafe { (*e.space).clip };
+            // columns of one space follow one another in the table: the space is marked once
+            #[cfg(not(feature = "mutant_broad"))]
+            if self.broad_last != Some(clip) {
+                self.tiles.mark(clip);
+            }
+            self.broad_last = Some(clip);
+            self.fast_stats.broad_hits += 1;
+        } else if self.fast_of[k] != u32::MAX && self.delta_fast(k, u, ch) {
             // answered from the records the change concerns
         } else {
             let e = &self.cols[k];
@@ -574,7 +599,7 @@ impl<V: View, B: Backend> World<V, B> {
             unsafe { (e.delta)(e, &self.shown, u, &mut self.tiles) };
         }
         let e = &self.cols[k];
-        if e.timed != 0 {
+        if e.timed & ColEnt::TIMED != 0 {
             let (st, j) = self.cold[k];
             // SAFETY: as above: `st` is a store of this tree and `j` one of its columns.
             unsafe { (*st).resweep_col(&(&(*st).cols)[j as usize], u, &mut self.tiles) };

@@ -194,3 +194,32 @@ written-pages hook the active set also needs, and is the next piece. `many` and 
 frame and are the painter's cost. `bough-span`'s `Backend for Spans` has the same whole-column walk and is not
 changed here (another lane's crate). `cargo test --release -p bough-x -p bough-expr -p bough-span`: 119 passed,
 0 failed, 4 ignored.
+
+## Amendment 3 (2026-11-21): broad words — a theme change evaluates no record
+
+Prediction, written before the count was taken: a change of a word nearly every record reads (the sheet's
+theme: 30,755 instructions, 4,000 tiles, i.e. the whole frame either way) should cost the turn a mark per
+space, not an evaluation per record; expected under 5,000, and the same tiles. Kill line: no better than 0.5x.
+
+`World::broad` is a mask of block words the application declares broad (a theme, a density, a scale). A column
+that reads one is not differentiated record by record when it changes: its space's clip is marked, once a
+space a delta (`World::delta_one`). The damage is a superset of the page scan's, so what is shown is the same;
+the trade is evaluations in the turn for tiles in the frame, and is the right one exactly when nearly every
+reader changes and the frame goes to an executor that shades a full surface cheaply (the GPU). Admission: the
+column is not `Arch::STATE` (a transition must start from what each record shows; those keep the scan) and
+`no_fast` is off. Zero by default.
+
+Gate: `tests/broad.rs`: a counting fixture evaluates 0 records in the turn at 64 and at 4,096 rows (the scan:
+at least one per row); on the sheet, over 90 steps of theme changes, scrolls, edits and pointer moves, the
+broad world's damage contains the scan world's at every step and retained == full redraw == `Immediate`.
+`--features mutant_broad` fails both tests.
+
+Measured (`sheet_x`, dist, 10,000 rows, `BROAD=1` declares the theme word): theme **30,755 → 2,424**
+instructions, 4,000 tiles both ways; idle, hover, select, exposed edit unchanged (63 / 5,365 / 759 / 2,620).
+`cargo test --release -p bough-x -p bough-expr -p bough-span`: 121 passed, 0 failed, 4 ignored.
+
+Not done, and the point of the exercise: the *frame* of a broad change is still a full repaint. The design
+that removes it (colours as palette slots resolved by the executor, so a theme is a table swap and its
+cross-fade a uniform) is `docs/lanes/style-motion-media/REFORMULATIONS.md`; the turn side above is what it
+needs from the core. Declaring a word broad is an application statement today; a word class carried by the
+expression's type (`un::<Theme>()` of a `Broad` lens) would make it a property of the program.
