@@ -82,6 +82,7 @@ pub struct Shared {
     refused: RefCell<Vec<&'static str>>,
     scale: Cell<f32>,
     root: TypeId,
+    owner: Cell<*const u8>,
     /// The list row being described: (list offset in its owner, slot index, slot generation, row + 1); 0: none.
     row: Cell<(u32, u32, u32, u32)>,
     /// `hover_bg` boxes described so far in this row (or in the fixed part).
@@ -213,14 +214,23 @@ fn with<T>(f: impl FnOnce(&Shared) -> T) -> T {
     // (also on unwind); a conversion runs only inside that call, on this thread.
     f(unsafe { &*p })
 }
-fn enter<T>(sh: &Shared, f: impl FnOnce() -> T) -> T {
-    struct Back(*const Shared);
-    impl Drop for Back {
+fn enter<T>(sh: &Shared, owner: *const u8, f: impl FnOnce() -> T) -> T {
+    struct Back<'a> {
+        previous: *const Shared,
+        owner: &'a Cell<*const u8>,
+        previous_owner: *const u8,
+    }
+    impl Drop for Back<'_> {
         fn drop(&mut self) {
-            CX.with(|c| c.set(self.0));
+            self.owner.set(self.previous_owner);
+            CX.with(|c| c.set(self.previous));
         }
     }
-    let _back = Back(CX.with(|c| c.replace(sh)));
+    let _back = Back {
+        previous: CX.with(|c| c.replace(sh)),
+        owner: &sh.owner,
+        previous_owner: sh.owner.replace(owner),
+    };
     f()
 }
 fn refuse(what: &'static str) {
@@ -672,7 +682,7 @@ impl<V: View> bough_x::sink::View for Ty<V> {
         Some(&mut self.shadow)
     }
     fn view<S: Sink<Self>>(&self, s: &mut S) {
-        enter(&self.sh, || {
+        enter(&self.sh, (&raw const self.v).cast(), || {
             self.sh.row.set((0, 0, 0, 0));
             self.sh.ord.set(0);
             self.sh.ti.set(0);
@@ -1507,12 +1517,12 @@ where
         let s = with(|sh| sh.scale.get());
         let p = self.port;
         let c = self.content;
-        Scroll {
-            spec: crate::lower::lay_spec(&p.spec, s),
-            paint: Rec1(pbox(p.bg.expr(), p.draw, p.radius, p.border)),
-            content: tbox(&c.spec, pbox(XColor(0), false, 0.0, None), c.ch.kids()),
-            word: slot as u8,
-        }
+        Scroll::from_parts(
+            crate::lower::lay_spec(&p.spec, s),
+            Rec1(pbox(p.bg.expr(), p.draw, p.radius, p.border)),
+            tbox(&c.spec, pbox(XColor(0), false, 0.0, None), c.ch.kids()),
+            slot as u8,
+        )
     }
     // its content is a row of a child space, which the walk does not reach: always the conversion
     const BY_REF: bool = false;
@@ -1528,7 +1538,7 @@ where
 pub struct TRows<'a, V, T> {
     list: &'a List<T>,
     off: u32,
-    /// The list's journal (`Shared::lists`), and whether every exposed row is to be described again.
+    /// The list's journal (`Shared::lists`), null when the list was refused.
     journal: *const Journal,
     all: bool,
     _v: PhantomData<fn(&V)>,
@@ -1564,7 +1574,9 @@ impl<'a, V: View, T: View> Seg<Ty<V>> for TRows<'a, V, T> {
         // SAFETY: the journal is boxed in `Shared::lists`, which only grows and outlives every pass (the
         // world's stores are dropped with the `App` that holds the `Shared`); nothing writes it while a
         // pass runs (`App::after` feeds it before the pass).
-        let edits = unsafe { &*self.journal };
+        let Some(edits) = (unsafe { self.journal.as_ref() }) else {
+            return;
+        };
         // A row is its item's view, and its handlers reach the item by its slot: nothing in it is the index.
         let how = bough_x::sink::RowsHow {
             all: self.all,
@@ -1647,17 +1659,25 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
         };
         let mut spec = self_.spec;
         spec.container = false;
-        Scroll {
-            spec: crate::lower::lay_spec(&spec, s),
-            paint: Rec1(pbox(
+        Scroll::from_parts(
+            crate::lower::lay_spec(&spec, s),
+            Rec1(pbox(
                 XColor(self_.bg.map_or(0, |c| c.0)),
                 self_.bg.is_some(),
                 self_.radius,
                 None,
             )),
-            content: {
+            {
                 let (list, off) = (self_.src.list.list, self_.src.list.off);
                 let (journal, all) = with(|sh| {
+                    if sh.row.get().3 != 0
+                        || TypeId::of::<R::O>() != sh.root
+                        || sh.owner.get().wrapping_add(off as usize)
+                            != std::ptr::from_ref(list).cast()
+                    {
+                        refuse("a typed list must be projected from the mounted root");
+                        return (std::ptr::null(), false);
+                    }
                     let k = sh.li.get();
                     sh.li.set(k + 1);
                     let mut lists = sh.lists.borrow_mut();
@@ -1701,7 +1721,7 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
                 }
             },
             word,
-        }
+        )
     }
 }
 
@@ -1976,6 +1996,7 @@ impl<V: View> App<V> {
             refused: RefCell::new(Vec::new()),
             scale: Cell::new(cfg.scale),
             root: TypeId::of::<V>(),
+            owner: Cell::new(std::ptr::null()),
             row: Cell::new((0, 0, 0, 0)),
             ord: Cell::new(0),
             describes: Cell::new(0),
@@ -2278,7 +2299,7 @@ impl<V: View> App<V> {
         let ot = bough_sys::perf::tinstr_overhead();
         let t0 = bough_sys::perf::thread_instructions();
         let mut acc = 0f32;
-        enter(&self.ty.sh, || {
+        enter(&self.ty.sh, (&raw const self.ty.v).cast(), || {
             for _ in 0..1000 {
                 acc += std::hint::black_box(with(|sh| sh.scale.get()));
             }
@@ -2307,7 +2328,7 @@ impl<V: View> App<V> {
     pub fn profile(&mut self) -> (u64, u64) {
         let ot = bough_sys::perf::tinstr_overhead();
         let t0 = bough_sys::perf::thread_instructions();
-        enter(&self.ty.sh, || {
+        enter(&self.ty.sh, (&raw const self.ty.v).cast(), || {
             self.ty.sh.row.set((0, 0, 0, 0));
             self.ty.sh.ord.set(0);
             self.ty.sh.ti.set(0);

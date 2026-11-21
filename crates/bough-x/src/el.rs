@@ -1533,6 +1533,21 @@ pub struct Scroll<P, C> {
     #[cfg(feature = "inspect-metadata")]
     loc: &'static core::panic::Location<'static>,
 }
+impl<P, C> Scroll<P, C> {
+    /// Assemble a scroll element from its layout, records and offset word.
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
+    #[inline(always)]
+    pub fn from_parts(spec: Spec, paint: P, content: C, word: u8) -> Self {
+        Self {
+            spec,
+            paint,
+            content,
+            word,
+            #[cfg(feature = "inspect-metadata")]
+            loc: core::panic::Location::caller(),
+        }
+    }
+}
 /// `.scroll(sig!(self.y))` on a box: its children scroll by the field's value (points).
 pub trait Scrolls<P, C>: Sized {
     #[cfg_attr(feature = "inspect-metadata", track_caller)]
@@ -1542,14 +1557,7 @@ impl<P, C, H> Scrolls<P, C> for LBox<P, C, H> {
     #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     fn scroll<V: 'static, const OFF: usize>(self, y: Sig<'_, V, Signal<f32>, OFF>) -> Scroll<P, C> {
-        Scroll {
-            spec: self.spec,
-            paint: self.paint,
-            content: self.kids,
-            word: y.word(),
-            #[cfg(feature = "inspect-metadata")]
-            loc: core::panic::Location::caller(),
-        }
+        Scroll::from_parts(self.spec, self.paint, self.kids, y.word())
     }
 }
 /// The hole of a scrolled box, as layout: out of flow at the box's corner and as large as the box, so its rect
