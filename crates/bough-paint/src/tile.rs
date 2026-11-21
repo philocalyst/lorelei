@@ -196,24 +196,29 @@ impl<'a> Tile<'a> {
             }
         }
     }
-    /// Store the tile's pixels that lie in a layer's level 0 as its prefix there.
-    pub fn store_layer(&mut self, pool: &mut [u32], v: &Lvl) {
+    /// Store the tile's pixels that lie in a layer's level 0 as its prefix there. Returns the box (frame
+    /// pixels) of the words that were not already there: `None` when the tile came out as it was.
+    pub fn store_layer(&mut self, pool: &mut [u32], v: &Lvl) -> Option<[i32; 4]> {
         debug_assert!(self.need == self.all);
         let (x0, x1) = ((v.r[0] - self.ox).max(0), (v.r[2] - self.ox).min(self.cols));
         let mut m = self.all & rows(v.r[1] - self.oy, v.r[3] - self.oy);
-        let mut same = true;
+        let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
         while m != 0 {
             let y = m.trailing_zeros() as i32;
             m &= m - 1;
             for xx in x0..x1 {
                 let (at, w) = (layer::at(v, self.ox + xx, self.oy + y), k::store8(ld(&self.acc[(y * 32 + xx) as usize])));
-                same &= pool[at] == w;
-                pool[at] = w;
+                if pool[at] != w {
+                    pool[at] = w;
+                    bb = [bb[0].min(xx), bb[1].min(y), bb[2].max(xx + 1), bb[3].max(y + 1)];
+                }
             }
         }
+        let same = bb[0] > bb[2];
         self.st.tiles += 1;
         self.st.prefix += 1;
         self.st.prefix_same += same as u64;
+        (!same).then_some([self.ox + bb[0], self.oy + bb[1], self.ox + bb[2], self.oy + bb[3]])
     }
     /// Write the tile: shaded rows from the accumulator, flat rows from the row above.
     ///

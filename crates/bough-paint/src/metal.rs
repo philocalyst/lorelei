@@ -124,6 +124,160 @@ kernel void k_down(device uint* POOL [[buffer(13)]], const device uint* LT [[buf
 }
 "#;
 
+/// The resident plan (`Gpu::resident`): every (layer, level, block) has a slot, in stage order (rank, then
+/// level); a frame is the same dispatches whatever changed. Level 0 of a rank: a compaction kernel (a thread
+/// per slot) decides which prefix tiles are due and appends their jobs, and the tile program runs them
+/// through an indirect dispatch. Each level above: one dispatch with a thread per pixel of every slot, which
+/// returns at once unless a block beneath that its taps touch changed. Every write compares first and stamps
+/// its block with the frame's generation; a change at a level the record reads marks the tiles it reaches
+/// (per-tile keys for the layers above, output damage where the record shows).
+/// Buffers: 19 slot -> layer | level << 24; 20 layer * 8 + level -> first slot; 21 changed stamps; 22 forced
+/// stamps (the CPU's: storage that holds nothing yet); 23 per tile (least event key, greatest + 1, output
+/// damage generation, floor); 24 per stage (job count, 1, 1, first slot, slots, level), seen at 24 as the
+/// indirect arguments and at 27 as the stage; 17 the stage's jobs; 26 (generation, since, everything, output).
+const FX_RES: &str = r#"
+// ---- the resident plan ----
+static inline uint rs_capw(const device uint* LT, uint lid, uint k) { return (((LT[lid * 32u + 6u + k * 4u] & 0xFFFFu) + (32u >> k) - 1u) >> (5u - k)) + 1u; }
+static inline uint rs_caph(const device uint* LT, uint lid, uint k) { return (((LT[lid * 32u + 6u + k * 4u] >> 16u) + (32u >> k) - 1u) >> (5u - k)) + 1u; }
+// slot i of (layer, level) is the block at (i % capw, i / capw) from the first block of the level's window
+static inline bool rs_block(const device uint* LT, uint lid, uint k, uint i, thread metal::int2& b) {
+    metal::int4 r = fx_rect(LT, lid, k);
+    if (r.x >= r.z || r.y >= r.w || k > LT[lid * 32u + 3u]) { return false; }
+    uint bs = 5u - k, cw = rs_capw(LT, lid, k);
+    b = metal::int2((r.x >> bs) + int(i % cw), (r.y >> bs) + int(i / cw));
+    return (b.x << bs) < r.z && (b.y << bs) < r.w;
+}
+static inline uint rs_slot(const device uint* LT, const device uint* LB, uint lid, uint k, int bx, int by) {
+    metal::int4 r = fx_rect(LT, lid, k);
+    if (r.x >= r.z || r.y >= r.w) { return 0xFFFFFFFFu; }
+    uint bs = 5u - k;
+    int ix = bx - (r.x >> bs), iy = by - (r.y >> bs), cw = int(rs_capw(LT, lid, k));
+    if (ix < 0 || iy < 0 || ix >= cw || iy >= int(rs_caph(LT, lid, k))) { return 0xFFFFFFFFu; }
+    return LB[lid * 8u + k] + uint(iy * cw + ix);
+}
+// pixels `p` of level k of a layer changed: if the record reads that level, the tiles its read of them
+// reaches are events of the record's key (for the layers above) and output damage where the record shows
+static void rs_mark(device metal::atomic_uint* KT, const device uint* LT, uint lid, uint k, metal::int4 p, uint TX, uint TY, uint gen) {
+    const device uint* row = LT + lid * 32u;
+    if (k != row[1] && k != row[3]) { return; }
+    int h = int(1u << k);
+    metal::int4 w = metal::int4(int(row[28] << 16u) >> 16, int(row[28]) >> 16, int(row[29] << 16u) >> 16, int(row[29]) >> 16);
+    int x0 = metal::max(((p.x - 1) * (2 * h) + h) >> 1, w.x), y0 = metal::max(((p.y - 1) * (2 * h) + h) >> 1, w.y);
+    int x1 = metal::min((p.z * (2 * h) + h) >> 1, w.z), y1 = metal::min((p.w * (2 * h) + h) >> 1, w.w);
+    if (x0 >= x1 || y0 >= y1) { return; }
+    uint z = row[0];
+    uint tx0 = uint(metal::max(x0, 0)) >> 5u, ty0 = uint(metal::max(y0, 0)) >> 5u, tx1 = metal::min((uint(metal::max(x1, 0)) + 31u) >> 5u, TX), ty1 = metal::min((uint(metal::max(y1, 0)) + 31u) >> 5u, TY);
+    for (uint ty = ty0; ty < ty1; ty++) {
+        for (uint tx = tx0; tx < tx1; tx++) {
+            uint t = ty * TX + tx;
+            metal::atomic_fetch_min_explicit(&KT[4u * t], z, metal::memory_order_relaxed); // reach lowers the tile key
+            metal::atomic_fetch_max_explicit(&KT[4u * t + 1u], z + 1u, metal::memory_order_relaxed);
+            if (z >= metal::atomic_load_explicit(&KT[4u * t + 3u], metal::memory_order_relaxed)) { metal::atomic_store_explicit(&KT[4u * t + 2u], gen, metal::memory_order_relaxed); }
+        }
+    }
+}
+// `Scene::seg`: the entries of tile t beneath key zb, started at the topmost layer record whose level 0
+// holds the whole tile. (from, to, init)
+static metal::uint3 rs_seg(const device uint* TILES, const device uint* LIST, const device uint* LT, const device uint* LAYOF, uint t, uint zb, uint TX, uint fw, uint fh) {
+    uint off = TILES[2u * t], to = TILES[2u * t + 1u] & 0x3FFFFFFFu;
+    int ox = int(t % TX) * 32, oy = int(t / TX) * 32, x1 = metal::min(ox + 32, int(fw)), y1 = metal::min(oy + 32, int(fh));
+    while (to > 0u && LIST[off + to - 1u] >= zb) { to--; }
+    for (uint j = to; j > 0u; j--) {
+        uint lid = LAYOF[LIST[off + j - 1u]];
+        if (lid == 0xFFFFFFFFu) { continue; }
+        metal::int4 h = fx_rect(LT, lid, 0u);
+        if (h.x <= ox && h.y <= oy && h.z >= x1 && h.w >= y1) { return metal::uint3(j - 1u, to, lid); }
+    }
+    return metal::uint3(0u, to, 0xFFFFFFFFu);
+}
+"#;
+const FX_RES_KERNELS: &str = r#"
+// level 0: a prefix tile is due when an event beneath its record touched the tile (and no opaque cover of
+// the whole tile lies between every event and the record), or by rule
+kernel void k_rc0(const device uint* META [[buffer(1)]], const device uint* WINS [[buffer(3)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]],
+                  const device uint* LT [[buffer(14)]], const device uint* LAYOF [[buffer(16)]], device uint* JOBS [[buffer(17)]], const device uint* SL [[buffer(19)]],
+                  const device uint* LB [[buffer(20)]], device metal::atomic_uint* CHG [[buffer(21)]], const device uint* FORCE [[buffer(22)]], device metal::atomic_uint* KT [[buffer(23)]],
+                  device metal::atomic_uint* ARGS [[buffer(24)]], const device uint* RP [[buffer(26)]], const device uint* STG [[buffer(27)]], metal::uint3 gid [[thread_position_in_grid]]) {
+    if (gid.x >= STG[1]) { return; }
+    uint s = STG[0] + gid.x, gen = RP[0], lid = SL[s] & 0xFFFFFFu, TX = META[3];
+    metal::int2 b;
+    if (!rs_block(LT, lid, 0u, s - LB[lid * 8u], b)) { return; }
+    uint t = uint(b.y) * TX + uint(b.x), zl = LT[lid * 32u];
+    bool forced = RP[2] != 0u || FORCE[s] == gen;
+    if (!forced && metal::atomic_load_explicit(&KT[4u * t], metal::memory_order_relaxed) >= zl) { return; } // no event beneath
+    metal::uint3 sg = rs_seg(TILES, LIST, LT, LAYOF, t, zl, TX, META[0], META[1]);
+    if (!forced) {
+        uint k1 = metal::atomic_load_explicit(&KT[4u * t + 1u], metal::memory_order_relaxed), off = TILES[2u * t];
+        int ox = int(t % TX) * 32, oy = int(t / TX) * 32;
+        for (uint j = sg.y; j > 0u; j--) {
+            uint z = LIST[off + j - 1u];
+            if (z < k1) { break; }
+            metal::int4 c = unpack_win(WINS[4u * z + 2u], WINS[4u * z + 3u]);
+            if (c.x <= ox && c.y <= oy && c.z >= ox + 32 && c.w >= oy + 32) { return; } // every event is under this cover
+        }
+    } else {
+        metal::atomic_store_explicit(&CHG[s], gen, metal::memory_order_relaxed);
+    }
+    uint j = metal::atomic_fetch_add_explicit(&ARGS[0], 1u, metal::memory_order_relaxed);
+    device uint* J = JOBS + j * 8u;
+    J[0] = t; J[1] = sg.x; J[2] = sg.y; J[3] = sg.z; J[4] = lid; J[5] = s; J[6] = uint(forced);
+}
+// level k, a thread per pixel of every slot's block: a pixel is due when a block beneath that its taps
+// touch changed, or by rule; it compares before it writes, stamps its block changed, and (at a level the
+// record reads) marks the tiles its change reaches
+kernel void k_downr(const device uint* META [[buffer(1)]], device uint* POOL [[buffer(13)]], const device uint* LT [[buffer(14)]], const device uint* SL [[buffer(19)]],
+                    const device uint* LB [[buffer(20)]], device metal::atomic_uint* CHG [[buffer(21)]], const device uint* FORCE [[buffer(22)]], device metal::atomic_uint* KT [[buffer(23)]],
+                    const device uint* RP [[buffer(26)]], const device uint* STG [[buffer(27)]], metal::uint3 wg [[threadgroup_position_in_grid]], metal::uint3 tp [[thread_position_in_threadgroup]]) {
+    uint s = STG[0] + wg.x, gen = RP[0], lid = SL[s] & 0xFFFFFFu, k = STG[2], bs = 5u - k;
+    metal::int2 b;
+    if (!rs_block(LT, lid, k, s - LB[lid * 8u + k], b)) { return; }
+    int x = (b.x << bs) + int(tp.x), y = (b.y << bs) + int(tp.y);
+    metal::int4 r = fx_rect(LT, lid, k);
+    if (x < r.x || x >= r.z || y < r.y || y >= r.w) { return; }
+    bool forced = RP[2] != 0u || FORCE[s] == gen, due = forced;
+    int s1 = int(bs) + 1;
+    for (int by = (2 * y - 1) >> s1; by <= (2 * y + 2) >> s1 && !due; by++) {
+        for (int bx = (2 * x - 1) >> s1; bx <= (2 * x + 2) >> s1 && !due; bx++) { // the blocks beneath that the taps touch
+            uint q = rs_slot(LT, LB, lid, k - 1u, bx, by);
+            due = q != 0xFFFFFFFFu && metal::atomic_load_explicit(&CHG[q], metal::memory_order_relaxed) == gen;
+        }
+    }
+    if (!due) { return; }
+    int sw = bd_dim(FRAMEW, k - 1u), sh = bd_dim(FRAMEH, k - 1u);
+    metal::uint4 rows[4];
+    for (int j = 0; j < 4; j++) {
+        int sy = metal::clamp(2 * y + j - 1, 0, sh - 1);
+        rows[j] = dn_row(POOL[fx_at(LT, lid, k - 1u, metal::clamp(2 * x - 1, 0, sw - 1), sy)], POOL[fx_at(LT, lid, k - 1u, metal::clamp(2 * x, 0, sw - 1), sy)],
+                         POOL[fx_at(LT, lid, k - 1u, metal::clamp(2 * x + 1, 0, sw - 1), sy)], POOL[fx_at(LT, lid, k - 1u, metal::clamp(2 * x + 2, 0, sw - 1), sy)]);
+    }
+    uint at = fx_at(LT, lid, k, x, y), w = dn_fin(rows[0], rows[1], rows[2], rows[3]);
+    bool ch = POOL[at] != w;
+    if (ch) { POOL[at] = w; }
+    if (ch || forced) {
+        metal::atomic_store_explicit(&CHG[s], gen, metal::memory_order_relaxed); // block stamps changed
+        rs_mark(KT, LT, lid, k, metal::int4(x, y, x + 1, y + 1), META[3], META[4], gen);
+    }
+}
+// the output: the tiles damaged after the frame the surface last showed
+kernel void k_rcout(const device uint* META [[buffer(1)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]], const device uint* LT [[buffer(14)]],
+                    const device uint* LAYOF [[buffer(16)]], device uint* JOBS [[buffer(17)]], device metal::atomic_uint* KT [[buffer(23)]], device metal::atomic_uint* ARGS [[buffer(24)]],
+                    const device uint* RP [[buffer(26)]], metal::uint3 gid [[thread_position_in_grid]]) {
+    uint t = gid.x, TX = META[3];
+    if (t >= TX * META[4]) { return; }
+    if (RP[2] == 0u && metal::atomic_load_explicit(&KT[4u * t + 2u], metal::memory_order_relaxed) <= RP[1]) { return; }
+    metal::uint3 sg = rs_seg(TILES, LIST, LT, LAYOF, t, 0xFFFFFFFFu, TX, META[0], META[1]);
+    uint j = metal::atomic_fetch_add_explicit(&ARGS[0], 1u, metal::memory_order_relaxed);
+    device uint* J = JOBS + j * 8u;
+    J[0] = t; J[1] = sg.x; J[2] = sg.y; J[3] = sg.z; J[4] = 0xFFFFFFFFu; J[5] = 0u; J[6] = 0u;
+}
+// the frame's events are spent
+kernel void k_rfin(const device uint* META [[buffer(1)]], device metal::atomic_uint* KT [[buffer(23)]], metal::uint3 gid [[thread_position_in_grid]]) {
+    if (gid.x >= META[3] * META[4]) { return; }
+    metal::atomic_store_explicit(&KT[4u * gid.x], 0xFFFFFFFFu, metal::memory_order_relaxed);
+    metal::atomic_store_explicit(&KT[4u * gid.x + 1u], 0u, metal::memory_order_relaxed);
+}
+"#;
+
 /// The whole shader: naga's MSL of the leaves, the archetypes' functions, the five kernels.
 /// `tab`: the corner tables' first word in the arena.
 pub fn source(descs: &[&Desc], lays: &[(usize, usize)], tab: usize) -> String {
@@ -194,11 +348,15 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
 "#,
     );
 
+    s.push_str(FX_RES);
     // ---- shade: `k_shade` (a whole tile program per damaged tile, into the surface) and `k_seg` (the
     // ---- staged frame's jobs: a range of a tile's list, from a stored prefix or from nothing, into the
     // ---- surface or into a layer's level 0) are one body ----
-    for seg in [false, true] {
-        s.push_str(if seg { "\nkernel void k_seg(" } else { "\nkernel void k_shade(" });
+    for variant in 0..3 {
+        // 0: `k_shade`; 1: `k_seg`; 2: `k_segr` (the resident plan's: a prefix job compares before it writes
+        // and stamps its block changed)
+        let seg = variant > 0;
+        s.push_str(["\nkernel void k_shade(", "\nkernel void k_seg(", "\nkernel void k_segr(device metal::atomic_uint* CHG [[buffer(21)]], device metal::atomic_uint* KT [[buffer(23)]], const device uint* RP [[buffer(26)]], "][variant]);
         s.push_str(
             r#"const device uint* COLS [[buffer(0)]], const device uint* META [[buffer(1)]], const device uint* ORDER [[buffer(2)]],
                     const device uint* WINS [[buffer(3)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]],
@@ -266,16 +424,33 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
     } else {
         // a prefix job: the pixels of the layer's level 0 (its window is cut to the frame)
         metal::int4 r = fx_rect(LT, dest, 0u);
-        if (x_in(r, x, y)) { POOL[fx_at(LT, dest, 0u, x, y)] = x_store(a0); }
+"#,
+        );
+        s.push_str(if variant == 2 {
+            r#"        bool ch = false;
+        if (x_in(r, x, y)) { uint at = fx_at(LT, dest, 0u, x, y), w = x_store(a0); if (POOL[at] != w) { POOL[at] = w; ch = true; } }
+        if (x_in(r, x + 1, y)) { uint at = fx_at(LT, dest, 0u, x + 1, y), w = x_store(a1); if (POOL[at] != w) { POOL[at] = w; ch = true; } }
+        if (x_in(r, x, y + 1)) { uint at = fx_at(LT, dest, 0u, x, y + 1), w = x_store(a2); if (POOL[at] != w) { POOL[at] = w; ch = true; } }
+        if (x_in(r, x + 1, y + 1)) { uint at = fx_at(LT, dest, 0u, x + 1, y + 1), w = x_store(a3); if (POOL[at] != w) { POOL[at] = w; ch = true; } }
+        if (ch || J[6] != 0u) {
+            metal::atomic_store_explicit(&CHG[J[5]], RP[0], metal::memory_order_relaxed); // prefix stamps changed
+            rs_mark(KT, LT, dest, 0u, metal::int4(x, y, x + 2, y + 2), TX, META[4], RP[0]);
+        }
+    }
+}
+"#
+        } else {
+            r#"        if (x_in(r, x, y)) { POOL[fx_at(LT, dest, 0u, x, y)] = x_store(a0); }
         if (x_in(r, x + 1, y)) { POOL[fx_at(LT, dest, 0u, x + 1, y)] = x_store(a1); }
         if (x_in(r, x, y + 1)) { POOL[fx_at(LT, dest, 0u, x, y + 1)] = x_store(a2); }
         if (x_in(r, x + 1, y + 1)) { POOL[fx_at(LT, dest, 0u, x + 1, y + 1)] = x_store(a3); }
     }
 }
-"#,
-        );
+"#
+        });
     }
     s.push_str(FX_DOWN);
+    s.push_str(FX_RES_KERNELS);
 
     // ---- pick: against the block the surface shows (the old one) ----
     s.push_str(
@@ -431,6 +606,25 @@ pub struct GpuTime {
     pub gpu: f64,
 }
 
+/// The resident plan's CPU side (`Gpu::resident`).
+#[derive(Default)]
+struct Res {
+    /// The lanes and tile lists in buffers 3 to 5 are this path's mirror of the scene's.
+    mirrored: bool,
+    /// Per tile: its slab in buffer 5 (first word, capacity), and the words used.
+    slab: Vec<(u32, u32)>,
+    used: u32,
+    /// The layers' storage the slots were made for.
+    alloc: Option<u64>,
+    rank: Vec<u32>,
+    /// Layer * 8 + level -> first slot.
+    lb: Vec<u32>,
+    /// (level, or `u32::MAX` for a rank's reach pass; slots; first slot), in order.
+    stages: Vec<(u32, u32, u32)>,
+    nslots: usize,
+    era: u32,
+}
+
 pub struct Gpu {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
@@ -448,7 +642,10 @@ pub struct Gpu {
     /// 7 output, 8 atlas, 9 damage, 10 pick, 11 rewritten records (a bit per key), 12 table jobs; the staged
     /// frame's: 13 the layers' pool (this executor's own retained copy), 14 the layer table, 15 the media
     /// pool (the scene's, no copy), 16 layer of key, 17 jobs.
-    bufs: [Option<Buf>; 19],
+    bufs: [Option<Buf>; 28],
+    /// The resident plan's kernels and state (`resident`).
+    rk: [Pso; 5],
+    res: Res,
     /// The scene's layer pool this executor wrapped (null: none yet).
     pool: *const u32,
     /// The whole frame as resident jobs (buffer 18): the bins and layer table they were made for, and
@@ -518,6 +715,7 @@ impl Gpu {
         };
         let (shade, pick, bin, compact, tab) = (pso("k_shade"), pso("k_pick"), pso("k_bin"), pso("k_compact"), pso("k_tab"));
         let (seg, down) = (pso("k_seg"), pso("k_down"));
+        let rk = [pso("k_rc0"), pso("k_segr"), pso("k_downr"), pso("k_rcout"), pso("k_rfin")];
         let win: Vec<Pso> = (0..scene.cols.len()).map(|k| pso(&format!("k_win{k}"))).collect();
         let compile_s = t.elapsed().as_secs_f64();
         let nt = scene.tx * scene.ty;
@@ -531,6 +729,8 @@ impl Gpu {
             tab,
             seg,
             down,
+            rk,
+            res: Res::default(),
             media: scene.media.arena().ptr(),
             pool: std::ptr::null(),
             full: None,
@@ -565,7 +765,7 @@ impl Gpu {
         // (the scene outlives the executor; a source writes only leased slots, which no record names).
         let media = unsafe { g.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(scene.media.arena().ptr() as *mut std::ffi::c_void)?, scene.media.arena().bytes(), MTLResourceOptions::StorageModeShared, None) }?;
         g.bufs[15] = Some(media);
-        for i in [12, 13, 14, 16, 17] {
+        for i in [12, 13, 14, 16, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27] {
             g.buf(i, 64);
         }
         g.buf(1, (M_LEN + scene.cols.len() + 16) * 4);
@@ -628,7 +828,7 @@ impl Gpu {
         self.first = true;
     }
     fn bind(&self, enc: &ProtocolObject<dyn MTLComputeCommandEncoder>, out: Option<&Buf>) {
-        for i in 0..18 {
+        for i in 0..28 {
             let b = if i == 7 { out.or(self.bufs[7].as_ref()) } else { self.bufs[i].as_ref() };
             // SAFETY: each buffer is alive for the frame and bound at the index the source reads.
             unsafe { enc.setBuffer_offset_atIndex(b.map(|b| &**b), 0, i) };
@@ -721,6 +921,7 @@ impl Gpu {
         assert!(std::ptr::eq(self.media, scene.media.arena().ptr()), "the scene's media pool was replaced after the executor was made");
         assert!(tiles.iter().all(|&t| (t as usize) < self.nt));
         if self.seen_bins != Some(scene.bins_epoch) {
+            self.res.mirrored = false;
             let (list, off) = scene.bins.csr();
             self.buf(5, list.len().max(1) * 4);
             self.words_mut(5)[..list.len()].copy_from_slice(&list);
@@ -866,6 +1067,324 @@ impl Gpu {
         // the resident lanes were not kept up: a later `frame` starts over
         self.first = true;
         GpuTime { wall: t.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }
+    }
+
+    /// The resident frame for a scene with layers: the same dispatches whatever changed, with the schedule
+    /// decided on the GPU (see `FX_RES`). The CPU's part is the damage: per tile the least and greatest key
+    /// of this frame's events and a generation stamp for `tiles` (the scene's output damage), stamps for
+    /// blocks whose storage holds nothing yet, and the tile lists, lanes and table rows that changed.
+    /// Call once for every `update` of the scene (not `update_eager`; the scene may have `route_off` set),
+    /// in place of `prepare` + `shade` or `staged`. `since`: draw the tiles damaged after that generation
+    /// (`None`: repair the layers, draw nothing); pass the generation this call returned when the surface
+    /// was last drawn. Returns the time and this frame's generation.
+    pub fn resident(&mut self, scene: &mut Scene, u: &U, tiles: &[u32], since: Option<u32>, stride: usize) -> (GpuTime, u32) {
+        assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
+        assert!(std::ptr::eq(self.media, scene.media.arena().ptr()), "the scene's media pool was replaced after the executor was made");
+        assert!(scene.order.len() == self.nz, "records were pushed: call `sync`");
+        let (nt, tx, ty) = (self.nt, scene.tx, scene.ty);
+        let whole = !self.res.mirrored;
+        // ---- the lanes: every key once, then the keys that changed ----
+        let lanes = scene.take_lane_dirty();
+        let put = |w: &mut [u32], scene: &Scene, z: usize| {
+            let (h, a0, c) = (scene.halo[z], scene.win[z], scene.cover[z]);
+            let a = if h[0] >= h[2] { a0 } else if a0[0] >= a0[2] { h } else { [a0[0].min(h[0]), a0[1].min(h[1]), a0[2].max(h[2]), a0[3].max(h[3])] };
+            let p = |v: [i16; 4]| ((v[0] as u16 as u32) | (v[1] as u16 as u32) << 16, (v[2] as u16 as u32) | (v[3] as u16 as u32) << 16);
+            ((w[4 * z], w[4 * z + 1]), (w[4 * z + 2], w[4 * z + 3])) = (p(a), p(c));
+        };
+        match lanes {
+            Some(keys) if !whole => {
+                let w = self.words_mut(3);
+                keys.iter().for_each(|&z| put(w, scene, z as usize));
+            }
+            _ => {
+                let w = self.words_mut(3);
+                (0..scene.win.len()).for_each(|z| put(w, scene, z));
+            }
+        }
+        // ---- the tile lists: a slab per tile, rewritten where the bins changed ----
+        let changed = scene.bins.take_changed();
+        self.buf(23, nt * 16);
+        if whole || self.res.slab.len() != nt {
+            if self.res.slab.len() != nt {
+                self.words_mut(23).chunks_exact_mut(4).for_each(|k| k.copy_from_slice(&[u32::MAX, 0, 0, 0]));
+            }
+            self.res_lists(scene, None);
+        } else if !changed.is_empty() && !cfg!(feature = "mutant_slab_stale") {
+            self.res_lists(scene, Some(&changed));
+        }
+        self.seen_bins = None;
+        self.full = None;
+        // ---- the layers: the table rows that changed; slots when storage or the stage order changed ----
+        if let Some(a) = scene.layers.pool.arena() {
+            if !std::ptr::eq(self.pool, a.ptr()) {
+                // SAFETY: page-aligned whole pages owned by the scene, which outlives the executor; the CPU
+                // writes it only between this executor's calls (each waits for the GPU).
+                self.bufs[13] = unsafe { self.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(a.ptr() as *mut std::ffi::c_void).expect("pool"), a.bytes(), MTLResourceOptions::StorageModeShared, None) };
+                self.pool = a.ptr();
+            }
+        }
+        let moved = scene.layers.take_moved();
+        let mut reslot = self.res.alloc != Some(scene.layers.alloc_epoch) || whole;
+        let mut row = Vec::new();
+        match &moved {
+            Some(m) if !reslot => {
+                for &lid in m {
+                    scene.layers.row(lid, &mut row);
+                    self.words_mut(14)[lid as usize * crate::layer::ROW..][..row.len()].copy_from_slice(&row);
+                    // the stage order still holds if the layer's rank is between those of its neighbours
+                    let (r, me) = (scene.layers.list[lid as usize].lv[0].r, self.res.rank[lid as usize]);
+                    for y in (r[1] >> 5).max(0)..((r[3] + 31) >> 5).min(ty as i32) {
+                        for x in (r[0] >> 5).max(0)..((r[2] + 31) >> 5).min(tx as i32) {
+                            for &lz in scene.bins.layers(y as usize * tx + x as usize) {
+                                let o = scene.layers.of[lz as usize];
+                                reslot |= (o < lid && self.res.rank[o as usize] >= me) || (o > lid && self.res.rank[o as usize] <= me);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => reslot = true,
+        }
+        if reslot {
+            self.res_slots(scene);
+        }
+        if reslot {
+            self.buf(16, self.nz.max(16) * 4);
+            let nz = self.nz;
+            let lo = self.words_mut(16);
+            lo[..nz].fill(u32::MAX);
+            lo[..scene.layers.of.len().min(nz)].copy_from_slice(&scene.layers.of[..scene.layers.of.len().min(nz)]);
+        }
+        self.seen_lay = None;
+        // ---- this frame's generation; what is due by rule; the events; the output damage ----
+        self.res.era += 1;
+        let era = self.res.era;
+        let all = scene.plan.full;
+        let dues = scene.take_dues();
+        if !all && !cfg!(feature = "mutant_forced") {
+            let lb = std::mem::take(&mut self.res.lb);
+            let force = self.words_mut(22);
+            for (lid, due) in &dues {
+                let l = &scene.layers.list[*lid as usize];
+                for k in 0..=l.top as usize {
+                    let (v, bs) = (&l.lv[k], crate::layer::bshift(k as u32));
+                    if v.empty() {
+                        continue;
+                    }
+                    let capw = ((v.cw + (1 << bs) - 1) >> bs) + 1;
+                    let (bx0, by0, base) = (v.r[0] >> bs, v.r[1] >> bs, lb[*lid as usize * 8 + k]);
+                    let whole_level = [v.r];
+                    let rects: &[[i32; 4]] = if due.fresh { &whole_level } else { &due.entered[k] };
+                    for e in rects {
+                        let e = crate::layer::cut(*e, v.r);
+                        if e[0] >= e[2] || e[1] >= e[3] {
+                            continue;
+                        }
+                        let m = (1 << bs) - 1;
+                        for by in e[1] >> bs..(e[3] + m) >> bs {
+                            for bx in e[0] >> bs..(e[2] + m) >> bs {
+                                force[(base + (by - by0) as u32 * capw + (bx - bx0) as u32) as usize] = era;
+                            }
+                        }
+                    }
+                }
+            }
+            self.res.lb = lb;
+        }
+        let kt = self.words_mut(23);
+        for &(w, z) in scene.events() {
+            for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty as i32) {
+                for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx as i32) {
+                    let t = (y as usize * tx + x as usize) * 4;
+                    (kt[t], kt[t + 1]) = (kt[t].min(z), kt[t + 1].max(z + 1));
+                }
+            }
+        }
+        for &t in tiles {
+            kt[t as usize * 4 + 2] = era;
+        }
+        let nstages = self.res.stages.len();
+        let args = self.words_mut(24);
+        for i in 0..=nstages {
+            args[8 * i] = 0;
+        }
+        self.words_mut(26)[..4].copy_from_slice(&[era, since.unwrap_or(era), all as u32, since.is_some() as u32]);
+        let m = self.words_mut(1);
+        m[2] = stride as u32;
+        m[M_UNEW..M_UNEW + 64].copy_from_slice(&u.w);
+        // ---- the same commands every frame ----
+        let t = std::time::Instant::now();
+        // Every buffer and pipeline the commands name is owned by `self` (or wraps the scene's memory, which
+        // outlives `self`) and the command buffer is waited for before this call returns, so nothing it
+        // references can be released while it runs: it need not retain them.
+        let cmd = self.queue.commandBufferWithUnretainedReferences().expect("command buffer");
+        let enc = cmd.computeCommandEncoder().expect("encoder");
+        self.bind(&enc, None);
+        let g16 = MTLSize { width: 16, height: 16, depth: 1 };
+        let g64 = MTLSize { width: 64, height: 1, depth: 1 };
+        let args_buf = self.bufs[24].as_ref().unwrap();
+        // SAFETY (the buffer offsets below): buffer 24 holds eight words per stage and for one more (count,
+        // 1, 1, first slot, slots, level): index 24 sees a stage's count, index 27 its slots. Buffer 25 holds
+        // eight words for every slot of the largest stage and for every tile.
+        unsafe {
+            enc.setBuffer_offset_atIndex(self.bufs[25].as_deref(), 0, 17);
+            enc.setBuffer_offset_atIndex(Some(args_buf), 12, 27);
+        }
+        for (i, st) in self.res.stages.iter().enumerate() {
+            unsafe {
+                enc.setBufferOffset_atIndex(32 * i, 24);
+                enc.setBufferOffset_atIndex(32 * i + 12, 27);
+            }
+            if st.0 == 0 {
+                enc.setComputePipelineState(&self.rk[0]);
+                enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: (st.1 as usize).div_ceil(64), height: 1, depth: 1 }, g64);
+                enc.setComputePipelineState(&self.rk[1]);
+                unsafe { enc.dispatchThreadgroupsWithIndirectBuffer_indirectBufferOffset_threadsPerThreadgroup(args_buf, 32 * i, g16) };
+            } else {
+                // a threadgroup per slot, a thread per pixel of its block
+                let side = 32usize >> st.0;
+                enc.setComputePipelineState(&self.rk[2]);
+                enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: st.1 as usize, height: 1, depth: 1 }, MTLSize { width: side, height: side, depth: 1 });
+            }
+        }
+        if since.is_some() {
+            unsafe { enc.setBufferOffset_atIndex(32 * nstages, 24) };
+            enc.setComputePipelineState(&self.rk[3]);
+            enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: nt.div_ceil(64), height: 1, depth: 1 }, g64);
+            enc.setComputePipelineState(&self.rk[1]);
+            unsafe { enc.dispatchThreadgroupsWithIndirectBuffer_indirectBufferOffset_threadsPerThreadgroup(args_buf, 32 * nstages, g16) };
+        }
+        enc.setComputePipelineState(&self.rk[4]);
+        enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: nt.div_ceil(64), height: 1, depth: 1 }, g64);
+        enc.endEncoding();
+        cmd.commit();
+        cmd.waitUntilCompleted();
+        // the other paths' resident lanes were not kept up
+        self.first = true;
+        (GpuTime { wall: t.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }, era)
+    }
+    /// What the last `resident` frame ran, read from the stages' counters after the fact (a report; nothing
+    /// is scheduled from it): prefix jobs, pyramid blocks, output tiles, dispatches encoded.
+    pub fn resident_stats(&self) -> [u32; 4] {
+        let args = self.words(24);
+        let mut st = [0u32; 4];
+        for (i, s) in self.res.stages.iter().enumerate() {
+            if s.0 == 0 {
+                st[0] += args[8 * i];
+            }
+        }
+        st[2] = args[8 * self.res.stages.len()];
+        st[3] = self.resident_dispatches() as u32;
+        st
+    }
+    /// Dispatches a resident frame encodes (0 before the first one).
+    pub fn resident_dispatches(&self) -> usize {
+        if self.res.stages.is_empty() { 0 } else { self.res.stages.iter().map(|s| if s.0 == 0 { 2 } else { 1 }).sum::<usize>() + 3 }
+    }
+    /// Ranks in the resident plan's stage order, and its slots.
+    pub fn resident_shape(&self) -> (u32, usize) {
+        (self.res.rank.iter().copied().max().map_or(0, |r| r + 1), self.res.nslots)
+    }
+    /// The slots: every (layer, level, block its storage can hold), ordered by (rank, level).
+    fn res_slots(&mut self, scene: &Scene) {
+        let ls = &scene.layers;
+        let rank = ls.ranks(scene.tx, scene.ty);
+        let mut tab = Vec::new();
+        ls.table(&mut tab);
+        let nl = ls.list.len();
+        let mut by_rank: Vec<u32> = (0..nl as u32).collect();
+        by_rank.sort_by_key(|&l| rank[l as usize]);
+        let (mut sl, mut lb, mut stages): (Vec<u32>, Vec<u32>, Vec<(u32, u32, u32)>) = (Vec::new(), vec![0; nl * 8], Vec::new());
+        let mut i = 0;
+        let mut most = 0;
+        while i < nl {
+            let j = i + by_rank[i..].iter().take_while(|&&l| rank[l as usize] == rank[by_rank[i] as usize]).count();
+            for k in 0..crate::layer::LEVELS {
+                let at = sl.len();
+                for &lid in &by_rank[i..j] {
+                    let l = &ls.list[lid as usize];
+                    if k as u32 > l.top {
+                        continue;
+                    }
+                    let (v, bs) = (&l.lv[k], crate::layer::bshift(k as u32));
+                    let n = (((v.cw + (1 << bs) - 1) >> bs) + 1) * (((v.ch + (1 << bs) - 1) >> bs) + 1);
+                    lb[lid as usize * 8 + k] = sl.len() as u32;
+                    sl.extend(std::iter::repeat_n(lid | (k as u32) << 24, n as usize));
+                }
+                if sl.len() > at {
+                    stages.push((k as u32, (sl.len() - at) as u32, at as u32));
+                    most = most.max(sl.len() - at);
+                }
+            }
+            i = j;
+        }
+        let ns = sl.len();
+        self.buf(14, tab.len().max(16) * 4);
+        self.words_mut(14)[..tab.len()].copy_from_slice(&tab);
+        self.buf(19, ns.max(4) * 4);
+        self.words_mut(19)[..ns].copy_from_slice(&sl);
+        self.buf(20, lb.len().max(4) * 4);
+        self.words_mut(20)[..lb.len()].copy_from_slice(&lb);
+        for b in [21, 22] {
+            self.buf(b, ns.max(4) * 4);
+            self.words_mut(b).fill(0);
+        }
+        self.buf(24, (stages.len() + 1) * 32);
+        let sw = self.words_mut(24);
+        sw.chunks_exact_mut(8).for_each(|a| a.copy_from_slice(&[0, 1, 1, 0, 0, 0, 0, 0]));
+        for (i, s) in stages.iter().enumerate() {
+            sw[8 * i + 3..8 * i + 6].copy_from_slice(&[s.2, s.1, s.0]);
+        }
+        self.buf(25, most.max(self.nt).max(1) * 32);
+        self.res.alloc = Some(ls.alloc_epoch);
+        (self.res.rank, self.res.lb, self.res.stages, self.res.nslots) = (rank, lb, stages, ns);
+    }
+    /// The tile lists as slabs in buffer 5: all of them (`None`), or the tiles that changed (rewritten in
+    /// place while they fit, moved to the end otherwise; everything is repacked when the end is reached).
+    fn res_lists(&mut self, scene: &Scene, changed: Option<&[u32]>) {
+        let nt = self.nt;
+        if let Some(ch) = changed {
+            let mut slab = std::mem::take(&mut self.res.slab);
+            let mut used = self.res.used;
+            let cap = self.words(5).len() as u32;
+            let mut ok = true;
+            for &t in ch {
+                let l = scene.bins.tile(t as usize);
+                if l.len() as u32 > slab[t as usize].1 {
+                    let c = l.len() as u32 * 3 / 2 + 4;
+                    if used + c > cap {
+                        ok = false;
+                        break;
+                    }
+                    slab[t as usize] = (used, c);
+                    used += c;
+                }
+                let off = slab[t as usize].0 as usize;
+                self.words_mut(5)[off..off + l.len()].copy_from_slice(l);
+                let th = self.words_mut(4);
+                (th[2 * t as usize], th[2 * t as usize + 1]) = (off as u32, l.len() as u32);
+                self.words_mut(23)[4 * t as usize + 3] = scene.bins.floor[t as usize];
+            }
+            (self.res.slab, self.res.used) = (slab, used);
+            if ok {
+                return;
+            }
+        }
+        let total = scene.bins.total();
+        self.buf(5, (total * 2 + nt * 8) * 4);
+        let mut slab = Vec::with_capacity(nt);
+        let mut used = 0u32;
+        for t in 0..nt {
+            let l = scene.bins.tile(t);
+            let c = l.len() as u32 * 3 / 2 + 4;
+            self.words_mut(5)[used as usize..used as usize + l.len()].copy_from_slice(l);
+            let th = self.words_mut(4);
+            (th[2 * t], th[2 * t + 1]) = (used, l.len() as u32);
+            self.words_mut(23)[4 * t + 3] = scene.bins.floor[t];
+            slab.push((used, c));
+            used += c;
+        }
+        (self.res.slab, self.res.used, self.res.mirrored) = (slab, used, true);
     }
 
     /// A GPU-resident frame. The CPU's whole part is here: store the block and the pointer, encode the fixed

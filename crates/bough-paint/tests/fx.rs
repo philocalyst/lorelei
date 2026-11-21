@@ -513,6 +513,94 @@ fn the_stored_prefix_never_changes_pixels() {
     assert_eq!(diff(&frames[0], &frames[1]), 0);
 }
 
+/// R1 (slice 7): the resident plan. The same dispatches every frame, the schedule decided on the GPU from
+/// the frame's events, nothing read back: retained across the steps, drawn into a surface that is shown only
+/// every 1st to 4th frame (the tiles damaged since it was last drawn are a comparison of generations), it
+/// writes the words a fresh CPU redraw writes. With and without the scene routing events itself. Then source
+/// mutations of the plan's kernels, each of which must be seen.
+#[cfg(target_os = "macos")]
+#[test]
+fn gpu_resident_plan_equals_the_cpu() {
+    use bough_paint::metal::{Gpu, source_fx};
+    let (fw, fh) = (320u32, 250u32);
+    let stride = fw as usize + 3;
+    let words = stride * fh as usize;
+    let pool = Pool::new(2);
+    // Every `unsafe { Gpu::.. }` below: the scene is declared before the executor and outlives it; the arena
+    // and the media pool are written only between the executor's calls, each of which waits for the GPU.
+    let run = |seed: u64, src: Option<&dyn Fn(&str) -> String>| -> Option<(usize, [u32; 4], usize)> {
+        let mut wd = world(seed, fw, fh);
+        let mut b = build(&wd, fw, fh);
+        b.s.route_off = seed % 2 == 0;
+        let mut gpu = match src {
+            None => unsafe { Gpu::new(&b.s, words, 256) }?,
+            Some(f) => {
+                let descs: Vec<&bough_paint::scene::Desc> = b.s.cols().iter().map(|c| c.desc).collect();
+                let lays: Vec<(usize, usize)> = b.s.cols().iter().map(|c| (c.base, c.desc.words)).collect();
+                let good = source_fx(&descs, &lays, b.s.tab_region().0, (fw, fh), b.s.media.words().len());
+                let bad = f(&good);
+                assert!(bad != good, "the mutation did not apply");
+                unsafe { Gpu::with_source(&b.s, words, 256, &bad) }?
+            }
+        };
+        let age = 1 + (seed as usize / 2) % 4;
+        let mut g = Rng(seed * 131 + 7);
+        let mut u = block(&mut g);
+        let mut kept = vec![0u32; words];
+        let (mut bad, mut ran, mut shown, mut drawn) = (0, [0u32; 4], 0u32, 0);
+        for k in 0..STEPS {
+            let name = if k == 0 { "mount" } else { step(&mut g, k, &mut u, &mut wd, &mut b) };
+            b.s.update(&u);
+            let mut tiles = Vec::new();
+            b.s.damage.tiles(&mut tiles);
+            b.s.damage.clear();
+            let draw = k % age == 0 || k + 1 == STEPS;
+            let (_, era) = gpu.resident(&mut b.s, &u, &tiles, draw.then_some(shown), stride);
+            b.s.media.reclaim();
+            for (a, n) in ran.iter_mut().zip(gpu.resident_stats()) {
+                *a += n;
+            }
+            if !draw {
+                continue;
+            }
+            (shown, drawn) = (era, drawn + 1);
+            build(&wd, fw, fh).s.frame(&u, &mut kept, stride, &pool, 0);
+            let d = diff(gpu.out(words), &kept);
+            if d != 0 && src.is_none() {
+                eprintln!("seed {seed} step {k} ({name}), surface age {age}: resident gpu differs from cpu in {d} words");
+            }
+            bad += (d != 0) as usize;
+        }
+        Some((bad, ran, drawn))
+    };
+    let (mut bad, mut ran, mut drawn) = (0, [0u32; 4], 0);
+    for seed in 0..seeds().max(8) {
+        let Some((b, r, d)) = run(seed, None) else {
+            eprintln!("no Metal device: skipped");
+            return;
+        };
+        bad += b;
+        drawn += d;
+        ran.iter_mut().zip(r).for_each(|(a, n)| *a += n);
+    }
+    eprintln!("fx gpu resident: {} scenes x {STEPS} steps, {drawn} drawn frames at surface ages 1..4; ran {} prefix jobs and {} output tiles in {} dispatches; {bad} failing frames", seeds().max(8), ran[0], ran[2], ran[3]);
+    assert!(ran[0] > 0);
+    assert_eq!(bad, 0);
+    let mutants: [(&str, &dyn Fn(&str) -> String); 6] = [
+        ("a prefix tile never stamps its block changed", &|s| s.replace("metal::atomic_store_explicit(&CHG[J[5]], RP[0], metal::memory_order_relaxed); // prefix stamps changed", "")),
+        ("a pyramid block never stamps itself changed", &|s| s.replace("metal::atomic_store_explicit(&CHG[s], gen, metal::memory_order_relaxed); // block stamps changed", "")),
+        ("a pixel looks only at the block beneath its first tap", &|s| s.replace("by <= (2 * y + 2) >> s1 && !due; by++) {", "by <= (2 * y - 1) >> s1 && !due; by++) {").replace("bx <= (2 * x + 2) >> s1 && !due; bx++) {", "bx <= (2 * x - 1) >> s1 && !due; bx++) {")),
+        ("the reach pass does not lower the tile keys", &|s| s.replace("metal::atomic_fetch_min_explicit(&KT[4u * t], z, metal::memory_order_relaxed); // reach lowers the tile key", "")),
+        ("the reach pass damages no output", &|s| s.replace("{ metal::atomic_store_explicit(&KT[4u * t + 2u], gen, metal::memory_order_relaxed); }", "{ }")),
+        ("any cover certifies", &|s| s.replace("if (c.x <= ox && c.y <= oy && c.z >= ox + 32 && c.w >= oy + 32) { return; } // every event is under this cover", "if (c.x < c.z) { return; }")),
+    ];
+    for (name, f) in mutants {
+        let failing: usize = (0..seeds().max(8)).map(|seed| run(seed, Some(f)).unwrap().0).sum();
+        eprintln!("resident mutant \"{name}\": {failing} failing frames");
+        assert!(failing > 0, "the mutant \"{name}\" was not seen");
+    }
+}
+
 /// G3: the Metal executor's staged frame (the CPU's schedule, run as dispatches over the scene's records and
 /// the shared layer pool), retained across the steps, writes the words a fresh CPU redraw writes.
 /// Then source mutations of the layer and media glue, each of which must be seen.
