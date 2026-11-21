@@ -76,6 +76,15 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(reverse.returncode, 1, reverse.stderr)
         self.assertIn("REGRESSED", reverse.stdout)
 
+    def test_integration_gate_checks_added_operations(self):
+        head = copy.deepcopy(self.doc)
+        operations = head["cells"][self.cid]["operations"]
+        operations["scroll"] = copy.deepcopy(operations["hover"])
+        self.assertEqual(self.compare(self.doc, head).returncode, 0)
+        strict = self.compare(self.doc, head, "--require-same-cells")
+        self.assertEqual(strict.returncode, 1)
+        self.assertIn("ADDED", strict.stdout)
+
     def test_failures_abstentions_and_bad_counts(self):
         self.assertEqual(self.compare(self.doc, self.doc).returncode, 0)
         self.assertEqual(self.compare(self.doc, self.doc, "--require-quiet").returncode, 1)

@@ -98,8 +98,11 @@ def main():
     parser.add_argument("--thresholds")
     parser.add_argument("--allow-missing", action="store_true", help="allow baseline cells absent from head")
     parser.add_argument("--require-quiet", action="store_true")
+    parser.add_argument("--require-same-cells", action="store_true", help="fail on added or missing measurement rows")
     parser.add_argument("--cells", default="", help="comma-separated exact cell or cell/operation names")
     args = parser.parse_args()
+    if args.require_same_cells and (args.cells or args.allow_missing):
+        parser.error("complete coverage cannot be combined with filtering or --allow-missing")
     base, head = read(args.base), read(args.head)
     validate(base)
     validate(head)
@@ -141,7 +144,7 @@ def main():
         found.update(f"{name}/{op}" for op in specific)
         if a is None or b is None:
             print(f"{name} {'ADDED' if a is None else 'MISSING'}")
-            failed |= b is None and not args.allow_missing
+            failed |= args.require_same_cells or (b is None and not args.allow_missing)
             continue
         limits = {**DEFAULT_LIMITS, **thresholds.get(name, {})}
         if not legacy:
@@ -170,7 +173,7 @@ def main():
             old, new = a["operations"].get(op), b["operations"].get(op)
             if old is None or new is None:
                 print(f"{key} {'ADDED' if old is None else 'MISSING'}")
-                failed |= new is None and not args.allow_missing
+                failed |= args.require_same_cells or (new is None and not args.allow_missing)
                 continue
             if set(old) != set(new):
                 raise ValueError(f"counter columns changed for {key}")
