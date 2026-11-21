@@ -200,3 +200,29 @@ fn a_record_of_another_type_is_refused() {
     world.mount(&v);
     world.free_set(0, 0, bough_x::kinds::Fill(bough_x::expr::Color(3)));
 }
+
+/// The typed element layer has an unpainted scroller with one layout leaf and no record.
+#[test]
+#[should_panic(expected = "a free row must have one concrete record site")]
+fn a_hole_cannot_be_used_as_a_free_row() {
+    struct UnpaintedScroll {
+        u: U,
+        y: bough_x::el::Signal<f32>,
+    }
+    impl View for UnpaintedScroll {
+        fn block(&self) -> &U {
+            &self.u
+        }
+        fn view<S: Sink<Self>>(&self, s: &mut S) {
+            use bough_x::el::{Scrolls, div};
+            s.free(1, |_| {
+                (Rect::new(0, 0, 20, 20), div().scroll(bough_x::sig!(self.y)))
+            });
+        }
+    }
+    let view = UnpaintedScroll {
+        u: U::default(),
+        y: bough_x::el::Signal::new(0.),
+    };
+    World::<UnpaintedScroll, Soft>::new(W, H, 0).mount(&view);
+}

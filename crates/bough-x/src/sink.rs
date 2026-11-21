@@ -917,6 +917,15 @@ pub fn free_sync<V, R: Row<V>, F: FnMut(usize) -> (Rect, R), B: Backend>(
         parent.bump_structure();
     }
     let st = &mut parent.subs[q];
+    let check_site = |st: &Store| {
+        assert!(
+            st.sites.len() == 1 && st.sites[0].col != u32::MAX,
+            "a free row must have one concrete record site"
+        );
+    };
+    if !st.rows.is_empty() {
+        check_site(st);
+    }
     if st.space != space {
         // the enclosing space moved or was cut otherwise: what the rows showed and what they show
         cx.tiles.mark(st.space.clip);
@@ -938,9 +947,10 @@ pub fn free_sync<V, R: Row<V>, F: FnMut(usize) -> (Rect, R), B: Backend>(
         let (rect, row) = f(i as usize);
         if st.rows.is_empty() {
             row_new::<V, R, B>(st, core::slice::from_ref(&rect), &row);
+            check_site(st);
         }
         let site = &st.sites[0];
-        // SAFETY: the site was discovered from a row of type `R` (`row_new`, and `R::LEAVES == 1`); `i` is
+        // SAFETY: the site is a concrete record discovered from `R` (`row_new` and `check_site`); `i` is
         // under the store's capacity (`n <= cap`, checked or made so above); site pointers are current
         // (`discover` ends with `fix_sites`, `list_reset` drops the sites).
         unsafe {

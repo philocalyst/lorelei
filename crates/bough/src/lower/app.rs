@@ -741,6 +741,10 @@ impl<V: View> App<V> {
             scene
                 .hits
                 .iter()
+                .filter(|h| {
+                    let visible = h.rect.and(h.clip);
+                    visible.x0 < visible.x1 && visible.y0 < visible.y1
+                })
                 .map(|h| (h.doc, h.node))
                 .filter(|&(d, n)| self.docs[d as usize].nodes[n as usize].focusable)
                 .collect()
