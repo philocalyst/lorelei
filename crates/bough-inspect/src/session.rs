@@ -225,6 +225,12 @@ pub trait Program {
     /// The snapshot the next frame will show, for a host that paints it beside the app. Called only when
     /// [`Program::overlay`] is true.
     fn publish(&mut self, _snap: &Snapshot) {}
+    /// Load a patch dylib into this process and re-describe the view with the code it carries. The unit is the
+    /// host's own hot-call boundary: a program that has none refuses (and the developer loop falls back to a
+    /// state-preserving restart). A failure leaves the world and the running code as they were.
+    fn hot_patch(&mut self, _path: &std::path::Path) -> Result<(), String> {
+        Err("this application has no hot-call boundary to patch".to_owned())
+    }
     /// A fresh application with the same configuration, for replay. `None`: this program cannot be rebuilt
     /// (a windowed app whose loop owns the only instance).
     fn fresh(&self) -> Option<Self>

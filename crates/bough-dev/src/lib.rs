@@ -2,7 +2,9 @@
 //! the MCP endpoint. Forked from the gpui-ce CLI (`gpui-ce/cli` @ 6774184, Apache-2.0): see `NOTICE` and
 //! `README.md` for what is inherited and what is different.
 pub mod hot;
+pub mod hotview;
 pub mod inspect;
+pub mod patch;
 pub mod watch;
 
 use bough_inspect::json::{self, Value as J};

@@ -26,12 +26,21 @@ See `NOTICE` for the upstream repository and commit.
 - **MCP**: `bough-dev mcp --socket …` serves MCP over stdio, or `--http ADDR` at `POST /mcp`. `run --http` starts
   it beside the watched application.
 
+- **In-process view patching (the smallest real version).** A view whose variable text crosses the hot-call
+  boundary (`bough_dev::hotview`) can be patched without a new process: `bough_dev::patch::build` compiles a
+  small `cdylib` exporting `hot_text` and `hot_state_token`, the running application loads it through the
+  inspector's `hotpatch` method, and the view is re-described in the same `World`. The demo is
+  `cargo run -p bough-dev --bin hotdemo -- --socket /tmp/hot.sock`; `tests/hotpatch.rs` changes a string
+  literal on disk and asserts the new text, the same PID and the same world. A patch whose state token differs
+  is refused before any of its code runs.
+
 ## What is not
 
-- **No in-process Rust code patching.** The upstream CLI compiles changed functions into shared libraries and
-  patches a running process through Subsecond's jump table. `bough-dev` currently uses a process restart and has no Subsecond dependency
-  and does not write executable memory. A change to `view()` is new code and needs a new binary, which is why the
-  restart path exists and is what `run` uses for Rust files. (The owner's brief allows the hot path to refuse as
+- **Not a general function patcher.** There is no Subsecond dependency, no jump table and no executable-memory
+  write. Only the one hot-call boundary is patched; any other Rust change still takes the state-preserving
+  restart. The source watcher does not yet choose between `hotpatch` and a rebuild by itself, and only
+  macOS/aarch64 was exercised. The state token is a compile-time constant the demo and the patch source must
+  agree on; it is not derived from the real state type. (The owner's brief allows the hot path to refuse as
   long as the state-preserving fallback exists; this is that boundary, stated.)
 - No cross-compilation, Windows, web or mobile.
 - The watcher does not follow changes into a local path dependency outside the roots unless that root is passed

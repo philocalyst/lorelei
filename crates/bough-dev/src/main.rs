@@ -40,6 +40,7 @@ struct Opts {
     no_default_features: bool,
     offline: bool,
     file: Option<PathBuf>,
+    source: Option<PathBuf>,
 }
 fn parse(rest: &[String]) -> Result<Opts, String> {
     let mut o = Opts {
@@ -59,6 +60,7 @@ fn parse(rest: &[String]) -> Result<Opts, String> {
         no_default_features: false,
         offline: false,
         file: None,
+        source: None,
     };
     let mut i = 0;
     while i < rest.len() {
@@ -93,6 +95,7 @@ fn parse(rest: &[String]) -> Result<Opts, String> {
             "--no-default-features" => o.no_default_features = true,
             "--offline" => o.offline = true,
             "--file" => o.file = Some(PathBuf::from(val("--file")?)),
+            "--source" => o.source = Some(PathBuf::from(val("--source")?)),
             "--" => {
                 o.app_args.extend(rest[i + 1..].iter().cloned());
                 i = rest.len();
@@ -204,6 +207,21 @@ fn run(args: &[String]) -> Result<(), String> {
                 Err(format!("{} refused", bad.len()))
             }
         }
+        "hotpatch" => {
+            let socket = socket_of(&o)?;
+            let source = o
+                .source
+                .clone()
+                .ok_or("hotpatch needs --source FILE (the patched view code)")?;
+            let mut c = Client::open(&socket).map_err(|e| format!("{}: {e}", socket.display()))?;
+            let out = bough_dev::patch::patch_source(&mut c, &source)?;
+            println!("{out}");
+            if out.needs_restart() {
+                Err("the patch was not applied: rebuild and restart with state".to_owned())
+            } else {
+                Ok(())
+            }
+        }
         "inspect" => unreachable!("inspect is parsed apart"),
         "mcp" => {
             let socket = socket_of(&o)?;
@@ -235,6 +253,7 @@ fn run(args: &[String]) -> Result<(), String> {
                  rebuild   cargo build the package, then restart the running app with its state preserved\n\
                  restart   stop the running app, start --app, restore its typed state, compare descriptions\n\
                  reload    ask the running app to re-read its own inputs (no rebuild)\n\
+                 hotpatch  build --source into a patch dylib and load it in the running app (same PID/world)\n\
                  state     print or save the typed state (--file)\n\
                  restore   write a saved state back through the app's admission (--file)\n\
                  inspect   tree|node|find|pick|deps|why|counters|state|set|click|key|type|tick|shot|diff|reload|stop\n\
@@ -242,6 +261,7 @@ fn run(args: &[String]) -> Result<(), String> {
                  version   print the version\n\
                  \n\
                  options: --socket PATH --app PROG --app-arg A --watch ROOT --http ADDR --once --interval-ms N\n\
+                          --source FILE\n\
                           -p PKG --bin BIN --example EX --features a,b --all-features --no-default-features"
             );
             Ok(())

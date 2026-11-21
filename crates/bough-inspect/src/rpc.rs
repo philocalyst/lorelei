@@ -275,6 +275,28 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                 .set("revision", snap.app.revision)
                 .set("digest", J::Str(format!("{:016x}", snap.digest()))))
         }
+        "hotpatch" => {
+            let path = params
+                .get("path")
+                .and_then(J::as_str)
+                .ok_or_else(|| RpcError::params("path (a patch dylib)"))
+                .and_then(|p| {
+                    s.app_mut()
+                        .hot_patch(std::path::Path::new(p))
+                        .map_err(|e| RpcError::params(&e))
+                });
+            match path {
+                Ok(()) => {
+                    s.invalidate();
+                    let snap = s.snapshot();
+                    ok(J::obj()
+                        .set("patched", true)
+                        .set("revision", snap.app.revision)
+                        .set("digest", J::Str(format!("{:016x}", snap.digest()))))
+                }
+                Err(e) => fail(e),
+            }
+        }
         "shot" => match shot(s, params) {
             Ok(v) => ok(v),
             Err(e) => fail(e),

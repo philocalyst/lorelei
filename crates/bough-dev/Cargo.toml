@@ -9,7 +9,17 @@ description = "The lorelei developer loop: watch, rebuild, reload or restart wit
 [dependencies]
 bough-inspect = { path = "../bough-inspect" }
 bough-mcp = { path = "../bough-mcp" }
+# The hot-patch demo is a real element-layer view (the binary below); the loop itself does not need it.
+bough-x = { path = "../bough-x" }
+
+[features]
+# Negative control of the hot-patch gate: the new dylib is installed but the view is not re-described.
+mutant_no_redescribe = []
 
 [[bin]]
 name = "bough-dev"
 path = "src/main.rs"
+
+[[bin]]
+name = "hotdemo"
+path = "src/bin/hotdemo.rs"
