@@ -157,12 +157,17 @@ pub fn decode(png: &[u8]) -> Result<Image, PngError> {
         2 => 3, // RGB
         _ => return Err(PngError::Unsupported("colour type")),
     };
+    const MAX_PIXELS: u64 = 8_388_608;
+    let pixels = u64::from(w) * u64::from(h);
+    if pixels == 0 || pixels > MAX_PIXELS {
+        return Err(PngError::Unsupported("image dimensions"));
+    }
     let raw = inflate_stored(&idat)?;
     let stride = 1 + (w as usize) * bpp;
     if raw.len() != stride * h as usize {
         return Err(PngError::BadPixels);
     }
-    let mut px = Vec::with_capacity((w * h) as usize);
+    let mut px = Vec::with_capacity(pixels as usize);
     let mut prev = vec![0u8; w as usize * bpp];
     let mut line = vec![0u8; w as usize * bpp];
     for y in 0..h as usize {
@@ -292,4 +297,24 @@ pub fn diff(a: &Image, b: &Image) -> Result<Diff, PngError> {
         }
     }
     Ok(d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_unsupported_dimensions_before_decoding_pixel_data() {
+        let mut header = Vec::from(4096u32.to_be_bytes());
+        header.extend(4096u32.to_be_bytes());
+        header.extend([8, 6, 0, 0, 0]);
+        let mut png = Vec::from(SIGNATURE);
+        chunk(&mut png, b"IHDR", &header);
+        chunk(&mut png, b"IEND", &[]);
+        assert_eq!(decode(&png), Err(PngError::Unsupported("image dimensions")));
+        assert_eq!(
+            decode(&encode(1, 1, &[0xff123456])).unwrap().px,
+            [0xff123456]
+        );
+    }
 }

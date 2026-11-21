@@ -209,7 +209,18 @@ pub fn state(c: &mut Client) -> Result<Vec<(String, J)>, String> {
 pub fn restore(c: &mut Client, st: &[(String, J)]) -> (usize, Vec<String>) {
     let mut ok = 0;
     let mut bad = Vec::new();
+    let current = match state(c) {
+        Ok(values) => values,
+        Err(e) => return (0, vec![e]),
+    };
     for (field, value) in st {
+        if current
+            .iter()
+            .any(|(name, existing)| name == field && existing == value)
+        {
+            ok += 1;
+            continue;
+        }
         let p = J::obj()
             .set("field", field.as_str())
             .set("value", value.clone());

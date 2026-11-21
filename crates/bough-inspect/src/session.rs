@@ -78,16 +78,24 @@ impl FieldKind {
     /// Whether a value of this kind may be written to a field of that kind. Int and Float interchange when the
     /// float is integral; Bits accepts any integer.
     pub fn admits(self, v: &PropValue) -> bool {
-        match (self, v) {
-            (FieldKind::Int, PropValue::Int(_)) => true,
-            (FieldKind::Int, PropValue::Float(f)) => f.fract() == 0.0,
-            (FieldKind::Float, PropValue::Float(_) | PropValue::Int(_)) => true,
-            (FieldKind::Bool, PropValue::Bool(_)) => true,
-            (FieldKind::Color, PropValue::Color(_)) => true,
-            (FieldKind::Text, PropValue::Text(_)) => true,
-            (FieldKind::Bits, PropValue::Int(_)) => true,
-            (FieldKind::Bits, PropValue::Float(f)) => f.fract() == 0.0,
-            _ => false,
+        self.canonical(v).is_some()
+    }
+
+    fn canonical(self, value: &PropValue) -> Option<PropValue> {
+        match (self, value) {
+            (Self::Int | Self::Bits, PropValue::Float(f))
+                if f.fract() == 0.0
+                    && (f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&f64::from(*f)) =>
+            {
+                Some(PropValue::Int(*f as i32))
+            }
+            (Self::Float, PropValue::Int(n)) => Some(PropValue::Float(*n as f32)),
+            (Self::Float, PropValue::Float(f)) if f.is_finite() => Some(value.clone()),
+            (Self::Int | Self::Bits, PropValue::Int(_))
+            | (Self::Bool, PropValue::Bool(_))
+            | (Self::Color, PropValue::Color(_))
+            | (Self::Text, PropValue::Text(_)) => Some(value.clone()),
+            _ => None,
         }
     }
 }
@@ -411,13 +419,13 @@ impl<P: Program> Session<P> {
                 });
             }
         };
-        if !def.kind.admits(value) {
+        let Some(expected) = def.kind.canonical(value) else {
             return Err(Refusal::WrongKind {
                 field: field.to_owned(),
                 expected: def.kind.name(),
                 got: value.kind(),
             });
-        }
+        };
         #[cfg(feature = "mutant_accept")]
         {
             // the negative control of G5: the typed admission is bypassed and an invalid write is accepted
@@ -432,9 +440,15 @@ impl<P: Program> Session<P> {
                 });
             }
         }
-        let (get, expected) = (def.get, value.clone());
+        let get = def.get;
         let before = get(self.app.view());
-        set(self.app.view_mut(), value).map_err(|e| match e {
+        if before == expected {
+            return Err(Refusal::Rejected {
+                field: field.to_owned(),
+                why: "the field already has that value",
+            });
+        }
+        set(self.app.view_mut(), &expected).map_err(|e| match e {
             Refusal::Rejected { why, .. } => Refusal::Rejected {
                 field: field.to_owned(),
                 why,

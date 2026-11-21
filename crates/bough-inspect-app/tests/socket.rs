@@ -462,3 +462,26 @@ fn wire_recording_replays_on_a_separate_app_with_initial_geometry() {
     call(&mut c, "shutdown", J::obj());
     call(&mut other, "shutdown", J::obj());
 }
+
+#[test]
+fn unsafe_narrowing_and_noop_field_writes_are_refused() {
+    let app = spawn("typed-refusals", "rows", 100);
+    let mut c = Client::open(&app.path).unwrap();
+    let set = |value: J| J::obj().set("field", "scroll").set("value", value);
+    let before = call(&mut c, "tree", J::obj()).get("digest").cloned();
+    let overflow = set(J::obj()
+        .set("kind", "int")
+        .set("value", i64::from(i32::MAX) + 1));
+    assert_eq!(refusable(&mut c, "set", overflow).0, -32602);
+    let no_op = set(J::obj().set("kind", "int").set("value", 0));
+    let (code, reason) = refusable(&mut c, "set", no_op);
+    assert_eq!(code, -32010);
+    assert!(reason.contains("already has that value"));
+    assert_eq!(
+        call(&mut c, "tree", J::obj()).get("digest"),
+        before.as_ref()
+    );
+    let integral = set(J::obj().set("kind", "float").set("value", 64.0f32));
+    assert!(call(&mut c, "set", integral).get("digest").is_some());
+    call(&mut c, "shutdown", J::obj());
+}

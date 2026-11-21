@@ -275,12 +275,20 @@ impl PropValue {
     pub fn from_json(v: &J) -> Result<PropValue, String> {
         let kind = v.get("kind").and_then(J::as_str).unwrap_or("int");
         Ok(match kind {
-            "int" => PropValue::Int(v.get("value").and_then(J::as_i64).ok_or("int value")? as i32),
-            "float" => PropValue::Float(v.get("value").and_then(J::as_f32).ok_or("float value")?),
+            "int" => PropValue::Int(
+                v.get("value")
+                    .and_then(J::as_i64)
+                    .and_then(|n| i32::try_from(n).ok())
+                    .ok_or("int value outside signed 32-bit range")?,
+            ),
+            "float" => PropValue::Float(
+                v.get("value")
+                    .and_then(J::as_f32)
+                    .filter(|x| x.is_finite())
+                    .ok_or("finite float value")?,
+            ),
             "bool" => PropValue::Bool(v.get("value").and_then(J::as_bool).ok_or("bool value")?),
-            "color" => {
-                PropValue::Color(v.get("rgba").and_then(J::as_i64).ok_or("colour value")? as u32)
-            }
+            "color" => PropValue::Color(v.get("rgba").and_then(J::as_u32).ok_or("colour value")?),
             "text" => PropValue::Text(
                 v.get("text")
                     .and_then(J::as_str)
