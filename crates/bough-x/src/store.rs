@@ -155,6 +155,31 @@ impl Tiles {
             }
             return;
         }
+        if self.stride == 2 {
+            let end = 2 * (d + 1);
+            if (b >= 128) | (end > self.bits.len()) {
+                invalid_damage();
+            }
+            self.lo = self.lo.min(c);
+            self.hi = self.hi.max(d + 1);
+            let first = !0u64 << (a & 63);
+            let last = !0u64 >> (63 - (b & 63));
+            let masks = if a >= 64 {
+                [0, first & last]
+            } else if b < 64 {
+                [first & last, 0]
+            } else {
+                [first, last]
+            };
+            // SAFETY: c <= d after clipping, the row stride is two, and end was checked
+            // against the current bitmap. The tile coordinates come from nonnegative i32s.
+            let rows = unsafe { self.bits.get_unchecked_mut(2 * c..end) };
+            for row in rows.as_chunks_mut::<2>().0 {
+                row[0] |= masks[0];
+                row[1] |= masks[1];
+            }
+            return;
+        }
         self.mark_wide(a, b, c, d);
     }
 

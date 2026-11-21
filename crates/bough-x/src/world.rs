@@ -757,10 +757,9 @@ impl<V: View, B: Backend> World<V, B> {
             .diff(v.gathered(&self.slots, &mut scratch), self.nwords)
             & !HOT;
         let journals = self.relations_changed();
-        if (ch == 0) & !journals {
-            return;
+        if ch != 0 || journals {
+            self.settle_changed(v, ch, journals);
         }
-        self.settle_changed(v, ch, journals);
     }
     // Re-learning can drive another description. Keep its stack frame off idle settles.
     #[inline(never)]
