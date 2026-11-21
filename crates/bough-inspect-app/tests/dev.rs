@@ -4,10 +4,7 @@
 use bough_dev::Running;
 use bough_dev::hot::{self, AppSpec};
 use bough_inspect::client::Client;
-use bough_inspect::json::{self, Value as J};
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
-use std::process::Command;
+use bough_inspect::json::Value as J;
 use std::time::Duration;
 
 fn spec(tag: &str, args: &[&str]) -> AppSpec {
@@ -41,6 +38,14 @@ fn a_restart_keeps_the_typed_state_and_the_description() {
         let c = running.client().unwrap();
         hot::state(c).unwrap()
     };
+    let mut mcp = bough_mcp::Mcp::new(&s.socket);
+    let call = J::obj()
+        .set("jsonrpc", "2.0")
+        .set("id", 1)
+        .set("method", "tools/call")
+        .set("params", J::obj().set("name", "state"));
+    let before_mcp = mcp.handle(&call).unwrap().get("result").cloned().unwrap();
+    assert_eq!(before_mcp.get("isError").and_then(J::as_bool), Some(false));
     let before_digest = {
         let c = running.client().unwrap();
         hot::tree_digest(c).unwrap()
@@ -63,6 +68,11 @@ fn a_restart_keeps_the_typed_state_and_the_description() {
         hot::state(c).unwrap()
     };
     assert_eq!(before_state, after);
+    let after_mcp = mcp.handle(&call).unwrap().get("result").cloned().unwrap();
+    assert_eq!(
+        before_mcp, after_mcp,
+        "first call through the same MCP endpoint after restart"
+    );
     running.stop();
 }
 

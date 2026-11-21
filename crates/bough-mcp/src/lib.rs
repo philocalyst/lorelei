@@ -34,6 +34,7 @@ are read-only: they are staged expressions of state). `screenshot` returns a PNG
 pub struct Mcp {
     socket: PathBuf,
     client: Option<Client>,
+    socket_stamp: Option<(u64, u64, i64, i64)>,
     protocol: String,
     /// A `shutdown` request: the transports stop.
     closed: bool,
@@ -43,6 +44,7 @@ impl Mcp {
         Mcp {
             socket: socket.into(),
             client: None,
+            socket_stamp: None,
             protocol: PROTOCOL.to_owned(),
             closed: false,
         }
@@ -51,12 +53,24 @@ impl Mcp {
         self.closed
     }
     fn client(&mut self) -> io::Result<&mut Client> {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = std::fs::symlink_metadata(&self.socket)?;
+        let stamp = (
+            metadata.dev(),
+            metadata.ino(),
+            metadata.ctime(),
+            metadata.ctime_nsec(),
+        );
+        if self.socket_stamp != Some(stamp) {
+            self.client = None;
+        }
         if self.client.is_none() {
             self.client = Some(Client::open(&self.socket)?);
+            self.socket_stamp = Some(stamp);
         }
         Ok(self.client.as_mut().unwrap())
     }
-    /// Call the inspector. A dead connection is reopened once (an app restart keeps the same socket path).
+    /// Reconnect before dispatch when a new app has bound the path. Never retry a dispatched turn.
     fn call(&mut self, method: &str, params: &J) -> Result<J, String> {
         let r = self
             .client()
@@ -167,9 +181,10 @@ impl Mcp {
             .and_then(J::as_str)
             .ok_or("-32602: tools/call needs a name")?;
         let a = p.get("arguments").cloned().unwrap_or(J::Null);
-        let (text, image) = self.run_tool(name, &a)?;
-        // an admission's refusal is a tool error (the model can correct the call); everything else is a result
-        let is_error = text.starts_with("-320") || text.starts_with("-326");
+        let (text, image, is_error) = match self.run_tool(name, &a) {
+            Ok((text, image)) => (text, image, false),
+            Err(e) => (e, None, true),
+        };
         let mut content = vec![J::obj().set("type", "text").set("text", text)];
         if let Some(png) = image {
             content.push(
@@ -210,10 +225,7 @@ impl Mcp {
                 let field = a.get("field").and_then(J::as_str).ok_or("-32602: field")?;
                 let value = a.get("value").cloned().ok_or("-32602: value")?;
                 let p = J::obj().set("field", field).set("value", value);
-                match self.call("set", &p) {
-                    Ok(v) => Ok((j(v), None)),
-                    Err(e) => Ok((e, None)), // the admission's reason, as the tool's answer
-                }
+                Ok((j(self.call("set", &p)?), None))
             }
             "pointer_move" | "hover" => {
                 let p = J::obj().set("x", req_i(a, "x")?).set("y", req_i(a, "y")?);
@@ -691,7 +703,18 @@ pub fn serve_stream<R: BufRead, W: Write>(
     let mut line = String::new();
     loop {
         line.clear();
-        let n = input.read_line(&mut line)?;
+        use std::io::Read;
+        let limit = bough_inspect::socket::MAX_FRAME;
+        let n = input
+            .by_ref()
+            .take((limit + 2) as u64)
+            .read_line(&mut line)?;
+        if n > limit + 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "stdio message exceeds frame limit",
+            ));
+        }
         if n == 0 {
             return Ok(());
         }
@@ -735,9 +758,14 @@ pub fn serve_stream<R: BufRead, W: Write>(
 }
 
 /// Run an HTTP/1.1 server whose `POST /mcp` speaks JSON-RPC (the MCP streamable-HTTP transport, JSON responses).
-/// `GET` is refused with 405; a client that accepts only `text/event-stream` is answered with JSON anyway, which
-/// the specification permits for a server that does not stream.
+/// This local JSON-only endpoint binds to loopback, rejects browser Origin headers and refuses GET with 405.
 pub fn serve_http(mcp: &mut Mcp, listener: TcpListener) -> io::Result<()> {
+    if !listener.local_addr()?.ip().is_loopback() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "the inspector HTTP listener must bind to loopback",
+        ));
+    }
     for conn in listener.incoming() {
         if mcp.closed() {
             return Ok(());
@@ -758,62 +786,83 @@ pub fn serve_http(mcp: &mut Mcp, listener: TcpListener) -> io::Result<()> {
 }
 
 fn one_http(mcp: &mut Mcp, mut s: TcpStream) -> io::Result<()> {
-    s.set_read_timeout(Some(std::time::Duration::from_secs(10)))?;
+    const HEADER_LIMIT: usize = 16 * 1024;
+    let timeout = Some(std::time::Duration::from_secs(10));
+    s.set_read_timeout(timeout)?;
+    s.set_write_timeout(timeout)?;
     let mut buf = Vec::new();
     let mut chunk = [0u8; 4096];
-    let (head_end, len) = loop {
-        let n = match s.read(&mut chunk) {
-            Ok(n) => n,
-            // a client that connected and said nothing: not this server's problem
-            Err(e)
-                if matches!(
-                    e.kind(),
-                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-                ) =>
-            {
-                return Ok(());
-            }
-            Err(e) => return Err(e),
-        };
-        if n == 0 {
-            return Ok(());
-        }
-        buf.extend_from_slice(&chunk[..n]);
-        if let Some(p) = find(&buf, b"\r\n\r\n") {
-            let head = String::from_utf8_lossy(&buf[..p]).to_string();
-            let len = head
-                .lines()
-                .find_map(|l| {
-                    l.to_ascii_lowercase()
-                        .strip_prefix("content-length:")
-                        .map(|v| v.trim().parse::<usize>().unwrap_or(0))
-                })
-                .unwrap_or(0);
-            break (p + 4, len);
-        }
-        if buf.len() > 8 * 1024 * 1024 {
-            return Ok(());
-        }
-    };
-    while buf.len() < head_end + len {
+    let head_end = loop {
         let n = s.read(&mut chunk)?;
         if n == 0 {
-            break;
+            return Ok(());
         }
+        let start = buf.len().saturating_sub(3);
         buf.extend_from_slice(&chunk[..n]);
+        if let Some(p) = find(&buf[start..], b"\r\n\r\n") {
+            let end = start + p + 4;
+            if end > HEADER_LIMIT {
+                return respond(&mut s, 431, "text/plain", b"headers too large");
+            }
+            break end;
+        }
+        if buf.len() > HEADER_LIMIT {
+            return respond(&mut s, 431, "text/plain", b"headers too large");
+        }
+    };
+    let Ok(head) = std::str::from_utf8(&buf[..head_end - 4]) else {
+        return respond(&mut s, 400, "text/plain", b"invalid headers");
+    };
+    let mut lines = head.split("\r\n");
+    let mut request = lines.next().unwrap_or("").split_whitespace();
+    let (method, path) = (request.next().unwrap_or(""), request.next().unwrap_or(""));
+    let mut len = None;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else {
+            return respond(&mut s, 400, "text/plain", b"invalid header");
+        };
+        if name.eq_ignore_ascii_case("origin") {
+            return respond(
+                &mut s,
+                403,
+                "text/plain",
+                b"browser origins are not allowed",
+            );
+        }
+        if name.eq_ignore_ascii_case("transfer-encoding") {
+            return respond(&mut s, 400, "text/plain", b"expected a content length");
+        }
+        if name.eq_ignore_ascii_case("content-length") {
+            let Ok(value) = value.trim().parse::<usize>() else {
+                return respond(&mut s, 400, "text/plain", b"invalid content length");
+            };
+            if len.replace(value).is_some() {
+                return respond(&mut s, 400, "text/plain", b"duplicate content length");
+            }
+        }
     }
-    let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
-    let first = head.lines().next().unwrap_or("");
-    let mut parts = first.split_whitespace();
-    let method = parts.next().unwrap_or("");
-    let path = parts.next().unwrap_or("/");
     if method == "OPTIONS" {
         return respond(&mut s, 204, "text/plain", b"");
     }
     if method != "POST" || !(path == "/mcp" || path == "/") {
         return respond(&mut s, 405, "text/plain", b"method not allowed");
     }
-    let body = &buf[head_end..(head_end + len).min(buf.len())];
+    let Some(len) = len else {
+        return respond(&mut s, 411, "text/plain", b"content length required");
+    };
+    if len > bough_inspect::socket::MAX_FRAME {
+        return respond(&mut s, 413, "text/plain", b"body too large");
+    }
+    let end = head_end + len;
+    while buf.len() < end {
+        let next = chunk.len().min(end - buf.len());
+        let n = s.read(&mut chunk[..next])?;
+        if n == 0 {
+            return respond(&mut s, 400, "text/plain", b"incomplete body");
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    }
+    let body = &buf[head_end..end];
     let msg = match json::parse(core::str::from_utf8(body).unwrap_or("")) {
         Ok(v) => v,
         Err(e) => {
@@ -861,7 +910,12 @@ fn respond(s: &mut TcpStream, code: u16, mime: &str, body: &[u8]) -> io::Result<
         200 => "OK",
         202 => "Accepted",
         204 => "No Content",
+        400 => "Bad Request",
+        403 => "Forbidden",
         405 => "Method Not Allowed",
+        411 => "Length Required",
+        413 => "Content Too Large",
+        431 => "Request Header Fields Too Large",
         _ => "OK",
     };
     let head = format!(

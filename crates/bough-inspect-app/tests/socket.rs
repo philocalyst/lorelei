@@ -249,7 +249,7 @@ fn rows_over_the_socket() {
         );
         std::thread::sleep(Duration::from_millis(10));
     }
-    let _ = std::fs::remove_file(&app.path);
+    assert!(!app.path.exists(), "normal shutdown removes the socket");
 }
 
 #[test]

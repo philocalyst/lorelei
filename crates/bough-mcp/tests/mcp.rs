@@ -353,6 +353,23 @@ fn http_post_is_streamable_http() {
     let mut resp = String::new();
     s.read_to_string(&mut resp).unwrap();
     assert!(resp.contains("nodes"), "{resp}");
+    for (headers, code) in [
+        ("Origin: https://example.invalid\r\nContent-Length: 0", 403),
+        ("Content-Length: 99999999", 413),
+        ("Content-Length: 0\r\nContent-Length: 0", 400),
+    ] {
+        let mut peer = std::net::TcpStream::connect(addr).unwrap();
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        write!(
+            peer,
+            "POST /mcp HTTP/1.1\r\nHost: localhost\r\n{headers}\r\n\r\n"
+        )
+        .unwrap();
+        let mut reply = String::new();
+        peer.read_to_string(&mut reply).unwrap();
+        assert!(reply.starts_with(&format!("HTTP/1.1 {code} ")), "{reply}");
+    }
     // GET is refused
     let req = "GET /mcp HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n";
     let mut s = std::net::TcpStream::connect(addr).unwrap();

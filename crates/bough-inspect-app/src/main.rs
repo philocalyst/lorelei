@@ -91,7 +91,9 @@ fn run<V: bough_inspect_app::Fields>(v: V, a: &Args) -> ! {
                 }
             };
             println!("ready {path}");
-            if let Err(e) = server.serve(&mut session) {
+            let result = server.serve(&mut session);
+            drop(server); // unlink before exiting (process::exit does not run destructors)
+            if let Err(e) = result {
                 eprintln!("bough-inspect-app: {e}");
                 std::process::exit(1);
             }
