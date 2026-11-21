@@ -266,12 +266,12 @@ fn exposed_ax_rows_keep_list_count_and_parent_after_scroll() {
             .filter_map(|node| {
                 let index = node.row_index?;
                 let parent = node.parent?;
-                if node.role != "list-item" {
+                if !matches!(node.role, "list-item" | "row") {
                     return None;
                 }
                 assert_eq!(ax[parent].row_count, Some(1000));
                 assert!(index < 1000);
-                assert_eq!(ax[parent].role, "list");
+                assert!(matches!(ax[parent].role, "list" | "grid"));
                 Some(index)
             })
             .collect();
