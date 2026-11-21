@@ -1,0 +1,9 @@
+ 6:49  up 4 days,  9:41, 1 user, load averages: 64.26 60.26 55.21
+fx_refused,idle,200,png_tile,no image paint in the seam: shared PNG tile not drawn
+fx_refused,idle,200,group_filter,no subtree group: blur/saturate/brightness/drop-shadow group not composited
+fx_refused,idle,200,path_mask,no path or alpha-mask primitive; clip is rectangular only
+fx_refused,idle,200,shader_exact,plasma, SDF and sine-ramp shaders absent; built-in stripes/ripple substituted
+gfx gate idle cards=200 ages=1..4 steps=48 probes=196 changed_frames=0 fresh=ok
+check_exit=0
+mutant_input=killed
+mutation_check_exit=0

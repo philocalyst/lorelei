@@ -69,6 +69,8 @@ The adapter drives the same nine cell scripts at 200, 1,000 and 5,000 cards. The
 | Resize | Surface replacement preserves the replay inputs used for a remount diagnostic. | Retained resize is not expressible. `Scene` has a fixed surface. |
 | Glass over video | Four rounded backdrop panels, staged shader paints and synthetic 256×144 NV12, advanced every fourth tick. A panel moves each tick. | Synthetic generation and repair have separate counters. The path has no codec and no group effect. |
 
+The first staged batch passed eight 200-card cells and their applicable negative controls. Each timed cell has 240 observations. The foreground trace submitted 238 frames and the video trace submitted 240. The remount diagnostic returned to its starting dimensions on the final step and exposed an endpoint-only checksum assertion in the gate. The corrected gate measures changes between virtual ticks and keeps the independent pixel checks. The remount diagnostic replays separately with its own binary hash. [Staged 200-card rows](../../../../bench/results/effects/r3/matrix-7991e7bd4e.md)
+
 The seam exposes solid and gradient paints, shadow with geometry-derived spread, rectangle clips, and two built-in shader paints. The frozen PNG, cubic and even-odd path, rounded clip, alpha mask, isolated group filters and drop-shadow of a subtree's alpha require additional primitives. Author registration of all three frozen shaders is unavailable. The headless adapter uses CPU1. The stock paint replay and independent layered test cover Metal separately.
 
 ## Stock paint replay

@@ -1,0 +1,8 @@
+fx_refused,many,200,png_tile,no image paint in the seam: shared PNG tile not drawn
+fx_refused,many,200,group_filter,no subtree group: blur/saturate/brightness/drop-shadow group not composited
+fx_refused,many,200,path_mask,no path or alpha-mask primitive; clip is rectangular only
+fx_refused,many,200,shader_exact,plasma, SDF and sine-ramp shaders absent; built-in stripes/ripple substituted
+
+thread 'main' panicked at crates/bough-paint/examples/fx_bench.rs:1174:17:
+retained differs from full redraw: age 1, frame 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
