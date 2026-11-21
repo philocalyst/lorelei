@@ -68,8 +68,8 @@ fn decode_fixture() -> Vec<Box<[u8]>> {
         .collect()
 }
 
-fn publish_video(source: &mut Synth, pool: &mut Media) -> Option<u32> {
-    if !PREDECODED {
+fn publish_video(source: &mut Synth, pool: &mut Media, predecoded: bool) -> Option<u32> {
+    if !predecoded {
         return source.next(pool);
     }
     let frames = DECODED_FRAMES.get().expect("prepare the video before timing");
@@ -326,6 +326,7 @@ struct St {
     pane: Spring,
     pane_dx: i32,
     src: Synth,
+    predecoded: bool,
     vseq: u32,
     mv: Vec<Mv>,
     slot: Vec<(bool, usize)>,
@@ -492,7 +493,7 @@ fn build(st: &mut St) -> (Scene, Cols) {
         );
         st.src.shown = None;
         st.src.seq = st.vseq;
-        let slot = publish_video(&mut st.src, &mut s.media).expect("video pool");
+        let slot = publish_video(&mut st.src, &mut s.media, st.predecoded).expect("video pool");
         s.push(c.video, VIDEO, video(slot));
         for (j, (x, y)) in PANELS.into_iter().enumerate() {
             let rc = rect(x, y, 112.0, 76.0);
@@ -515,6 +516,10 @@ struct Fixture {
 }
 impl Fixture {
     fn new(cell: Cell, cards: usize, mutant: Mutant, bare: bool) -> Fixture {
+        Self::with_video_source(cell, cards, mutant, bare, PREDECODED)
+    }
+
+    fn with_video_source(cell: Cell, cards: usize, mutant: Mutant, bare: bool, predecoded: bool) -> Fixture {
         let (w, h) = dim_at(cell, 0);
         let mut st = St {
             cell,
@@ -527,6 +532,7 @@ impl Fixture {
             pane: Spring::rest(0),
             pane_dx: 0,
             src: Synth::new(VIDEO_WIDTH, VIDEO_HEIGHT, SEED),
+            predecoded,
             vseq: 0,
             mv: Vec::new(),
             slot: Vec::new(),
@@ -646,7 +652,7 @@ impl Fixture {
             Cell::Startup | Cell::Idle => {}
         }
         if cell.video_moves() && !self.st.bare && k != 0 && k % 4 == 0 && !drop_input {
-            let slot = publish_video(&mut self.st.src, &mut self.scene.media).expect("video pool");
+            let slot = publish_video(&mut self.st.src, &mut self.scene.media, self.st.predecoded).expect("video pool");
             self.st.vseq = self.st.src.seq - 1;
             self.scene.set(self.cols.video, 0, VIDEO, video(slot));
         }
@@ -1024,13 +1030,17 @@ fn main() {
     let default = if o.legacy {
         20
     } else if o.check {
-        if matches!(o.cell, Cell::One | Cell::Many) { 100 } else { 48 }
+        match o.cell {
+            Cell::Startup => 1,
+            Cell::One | Cell::Many => 100,
+            _ => 48,
+        }
     } else {
         240
     };
     o.steps = n.map(|s| s.parse().unwrap()).unwrap_or(default);
     let floor = if o.check || o.legacy || o.bringup { 20 } else { 240 };
-    let need = if o.cell == Cell::Startup && !o.check { 1 } else { floor };
+    let need = if o.cell == Cell::Startup { 1 } else { floor };
     assert!(o.steps >= need, "need at least {need} samples");
     if o.check && matches!(o.cell, Cell::One | Cell::Many) {
         assert!(o.steps >= 100, "one/many settle after about 70 ticks: use 100 or more steps");
@@ -1272,4 +1282,35 @@ fn run_check(o: &Opts) {
         "gfx gate {} cards={} ages=1..4 steps={} probes={} changed_frames={} fresh=ok{}",
         o.cell.name(), o.cards, o.steps, probes_n, changed, if o.legacy { " (legacy)" } else { "" }
     );
+}
+
+#[cfg(test)]
+#[test]
+fn predecoded_glass_matches_generated_frames() {
+    let frames = DECODED_FRAMES.get_or_init(decode_fixture);
+    assert_eq!(frames.len(), 120);
+    assert!(frames.iter().all(|frame| frame.len() == VIDEO_Y_BYTES + VIDEO_UV_BYTES));
+    for cards in [200, 1000, 5000] {
+        let pool = Pool::new(0);
+        let overhead = perf::snap_overhead();
+        let mut direct = Fixture::with_video_source(Cell::Glass, cards, Mutant::None, false, false);
+        let mut copy = Fixture::with_video_source(Cell::Glass, cards, Mutant::None, false, true);
+        let (mut direct_words, mut copy_words) = (U::default(), U::default());
+        init_words(&mut direct_words);
+        init_words(&mut copy_words);
+        let (mut direct_ring, mut copy_ring) = (Ring::new(1), Ring::new(1));
+        let (mut tiles, mut candidates) = (Vec::new(), Vec::new());
+        let mut submitted = 0;
+        for tick in 0..=240 {
+            let a = drive(&mut direct, &mut direct_words, tick, &mut direct_ring, &pool, overhead, &mut tiles, &mut candidates);
+            let b = drive(&mut copy, &mut copy_words, tick, &mut copy_ring, &pool, overhead, &mut tiles, &mut candidates);
+            assert_eq!(direct.st.vseq, copy.st.vseq, "{cards} cards at tick {tick}: sequence");
+            assert_eq!(a.tiles, b.tiles, "{cards} cards at tick {tick}: tile count");
+            assert!(direct_ring.surfaces[0] == copy_ring.surfaces[0], "{cards} cards at tick {tick}: surface bytes");
+            submitted += usize::from(a.tiles > 0);
+        }
+        assert_eq!(direct.st.vseq, 60);
+        assert_eq!(submitted, 241);
+        println!("glass source parity: {cards} cards, {submitted} submitted frames, identical bytes and tile counts");
+    }
 }
