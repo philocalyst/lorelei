@@ -155,6 +155,49 @@ fn every_nested_schema_is_a_real_schema() {
         l.get("properties").is_some(),
         "replay.log names its members"
     );
+    // Wire values use `rgba` and `text`, and recorded steps flatten command fields beside digests.
+    let variants = val.get("oneOf").unwrap().arr();
+    assert!(
+        variants
+            .iter()
+            .any(|v| v.get("properties").unwrap().get("rgba").is_some())
+    );
+    assert!(
+        variants
+            .iter()
+            .any(|v| v.get("properties").unwrap().get("text").is_some())
+    );
+    let steps = l
+        .get("properties")
+        .unwrap()
+        .get("steps")
+        .unwrap()
+        .get("items")
+        .unwrap()
+        .get("oneOf")
+        .unwrap()
+        .arr();
+    assert_eq!(steps.len(), 11);
+    let set = steps
+        .iter()
+        .find(|step| {
+            step.get("properties")
+                .unwrap()
+                .get("cmd")
+                .unwrap()
+                .get("const")
+                .and_then(J::as_str)
+                == Some("set")
+        })
+        .unwrap();
+    assert!(set.get("properties").unwrap().get("command").is_none());
+    assert!(
+        set.get("required")
+            .unwrap()
+            .arr()
+            .iter()
+            .any(|v| v.as_str() == Some("value"))
+    );
 }
 
 // ---- a slow reader -------------------------------------------------------------------------------------------

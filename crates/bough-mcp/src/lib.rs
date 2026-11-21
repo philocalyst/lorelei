@@ -440,20 +440,142 @@ fn int_array(max: i64, desc: &str) -> J {
 }
 
 /// One admitted shape of a typed field value.
-fn field_value_schema(kind: &str, value: J) -> J {
-    J::obj()
-        .set("type", "object")
-        .set(
-            "properties",
-            J::obj()
-                .set("kind", J::obj().set("const", kind))
-                .set("value", value),
-        )
-        .set(
-            "required",
-            vec![J::Str("kind".into()), J::Str("value".into())],
-        )
-        .set("additionalProperties", false)
+fn field_value_schema(kind: &str, member: &str, value: J) -> J {
+    schema_raw(
+        vec![("kind", J::obj().set("const", kind)), (member, value)],
+        &["kind", member],
+    )
+    .set("additionalProperties", false)
+}
+
+fn typed_value_schema() -> J {
+    let ty = |name| J::obj().set("type", name);
+    J::obj().set(
+        "oneOf",
+        vec![
+            field_value_schema(
+                "int",
+                "value",
+                ty("integer")
+                    .set("minimum", i32::MIN)
+                    .set("maximum", i32::MAX),
+            ),
+            field_value_schema("float", "value", ty("number")),
+            field_value_schema("bool", "value", ty("boolean")),
+            field_value_schema(
+                "color",
+                "rgba",
+                ty("integer").set("minimum", 0).set("maximum", u32::MAX),
+            ),
+            field_value_schema("text", "text", ty("string")),
+        ],
+    )
+}
+
+fn replay_log_schema() -> J {
+    let ty = |name| J::obj().set("type", name);
+    let unsigned = || ty("integer").set("minimum", 0).set("maximum", u32::MAX);
+    let digest = || ty("string").set("pattern", "^[0-9a-fA-F]{16}$");
+    let point = || vec![("x", ty("integer")), ("y", ty("integer"))];
+    let variants = [
+        ("pointer", point(), vec!["x", "y"]),
+        (
+            "down",
+            [point(), vec![("button", ty("string"))]].concat(),
+            vec!["x", "y", "button"],
+        ),
+        (
+            "up",
+            [point(), vec![("button", ty("string"))]].concat(),
+            vec!["x", "y", "button"],
+        ),
+        ("click", point(), vec!["x", "y"]),
+        (
+            "key",
+            vec![
+                ("key", ty("string")),
+                ("ctrl", ty("boolean")),
+                ("shift", ty("boolean")),
+                ("alt", ty("boolean")),
+                ("logo", ty("boolean")),
+            ],
+            vec!["key"],
+        ),
+        ("text", vec![("text", ty("string"))], vec!["text"]),
+        (
+            "wheel",
+            [point(), vec![("dx", ty("number")), ("dy", ty("number"))]].concat(),
+            vec!["x", "y", "dx", "dy"],
+        ),
+        ("tick", vec![("ms", unsigned())], vec!["ms"]),
+        (
+            "resize",
+            vec![
+                ("w", ty("integer")),
+                ("h", ty("integer")),
+                ("scale", ty("number")),
+            ],
+            vec!["w", "h"],
+        ),
+        (
+            "set",
+            vec![("field", ty("string")), ("value", typed_value_schema())],
+            vec!["field", "value"],
+        ),
+        ("settle", vec![], vec![]),
+    ];
+    let steps: Vec<J> = variants
+        .into_iter()
+        .map(|(cmd, mut props, mut required)| {
+            props.extend([
+                ("cmd", J::obj().set("const", cmd)),
+                ("digest", digest()),
+                ("pixels", digest()),
+                ("damage", unsigned()),
+                ("revision", unsigned()),
+                (
+                    "refused",
+                    schema_raw(
+                        vec![("code", ty("string")), ("reason", ty("string"))],
+                        &["code", "reason"],
+                    )
+                    .set("additionalProperties", false),
+                ),
+            ]);
+            required.extend(["cmd", "digest", "pixels", "damage", "revision"]);
+            schema_raw(props, &required).set("additionalProperties", false)
+        })
+        .collect();
+    schema_raw(
+        vec![
+            (
+                "schema",
+                J::obj().set("const", bough_inspect::SCHEMA_VERSION),
+            ),
+            ("app", ty("string")),
+            (
+                "size",
+                schema_raw(
+                    vec![
+                        ("w", ty("integer")),
+                        ("h", ty("integer")),
+                        ("scale", ty("number")),
+                    ],
+                    &["w", "h", "scale"],
+                )
+                .set("additionalProperties", false),
+            ),
+            (
+                "steps",
+                ty("array")
+                    .set("maxItems", 1024)
+                    .set("items", J::obj().set("oneOf", steps)),
+            ),
+            ("count", unsigned()),
+        ],
+        &["schema", "app", "size", "steps"],
+    )
+    .set("additionalProperties", false)
 }
 
 fn tool(name: &str, description: &str, input: J) -> J {
@@ -531,10 +653,29 @@ pub fn tools() -> Vec<J> {
             "One record by index or by its entity (path, row, pos), with the stores it lies in.",
             schema_raw(
                 vec![
-                    ("index", J::obj().set("type", "integer").set("description", "Node index in the last tree.")),
-                    ("path", int_array(6, "Store path (child indices from the root).")),
-                    ("row", J::obj().set("type", "integer").set("description", "Row of a list, or the row call of a fixed shape.")),
-                    ("pos", J::obj().set("type", "integer").set("description", "Position in the row's shape.")),
+                    (
+                        "index",
+                        J::obj()
+                            .set("type", "integer")
+                            .set("description", "Node index in the last tree."),
+                    ),
+                    (
+                        "path",
+                        int_array(6, "Store path (child indices from the root)."),
+                    ),
+                    (
+                        "row",
+                        J::obj().set("type", "integer").set(
+                            "description",
+                            "Row of a list, or the row call of a fixed shape.",
+                        ),
+                    ),
+                    (
+                        "pos",
+                        J::obj()
+                            .set("type", "integer")
+                            .set("description", "Position in the row's shape."),
+                    ),
                 ],
                 &[],
             ),
@@ -578,25 +719,13 @@ pub fn tools() -> Vec<J> {
             "Write a typed state field through the application's own admission; refused with a reason (read-only, wrong kind, out of range, unknown). Record operands are read-only.",
             schema_raw(
                 vec![
-                    ("field", J::obj().set("type", "string").set("description", "Field name from `state`.")),
                     (
-                        "value",
+                        "field",
                         J::obj()
-                            .set("description", "The typed value; the application's admission decides whether it fits.")
-                            .set(
-                                "oneOf",
-                                vec![
-                                    field_value_schema("int", J::obj().set("type", "integer")),
-                                    field_value_schema("float", J::obj().set("type", "number")),
-                                    field_value_schema("bool", J::obj().set("type", "boolean")),
-                                    field_value_schema(
-                                        "color",
-                                        J::obj().set("type", "integer").set("minimum", 0).set("maximum", 4294967295u32 as i64),
-                                    ),
-                                    field_value_schema("text", J::obj().set("type", "string")),
-                                ],
-                            ),
+                            .set("type", "string")
+                            .set("description", "Field name from `state`."),
                     ),
+                    ("value", typed_value_schema()),
                 ],
                 &["field", "value"],
             ),
@@ -718,88 +847,7 @@ pub fn tools() -> Vec<J> {
         tool(
             "replay",
             "Replay a recorded log on a fresh application of the same kind; reports the first description or pixel that differs.",
-            schema_raw(
-                vec![(
-                    "log",
-                    J::obj()
-                        .set("type", "object")
-                        .set(
-                            "description",
-                            "The complete object returned by record_stop.",
-                        )
-                        .set(
-                            "properties",
-                            J::obj()
-                                .set("schema", J::obj().set("type", "integer"))
-                                .set("app", J::obj().set("type", "string"))
-                                .set(
-                                    "size",
-                                    J::obj().set("type", "object").set(
-                                        "properties",
-                                        J::obj()
-                                            .set("w", J::obj().set("type", "integer"))
-                                            .set("h", J::obj().set("type", "integer"))
-                                            .set("scale", J::obj().set("type", "number")),
-                                    ),
-                                )
-                                .set(
-                                    "steps",
-                                    J::obj().set("type", "array").set(
-                                        "items",
-                                        J::obj()
-                                            .set("type", "object")
-                                            .set(
-                                                "properties",
-                                                J::obj()
-                                                    .set(
-                                                        "command",
-                                                        J::obj()
-                                                            .set("type", "object")
-                                                            .set("description", "The recorded command.")
-                                                            .set(
-                                                                "properties",
-                                                                J::obj()
-                                                                    .set("kind", J::obj().set("type", "string"))
-                                                                    .set("field", J::obj().set("type", "string"))
-                                                                    .set("value", J::obj().set("type", "object").set("properties", J::obj().set("kind", J::obj().set("type", "string"))))
-                                                                    .set("x", J::obj().set("type", "integer"))
-                                                                    .set("y", J::obj().set("type", "integer"))
-                                                                    .set("w", J::obj().set("type", "integer"))
-                                                                    .set("h", J::obj().set("type", "integer"))
-                                                                    .set("ms", J::obj().set("type", "integer"))
-                                                                    .set("key", J::obj().set("type", "string")),
-                                                            ),
-                                                    )
-                                                    .set("digest", J::obj().set("type", "string"))
-                                                    .set("pixels", J::obj().set("type", "string"))
-                                                    .set("damage", J::obj().set("type", "integer"))
-                                                    .set("revision", J::obj().set("type", "integer"))
-                                                    .set(
-                                                        "refused",
-                                                        J::obj().set("oneOf", vec![
-                                                            J::obj().set("type", "null"),
-                                                            J::obj().set("type", "array").set("items", J::obj().set("type", "string")).set("maxItems", 2),
-                                                        ]),
-                                                    ),
-                                            )
-                                            .set(
-                                                "required",
-                                                vec![J::Str("command".into())],
-                                            ),
-                                    ),
-                                ),
-                        )
-                        .set(
-                            "required",
-                            vec![
-                                J::Str("schema".into()),
-                                J::Str("app".into()),
-                                J::Str("steps".into()),
-                            ],
-                        ),
-                )],
-                &["log"],
-            ),
+            schema_raw(vec![("log", replay_log_schema())], &["log"]),
         ),
         tool(
             "wait_for_idle",
@@ -823,9 +871,7 @@ pub fn serve_stream<R: BufRead, W: Write>(
     })
 }
 
-/// Serve stdio with the replies written by another thread. The request loop never waits for a slow reader;
-/// at most [`OUT_QUEUE`] replies are queued, so a client that stops reading bounds the server's memory and
-/// then blocks the loop instead of growing without limit.
+/// Encode and write stdio replies on a worker. The 64-reply queue applies backpressure when full.
 pub fn serve_stream_owned<R: BufRead + Send + 'static, W: Write + Send + 'static>(
     mcp: &mut Mcp,
     mut input: R,
@@ -871,7 +917,7 @@ fn serve_stream_worker<R: BufRead, W: Write + Send + 'static>(
 }
 
 /// The protocol loop over newline-delimited JSON, with the emit step supplied by the transport (so a
-/// transport can hand serialized bytes to its own writer).
+/// transport can hand an owned JSON value to its writer).
 fn pump_stream<R: BufRead, F: FnMut(J) -> io::Result<()>>(
     mcp: &mut Mcp,
     input: &mut R,
