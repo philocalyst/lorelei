@@ -1,0 +1,15 @@
+[package]
+name = "bough-audio"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+description = "The audio side of the media seam: a callback over a block with an explicit clock and latency, a lock-free ring a decoder writes into, the pacer that picks a video frame from the audio clock, a deterministic source and a null sink; CoreAudio's default output behind a feature. No dependencies"
+
+[dependencies]
+
+[features]
+# The first real backend: CoreAudio's default output unit (macOS; links AudioToolbox). Off by default: an
+# application that plays no sound links nothing.
+coreaudio = []
+# Mutant the pacing gate must fail with: the pacer reads the output's time instead of the audio clock.
+mutant_wall_clock = []

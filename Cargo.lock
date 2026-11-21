@@ -132,6 +132,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bough-audio"
+version = "0.0.0"
+
+[[package]]
 name = "bough-awagy"
 version = "0.0.0"
 dependencies = [
@@ -320,6 +324,7 @@ dependencies = [
 name = "bough-paint"
 version = "0.0.0"
 dependencies = [
+ "bough-audio",
  "bough-expr",
  "bough-kernel",
  "bough-mem",
