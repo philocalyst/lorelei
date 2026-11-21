@@ -305,10 +305,18 @@ impl<'a> Flat<'a> {
             wraps: [None; MAXW],
         };
         t.emit(&mut f);
+        // `Shape` is a safe trait and `Nd` a public word array: the stream is checked to be one tree before
+        // any element is read. `At::spec` reads only indices `ends` visits, and each is under `n` (soundness
+        // review S06: an empty stream, or a box naming more children than follow, read an unwritten `Spec`).
+        assert!(f.n > 0, "an element emits at least one layout node");
         f.ends(0);
         f
     }
     fn ends(&mut self, i: usize) -> usize {
+        assert!(
+            i < self.n,
+            "a box names more children than its element emitted"
+        );
         let mut j = i + 1;
         if self.meta[i].kind == K_BOX as u8 {
             for _ in 0..self.meta[i].count {

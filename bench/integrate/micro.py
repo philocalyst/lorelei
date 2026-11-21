@@ -18,7 +18,10 @@ FONT = os.path.expanduser(os.environ.get('BOUGH_REF', '~/projects/_ref')) + "/zg
 def run(fw, scene, render):
     env = dict(os.environ, SCENE=scene, RENDER=str(render), ZGX_FONT_FILE=FONT)
     b = VBIN[fw] if scene == "vscroll-variable" else BIN[fw]
-    out = subprocess.run([b], env=env, capture_output=True, text=True).stdout
+    p = subprocess.run([b], env=env, capture_output=True, text=True)
+    if p.returncode != 0:
+        sys.exit(f"micro: {b} exited {p.returncode}: {p.stderr.strip()[-300:]}")
+    out = p.stdout
     return {j["figure"]: j for j in (json.loads(l) for l in out.splitlines() if l.startswith("{"))}
 
 def fmt(xs):

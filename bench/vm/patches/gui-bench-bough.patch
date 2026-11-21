@@ -1,0 +1,38 @@
+--- a/runner/src/frameworks.rs
++++ b/runner/src/frameworks.rs
+@@ -67,4 +67,14 @@
+         marks: false,
+         variants: IMMEDIATE,
+     },
++    Framework {
++        name: "bough",
++        marks: false,
++        variants: RETAINED,
++    },
++    Framework {
++        name: "bough-x",
++        marks: false,
++        variants: RETAINED,
++    },
+ ];
+@@ -78,4 +88,8 @@
+     /// Returns the binary name of the app, `<name>-bench`.
+     pub fn binary(&self) -> String {
+-        format!("{}-bench", self.name)
++        // lorelei's two apps share one binary name, built from two different crates.
++        match self.name {
++            "bough" | "bough-x" => "bough-bench".to_owned(),
++            _ => format!("{}-bench", self.name),
++        }
+     }
+--- a/runner/src/main.rs
++++ b/runner/src/main.rs
+@@ -39,7 +39,7 @@
+     #[arg(
+         long,
+         value_delimiter = ',',
+-        default_value = "zgui,gpui-kit,gpui-kit-fast,freya,freya-056a5b4,vizia,floem,iced,egui"
++        default_value = "zgui,gpui-kit,gpui-kit-fast,freya,freya-056a5b4,vizia,floem,iced,egui,bough,bough-x"
+     )]
+     frameworks: Vec<String>,
+     /// Only these variants of the table and ticker scenarios, comma separated. All by default.

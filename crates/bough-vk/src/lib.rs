@@ -104,7 +104,7 @@ impl Device {
         // SAFETY: plain enumeration.
         let have_ext = unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap_or_default();
         let has = |n: &CStr| have_ext.iter().any(|e| e.extension_name_as_c_str() == Ok(n));
-        let mut exts: Vec<*const i8> = Vec::new();
+        let mut exts: Vec<*const core::ffi::c_char> = Vec::new();
         let mut flags = vk::InstanceCreateFlags::empty();
         // MoltenVK is a portability implementation: enumerated only when asked for
         if has(ash::khr::portability_enumeration::NAME) {
@@ -118,7 +118,7 @@ impl Device {
         // SAFETY: plain enumeration.
         let layers_have = unsafe { entry.enumerate_instance_layer_properties() }.unwrap_or_default();
         let vl = c"VK_LAYER_KHRONOS_validation";
-        let layers: Vec<*const i8> = if validate && layers_have.iter().any(|l| l.layer_name_as_c_str() == Ok(vl)) { vec![vl.as_ptr()] } else { vec![] };
+        let layers: Vec<*const core::ffi::c_char> = if validate && layers_have.iter().any(|l| l.layer_name_as_c_str() == Ok(vl)) { vec![vl.as_ptr()] } else { vec![] };
         if validate && layers.is_empty() {
             eprintln!("bough: BOUGH_VK_VALIDATE=1 but the validation layer is not installed");
         }
@@ -226,7 +226,7 @@ impl Device {
         // SAFETY: as above.
         let exts = unsafe { instance.enumerate_device_extension_properties(pdev) }.unwrap_or_default();
         let has = |n: &CStr| exts.iter().any(|e| e.extension_name_as_c_str() == Ok(n));
-        let mut dexts: Vec<*const i8> = vec![ash::ext::external_memory_host::NAME.as_ptr()];
+        let mut dexts: Vec<*const core::ffi::c_char> = vec![ash::ext::external_memory_host::NAME.as_ptr()];
         let portability = c"VK_KHR_portability_subset";
         if has(portability) {
             dexts.push(portability.as_ptr());

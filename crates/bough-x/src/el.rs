@@ -1100,7 +1100,8 @@ impl<K: Content, C> Shape for Text<K, C> {
         ));
     }
 }
-impl<V, K: Content, C: Expr<Out = Color> + Rooted<V>> Row<V> for Text<K, C> {
+// SAFETY (`Row`'s contract): one leaf: the content's record, written as that record.
+unsafe impl<V, K: Content, C: Expr<Out = Color> + Rooted<V>> Row<V> for Text<K, C> {
     const LEAVES: u32 = 1;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -1120,7 +1121,8 @@ impl<V, K: Content, C: Expr<Out = Color> + Rooted<V>> Row<V> for Text<K, C> {
 
 // ---- boxes as rows -------------------------------------------------------------------------------------------
 
-impl<V> Row<V> for () {
+// SAFETY (`Row`'s contract): no leaves, nothing written.
+unsafe impl<V> Row<V> for () {
     const LEAVES: u32 = 0;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, _: &mut L) {}
@@ -1129,7 +1131,8 @@ impl<V> Row<V> for () {
     #[inline(always)]
     unsafe fn patch(&self, _: *const Site, _: u32, _: &Mk, _: &mut Cx<'_>) {}
 }
-impl<V, C: Row<V>, E: Row<V>> Row<V> for Chain<C, E> {
+// SAFETY (`Row`'s contract): the first part's `C::LEAVES` sites, then the second's, in order.
+unsafe impl<V, C: Row<V>, E: Row<V>> Row<V> for Chain<C, E> {
     const LEAVES: u32 = C::LEAVES + E::LEAVES;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -1153,7 +1156,8 @@ impl<V, C: Row<V>, E: Row<V>> Row<V> for Chain<C, E> {
         }
     }
 }
-impl<V, C: Row<V>, H> Row<V> for LBox<(), C, H> {
+// SAFETY (`Row`'s contract): an unpainted box is its children.
+unsafe impl<V, C: Row<V>, H> Row<V> for LBox<(), C, H> {
     const LEAVES: u32 = C::LEAVES;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -1170,7 +1174,8 @@ impl<V, C: Row<V>, H> Row<V> for LBox<(), C, H> {
         unsafe { self.kids.patch(sites, slot, mk, cx) }
     }
 }
-impl<V, P: Paints<V>, C: Row<V>, H> Row<V> for LBox<Rec1<P>, C, H> {
+// SAFETY (`Row`'s contract): the box's own record (one leaf, written as `P::A`), then its children's `C::LEAVES`.
+unsafe impl<V, P: Paints<V>, C: Row<V>, H> Row<V> for LBox<Rec1<P>, C, H> {
     const LEAVES: u32 = 1 + C::LEAVES;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -1232,7 +1237,8 @@ impl<V, X: Boxy<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Boxy<V> for Hd<X,
         self.0.kids()
     }
 }
-impl<V: 'static, X: Boxy<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Row<V> for Hd<X, H> {
+// SAFETY (`Row`'s contract): the box's record with its handlers (one leaf, `On<X::Tgt, H>`), then the children's leaves.
+unsafe impl<V: 'static, X: Boxy<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Row<V> for Hd<X, H> {
     const LEAVES: u32 = 1 + <X::Kids as Row<V>>::LEAVES;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -1359,7 +1365,8 @@ impl<P: bough_lay::Paint, C> Shape for Scroll<P, C> {
         s.node(Nd::pack(&HOLE, K_BOX, true, 0, 0.0, 0.0, [0; 2]));
     }
 }
-impl<V, C> Row<V> for Scroll<(), C> {
+// SAFETY (`Row`'s contract): one hole, nothing written.
+unsafe impl<V, C> Row<V> for Scroll<(), C> {
     const LEAVES: u32 = 1;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -1370,7 +1377,8 @@ impl<V, C> Row<V> for Scroll<(), C> {
     #[inline(always)]
     unsafe fn patch(&self, _: *const Site, _: u32, _: &Mk, _: &mut Cx<'_>) {}
 }
-impl<V, P: Paints<V>, C> Row<V> for Scroll<Rec1<P>, C> {
+// SAFETY (`Row`'s contract): the box's record (one leaf, written as `P::A`) and one hole.
+unsafe impl<V, P: Paints<V>, C> Row<V> for Scroll<Rec1<P>, C> {
     const LEAVES: u32 = 2;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -1401,9 +1409,25 @@ pub struct Flow {
 pub trait Seg<V> {
     fn seg<S: Sink<V>>(&mut self, s: &mut S, f: &mut Flow);
 }
+///
+/// The list pass asks a row more than once in one pass (row 0 or the first exposed row, to lay the list out
+/// and make its columns, then again to write it), so the iterator must be `Clone`: std's
+/// `TrustedRandomAccessNoCoerce` allows `__iterator_get_unchecked` to be called twice with one index only for
+/// a `Clone` iterator (condition 2; soundness review S07). A `!Clone` one (`iter_mut()`) is refused:
+///
+/// ```compile_fail,E0277
+/// use bough_x::el::prelude::*;
+/// struct V { y: Signal<f32> }
+/// impl View for V {
+///     fn view(&self) -> impl Element<Self> + '_ {
+///         let rows: &'static mut [u32] = Box::leak(Box::new([0u32; 4]));
+///         column(each(rows.iter_mut().map(|_| text("row")))).h(100.0).scroll(sig!(self.y))
+///     }
+/// }
+/// ```
 impl<V, I> Seg<V> for Each<I>
 where
-    I: Iterator + TrustedRandomAccessNoCoerce,
+    I: Iterator + TrustedRandomAccessNoCoerce + Clone,
     I::Item: Row<V> + Shape,
 {
     #[inline(always)]
@@ -1419,10 +1443,10 @@ where
         } else {
             None
         };
-        // SAFETY: `r < size()` (the list pass asks only for rows under `n`), each row is asked at most once
-        // per pass (a pass visits distinct rows) and the iterator is not advanced otherwise: the contract of
-        // `__iterator_get_unchecked`. A row's value is a plain element, so being asked again by a later pass
-        // on a fresh iterator is an ordinary call of the author's closure.
+        // SAFETY: `r < size()` (asserted: the list pass asks only for rows under `n`); `I: Clone`, so asking
+        // one index more than once is allowed (the pass does: a row is asked to lay the list out and again to
+        // be written); nothing but `size` and `__iterator_get_unchecked` is called on the iterator. The
+        // contract of `TrustedRandomAccessNoCoerce`, conditions 1, 2 and 4.
         f.y += s.rows(n as u32, geo, |r| {
             assert!(r < n);
             unsafe { it.__iterator_get_unchecked(r) }
@@ -1542,7 +1566,8 @@ impl<V> Seg<V> for () {
 
 /// A row by reference: what an element hands a sink while keeping itself for its lists.
 pub struct ByRef<'a, E>(pub &'a E);
-impl<V, E: Row<V>> Row<V> for ByRef<'_, E> {
+// SAFETY (`Row`'s contract): exactly `E`'s leaves and writes.
+unsafe impl<V, E: Row<V>> Row<V> for ByRef<'_, E> {
     const LEAVES: u32 = E::LEAVES;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {

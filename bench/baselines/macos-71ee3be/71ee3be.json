@@ -1,0 +1,636 @@
+{
+  "format": 1,
+  "name": "71ee3be",
+  "commit": "71ee3be0aa39d37c0fb3bc32997d4aed631e2cc2",
+  "dirty": false,
+  "rustc": "rustc 1.101.0-nightly (5d8fec066 2026-10-16)",
+  "profile": "release for apps; dist for the bough-x/bough-paint examples",
+  "features": "default",
+  "host": {
+    "os": "26.7.3",
+    "machine": "arm64",
+    "cpu": "Apple M3 Ultra",
+    "cpus": 32
+  },
+  "load": {
+    "before": [
+      19.197265625,
+      25.71484375,
+      23.75244140625
+    ],
+    "after": [
+      17.1708984375,
+      24.94482421875,
+      23.51123046875
+    ],
+    "ceiling": 2.0,
+    "ok": false
+  },
+  "binaries": {
+    "sheet_x": {
+      "path": "dist/examples/sheet_x",
+      "sha256": "784de0ecc3808e9526b4a753acefd51cb7a5785fed8e50d7d019506690878b35",
+      "bytes": 720320,
+      "text_bytes": 430056
+    },
+    "events_x": {
+      "path": "dist/examples/events_x",
+      "sha256": "f8840a5ba3f429fb8d745f7203c5b64a209f5327188c375c39b82a5e04d8c809",
+      "bytes": 567024,
+      "text_bytes": 290740
+    },
+    "text_x": {
+      "path": "dist/examples/text_x",
+      "sha256": "00cbb3deebcbc13c950d7ff15e35df8163c6eeb4d05c7d27893fab3c6f4c99c6",
+      "bytes": 775952,
+      "text_bytes": 438448
+    },
+    "anim_x": {
+      "path": "dist/examples/anim_x",
+      "sha256": "5b5e221ee6735822488019036eeadaa2eb25740a557ddd264e3b2ba3a0437074",
+      "bytes": 545760,
+      "text_bytes": 276136
+    },
+    "pbench": {
+      "path": "dist/examples/pbench",
+      "sha256": "09717fa682f02ff9cec1dee217c75946b54e3b641704d93292f783999823316c",
+      "bytes": 1265104,
+      "text_bytes": 768252
+    },
+    "bough-x-bench": {
+      "path": "release/bough-bench",
+      "sha256": "e88ac991044d6ccb78b080278ac351861336c59c6026e6043fe3a140ba3cfbf5",
+      "bytes": 461576,
+      "text_bytes": 210092
+    },
+    "headless": {
+      "path": "release/headless",
+      "sha256": "aea29babea242586018b8e6e5fab80a10839c2d3ec34f6af0cbc3e4ad7e857c2",
+      "bytes": 7371960,
+      "text_bytes": 4030624
+    }
+  },
+  "cells": {
+    "sheet_x/rows1000": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 27.069,
+          "time_real_s": 0.02,
+          "instructions": 22882871,
+          "rss_bytes": 2457600,
+          "rep": 2,
+          "load": 19.197265625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 8.23,
+          "time_real_s": 0.0,
+          "instructions": 21354466,
+          "rss_bytes": 2473984,
+          "rep": 1,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 14.057,
+          "time_real_s": 0.0,
+          "instructions": 21414658,
+          "rss_bytes": 2457600,
+          "rep": 0,
+          "load": 17.79541015625
+        }
+      ],
+      "instructions": {
+        "median": 21414658,
+        "min": 21354466,
+        "max": 22882871,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 14.057,
+        "min": 8.23,
+        "max": 27.069,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 2457600,
+        "min": 2457600,
+        "max": 2473984,
+        "n": 3
+      }
+    },
+    "sheet_x/rows10000": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 8.388,
+          "time_real_s": 0.0,
+          "instructions": 25033239,
+          "rss_bytes": 2834432,
+          "rep": 2,
+          "load": 19.197265625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 8.527,
+          "time_real_s": 0.0,
+          "instructions": 24930362,
+          "rss_bytes": 2834432,
+          "rep": 1,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 9.731,
+          "time_real_s": 0.0,
+          "instructions": 25026131,
+          "rss_bytes": 2834432,
+          "rep": 0,
+          "load": 17.79541015625
+        }
+      ],
+      "instructions": {
+        "median": 25026131,
+        "min": 24930362,
+        "max": 25033239,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 8.527,
+        "min": 8.388,
+        "max": 9.731,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 2834432,
+        "min": 2834432,
+        "max": 2834432,
+        "n": 3
+      }
+    },
+    "events_x/rows10000": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 208.01,
+          "time_real_s": 0.2,
+          "instructions": 2323889480,
+          "rss_bytes": 69238784,
+          "rep": 2,
+          "load": 19.197265625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 188.509,
+          "time_real_s": 0.18,
+          "instructions": 2322717289,
+          "rss_bytes": 69222400,
+          "rep": 1,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 186.587,
+          "time_real_s": 0.18,
+          "instructions": 2322692693,
+          "rss_bytes": 69255168,
+          "rep": 0,
+          "load": 17.79541015625
+        }
+      ],
+      "instructions": {
+        "median": 2322717289,
+        "min": 2322692693,
+        "max": 2323889480,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 188.509,
+        "min": 186.587,
+        "max": 208.01,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 69238784,
+        "min": 69222400,
+        "max": 69255168,
+        "n": 3
+      }
+    },
+    "text_x": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 39.196,
+          "time_real_s": 0.03,
+          "instructions": 232972117,
+          "rss_bytes": 6356992,
+          "rep": 2,
+          "load": 19.197265625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 23.655,
+          "time_real_s": 0.01,
+          "instructions": 231553282,
+          "rss_bytes": 6389760,
+          "rep": 1,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 23.367,
+          "time_real_s": 0.01,
+          "instructions": 231440419,
+          "rss_bytes": 6373376,
+          "rep": 0,
+          "load": 17.79541015625
+        }
+      ],
+      "instructions": {
+        "median": 231553282,
+        "min": 231440419,
+        "max": 232972117,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 23.655,
+        "min": 23.367,
+        "max": 39.196,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 6373376,
+        "min": 6356992,
+        "max": 6389760,
+        "n": 3
+      }
+    },
+    "anim_x/208": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 33.083,
+          "time_real_s": 0.02,
+          "instructions": 18963367,
+          "rss_bytes": 2146304,
+          "rep": 2,
+          "load": 19.197265625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 8.937,
+          "time_real_s": 0.0,
+          "instructions": 17923255,
+          "rss_bytes": 2146304,
+          "rep": 1,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 9.33,
+          "time_real_s": 0.0,
+          "instructions": 17852666,
+          "rss_bytes": 2146304,
+          "rep": 0,
+          "load": 17.79541015625
+        }
+      ],
+      "instructions": {
+        "median": 17923255,
+        "min": 17852666,
+        "max": 18963367,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 9.33,
+        "min": 8.937,
+        "max": 33.083,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 2146304,
+        "min": 2146304,
+        "max": 2146304,
+        "n": 3
+      }
+    },
+    "pbench/canvas1": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 4276.815,
+          "time_real_s": 4.27,
+          "instructions": 101894160238,
+          "rss_bytes": 274104320,
+          "rep": 2,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 4202.583,
+          "time_real_s": 4.19,
+          "instructions": 101888267149,
+          "rss_bytes": 271876096,
+          "rep": 1,
+          "load": 17.79541015625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 4216.484,
+          "time_real_s": 4.21,
+          "instructions": 101884349233,
+          "rss_bytes": 271892480,
+          "rep": 0,
+          "load": 17.1708984375
+        }
+      ],
+      "instructions": {
+        "median": 101888267149,
+        "min": 101884349233,
+        "max": 101894160238,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 4216.484,
+        "min": 4202.583,
+        "max": 4276.815,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 271892480,
+        "min": 271876096,
+        "max": 274104320,
+        "n": 3
+      }
+    },
+    "guibench/rows-1000-mount": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 58.287,
+          "time_real_s": 0.05,
+          "instructions": 92239906,
+          "rss_bytes": 20119552,
+          "rep": 2,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 33.162,
+          "time_real_s": 0.02,
+          "instructions": 85327608,
+          "rss_bytes": 20054016,
+          "rep": 1,
+          "load": 17.79541015625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 35.069,
+          "time_real_s": 0.03,
+          "instructions": 85450645,
+          "rss_bytes": 20086784,
+          "rep": 0,
+          "load": 17.1708984375
+        }
+      ],
+      "instructions": {
+        "median": 85450645,
+        "min": 85327608,
+        "max": 92239906,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 35.069,
+        "min": 33.162,
+        "max": 58.287,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 20086784,
+        "min": 20054016,
+        "max": 20119552,
+        "n": 3
+      }
+    },
+    "guibench/rows-1000-hover": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 36.771,
+          "time_real_s": 0.03,
+          "instructions": 248606830,
+          "rss_bytes": 20201472,
+          "rep": 2,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 35.572,
+          "time_real_s": 0.03,
+          "instructions": 245624161,
+          "rss_bytes": 20201472,
+          "rep": 1,
+          "load": 17.79541015625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 36.672,
+          "time_real_s": 0.03,
+          "instructions": 246313512,
+          "rss_bytes": 20168704,
+          "rep": 0,
+          "load": 17.1708984375
+        }
+      ],
+      "instructions": {
+        "median": 246313512,
+        "min": 245624161,
+        "max": 248606830,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 36.672,
+        "min": 35.572,
+        "max": 36.771,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 20201472,
+        "min": 20168704,
+        "max": 20201472,
+        "n": 3
+      }
+    },
+    "guibench/rows-1000-typing": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 31.039,
+          "time_real_s": 0.02,
+          "instructions": 177096041,
+          "rss_bytes": 20873216,
+          "rep": 2,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 30.602,
+          "time_real_s": 0.02,
+          "instructions": 177015894,
+          "rss_bytes": 20938752,
+          "rep": 1,
+          "load": 17.79541015625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 31.079,
+          "time_real_s": 0.02,
+          "instructions": 177056885,
+          "rss_bytes": 20873216,
+          "rep": 0,
+          "load": 17.1708984375
+        }
+      ],
+      "instructions": {
+        "median": 177056885,
+        "min": 177015894,
+        "max": 177096041,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 31.039,
+        "min": 30.602,
+        "max": 31.079,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 20873216,
+        "min": 20873216,
+        "max": 20938752,
+        "n": 3
+      }
+    },
+    "guibench/search-100-filter": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 28.506,
+          "time_real_s": 0.02,
+          "instructions": 132930708,
+          "rss_bytes": 19021824,
+          "rep": 2,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 27.201,
+          "time_real_s": 0.02,
+          "instructions": 133014771,
+          "rss_bytes": 19038208,
+          "rep": 1,
+          "load": 17.79541015625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 26.388,
+          "time_real_s": 0.02,
+          "instructions": 133014444,
+          "rss_bytes": 19005440,
+          "rep": 0,
+          "load": 17.1708984375
+        }
+      ],
+      "instructions": {
+        "median": 133014444,
+        "min": 132930708,
+        "max": 133014771,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 27.201,
+        "min": 26.388,
+        "max": 28.506,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 19021824,
+        "min": 19005440,
+        "max": 19038208,
+        "n": 3
+      }
+    },
+    "guibench/search-1000-filter-nochange": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 27.014,
+          "time_real_s": 0.02,
+          "instructions": 136573577,
+          "rss_bytes": 21004288,
+          "rep": 2,
+          "load": 18.30029296875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 28.705,
+          "time_real_s": 0.02,
+          "instructions": 137097902,
+          "rss_bytes": 20922368,
+          "rep": 1,
+          "load": 17.79541015625
+        },
+        {
+          "exit": 0,
+          "wall_ms": 25.931,
+          "time_real_s": 0.02,
+          "instructions": 136497114,
+          "rss_bytes": 20955136,
+          "rep": 0,
+          "load": 17.1708984375
+        }
+      ],
+      "instructions": {
+        "median": 136573577,
+        "min": 136497114,
+        "max": 137097902,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 27.014,
+        "min": 25.931,
+        "max": 28.705,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 20955136,
+        "min": 20922368,
+        "max": 21004288,
+        "n": 3
+      }
+    }
+  },
+  "errors": [],
+  "slots": {
+    "rows": "bough-guibench headless, rows (measured below as guibench/rows-*)",
+    "virtual": "not yet available: bough's virtual list cells are gui-bench's `virtual` scenario on Linux",
+    "table": "bough-guibench headless table cells (measured below as guibench/table-*)",
+    "typing": "bough-guibench headless typing (measured below)",
+    "search": "bough-guibench headless filter (measured below)",
+    "spinner": "not yet available: needs the output-paced animation driver (REPORT 4.8)",
+    "ticker": "not yet available: same clock as spinner",
+    "resize": "not yet available on the new core; the fa\u00e7ade's resize is the gui-bench VM cell",
+    "sheet": "bough-x sheet_x example (measured below)",
+    "chat": "not yet available: the element-layer chat scene (REPORT 4.1)",
+    "ide": "not yet available: the element-layer ide scene (REPORT 4.1)",
+    "dashboard": "not yet available: the element-layer dashboard scene (REPORT 4.1)",
+    "canvas": "bough-paint pbench canvas (measured below)",
+    "effects": "not yet available: the effects/motion lane's scene (slot reserved)",
+    "media": "not yet available: the video/image scene (slot reserved)"
+  },
+  "known_failures": [
+    "guibench search --rows 1000 --op filter: panics after ~40 filter steps in bough-mem's region layout: column `glyph_x` is full (capacity 524288, need 524304). The 100-row filter and the 1000-row filter-nochange cells are measured instead."
+  ],
+  "date": "2026-11-21T10:02:35Z"
+}

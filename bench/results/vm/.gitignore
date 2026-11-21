@@ -1,0 +1,3 @@
+# Raw per-run trees (CONTRACT.txt, run.json, cells, logs, screenshots) stay local or external.
+# Only the compact <stamp>.json summaries and this file are tracked.
+/*/
