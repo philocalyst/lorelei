@@ -117,6 +117,13 @@ def main():
     if legacy:
         print("Legacy receipt: process totals")
     thresholds = read_limits(args.thresholds)
+    known = set()
+    for run in (base, head):
+        for name, cell in run["cells"].items():
+            known.add(name)
+            known.update(f"{name}/{op}" for op in cell.get("operations", {}))
+    if thresholds.keys() - known:
+        raise ValueError(f"thresholds name unknown cells or operations: {sorted(thresholds.keys() - known)}")
     print(f"base {base['name']} {base['commit'][:10]}   head {head['name']} {head['commit'][:10]}")
     names = sorted(set(base["cells"]) | set(head["cells"]))
     wanted = set(args.cells.split(",")) if args.cells else set()
