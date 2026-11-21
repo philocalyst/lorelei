@@ -1,0 +1,22 @@
+   Compiling bough-kernel v0.0.0 (crates/bough-kernel)
+    Finished `release` profile [optimized + debuginfo] target(s) in 8.04s
+     Running tests/shadow_cache.rs (release/build/bough-kernel/8c9cf523f0a85734/out/shadow_cache-8c9cf523f0a85734)
+
+running 1 test
+test fractional_shadow_reuse_preserves_integer_coverage ... FAILED
+
+failures:
+
+---- fractional_shadow_reuse_preserves_integer_coverage stdout ----
+
+thread 'fractional_shadow_reuse_preserves_integer_coverage' panicked at crates/bough-kernel/tests/shadow_cache.rs:52:17:
+fractional shadow coverage differs at 0.375, 0, 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    fractional_shadow_reuse_preserves_integer_coverage
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p bough-kernel --test shadow_cache`

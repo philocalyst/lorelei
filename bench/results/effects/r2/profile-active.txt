@@ -1,0 +1,262 @@
+ 5:02  up 4 days,  7:55, 5 users, load averages: 17.17 24.94 23.51
+facade mount 200
+kprof: 1 frames; instructions per frame by phase (one counter read = 1570, subtracted)
+       107  frame: idle test, pick a surface
+    527590  stage: reset the plane, list damaged tiles
+     57963  stage: page cull
+    344854  stage: records -> commands
+    483252  surface: lock, scroll copy
+    210749  run: bin (tile programs)
+      1928  run: choose
+  14069753  run: raster (decode, shade, store)
+       243  frame: epoch advance
+  15696439  total inside frame()
+facade trace 200
+facade_profile,200,0,1867,14845064,24,826
+facade_profile,200,1,930,14870693,24,1239
+facade_profile,200,2,930,14840685,24,1652
+facade_profile,200,3,930,258361,24,1662
+facade_profile,200,4,930,258327,24,1672
+facade_profile,200,5,930,258357,24,1682
+facade_profile,200,6,1214,258276,24,1692
+facade_profile,200,7,930,257324,24,1702
+facade_profile,200,8,930,257250,24,1712
+facade_profile,200,9,1214,257398,24,1722
+facade_profile,200,10,930,175069,24,1728
+facade_profile,200,11,930,175873,24,1734
+facade_profile,200,12,1892,175990,24,1740
+facade_profile,200,13,930,176017,24,1746
+facade_profile,200,14,930,174255,24,1752
+facade_profile,200,15,930,174255,24,1758
+facade_profile,200,16,930,174255,24,1764
+facade_profile,200,17,930,176017,24,1770
+facade_profile,200,18,930,176017,24,1776
+facade_profile,200,19,930,175990,24,1782
+kprof: 21 frames; instructions per frame by phase (one counter read = 1570, subtracted)
+       107  frame: idle test, pick a surface
+     14419  stage: reset the plane, list damaged tiles
+      3862  stage: page cull
+     42885  stage: records -> commands
+     94965  surface: lock, scroll copy
+     39916  run: bin (tile programs)
+       472  run: choose
+   2788812  run: raster (decode, shade, store)
+       726  frame: epoch advance
+   2986164  total inside frame()
+core trace 200
+core_startup,200,one,4,201625,1723134,3080192,2474296
+core_step,200,one,4,0,129042,1021618,130416,4177920,3506488,260
+core_profile,200,0,20,1240,125,1012076,201
+core_step,200,one,4,1,115791,984917,116709,5210112,4538680,260
+core_profile,200,1,147,20,1449,975157,201
+core_step,200,one,4,2,116000,984992,116583,6242304,5570872,260
+core_profile,200,2,147,20,1449,975219,201
+core_step,200,one,4,3,2125,30228,2958,6242304,5570872,4
+core_profile,200,3,147,20,1449,20455,201
+core_step,200,one,4,4,1917,30228,2459,6242304,5570872,4
+core_profile,200,4,147,20,1449,20455,201
+core_step,200,one,4,5,1833,30228,2375,6242304,5570872,4
+core_profile,200,5,147,20,1449,20455,201
+core_step,200,one,4,6,1834,30228,2417,6242304,5570872,4
+core_profile,200,6,147,20,1449,20455,201
+core_step,200,one,4,7,1834,30228,2458,6242304,5570872,4
+core_profile,200,7,147,20,1449,20455,201
+core_step,200,one,4,8,1750,30228,2291,6242304,5570872,4
+core_profile,200,8,147,20,1449,20455,201
+core_step,200,one,4,9,1750,30228,2500,6242304,5570872,4
+core_profile,200,9,147,20,1449,20455,201
+core_step,200,one,4,10,1750,30228,2250,6242304,5570872,4
+core_profile,200,10,147,20,1449,20455,201
+core_step,200,one,4,11,1750,30228,2333,6242304,5570872,4
+core_profile,200,11,147,20,1449,20455,201
+core_step,200,one,4,12,2042,31061,2625,6242304,5570872,4
+core_profile,200,12,147,853,1449,20455,201
+core_step,200,one,4,13,1750,30228,2292,6242304,5570872,4
+core_profile,200,13,147,20,1449,20455,201
+core_step,200,one,4,14,1750,30228,2500,6242304,5570872,4
+core_profile,200,14,147,20,1449,20455,201
+core_step,200,one,4,15,1750,30228,2458,6242304,5570872,4
+core_profile,200,15,147,20,1449,20455,201
+core_step,200,one,4,16,1708,30228,2333,6242304,5570872,4
+core_profile,200,16,147,20,1449,20455,201
+core_step,200,one,4,17,1750,30228,2292,6242304,5570872,4
+core_profile,200,17,147,20,1449,20455,201
+core_step,200,one,4,18,1750,30228,2333,6242304,5570872,4
+core_profile,200,18,146,20,1449,20455,201
+core_step,200,one,4,19,1750,30228,2334,6242304,5570872,4
+core_profile,200,19,147,20,1449,20455,201
+ 5:02  up 4 days,  7:55, 5 users, load averages: 16.68 24.71 23.44
+facade mount 1000
+kprof: 1 frames; instructions per frame by phase (one counter read = 1570, subtracted)
+       107  frame: idle test, pick a surface
+    268416  stage: reset the plane, list damaged tiles
+     49631  stage: page cull
+   1079169  stage: records -> commands
+    483270  surface: lock, scroll copy
+    788939  run: bin (tile programs)
+      1928  run: choose
+  68399122  run: raster (decode, shade, store)
+       243  frame: epoch advance
+  71070825  total inside frame()
+facade trace 1000
+facade_profile,1000,0,1867,70673912,24,4126
+facade_profile,1000,1,930,70690061,24,6189
+facade_profile,1000,2,930,70603465,24,8252
+facade_profile,1000,3,930,1096828,24,8302
+facade_profile,1000,4,930,1096794,24,8352
+facade_profile,1000,5,930,1096848,24,8402
+facade_profile,1000,6,1214,1096740,24,8452
+facade_profile,1000,7,930,1095677,24,8502
+facade_profile,1000,8,930,1095603,24,8552
+facade_profile,1000,9,1214,1095973,24,8602
+facade_profile,1000,10,930,729848,24,8632
+facade_profile,1000,11,930,730541,24,8662
+facade_profile,1000,12,1892,730760,24,8692
+facade_profile,1000,13,930,730787,24,8722
+facade_profile,1000,14,930,728877,24,8752
+facade_profile,1000,15,930,728877,24,8782
+facade_profile,1000,16,930,728877,24,8812
+facade_profile,1000,17,930,730787,24,8842
+facade_profile,1000,18,930,730787,24,8872
+facade_profile,1000,19,930,730760,24,8902
+kprof: 21 frames; instructions per frame by phase (one counter read = 1570, subtracted)
+       107  frame: idle test, pick a surface
+     14854  stage: reset the plane, list damaged tiles
+     15259  stage: page cull
+    206896  stage: records -> commands
+     89897  surface: lock, scroll copy
+    160086  run: bin (tile programs)
+       472  run: choose
+  13681099  run: raster (decode, shade, store)
+       726  frame: epoch advance
+  14169396  total inside frame()
+core trace 1000
+core_startup,1000,one,4,793583,16246545,3424256,2818360
+core_step,1000,one,4,0,233208,2576066,234334,4521984,3850552,260
+core_profile,1000,0,20,1133,125,2566606,1001
+core_step,1000,one,4,1,245750,2625429,246584,5554176,4882744,260
+core_profile,1000,1,147,20,1449,2615661,1001
+core_step,1000,one,4,2,230875,2576268,231625,6586368,5914936,260
+core_profile,1000,2,147,20,1449,2566503,1001
+core_step,1000,one,4,3,5625,94173,6333,6586368,5914936,4
+core_profile,1000,3,147,20,1449,84399,1001
+core_step,1000,one,4,4,4958,94167,5708,6586368,5914936,4
+core_profile,1000,4,147,20,1449,84399,1001
+core_step,1000,one,4,5,4792,94197,5542,6586368,5914936,4
+core_profile,1000,5,147,20,1449,84399,1001
+core_step,1000,one,4,6,4792,94197,5541,6586368,5914936,4
+core_profile,1000,6,147,20,1449,84399,1001
+core_step,1000,one,4,7,4709,94197,5416,6586368,5914936,4
+core_profile,1000,7,147,20,1449,84399,1001
+core_step,1000,one,4,8,4708,94173,5417,6586368,5914936,4
+core_profile,1000,8,147,20,1449,84399,1001
+core_step,1000,one,4,9,4667,94173,5416,6586368,5914936,4
+core_profile,1000,9,147,20,1449,84399,1001
+core_step,1000,one,4,10,4708,94197,5459,6586368,5914936,4
+core_profile,1000,10,147,20,1449,84399,1001
+core_step,1000,one,4,11,4708,94197,5375,6586368,5914936,4
+core_profile,1000,11,147,20,1449,84399,1001
+core_step,1000,one,4,12,5042,94995,5792,6586368,5914936,4
+core_profile,1000,12,147,853,1449,84399,1001
+core_step,1000,one,4,13,4708,94197,5417,6586368,5914936,4
+core_profile,1000,13,147,20,1449,84399,1001
+core_step,1000,one,4,14,4709,94197,5375,6586368,5914936,4
+core_profile,1000,14,147,20,1449,84399,1001
+core_step,1000,one,4,15,4667,94173,5417,6586368,5914936,4
+core_profile,1000,15,147,20,1449,84399,1001
+core_step,1000,one,4,16,4667,94173,5417,6586368,5914936,4
+core_profile,1000,16,147,20,1449,84399,1001
+core_step,1000,one,4,17,4750,94197,5625,6586368,5914936,4
+core_profile,1000,17,147,20,1449,84399,1001
+core_step,1000,one,4,18,4666,94197,5417,6586368,5914936,4
+core_profile,1000,18,147,20,1449,84399,1001
+core_step,1000,one,4,19,4750,94184,5458,6586368,5914936,4
+core_profile,1000,19,147,20,1449,84399,1001
+ 5:02  up 4 days,  7:55, 5 users, load averages: 16.68 24.71 23.44
+facade mount 5000
+kprof: 1 frames; instructions per frame by phase (one counter read = 1570, subtracted)
+       107  frame: idle test, pick a surface
+    257736  stage: reset the plane, list damaged tiles
+    227512  stage: page cull
+   5818514  stage: records -> commands
+    495883  surface: lock, scroll copy
+   3751511  run: bin (tile programs)
+      1928  run: choose
+  330122845  run: raster (decode, shade, store)
+       243  frame: epoch advance
+  340676279  total inside frame()
+facade trace 5000
+facade_profile,5000,0,1866,339530458,24,20626
+facade_profile,5000,1,930,339540884,24,30939
+facade_profile,5000,2,929,339433374,24,41252
+facade_profile,5000,3,930,5203619,24,41502
+facade_profile,5000,4,930,5203585,24,41752
+facade_profile,5000,5,930,5213309,24,42002
+facade_profile,5000,6,1214,5203531,24,42252
+facade_profile,5000,7,930,5202468,24,42502
+facade_profile,5000,8,930,5202394,24,42752
+facade_profile,5000,9,1214,5202764,24,43002
+facade_profile,5000,10,930,3435064,24,43152
+facade_profile,5000,11,930,3435757,24,43302
+facade_profile,5000,12,1892,3435976,24,43452
+facade_profile,5000,13,930,3436003,24,43602
+facade_profile,5000,14,930,3434093,24,43752
+facade_profile,5000,15,930,3434093,24,43902
+facade_profile,5000,16,930,3434093,24,44052
+facade_profile,5000,17,931,3436002,24,44202
+facade_profile,5000,18,930,3436003,24,44352
+facade_profile,5000,19,930,3435976,24,44502
+kprof: 21 frames; instructions per frame by phase (one counter read = 1570, subtracted)
+       107  frame: idle test, pick a surface
+     14990  stage: reset the plane, list damaged tiles
+     71374  stage: page cull
+   1058479  stage: records -> commands
+     91570  surface: lock, scroll copy
+    759523  run: bin (tile programs)
+       472  run: choose
+  66064403  run: raster (decode, shade, store)
+       726  frame: epoch advance
+  68061644  total inside frame()
+core trace 5000
+core_startup,5000,one,4,17279292,339218607,4620288,4030800
+core_step,5000,one,4,0,740583,10532381,741625,5718016,5062992,260
+core_profile,5000,0,20,1133,125,10522921,5001
+core_step,5000,one,4,1,732208,10570601,732916,6750208,6095184,260
+core_profile,5000,1,146,20,1449,10560837,5001
+core_step,5000,one,4,2,732833,10547245,733500,7782400,7127376,260
+core_profile,5000,2,147,20,1449,10537462,5001
+core_step,5000,one,4,3,18917,413956,19541,7782400,7127376,4
+core_profile,5000,3,147,20,1449,404173,5001
+core_step,5000,one,4,4,18083,413958,18875,7782400,7127376,4
+core_profile,5000,4,147,20,1449,404173,5001
+core_step,5000,one,4,5,18167,413958,18750,7782400,7127376,4
+core_profile,5000,5,147,20,1449,404173,5001
+core_step,5000,one,4,6,18000,413940,18791,7782400,7127376,4
+core_profile,5000,6,147,20,1449,404173,5001
+core_step,5000,one,4,7,18041,413958,18625,7782400,7127376,4
+core_profile,5000,7,147,20,1449,404173,5001
+core_step,5000,one,4,8,18000,413958,18625,7782400,7127376,4
+core_profile,5000,8,147,20,1449,404173,5001
+core_step,5000,one,4,9,18125,413971,18833,7782400,7127376,4
+core_profile,5000,9,147,20,1449,404173,5001
+core_step,5000,one,4,10,18708,413947,19500,7782400,7127376,4
+core_profile,5000,10,147,20,1449,404174,5001
+core_step,5000,one,4,11,22084,413971,22833,7782400,7127376,4
+core_profile,5000,11,147,20,1449,404173,5001
+core_step,5000,one,4,12,19209,414791,20292,7782400,7127376,4
+core_profile,5000,12,147,853,1449,404173,5001
+core_step,5000,one,4,13,20500,413961,21416,7782400,7127376,4
+core_profile,5000,13,147,20,1449,404173,5001
+core_step,5000,one,4,14,20792,413958,21750,7782400,7127376,4
+core_profile,5000,14,147,20,1449,404173,5001
+core_step,5000,one,4,15,19459,413957,20458,7782400,7127376,4
+core_profile,5000,15,147,20,1449,404174,5001
+core_step,5000,one,4,16,21750,413958,23000,7782400,7127376,4
+core_profile,5000,16,147,20,1449,404173,5001
+core_step,5000,one,4,17,19417,413972,20541,7782400,7127376,4
+core_profile,5000,17,147,20,1449,404173,5001
+core_step,5000,one,4,18,22291,413972,23208,7782400,7127376,4
+core_profile,5000,18,147,20,1449,404173,5001
+core_step,5000,one,4,19,19250,413983,20333,7782400,7127376,4
+core_profile,5000,19,147,20,1449,404173,5001
+ 5:02  up 4 days,  7:55, 5 users, load averages: 16.68 24.71 23.44

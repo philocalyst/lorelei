@@ -21,6 +21,10 @@ fn color(value: u32, alpha: u8) -> Color {
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let cards: usize = args.first().expect("card count").parse().unwrap();
+    if let Some(cell) = args.get(1) {
+        let count = args.get(2).map(|s| s.parse().unwrap()).unwrap_or(240);
+        return suite(cards, cell, count, args.iter().any(|s| s == "check"));
+    }
     assert!([200, 1000, 5000].contains(&cards));
     let mut scene = Scene::new(640.0, 400.0);
     let root = scene.root();
@@ -124,4 +128,307 @@ fn main() {
     cold.render(&scene, &fresh.damage).expect("full redraw");
     assert_eq!(partial, cold.readback().expect("full readback"));
     assert!(before != partial, "foreground never changed pixels");
+}
+
+fn suite(cards: usize, cell: &str, frames: usize, check: bool) {
+    use zgx::image::ImageData;
+    use zgx::scene::{Layout, Rect};
+    assert!([200, 1000, 5000].contains(&cards));
+    assert!(
+        [
+            "startup", "idle", "one", "many", "hover", "theme", "scroll", "resize", "video"
+        ]
+        .contains(&cell)
+    );
+    let start = Instant::now();
+    let strip = cell == "scroll";
+    let mut scene = Scene::new(640.0, 400.0);
+    let root = scene.root();
+    scene.append(
+        root,
+        NodeKind::Rect(color(0x142638, 255)),
+        Style {
+            absolute: true,
+            width_percent: Some(1.0),
+            height_percent: Some(1.0),
+            ..Style::default()
+        },
+    );
+    let layer = scene.append(
+        root,
+        NodeKind::Container(Layout::Overlay),
+        style(
+            640.0,
+            if strip {
+                cards.div_ceil(10) as f32 * 40.0
+            } else {
+                400.0
+            },
+        ),
+    );
+    let card = |i: usize, dark: bool, hot: bool, alpha: u8| {
+        let base = (i as u32).wrapping_mul(0x0077_9b83) ^ if dark { 0x00bfdf } else { 0x22b080 };
+        NodeKind::Quad(QuadStyle {
+            fill: color(if hot { 0xf0b65d } else { base }, alpha),
+            radius: 6.0,
+            border_width: 1.0,
+            border_color: color(0x69849d, alpha),
+            ..QuadStyle::default()
+        })
+    };
+    let position = |i: usize| {
+        let slot = if strip { i } else { i % 100 };
+        let stagger = if strip {
+            0.0
+        } else {
+            ((i / 100) % 8) as f32 * 0.25
+        };
+        (
+            (slot % 10) as f32 * 64.0 + stagger,
+            (slot / 10) as f32 * 40.0 + stagger,
+        )
+    };
+    let mut ids = Vec::with_capacity(cards);
+    // The author fixture's procedural 12x12 PNG, with exactly the same decoded RGBA samples.
+    let tile: Vec<_> = (0..12)
+        .flat_map(|y| {
+            (0..12).flat_map(move |x| [60 + x * 16, 15 + y * 19, 248, 75 + ((x + y) % 8) * 25])
+        })
+        .collect();
+    let picture = Arc::new(ImageData::new(12, 12, tile).unwrap());
+    for i in 0..cards {
+        let (x, y) = position(i);
+        let id = scene.append(layer, card(i, false, false, 212), style(60.0, 36.0));
+        scene.set_transform(id, Transform { x, y });
+        ids.push(id);
+        if i.is_multiple_of(16) {
+            let media = scene.append(layer, NodeKind::Image(picture.clone()), style(12.0, 12.0));
+            scene.set_transform(
+                media,
+                Transform {
+                    x: x + 34.0,
+                    y: y + 12.0,
+                },
+            );
+        }
+    }
+    let video_sample = |k: usize| -> Arc<ImageData> {
+        let mut rgba = Vec::with_capacity(256 * 144 * 4);
+        // The staged paint fixture's deterministic NV12 source, sampled at the
+        // centre of each output pixel and converted before the RGBA upload.
+        let clamp = |x: i32, hi: i32| x.clamp(0, hi) as usize;
+        let bx = (3 * k + 41 * 7) % 256;
+        let by = (2 * k + 41 * 5) % 144;
+        let bar = |x| ((x + 2 * k) * 8 / 256 + 41) % 8;
+        let chroma = |x, y, cr: bool| {
+            let i = clamp(x, 127);
+            let j = clamp(y, 71);
+            if cr {
+                200 - bar(2 * i) * 18 + j * 2 * 12 / 144
+            } else {
+                64 + bar(2 * i) * 20
+            }
+        };
+        let rgba8 = |q: i32| ((q.clamp(0, 32768) * 255 + 16384) >> 15) as u8;
+        for j in 0..144usize {
+            for i in 0..256usize {
+                let y = if i.abs_diff(bx) < 32 && j.abs_diff(by) < 18 {
+                    235
+                } else {
+                    40 + bar(i) * 24 + j * 16 / 144
+                };
+                let y = ((y as i32 - 16) * 128 * 38304) >> 15;
+                let (x, row) = (i as i32 * 128 - 64, j as i32 * 128 - 64);
+                let interp = |cr| {
+                    let (p, q) = (x >> 8, row >> 8);
+                    let (dx, dy) = ((x & 255) as usize, (row & 255) as usize);
+                    let low = chroma(p, q, cr) * (256 - dx) + chroma(p + 1, q, cr) * dx;
+                    let high = chroma(p, q + 1, cr) * (256 - dx) + chroma(p + 1, q + 1, cr) * dx;
+                    ((((low * (256 - dy) + high * dy) >> 8) as i32) - 32768) >> 1
+                };
+                let cb = interp(false);
+                let cr = interp(true);
+                rgba.extend([
+                    rgba8(y + ((cr * 58975) >> 15)),
+                    rgba8(y - ((cb * 7015) >> 15) - ((cr * 17531) >> 15)),
+                    rgba8(y + ((cb * 69491) >> 15)),
+                    255,
+                ]);
+            }
+        }
+        Arc::new(ImageData::new(256, 144, rgba).unwrap())
+    };
+    let video = if cell == "video" {
+        let image = scene.append(root, NodeKind::Image(video_sample(0)), style(256.0, 144.0));
+        scene.set_transform(image, Transform { x: 256.0, y: 124.0 });
+        let mut panes = Vec::new();
+        for (x, y) in [(14.0, 18.0), (514.0, 18.0), (328.0, 150.0), (482.0, 302.0)] {
+            let pane = scene.append(
+                root,
+                NodeKind::Quad(QuadStyle {
+                    fill: color(0x6789a9, 82),
+                    radius: 12.0,
+                    ..QuadStyle::default()
+                }),
+                style(112.0, 76.0),
+            );
+            scene.set_transform(pane, Transform { x, y });
+            scene.set_effects(
+                pane,
+                Effects {
+                    blur_radius: 6.0,
+                    brightness: 0.8,
+                    saturate: 1.4,
+                    ..Effects::default()
+                },
+            );
+            panes.push(pane);
+        }
+        Some((image, panes[2]))
+    } else {
+        None
+    };
+    let mut w = 640;
+    let mut h = 400;
+    let mut renderer = GpuRenderer::new(w, h).expect("offscreen GPU");
+    let mut full = check.then(|| GpuRenderer::new(w, h).expect("full offscreen GPU"));
+    scene.flush();
+    let bounds = |w, h| Rect::new(0.0, 0.0, w as f32, h as f32);
+    renderer.render(&scene, &[bounds(w, h)]).unwrap();
+    let initial = if check {
+        Some(renderer.readback().unwrap())
+    } else {
+        None
+    };
+    if cell == "startup" {
+        println!(
+            "zgx_sample,{cards},{cell},0,{},1",
+            start.elapsed().as_nanos()
+        );
+        return;
+    }
+    let mut draws = 0;
+    let mut hot = None;
+    let mut changed = false;
+    let mut scroll = 0.0f32;
+    for step in 0..if cell == "idle" { 1 } else { frames } {
+        let t = Instant::now();
+        match cell {
+            "one" | "many" => {
+                let k = step % 40;
+                // Explicit 120 Hz curve sampling at the Scene boundary.
+                let progress = (if k < 12 {
+                    k as f32
+                } else {
+                    12.0 - (k - 12) as f32
+                }) / 12.0;
+                let e = progress.clamp(-1.0, 1.0);
+                let e = e * e * (3.0 - 2.0 * e.abs()) * e.signum();
+                let first = if cell == "one" { cards - 1 } else { 0 };
+                for (i, id) in ids.iter().copied().enumerate().skip(first) {
+                    let (x, y) = position(i);
+                    let dist = if i + 1 == cards {
+                        10.0
+                    } else {
+                        5.0 + (i % 9) as f32
+                    };
+                    scene.set_transform(
+                        id,
+                        Transform {
+                            x: x + e * dist,
+                            y: y - if i + 1 == cards {
+                                0.0
+                            } else {
+                                e * (i % 3) as f32
+                            },
+                        },
+                    );
+                    if i + 1 < cards {
+                        scene.set_style(id, style(60.0 - 5.0 * e.abs(), 36.0));
+                        scene.set_leaf_kind(
+                            id,
+                            card(i, false, false, (212.0 - 36.0 * e.abs()).round() as u8),
+                        );
+                    }
+                }
+            }
+            "theme" => {
+                for (i, id) in ids.iter().enumerate() {
+                    scene.set_leaf_kind(*id, card(i, step % 2 == 0, false, 212));
+                }
+            }
+            "hover" => {
+                let p = step % 40;
+                let p = if p < 20 { p } else { 39 - p };
+                let id =
+                    scene.hit_test((p % 10) as f32 * 64.0 + 20.0, (p / 10) as f32 * 40.0 + 20.0);
+                let next = id.and_then(|id| ids.iter().position(|&x| x == id));
+                if hot != next {
+                    if let Some(i) = hot {
+                        scene.set_leaf_kind(ids[i], card(i, false, false, 212));
+                    }
+                    if let Some(i) = next {
+                        scene.set_leaf_kind(ids[i], card(i, false, true, 212));
+                    }
+                    hot = next;
+                }
+            }
+            "scroll" => {
+                let max = (cards.div_ceil(10) * 40 - 400) as f32;
+                scroll = (scroll + if step % 40 < 20 { 11.0 } else { -11.0 }).clamp(0.0, max);
+                scene.set_transform(layer, Transform { x: 0.0, y: -scroll });
+            }
+            "resize" => {
+                (w, h) = if step % 2 == 0 {
+                    (704, 448)
+                } else {
+                    (640, 400)
+                };
+                scene.resize(w as f32, h as f32);
+                renderer.resize(w, h);
+                if let Some(f) = &mut full {
+                    f.resize(w, h);
+                }
+            }
+            "video" => {
+                let (image, panel) = video.unwrap();
+                if step.is_multiple_of(4) {
+                    scene.set_leaf_kind(image, NodeKind::Image(video_sample(step / 4 + 1)));
+                }
+                scene.set_transform(
+                    panel,
+                    Transform {
+                        x: 328.0 + 10.0 * ((step as f32) * 0.066).sin(),
+                        y: 150.0,
+                    },
+                );
+            }
+            "idle" => std::thread::sleep(std::time::Duration::from_secs(1)),
+            _ => unreachable!(),
+        }
+        let report = scene.flush();
+        if !report.damage.is_empty() {
+            renderer.render(&scene, &report.damage).unwrap();
+            draws += 1;
+        }
+        println!(
+            "zgx_sample,{cards},{cell},{step},{},{draws}",
+            t.elapsed().as_nanos()
+        );
+        if let Some(full) = &mut full {
+            full.render(&scene, &[bounds(w, h)]).unwrap();
+            let actual = renderer.readback().unwrap();
+            assert!(
+                actual == full.readback().unwrap(),
+                "retained differs on {cell} at step {step}"
+            );
+            changed |= initial.as_ref() != Some(&actual);
+        }
+    }
+    if cell == "idle" {
+        assert_eq!(draws, 0);
+    }
+    if check && cell != "idle" {
+        assert!(changed, "{cell} did not change output");
+    }
 }

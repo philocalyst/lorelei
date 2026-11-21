@@ -68,7 +68,7 @@ fn draw_at(surface: &mut Soft, world: &World<Canvas, Soft>, current: &Tiles) {
     surface.repair(current, |output| world.paint(output));
 }
 
-fn run(n: usize, cell: &'static str, check: bool, ring: usize) {
+fn run(n: usize, cell: &'static str, check: bool, ring: usize, steps: usize, profile: bool) {
     let overhead = perf::snap_overhead();
     let start = Instant::now();
     let a0 = perf::snap();
@@ -113,25 +113,33 @@ fn run(n: usize, cell: &'static str, check: bool, ring: usize) {
         return;
     }
     let mut changed = false;
-    for step in 0..20 {
+    let phase_floor = if profile { perf::tinstr_overhead() } else { 0 };
+    let counter = || if profile { perf::tinstr() } else { 0 };
+    for step in 0..steps {
         let a0 = perf::snap();
         let start = Instant::now();
+        let p0 = counter();
         let now = 1_001 + (step as u32 * 1_000) / 120;
         world.tick(now);
-        if cell == "theme" || step == 0 || step == 12 {
+        let p1 = counter();
+        if cell == "theme" || matches!(step % 40, 0 | 12) {
             if cell == "theme" {
                 scene.state.set::<Theme>((step + 1) as u32 % 2);
             } else {
                 scene.state.set::<Started>(now);
-                scene.state.set::<Direction>(u32::from(step == 0));
+                scene.state.set::<Direction>(u32::from(step % 40 == 0));
             }
             world.settle(&scene);
         }
+        let p2 = counter();
         for d in &mut damage {
             world.tiles.each(|rect| d.mark(rect));
         }
         let slot = (step + 1) % ring;
+        let visits = surfaces[slot].records;
+        let p3 = counter();
         draw_at(&mut surfaces[slot], &world, &damage[slot]);
+        let p4 = counter();
         let elapsed = start.elapsed().as_nanos();
         let a1 = perf::snap();
         let instr = a1.instrs.saturating_sub(a0.instrs).saturating_sub(overhead);
@@ -142,6 +150,14 @@ fn run(n: usize, cell: &'static str, check: bool, ring: usize) {
             a1.footprint,
             damage[slot].count()
         );
+        if profile {
+            let [tick, settle, ring, paint] = [(p0, p1), (p1, p2), (p2, p3), (p3, p4)]
+                .map(|(a, b)| b.saturating_sub(a + phase_floor));
+            println!(
+                "core_profile,{n},{step},{tick},{settle},{ring},{paint},{}",
+                surfaces[slot].records - visits
+            );
+        }
         if check {
             let mut full = Soft::new(W, H);
             world.paint(&mut full);
@@ -166,9 +182,10 @@ fn run(n: usize, cell: &'static str, check: bool, ring: usize) {
 
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let [mode, count, cell] = &args[..] else {
-        panic!("usage: typed-core check|measure CARD_COUNT CELL");
+    let [mode, count, cell, rest @ ..] = &args[..] else {
+        panic!("usage: typed-core check|measure|profile CARD_COUNT CELL [STEPS]");
     };
+    let steps = rest.first().map(|s| s.parse().unwrap()).unwrap_or(20);
     let count: usize = count.parse().unwrap();
     assert!([200, 1000, 5000].contains(&count));
     let cell = match cell.as_str() {
@@ -185,10 +202,11 @@ fn main() {
     match mode.as_str() {
         "check" => {
             for ring in 1..=4 {
-                run(count, cell, true, ring);
+                run(count, cell, true, ring, steps, false);
             }
         }
-        "measure" => run(count, cell, false, 4),
+        "measure" => run(count, cell, false, 4, steps, false),
+        "profile" => run(count, cell, false, 4, steps, true),
         _ => std::process::exit(2),
     }
 }

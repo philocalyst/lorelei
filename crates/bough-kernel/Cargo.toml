@@ -27,6 +27,7 @@ naga = { version = "29.0.4", features = ["wgsl-in", "msl-out", "spv-out"] }
 wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false, features = ["validation"] }
 
 [features]
+mutant_shadow_cache = []
 # Mutants for the exactness gate (tests/exact.rs must fail with each):
 # the CPU executor's core rectangle is one pixel too wide
 mutant_core = []
