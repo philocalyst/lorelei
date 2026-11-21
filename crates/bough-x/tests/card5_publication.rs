@@ -1,5 +1,5 @@
 //! Erased leaf writes and event snapshots across view publication.
-use bough_x::event::{Ev, Interact};
+use bough_x::event::{Button, Ev, Interact};
 use bough_x::prelude::*;
 use bough_x::soft::Soft;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -90,9 +90,12 @@ impl<T: Item> View for Hover<T> {
             },
             |r| {
                 let item = *self.items.get(r);
-                Fill(Kc::<0xff0000ff>).on_hover(move |owner: &mut Self, e: &Ev| {
-                    owner.events.push((item.number(), e.on));
-                })
+                Fill(Kc::<0xff0000ff>)
+                    .on_hover(move |owner: &mut Self, e: &Ev| {
+                        owner.events.push((item.number(), e.on));
+                    })
+                    .on_click(|owner: &mut Self| owner.events.push((0, false)))
+                    .focusable()
             },
         );
     }
@@ -147,4 +150,22 @@ fn a_same_version_journal_replacement_publishes_its_new_watch() {
     world.settle(&v);
     world.repick(&mut v);
     assert_eq!(&v.events[3..], &[(33, false), (44, true)]);
+}
+
+#[test]
+fn a_same_version_journal_replacement_clears_focus_and_press() {
+    let mut v = Hover {
+        u: U::default(),
+        items: Rel::by_item(vec![Padded(1, 10)]),
+        events: Vec::new(),
+    };
+    let mut world = World::<_, Soft>::new(32, 16, 1);
+    world.mount(&v);
+    world.pointer_down(&mut v, 2, 2, Button::Primary);
+    assert!(world.focused().is_some());
+    v.items = Rel::by_item(vec![Padded(3, 30)]);
+    world.redescribe(&v);
+    assert!(world.focused().is_none());
+    assert!(!world.pointer_up(&mut v, 2, 2, Button::Primary).consumed);
+    assert!(!v.events.contains(&(0, false)));
 }

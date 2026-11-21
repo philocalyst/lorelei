@@ -73,6 +73,7 @@ struct Focused {
     row: u32,
     /// The list's relation version this row index is right for (inserts and removes after it remap it).
     seen: u32,
+    journal_binding: u64,
 }
 
 /// Work performed by the most recent delta.
@@ -2174,6 +2175,7 @@ impl<V: View, B: Backend> World<V, B> {
             site,
             row: row_of(st, rec),
             seen: st.seen,
+            journal_binding: st.journal_binding,
         })
     }
     /// After a pass that may have moved a window: where the focused row is now, or that it is not exposed
@@ -2189,6 +2191,13 @@ impl<V: View, B: Backend> World<V, B> {
         let Some(st) = self.root.at(&w.path) else {
             return;
         };
+        if st.journal_binding != w.journal_binding {
+            self.held = None;
+            if h.button == Button::Primary {
+                self.core_word(U_PRESS, NONE);
+            }
+            return;
+        }
         if st.src.is_none() || st.seen == w.seen {
             return;
         }
@@ -2234,6 +2243,11 @@ impl<V: View, B: Backend> World<V, B> {
             self.core_word(U_FOCUS, NONE);
             return;
         };
+        if st.journal_binding != f.journal_binding {
+            self.focus = None;
+            self.core_word(U_FOCUS, NONE);
+            return;
+        }
         // the focused row follows its item through the inserts and removes the last pass replayed
         if st.src.is_some() && st.seen != f.seen {
             if st.moved_from == f.seen && st.moved_ok {

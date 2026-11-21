@@ -1113,6 +1113,8 @@ pub struct Store {
     pub(crate) stamp: u32,
     /// The relation version this window was last brought up to.
     pub seen: u32,
+    /// Changes when the source relation is rebound, independently of its version.
+    pub(crate) journal_binding: u64,
     /// The rows of the shape: the type of each row value described here and its first site.
     pub rows: Vec<(TypeId, u32)>,
     /// A list's rows: where they are described, how many records a row has, a row's size (`sink::list_sync`).
@@ -1213,6 +1215,7 @@ impl Store {
             lo: 0,
             hi: 0,
             seen: 0,
+            journal_binding: 0,
             rows: Vec::new(),
             src: None,
             n: 0,

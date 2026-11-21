@@ -1374,7 +1374,7 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     admit(n, row_h.max(1));
     if n == 0 || row_h == 0 {
         if edits.follow(&mut st.journal) {
-            st.bump_structure();
+            publish_binding_change(st);
         }
         edits.win.store(0, Ordering::Relaxed);
         st.moved_from = st.seen;
@@ -1605,10 +1605,12 @@ fn list_reset(st: &mut Store, cx: &mut Cx<'_>, window: u32) {
     let structure = st.structure.clone();
     let column_count = st.column_count.clone();
     let journal = st.journal.clone();
+    let journal_binding = st.journal_binding;
     *st = Store::new(cap, space);
     st.structure = structure;
     st.column_count = column_count;
     st.journal = journal;
+    st.journal_binding = journal_binding;
     st.seen = seen;
     // slots are stamped on from where the old columns stopped: a place held from before is never taken for
     // a row of the new ones
@@ -1661,6 +1663,13 @@ fn template_comparison_checks_a_later_changed_lane() {
     assert!(!same_template(&original, &original[..21]));
 }
 
+#[cold]
+#[inline(never)]
+fn publish_binding_change(st: &mut Store) {
+    st.bump_structure();
+    st.journal_binding = st.structure_revision();
+}
+
 /// Decide what a list pass does, and do everything that does not need the row's type: replay the relation's
 /// journal, move the window, lay out rows that entered (their rects are the shape's, shifted), damage rows that
 /// entered, left or are other rows than before, and leave in `st.plan` the rows whose operands the caller must
@@ -1681,7 +1690,7 @@ fn list_plan(
     let all = how.all;
     let rebound = l.edits.follow(&mut st.journal);
     if rebound {
-        st.bump_structure();
+        publish_binding_change(st);
     }
     let (from, upd, nupd) = if rebound {
         // Version numbers certify edits only within the same journal. A replacement
