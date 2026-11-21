@@ -111,6 +111,25 @@ def core_cells(path):
     return cells
 
 
+def staged(out, cards, cell):
+    name = "glass" if cell == "video" else cell
+    stem = out / f"{name}-{cards}"
+    gate = read_lines(stem.with_suffix(".check"))
+    if "check_exit=0" not in gate:
+        return "gate failed" if any(l.startswith("check_exit=") for l in gate) else "pending"
+    lines = read_lines(stem.with_suffix(".csv"))
+    if "measure_exit=0" not in lines:
+        return "measurement failed" if any(l.startswith("measure_exit=") for l in lines) else "pending"
+    records = [l.split(",") for l in lines if l.startswith(f"fx_{name},")]
+    draws = sum(int(r[15]) for r in records)
+    if cell == "idle":
+        return f"{draws} frames" if records else "missing samples"
+    value = summarize([int(r[3]) for r in records], draws)
+    if cell == "resize":
+        return "not expressible (requires remount)" if len(records) < MIN_SAMPLES else "remount diagnostic " + value
+    return value
+
+
 def startup(out, framework, cards):
     if not out:
         return None
@@ -136,12 +155,15 @@ def main():
     args.add_argument("wave3", type=Path)
     args.add_argument("references", type=Path)
     args.add_argument("--core", type=Path)
+    args.add_argument("--staged", type=Path)
     args.add_argument("--startup", type=Path)
     paths = args.parse_args()
     core = core_cells(paths.core) if paths.core else None
     columns = ["Cards", "Cell", "Lorelei baseline", "Lorelei wave3"]
     if core is not None:
         columns.append("Lorelei typed Soft")
+    if paths.staged:
+        columns.append("Lorelei staged CPU1")
     columns.extend(("zgui", "zgx"))
     print("| " + " | ".join(columns) + " |")
     print("|---:|---|" + "---:|" * (len(columns) - 2))
@@ -153,6 +175,8 @@ def main():
             if core is not None:
                 fresh = startup(paths.startup, "core", cards) if cell == "startup" else None
                 values.append(fresh or core.get((cards, cell), "pending"))
+            if paths.staged:
+                values.append(staged(paths.staged, cards, cell))
             for framework in ("zgui", "zgx"):
                 fresh = startup(paths.startup, framework, cards) if cell == "startup" else None
                 values.append(fresh or reference(paths.references, framework, cards, cell))
