@@ -122,3 +122,15 @@ active_transitions: 1 passed, 0 failed
 ```
 
 Each named single-test binary failed with its corresponding `mutant_shadow_cache`, `mutant_repair_bounds` or `mutant_skip_transition` feature. `tests/exact.rs` includes the integer shader backend, one and several CPU workers, partial pixel clips and adversarial fractional shapes.
+
+## zgx glass over video and Metal control
+
+The corrected zgx video path passed 40 independently full-checked steps at all three sizes and completed 240 timed operations at each. It converts the staged adapter's deterministic NV12 pattern to RGBA before upload and composites four rounded panes. Its motion schedule, upload format and GPU completion boundary differ from the staged CPU adapter. The comparison preserves the frame counts and the loaded asset provenance.
+
+| Cards | CPU-side wall p50/p95/p99 ms | Submitted frames |
+|---:|---|---:|
+| 200 | 0.667/0.868/0.966 | 240 / 240 |
+| 1000 | 0.699/0.846/1.122 | 240 / 240 |
+| 5000 | 0.911/1.137/1.233 | 240 / 240 |
+
+The `--nocapture` executor run reported `exact: 24 scenes, 9600 cpu tiles, 3840 gpu tiles, 0 differing words; spec hash 5f1c8e994b7c347e`.
