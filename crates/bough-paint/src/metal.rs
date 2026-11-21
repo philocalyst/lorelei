@@ -340,6 +340,7 @@ static inline metal::uint4 tab_shadow(const device uint* T, Cmd c, metal::int4 s
 }
 "#,
     );
+    crate::author::append(descs, &mut s, true);
     s.push_str(FX_GLUE);
     for (k, d) in descs.iter().enumerate() {
         emit::archetype(emit::Lang::Msl, k, d, &mut s);

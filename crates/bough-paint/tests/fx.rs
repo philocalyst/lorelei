@@ -1658,3 +1658,65 @@ fn group_opacity_composites_the_isolated_child_once() {
     }
     eprintln!("isolated opacity: five exact CPU and Metal frames, idle child under parent opacity, slot refusal retried");
 }
+
+#[wgsl_rs::wgsl(skip_validation)]
+mod custom_colour {
+    use wgsl_rs::std::*;
+    pub fn fx_stripes(x: i32, y: i32, tick: u32, a: Vec4u, b: Vec4u) -> Vec4u {
+        if (((x as u32) + (y as u32) * 3u32 + tick) & 7u32) < 4u32 { a } else { b }
+    }
+}
+
+#[test]
+fn author_shader_uses_only_declared_inputs_on_cpu_and_metal() {
+    use bough_paint::author::{Module, Program};
+    struct Stripes;
+    static MODULE: Module = Module { entry: "fx_stripes", source: &custom_colour::WGSL_SOURCE, cpu: custom_colour::fx_stripes };
+    impl Program for Stripes {
+        const MODULE: &'static Module = &MODULE;
+    }
+    MODULE.validate().unwrap();
+    assert!((Module { entry: "bad_entry", source: &custom_colour::WGSL_SOURCE, cpu: custom_colour::fx_stripes }).validate().is_err());
+    type Printed = Clip<Author<Stripes, Lane, Ki<1024>, Uw<63>, Any, Any>, RectW<K<0>, K<0>, K<7680>, K<4864>>>;
+    let cols = [&*bough_paint::scene::Desc::of::<Printed>()];
+    naga::front::wgsl::parse_str(&bough_paint::emit::wgsl(&cols)).expect("generated WGSL source with author entry");
+    let (w, h) = (40, 36);
+    let words = (w * h) as usize;
+    let make = || {
+        let mut scene = Scene::new(w, h, 4096);
+        let col = scene.column::<Printed>(1);
+        scene.push(col, [q(3.0), q(4.0), q(39.0), q(35.0)], Clip { p: Author::new(Lane, Ki, Uw, pm(0xff14_39ec), pm(0xaa28_b553)), k: RectW { a: K, b: K, c: K, d: K } });
+        scene
+    };
+    let mut cpu = make();
+    let mut metal = make();
+    metal.route_off = true;
+    // SAFETY: metal is retained for the executor's lifetime and accessed only between GPU calls.
+    let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 16) }.expect("headless Metal");
+    let pool = Pool::new(1);
+    let (mut keep, mut spec) = (vec![0; words], vec![0; words]);
+    let mut tiles = Vec::new();
+    let mut era = 0;
+    let mut u = U::default();
+    for step in 0..7u32 {
+        if step != 4 {
+            u.w[U_TIME] = step + 1;
+        } else {
+            u.w[3] ^= 1;
+        }
+        let stats = cpu.frame(&u, &mut keep, w as usize, &pool, 0);
+        assert!(stats.recs_visited <= 1);
+        if step == 4 {
+            assert_eq!((stats.recs_visited, stats.tiles), (0, 0));
+        }
+        cpu.spec(&u, &mut spec, w as usize);
+        assert_eq!(diff(&keep, &spec), 0);
+        metal.update(&u);
+        metal.damage.tiles(&mut tiles);
+        metal.damage.clear();
+        era = gpu.resident(&mut metal, &u, &tiles, Some(era), w as usize).1;
+        assert_eq!(diff(gpu.out(words), &spec), 0, "author shader step {step}");
+        assert_eq!(keep[(22 * w + 6) as usize], 0, "shader escaped its clip");
+    }
+    eprintln!("author shader: 7 exact CPU/Metal/spec frames, one declared reader, unrelated update was idle");
+}

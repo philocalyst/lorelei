@@ -91,14 +91,26 @@ pub enum PCode {
 }
 
 /// A resource a primitive reads that is not its record: the executor's glue fetches it.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Glue {
     None,
     /// The layer the record owns: the flattened prefix beneath it and its pyramid (`layer.rs`).
     Backdrop,
     /// A leased frame of the media pool (`media.rs`).
     Video,
+    Author(&'static crate::author::Module),
 }
+
+impl PartialEq for Glue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::None, Self::None) | (Self::Backdrop, Self::Backdrop) | (Self::Video, Self::Video) => true,
+            (Self::Author(a), Self::Author(b)) => std::ptr::eq(*a, *b),
+            _ => false,
+        }
+    }
+}
+impl Eq for Glue {}
 
 /// Where a paint's staged primitives go. Every method has the kind in its name: the caller is a paint
 /// type, so the callee is chosen when the archetype is compiled.
@@ -116,6 +128,9 @@ pub trait Sink {
     fn video(&mut self, c: Cmd);
     /// A user shader node (`ops::p_user`).
     fn user(&mut self, c: Cmd);
+    fn author(&mut self, c: Cmd, _program: crate::author::ColourFn) {
+        self.user(c);
+    }
     /// The pixels of `core` are about to be replaced by an opaque layer of the same record: what is painted
     /// until `show` may skip them. Returns what to hand back to `show`.
     #[inline(always)]
@@ -396,6 +411,64 @@ prim!(/// An author shader node filling a rounded box: `id` picks the function (
     /// `now` is its clock (any expression: the frame clock, a scaled clock, a constant for a still), `c`
     /// and `c2` its two colours. It is damaged where it shows and only when one of these moves.
     Shader: user = mk_user, p_user(b: B: Vec4i: true, r: R: i32: true, id: I: u32: false, now: N: u32: false, c: C: Vec4u: false, c2: D: Vec4u: false); full = []; cover = false; cost = Cost::PerPixel; glyph = false; window = b + 256);
+
+/// An application's validated integer colour function and its declared read operands.
+#[repr(C)]
+pub struct Author<F, B, R, T, A, D> {
+    pub b: B,
+    pub r: R,
+    pub state: T,
+    pub a: A,
+    pub d: D,
+    program: std::marker::PhantomData<fn() -> F>,
+}
+impl<F, B: Copy, R: Copy, T: Copy, A: Copy, D: Copy> Copy for Author<F, B, R, T, A, D> {}
+impl<F, B: Copy, R: Copy, T: Copy, A: Copy, D: Copy> Clone for Author<F, B, R, T, A, D> {
+    fn clone(&self) -> Self { *self }
+}
+impl<F, B, R, T, A, D> Author<F, B, R, T, A, D> {
+    pub fn new(b: B, r: R, state: T, a: A, d: D) -> Self {
+        Self { b, r, state, a, d, program: std::marker::PhantomData }
+    }
+}
+// SAFETY: repr(C) contains whole-word operands and a zero-sized marker with alignment 1.
+unsafe impl<F: 'static, B: Words, R: Words, T: Words, A: Words, D: Words> Words for Author<F, B, R, T, A, D> {}
+impl<F: crate::author::Program, B: Expr<Out = Vec4i>, R: Expr<Out = i32>, T: Expr<Out = u32>, A: Expr<Out = Vec4u>, D: Expr<Out = Vec4u>> Paint for Author<F, B, R, T, A, D> {
+    const READS: u64 = B::READS | R::READS | T::READS | A::READS | D::READS;
+    const GEOM_READS: u64 = B::READS | R::READS;
+    const OPAQUE_CORE: bool = false;
+    const COST: Cost = Cost::PerPixel;
+    const LAYERS: usize = 1;
+    const CODE: &'static PCode = &PCode::Prim { mk: "mk_author", p: "p_author", args: &[B::CODE, R::CODE, T::CODE, A::CODE, D::CODE], tys: &[Ty::V4i, Ty::I32, Ty::U32, Ty::V4u, Ty::V4u], glyph: false, opaque: false, full: &[], tab: false, glue: Glue::Author(F::MODULE) };
+    fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
+        swept_window(&self.b, cx, 256)
+    }
+    fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
+        s.author(self.command(cx, clip), F::MODULE.cpu);
+    }
+    fn until(&self, cx: &Cx) -> u32 {
+        let now = cx.u.w[U_TIME];
+        let mut end = 0;
+        for clock in [self.b.until(cx), self.r.until(cx), self.state.until(cx), self.a.until(cx), self.d.until(cx)] {
+            end = latest(end, clock, now);
+        }
+        end
+    }
+    fn changed_win(&self, old: &Cx, new: &Cx, mask: u64, clip: Vec4i) -> Vec4i {
+        let differs = (B::READS & mask != 0 && self.b.eval(old) != self.b.eval(new))
+            || (R::READS & mask != 0 && self.r.eval(old) != self.r.eval(new))
+            || (T::READS & mask != 0 && self.state.eval(old) != self.state.eval(new))
+            || (A::READS & mask != 0 && self.a.eval(old) != self.a.eval(new))
+            || (D::READS & mask != 0 && self.d.eval(old) != self.d.eval(new));
+        if differs { self.command(new, clip).win } else { EMPTY }
+    }
+    fn cover(&self, _: &Cx, _: Vec4i) -> Vec4i { EMPTY }
+}
+impl<F, B: Expr<Out = Vec4i> + Words, R: Expr<Out = i32> + Words, T: Expr<Out = u32> + Words, A: Expr<Out = Vec4u> + Words, D: Expr<Out = Vec4u> + Words> Author<F, B, R, T, A, D> {
+    fn command(&self, cx: &Cx, clip: Vec4i) -> Cmd {
+        x::mk_author(self.b.eval(cx), self.r.eval(cx), self.state.eval(cx), self.a.eval(cx), self.d.eval(cx), clip)
+    }
+}
 
 /// A video frame scaled into a rounded box. `slot` names the leased frame in the media pool
 /// (`media::Pool::publish` rewrites this word, which is the whole of "a new frame arrived"), `dims` its luma
@@ -864,6 +937,12 @@ impl Sink for SpecSink<'_> {
     fn video(&mut self, c: Cmd) {
         if x::x_in(c.win, self.x, self.y) {
             self.put(x::p_video(c, self.x, self.y, crate::media::sample(self.media, c, self.x, self.y)))
+        }
+    }
+    fn author(&mut self, c: Cmd, program: crate::author::ColourFn) {
+        if x::x_in(c.win, self.x, self.y) {
+            let h = if cfg!(feature = "mutant_author_clock") { 0 } else { c.par.w };
+            self.put(x::p_author(c, self.x, self.y, program(self.x, self.y, h, c.pm, c.pm2)));
         }
     }
     #[inline(always)]

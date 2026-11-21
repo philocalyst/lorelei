@@ -468,6 +468,10 @@ impl Sink for Shade<'_, '_, '_> {
         let m = self.1.media;
         self.each(&c, |x, y| crate::ops::ops::p_video(c, x, y, crate::media::sample(m, c, x, y)))
     }
+    fn author(&mut self, c: Cmd, program: crate::author::ColourFn) {
+        let state = if cfg!(feature = "mutant_author_clock") { 0 } else { c.par.w };
+        self.each(&c, |px, py| x::p_author(c, px, py, program(px, py, state, c.pm, c.pm2)));
+    }
     #[inline(always)]
     fn user(&mut self, c: Cmd) {
         self.each(&c, |x, y| crate::ops::ops::p_user(c, x, y))

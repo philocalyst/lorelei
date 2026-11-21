@@ -667,6 +667,18 @@ pub mod ops {
             xs: 0i32,
         }
     }
+    pub fn mk_author(b: Vec4i, r: i32, state: u32, a: Vec4u, d: Vec4u, clip: Vec4i) -> Cmd {
+        mk_user(b, r, 0u32, state, a, d, clip)
+    }
+    pub fn x_author_state(c: Cmd) -> u32 { c.par.w() }
+    pub fn x_author_a(c: Cmd) -> Vec4u { c.pm }
+    pub fn x_author_d(c: Cmd) -> Vec4u { c.pm2 }
+    pub fn p_author(c: Cmd, x: i32, y: i32, colour: Vec4u) -> Vec4u {
+        let alpha = min(colour.w(), ONE);
+        let pm = vec4u(min(colour.x(), alpha), min(colour.y(), alpha), min(colour.z(), alpha), alpha);
+        if inside(c.core, x, y) { return pm; }
+        scale(pm, cov(sd(x * 256i32 + 128i32, y * 256i32 + 128i32, c.b, c.rad.x(), c.par.y())))
+    }
     pub fn p_user(c: Cmd, x: i32, y: i32) -> Vec4u {
         if !inside(c.win, x, y) {
             return splat(0u32);

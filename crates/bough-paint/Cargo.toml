@@ -6,6 +6,7 @@ license.workspace = true
 description = "Round 8 raster lane: paints as types, one monomorphised CPU kernel and one generated GPU function per archetype, the plan fixed at compile time"
 
 [dependencies]
+naga = { version = "29.0.4", features = ["wgsl-in", "msl-out"] }
 bough-kernel = { path = "../bough-kernel" }
 bough-expr = { path = "../bough-expr" }
 wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false }
@@ -82,3 +83,4 @@ mutant_world_origin = []
 mutant_bgra_channels = []
 mutant_drop_image_frame = []
 mutant_group_stale = []
+mutant_author_clock = []

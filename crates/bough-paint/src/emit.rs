@@ -249,7 +249,12 @@ impl Fn<'_> {
                 }
                 for [a, x, y, cov] in px {
                     // a primitive that reads a layer or a media frame goes through the executor's glue
-                    if *glue != Glue::None {
+                    if let Glue::Author(module) = glue {
+                        let predicate = hide.map_or_else(|| format!("x_in(c_win({c}), {x}, {y})"), |h| format!("!x_in({h}, {x}, {y}) && x_in(c_win({c}), {x}, {y})"));
+                        writeln!(self.out, "    if ({predicate}) {{ {a} = x_over({a}, p_author({c}, {x}, {y}, {}({x}, {y}, x_author_state({c}), x_author_a({c}), x_author_d({c})))); }}", module.entry).unwrap();
+                        continue;
+                    }
+                    if !matches!(glue, Glue::None) {
                         let fxp = if self.lang == Lang::Msl { "POOL, LT, MEDIA, " } else { "" };
                         let stmt = match glue {
                             Glue::Backdrop => format!("{a} = bd_px({fxp}lid, {a}, {c}, {x}, {y});"),
@@ -414,7 +419,7 @@ pub fn has_tab(p: &PCode) -> bool {
 /// Some primitive reads a layer or the media pool: its shade functions take the pools and the layer id.
 pub fn has_fx(p: &PCode) -> bool {
     match p {
-        PCode::Prim { glue, .. } => *glue != Glue::None,
+        PCode::Prim { glue, .. } => matches!(glue, Glue::Backdrop | Glue::Video),
         PCode::Over { a, b, .. } => has_fx(a) || has_fx(b),
         PCode::Clip { p, .. } | PCode::Hit { p, .. } => has_fx(p),
     }
@@ -542,6 +547,7 @@ pub fn wgsl(descs: &[&Desc]) -> String {
     s.push_str("\nfn tab_h(b: u32, i: u32) -> u32 { return 4294967295u; }\nfn tab_v(b: u32, i: u32) -> u32 { return 4294967295u; }\nconst TAB: u32 = 0u;\nfn pal_at(t: u32, i: u32) -> u32 { return 0u; }\n");
     // likewise the layer and media reads (`metal::source` has the real glue)
     s.push_str("fn bd_px(lid: u32, a: vec4<u32>, c: Cmd, x: i32, y: i32) -> vec4<u32> { return p_bdrop(x_flat(a), c, x, y, a); }\nfn vd_px(c: Cmd, x: i32, y: i32) -> vec4<u32> { return vd_rgb(0u, 0u, 0u); }\n");
+    crate::author::append(descs, &mut s, false);
     for (k, d) in descs.iter().enumerate() {
         archetype(Lang::Wgsl, k, d, &mut s);
     }
