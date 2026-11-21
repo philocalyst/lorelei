@@ -4,7 +4,7 @@ The first reproducible baseline recorded by `bench/baseline/run.sh`. Read it wit
 `bench/RUNBOOK.md` §3; the lanes and thresholds are in `bench/baseline/compare.py`.
 
 * Commit `71ee3be0aa39d37c0fb3bc32997d4aed631e2cc2` of the read-only worktree
-  `~/work/lorelei-wt/baseline`; worktree clean at measurement (the cargo run modified
+  `<baseline-worktree>`; worktree clean at measurement (the cargo run modified
   `comparisons/bough-guibench/Cargo.lock`, which was restored before the recorded run).
 * Toolchain `rustc 1.101.0-nightly (5d8fec066 2026-10-16)`, the pinned `nightly-2026-10-17`.
 * Host Apple M3 Ultra, 32 cores, macOS 26.7.3. **Load 19.2 → 17.2** (other sessions building), so

@@ -40,6 +40,11 @@ results: results/vm-20261121T092701Z (0 failed measurements)
 run: results copied to bench/results/vm/20261121T092701Z (runner exit 0)
 ```
 
+> Artifact note: the raw per-cell trees of the four VM runs are no longer in the tracked tree (they
+> remain in git history at 34a1be466f). `bench/results/vm/<stamp>.json` is the compact summary per
+> run: every cell is `invalid` (wake lateness), `layout` is listed done but writes no file
+> (`missing`), and each cell records its framework and timing scope. See `ARTIFACT-POLICY.md`.
+
 All 16 cells completed; `run.json` lists 16 cells, every `cell.json` has `"errors": []`. zgui's 6
 cells failed before `VK_LOADER_DRIVERS_DISABLE=` was emptied (`GpuUnavailable`, no adapter, then
 "the surface is not compatible with this adapter"); after it, all pass. The first failed run is not
@@ -91,7 +96,7 @@ The graph of the *sheet* scene is not covered: the reflect binary drives `rows`,
 ### 3. The first baseline and the compare gate
 
 ```
-$ bench/baseline/run.sh --name 71ee3be --worktree "$HOME/work/lorelei-wt/baseline" --reps 3 --no-build
+$ bench/baseline/run.sh --name 71ee3be --worktree "<baseline-worktree>" --reps 3 --no-build
 ...
 baseline: wrote .../bench/baselines/macos-71ee3be/71ee3be.json and .md
 ```
@@ -126,8 +131,8 @@ panics after ~40 filter steps with `bough-mem: column 'glyph_x' is full (capacit
 * The VM's `bough-vk` build needed a three-line type patch (`*const i8` → `*const c_char` on
   aarch64 Linux). It is applied to the VM copy only; the framework source is untouched and the bug
   should be fixed in `crates/bough-vk`.
-* `~/work/reactivity/ref/fakeland` is missing `crates/fakeland-scenario/src/target/` in its working
-  tree; the harness uses a fresh clone in `~/work/ref-extra/fakeland` (and `origin/main`, because
+* `<ref-checkouts>/fakeland` is missing `crates/fakeland-scenario/src/target/` in its working
+  tree; the harness uses a fresh clone in `<extra-checkouts>/fakeland` (and `origin/main`, because
   `b06eace` does not compile). `gui-bench/apps/zgui` needs the `zgui-fakeland-marks` branch.
 * The asm harness compares same-profile builds only. Cross-profile counts are not comparable
   (inlining changes which symbols exist); `check` therefore uses a cfg mutant for the negative

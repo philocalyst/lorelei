@@ -2038,11 +2038,11 @@
     "guibench search --rows 1000 --op filter: panics after ~40 filter steps in bough-mem's region layout: column `glyph_x` is full (capacity 524288, need 524304). The 100-row filter and the 1000-row filter-nochange cells are measured instead."
   ],
   "log": [
-    "worktree ~/work/lorelei-wt/baseline",
+    "worktree <baseline-worktree>",
     "commit 71ee3be0aa39d37c0fb3bc32997d4aed631e2cc2",
     "dirty False",
     "rustc rustc 1.101.0-nightly (5d8fec066 2026-10-16)",
-    "target ~/work/targets/bench/baseline/71ee3be-71ee3be0aa",
+    "target <target-dir>/71ee3be-71ee3be0aa",
     "load-before 19.20 25.71 23.75",
     "binaries {\"anim_x\": {\"bytes\": 545760, \"path\": \"dist/examples/anim_x\", \"sha256\": \"5b5e221ee6735822488019036eeadaa2eb25740a557ddd264e3b2ba3a0437074\", \"text_bytes\": 276136}, \"bough-x-bench\": {\"bytes\": 461576, \"path\": \"release/bough-bench\", \"sha256\": \"e88ac991044d6ccb78b080278ac351861336c59c6026e6043fe3a140ba3cfbf5\", \"text_bytes\": 210092}, \"events_x\": {\"bytes\": 567024, \"path\": \"dist/examples/events_x\", \"sha256\": \"f8840a5ba3f429fb8d745f7203c5b64a209f5327188c375c39b82a5e04d8c809\", \"text_bytes\": 290740}, \"headless\": {\"bytes\": 7371960, \"path\": \"release/headless\", \"sha256\": \"aea29babea242586018b8e6e5fab80a10839c2d3ec34f6af0cbc3e4ad7e857c2\", \"text_bytes\": 4030624}, \"pbench\": {\"bytes\": 1265104, \"path\": \"dist/examples/pbench\", \"sha256\": \"09717fa682f02ff9cec1dee217c75946b54e3b641704d93292f783999823316c\", \"text_bytes\": 768252}, \"sheet_x\": {\"bytes\": 720320, \"path\": \"dist/examples/sheet_x\", \"sha256\": \"784de0ecc3808e9526b4a753acefd51cb7a5785fed8e50d7d019506690878b35\", \"text_bytes\": 430056}, \"text_x\": {\"bytes\": 775952, \"path\": \"dist/examples/text_x\", \"sha256\": \"00cbb3deebcbc13c950d7ff15e35df8163c6eeb4d05c7d27893fab3c6f4c99c6\", \"text_bytes\": 438448}}"
   ],

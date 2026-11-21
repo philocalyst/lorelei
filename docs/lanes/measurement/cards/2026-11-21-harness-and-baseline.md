@@ -41,7 +41,7 @@ thresholds:      Per-cell (each JSON cell): instructions ≤ 1.02x baseline, wal
 measurement:     Instructions primary (`/usr/bin/time -l` on macOS reports retired instructions; `perf stat` in the
                  VM), wall p50/p95/p99 from repeated cells, RSS (`time -l` maximum resident size) and footprint
                  where the binary reports it. Randomised paired blocks (ABBA order per repetition) and one lock
-                 (`lockf -k ~/work/locks/bench.lock`) for every timed batch. Load average is recorded with each run;
+                 (`lockf -k <lock-dir>/bench.lock`) for every timed batch. Load average is recorded with each run;
                  a run above load ceiling 2.0 on the timed host is marked `loaded` and compare warns.
 budget:          Local only. VM: 10 vCPU, 16 GiB, 80 GiB disk. Builds niced, at most 8 jobs. No remote hosts.
 stop conditions: A VM route that cannot build fakeland or the runner after the documented fixes: record the exact
