@@ -1049,6 +1049,7 @@ pub struct Store {
     /// Row slots: 1 for a fixed shape, a power of two of at least 64 for a list's window.
     pub cap: u32,
     pub row_live: Vec<u64>,
+    pub(crate) initialized_window: Option<(u32, u32)>,
     pub space: Space,
     disc: Vec<(u32, Rect)>,
     /// A list's materialised window of rows, `lo..hi`; row `r` is at slot `r mod cap`.
@@ -1131,6 +1132,7 @@ impl Store {
             order: Vec::new(),
             cap,
             row_live: vec![0; (cap as usize / 64).max(1)],
+            initialized_window: None,
             space,
             disc: Vec::new(),
             lo: 0,
@@ -1180,6 +1182,7 @@ impl Store {
         arch: TypeId,
         hover: Option<Hov>,
     ) {
+        self.initialized_window = None;
         let seg = self.subs.len() as u32;
         let mut pick = None;
         for (j, c) in self.cols.iter().enumerate() {

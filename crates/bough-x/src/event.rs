@@ -111,7 +111,16 @@ pub struct Ev {
 }
 impl Ev {
     pub fn at(x: f32, y: f32) -> Ev {
-        Ev { x, y, dx: 0.0, dy: 0.0, key: None, mods: Mods::default(), button: Button::Primary, on: true }
+        Ev {
+            x,
+            y,
+            dx: 0.0,
+            dy: 0.0,
+            key: None,
+            mods: Mods::default(),
+            button: Button::Primary,
+            on: true,
+        }
     }
 }
 
@@ -148,22 +157,79 @@ macro_rules! handler {
         }
     };
 }
-handler!(/// Activation: a primary press and release on the record.
-    Click, kind::CLICK, |f, v, a, e| { let _ = e; f(v); true }, Fn(&mut V));
-handler!(/// The press itself.
-    Press, kind::PRESS, |f, v, a, e| { f(v, &e.ev); true }, Fn(&mut V, &Ev));
-handler!(/// The pointer enters (`ev.on`) or leaves.
-    Hover, kind::HOVER, |f, v, a, e| { f(v, &e.ev); true }, Fn(&mut V, &Ev));
-handler!(/// Keys while the record (or one it lies inside) has focus; a tab stop.
-    OnKey, kind::KEY | kind::FOCUSABLE, |f, v, a, e| { f(v, &e.ev); true }, Fn(&mut V, &Ev));
-handler!(/// Pointer travel while pressed (capture: no pick until release), `ev.dx/dy` since the press.
-    Drag, kind::DRAG, |f, v, a, e| { f(v, &e.ev); true }, Fn(&mut V, &Ev));
-handler!(/// Text typed while the record has focus (the text lane owns what an edit does with it); a tab stop.
-    OnText, kind::TEXT | kind::FOCUSABLE, |f, v, a, e| { f(v, e.text); true }, Fn(&mut V, &str));
+handler!(
+    /// Activation: a primary press and release on the record.
+    Click,
+    kind::CLICK,
+    |f, v, a, e| {
+        let _ = e;
+        f(v);
+        true
+    },
+    Fn(&mut V)
+);
+handler!(
+    /// The press itself.
+    Press,
+    kind::PRESS,
+    |f, v, a, e| {
+        f(v, &e.ev);
+        true
+    },
+    Fn(&mut V, &Ev)
+);
+handler!(
+    /// The pointer enters (`ev.on`) or leaves.
+    Hover,
+    kind::HOVER,
+    |f, v, a, e| {
+        f(v, &e.ev);
+        true
+    },
+    Fn(&mut V, &Ev)
+);
+handler!(
+    /// Keys while the record (or one it lies inside) has focus; a tab stop.
+    OnKey,
+    kind::KEY | kind::FOCUSABLE,
+    |f, v, a, e| {
+        f(v, &e.ev);
+        true
+    },
+    Fn(&mut V, &Ev)
+);
+handler!(
+    /// Pointer travel while pressed (capture: no pick until release), `ev.dx/dy` since the press.
+    Drag,
+    kind::DRAG,
+    |f, v, a, e| {
+        f(v, &e.ev);
+        true
+    },
+    Fn(&mut V, &Ev)
+);
+handler!(
+    /// Text typed while the record has focus (the text lane owns what an edit does with it); a tab stop.
+    OnText,
+    kind::TEXT | kind::FOCUSABLE,
+    |f, v, a, e| {
+        f(v, e.text);
+        true
+    },
+    Fn(&mut V, &str)
+);
 handler!(/// The wheel over the record; `true` consumes it (else the space under it scrolls).
     Wheel, kind::WHEEL, |f, v, a, e| f(v, &e.ev), Fn(&mut V, &Ev) -> bool);
-handler!(/// Focus gained (`ev.on`) or lost.
-    OnFocus, kind::FOCUS, |f, v, a, e| { f(v, &e.ev); true }, Fn(&mut V, &Ev));
+handler!(
+    /// Focus gained (`ev.on`) or lost.
+    OnFocus,
+    kind::FOCUS,
+    |f, v, a, e| {
+        f(v, &e.ev);
+        true
+    },
+    Fn(&mut V, &Ev)
+);
 
 /// A tab stop with no handler.
 #[derive(Clone, Copy)]
@@ -280,7 +346,11 @@ unsafe impl<V: 'static, T: Target<V>, H: Handler<V, T::Rec>> Row<V> for On<T, H>
     const LEAVES: u32 = 1;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
-        l.leaf(self.rec(), TypeId::of::<Self>(), Some(&OnsOf::<V, Self>::ONS))
+        l.leaf(
+            self.rec(),
+            TypeId::of::<Self>(),
+            Some(&OnsOf::<V, Self>::ONS),
+        )
     }
     #[inline(always)]
     unsafe fn write(&self, sites: *const Site, slot: u32) {
@@ -295,6 +365,14 @@ unsafe impl<V: 'static, T: Target<V>, H: Handler<V, T::Rec>> Row<V> for On<T, H>
         // SAFETY: as `write`. Captures are written, never compared: a slot holds the captures of the row it shows.
         unsafe {
             <T::Rec as Row<V>>::patch(self.rec(), sites, slot, mk, cx);
+            put_caps::<<Self as Target<V>>::Caps>(&*sites, slot, self.caps());
+        }
+    }
+    #[inline(always)]
+    unsafe fn patch_initialized(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
+        // SAFETY: the caller supplies an initialized record and a matching capture lane.
+        unsafe {
+            <T::Rec as Row<V>>::patch_initialized(self.rec(), sites, slot, mk, cx);
             put_caps::<<Self as Target<V>>::Caps>(&*sites, slot, self.caps());
         }
     }
@@ -353,7 +431,10 @@ impl<T: Copy + 'static> Interact for T {}
 
 /// A record that hears the pointer enter and leave, given the record: `hover(record, |v, a, on| ..)`.
 #[inline(always)]
-pub fn hover<V, A: Arch, F: Fn(&mut V, &A, bool) + Copy + 'static>(a: A, f: F) -> On<A, HoverRec<F>> {
+pub fn hover<V, A: Arch, F: Fn(&mut V, &A, bool) + Copy + 'static>(
+    a: A,
+    f: F,
+) -> On<A, HoverRec<F>> {
     On(a, HoverRec(f))
 }
 
@@ -367,7 +448,11 @@ pub struct Dispatch {
     pub consumed: bool,
 }
 impl Dispatch {
-    pub const NOTHING: Dispatch = Dispatch { kind: 0, place: NONE, consumed: false };
+    pub const NOTHING: Dispatch = Dispatch {
+        kind: 0,
+        place: NONE,
+        consumed: false,
+    };
 }
 
 /// The block as the raster would shade it, from the application's words and the world's.
