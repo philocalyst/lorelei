@@ -24,6 +24,8 @@ struct Column {
 
 /// An unpublished table. Store structure revisions count up from 1 with a checked add.
 const STALE: u64 = 0;
+// A stateful record can change on a delta, without waiting for a view pass.
+const HOVER_STATE: u32 = 1 << 31;
 
 /// Non-reusable identity of one world instance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -198,6 +200,7 @@ pub struct World<V, B> {
     fast: Vec<Fast>,
     /// Per block word that some delta asked about alone: its records by key across columns.
     word_keys: Vec<WordKeys>,
+    key_words: u64,
     key_scratch: Vec<(u32, u32)>,
     /// The number of the last description pass (mount, a list pass, a re-description): the only things that
     /// write a record's operands or change which records are live.
@@ -288,6 +291,7 @@ impl<V: View, B: Backend> World<V, B> {
             fast_stats: FastStats::default(),
             fast: Vec::new(),
             word_keys: Vec::new(),
+            key_words: 0,
             key_scratch: Vec::new(),
             wrote: 1,
             no_fast: false,
@@ -412,6 +416,7 @@ impl<V: View, B: Backend> World<V, B> {
     /// is no such row or its record is of another type.
     pub fn free_set<R: crate::sink::Row<V>>(&mut self, scope: usize, slot: u32, row: R) -> bool {
         const { assert!(R::LEAVES == 1, "a free row is one record") };
+        self.capture_hover();
         let st = self
             .root
             .subs
@@ -510,6 +515,7 @@ impl<V: View, B: Backend> World<V, B> {
         panic!("the view's fields named by its columns did not settle in 8 descriptions");
     }
     fn mount_pass(&mut self, v: &V) {
+        self.capture_hover();
         self.wrote += 1;
         self.root.world = Some(self.id);
         self.mounted = true;
@@ -620,7 +626,7 @@ impl<V: View, B: Backend> World<V, B> {
             let c = &st.cols[route.index as usize];
             if let Some(o) = c.hover {
                 self.handlers.push((k as u32, o.kinds));
-                route.kinds = o.kinds;
+                route.kinds = o.kinds | (u32::from(c.desc.state) * HOVER_STATE);
             }
             self.col_reads.push(c.reads);
             let fns = c.desc.fast;
@@ -647,6 +653,7 @@ impl<V: View, B: Backend> World<V, B> {
         self.union_seen.clear();
         self.union_seen.resize(cols.len(), 0);
         self.readers.clear();
+        self.key_words = 0;
         for w in 0..64 {
             self.by_word[w] = self.readers.len() as u32;
             self.readers.extend(
@@ -654,6 +661,13 @@ impl<V: View, B: Backend> World<V, B> {
                     .filter(|&k| self.col_reads[k] >> w & 1 != 0)
                     .map(|k| k as u32),
             );
+            let readers = &self.readers[self.by_word[w] as usize..];
+            if readers.len() >= 2 && readers.iter().all(|&k| {
+                let fast = cols[k as usize].fast;
+                fast != u16::MAX && matches!(self.fast[fast as usize].fns.key, Some((word, ..)) if word as usize == w)
+            }) {
+                self.key_words |= 1 << w;
+            }
         }
         self.by_word[64] = self.readers.len() as u32;
         // The root view's fields the columns' lenses name. Two fields in one word cannot both be Frame state.
@@ -715,7 +729,7 @@ impl<V: View, B: Backend> World<V, B> {
             let word = relevant.trailing_zeros() as usize;
             let start = self.by_word[word] as usize;
             let end = self.by_word[word + 1] as usize;
-            if end - start >= 2 && self.delta_word_keys(word, start, end, u) {
+            if self.key_words & relevant != 0 && self.delta_word_keys(word, start, end, u) {
                 return;
             }
             self.delta_stats.visited_incidences = end - start;
@@ -1072,6 +1086,7 @@ impl<V: View, B: Backend> World<V, B> {
         if ch != 0 {
             self.delta(u, ch);
         }
+        self.capture_hover();
         {
             let mut cx = Cx {
                 tiles: &mut self.tiles,
@@ -1125,6 +1140,7 @@ impl<V: View, B: Backend> World<V, B> {
             self.delta(u, ch);
         }
         crate::probe::mark(crate::probe::ph::BLOCK);
+        self.capture_hover();
         let mut cx = Cx {
             tiles: &mut self.tiles,
             u,
@@ -1445,9 +1461,12 @@ impl<V: View, B: Backend> World<V, B> {
     fn picked(&mut self, v: &mut V, pick: u32, all: &[u32]) -> Dispatch {
         self.core_word(U_PICK, pick);
         let mut next = self.take();
+        let mut stateful = 0;
         for &p in all {
-            if self.kinds(p) & kind::HOVER != 0 {
+            let kinds = self.kinds(p);
+            if kinds & kind::HOVER != 0 {
                 next.push(p);
+                stateful |= kinds & HOVER_STATE;
             }
         }
         // Places whose slot has been given to another row since they were entered: the item that was entered
@@ -1455,7 +1474,7 @@ impl<V: View, B: Backend> World<V, B> {
         // its leave with the record and the captures it was entered with (kept copies), topmost first, and
         // is no longer hovered; whatever is in the slot now is entered below like any other place.
         let (px, py) = self.ptr.map_or((-1.0, -1.0), |(x, y)| (x as f32, y as f32));
-        let mut i = self.hov.len();
+        let mut i = self.hov_kept.len();
         while i > 0 {
             i -= 1;
             if self.stamp_at(self.hov[i]) != self.hov_what[i] {
@@ -1507,10 +1526,8 @@ impl<V: View, B: Backend> World<V, B> {
         self.hov_kept.clear();
         self.hov_bytes.clear();
         self.hov_aligned.clear();
-        for i in 0..self.hov.len() {
-            let r = self.stamp_at(self.hov[i]);
-            self.hov_what.push(r);
-            self.keep(self.hov[i]);
+        if stateful != 0 {
+            self.capture_hover();
         }
         let (x, y) = (px, py);
         let mut out = Dispatch {
@@ -1561,6 +1578,19 @@ impl<V: View, B: Backend> World<V, B> {
         self.done(old);
         out
     }
+    /// Save what the hovered places denote before a write can replace them. Stateful
+    /// hover records are saved on entry because their delta may write before a pass.
+    #[inline(never)]
+    fn capture_hover(&mut self) {
+        if self.hov_kept.is_empty() {
+            for i in 0..self.hov.len() {
+                let p = self.hov[i];
+                self.hov_what.push(self.stamp_at(p));
+                self.keep(p);
+            }
+        }
+    }
+
     /// Identity of the column allocation and of the item occupying this slot.
     fn stamp_at(&self, place: u32) -> u64 {
         let Some((st, col, rec)) = self.at_place(place) else {
