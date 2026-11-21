@@ -77,6 +77,9 @@ fn wheel_moves_by_its_full_target_on_the_same_turn() {
     a.frame();
     let before = a.presented_pixels();
     a.wheel(10., 10., 0., -1.);
+    assert_eq!(*a.view().scroll, 0.);
+    assert!(!a.frame());
+    a.wheel(10., 10., 0., 1.);
     assert_eq!(*a.view().scroll, 48.);
     a.frame();
     assert_ne!(a.presented_pixels(), before);
@@ -156,7 +159,7 @@ fn a_stationary_pointer_gets_leave_and_enter_when_rows_scroll_under_it() {
     let mut a = new(Rows::new(20), 80., 144., 1., 2);
     a.pointer_move(10., 20.);
     assert_eq!(a.view().rows.get(0).unwrap().hovers, [true]);
-    a.wheel(10., 20., 0., -1.);
+    a.wheel(10., 20., 0., 1.);
     assert_eq!(a.view().rows.get(0).unwrap().hovers, [true, false]);
     assert_eq!(a.view().rows.get(1).unwrap().hovers, [true]);
 }
@@ -252,10 +255,10 @@ fn nested_wheel_selects_the_innermost_port() {
         1.,
         3,
     );
-    a.wheel(10., 20., 0., -1.);
+    a.wheel(10., 20., 0., 1.);
     assert!(*a.view().inner > 0.);
     assert_eq!(*a.view().outer, 0.);
-    a.wheel(70., 110., 0., -1.);
+    a.wheel(70., 110., 0., 1.);
     assert!(*a.view().outer > 0.);
     a.check().unwrap();
 }

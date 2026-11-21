@@ -775,7 +775,7 @@ impl<V: View> App<V> {
                 (scene.heights[sc.doc as usize], r[3] - r[1])
             };
             let max = ((content - port).max(0)) as f32 / self.scale;
-            let to = (sc.at - dy * sc.line).clamp(0.0, max);
+            let to = (sc.at + dy * sc.line).clamp(0.0, max);
             if to != sc.at {
                 if let Some(o) = resolve(&self.owners, sc.owner, &mut self.lv.v) {
                     count(|c| c.dispatch += 1);

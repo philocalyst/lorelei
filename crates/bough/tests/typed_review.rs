@@ -158,8 +158,6 @@ fn a_stationary_pointer_gets_leave_and_enter_when_rows_scroll_under_it() {
     let mut a = new(Rows::new(20), 80., 144., 1., 2);
     a.pointer_move(10., 20.);
     assert_eq!(a.view().rows.get(0).unwrap().hovers, [true]);
-    // (the wheel's sign is the legacy runtime's, `raw::App::wheel`: a positive turn scrolls down; the lowered
-    // runtime the probe was written against takes the opposite sign, which is its defect, recorded in the report)
     a.wheel(10., 20., 0., 1.);
     assert_eq!(*a.view().scroll, 48.);
     assert_eq!(a.view().rows.get(0).unwrap().hovers, [true, false]);
