@@ -111,7 +111,7 @@ impl Mixed {
             Ran::Gpu => {
                 let (t, era) = self.gpu.resident(scene, u, &tiles, Some(self.era), self.stride);
                 (self.last_gpu, self.era) = (t.gpu, era);
-                fs.tiles = self.gpu.resident_stats()[2];
+                fs.tiles = self.gpu.resident_output_tiles();
             }
         }
         self.tiles = tiles;

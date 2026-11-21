@@ -632,6 +632,11 @@ struct Res {
     lb: Vec<u32>,
     /// (level, or `u32::MAX` for a rank's reach pass; slots; first slot), in order.
     stages: Vec<(u32, u32, u32)>,
+    /// Stage index of each rank, followed by the output stage.
+    rank_stage: Vec<usize>,
+    max_dispatches: usize,
+    first_stage: usize,
+    last_dispatches: usize,
     nslots: usize,
     era: u32,
 }
@@ -1149,9 +1154,12 @@ impl Gpu {
         self.res.era += 1;
         let era = self.res.era;
         let all = scene.plan.full;
+        let mut first_rank = if all { 0 } else { usize::MAX };
         let dues = scene.take_dues();
         if !all && !cfg!(feature = "mutant_forced") {
             let lb = std::mem::take(&mut self.res.lb);
+            // Keep the rank table out of the mutable buffer borrow.
+            let ranks = std::mem::take(&mut self.res.rank);
             let force = self.words_mut(22);
             for (lid, due) in &dues {
                 let l = &scene.layers.list[*lid as usize];
@@ -1169,6 +1177,7 @@ impl Gpu {
                         if e[0] >= e[2] || e[1] >= e[3] {
                             continue;
                         }
+                        first_rank = first_rank.min(ranks[*lid as usize] as usize);
                         let m = (1 << bs) - 1;
                         for by in e[1] >> bs..(e[3] + m) >> bs {
                             for bx in e[0] >> bs..(e[2] + m) >> bs {
@@ -1178,13 +1187,23 @@ impl Gpu {
                     }
                 }
             }
+            self.res.rank = ranks;
             self.res.lb = lb;
         }
+        let ranks = std::mem::take(&mut self.res.rank);
         let kt = self.words_mut(23);
         for &(w, z) in scene.events() {
             for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty as i32) {
                 for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx as i32) {
-                    let t = (y as usize * tx + x as usize) * 4;
+                    let tile = y as usize * tx + x as usize;
+                    if first_rank != 0 && !cfg!(feature = "mutant_rank_seed") {
+                        let readers = scene.bins.layers(tile);
+                        if readers.last().is_some_and(|&last| z < last) {
+                            let first = readers[readers.partition_point(|&reader| reader <= z)];
+                            first_rank = first_rank.min(ranks[scene.layers.of[first as usize] as usize] as usize);
+                        }
+                    }
+                    let t = tile * 4;
                     (kt[t], kt[t + 1]) = (kt[t].min(z), kt[t + 1].max(z + 1));
                 }
             }
@@ -1192,9 +1211,14 @@ impl Gpu {
         for &t in tiles {
             kt[t as usize * 4 + 2] = era;
         }
+        self.res.rank = ranks;
         let nstages = self.res.stages.len();
+        // If a reader emits an event, the event's tile also belongs to its own halo.
+        // By the rank invariant, any consumer is above the emitter in stage order.
+        let first_stage = self.res.rank_stage.get(first_rank).copied().unwrap_or(nstages);
+        self.res.first_stage = first_stage;
         let args = self.words_mut(24);
-        for i in 0..=nstages {
+        for i in first_stage..=nstages {
             args[8 * i] = 0;
         }
         self.words_mut(26)[..4].copy_from_slice(&[era, since.unwrap_or(era), all as u32, since.is_some() as u32]);
@@ -1219,7 +1243,9 @@ impl Gpu {
             enc.setBuffer_offset_atIndex(self.bufs[25].as_deref(), 0, 17);
             enc.setBuffer_offset_atIndex(Some(args_buf), 12, 27);
         }
-        for (i, st) in self.res.stages.iter().enumerate() {
+        let mut dispatches = 1;
+        for (i, st) in self.res.stages.iter().enumerate().skip(first_stage) {
+            dispatches += if st.0 == 0 { 2 } else { 1 };
             unsafe {
                 enc.setBufferOffset_atIndex(32 * i, 24);
                 enc.setBufferOffset_atIndex(32 * i + 12, 27);
@@ -1237,6 +1263,7 @@ impl Gpu {
             }
         }
         if since.is_some() {
+            dispatches += 2;
             unsafe { enc.setBufferOffset_atIndex(32 * nstages, 24) };
             enc.setComputePipelineState(&self.rk[3]);
             enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: nt.div_ceil(64), height: 1, depth: 1 }, g64);
@@ -1249,6 +1276,7 @@ impl Gpu {
         cmd.commit();
         cmd.waitUntilCompleted();
         // the other paths' resident lanes were not kept up
+        self.res.last_dispatches = dispatches;
         self.first = true;
         (GpuTime { wall: t.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }, era)
     }
@@ -1257,18 +1285,22 @@ impl Gpu {
     pub fn resident_stats(&self) -> [u32; 4] {
         let args = self.words(24);
         let mut st = [0u32; 4];
-        for (i, s) in self.res.stages.iter().enumerate() {
+        for (i, s) in self.res.stages.iter().enumerate().skip(self.res.first_stage) {
             if s.0 == 0 {
                 st[0] += args[8 * i];
             }
         }
-        st[2] = args[8 * self.res.stages.len()];
-        st[3] = self.resident_dispatches() as u32;
+        st[2] = self.resident_output_tiles();
+        st[3] = self.res.last_dispatches as u32;
         st
     }
-    /// Dispatches a resident frame encodes (0 before the first one).
+    /// Tiles drawn by the last resident frame, read in constant time for the chooser.
+    pub(crate) fn resident_output_tiles(&self) -> u32 {
+        self.words(24)[8 * self.res.stages.len()]
+    }
+    /// Upper bound of dispatches a resident frame encodes (0 before its plan is built).
     pub fn resident_dispatches(&self) -> usize {
-        if self.res.stages.is_empty() { 0 } else { self.res.stages.iter().map(|s| if s.0 == 0 { 2 } else { 1 }).sum::<usize>() + 3 }
+        self.res.max_dispatches
     }
     /// Ranks in the resident plan's stage order, and its slots.
     pub fn resident_shape(&self) -> (u32, usize) {
@@ -1284,10 +1316,13 @@ impl Gpu {
         let mut by_rank: Vec<u32> = (0..nl as u32).collect();
         by_rank.sort_by_key(|&l| rank[l as usize]);
         let (mut sl, mut lb, mut stages): (Vec<u32>, Vec<u32>, Vec<(u32, u32, u32)>) = (Vec::new(), vec![0; nl * 8], Vec::new());
+        let mut rank_stage = Vec::new();
         let mut i = 0;
         let mut most = 0;
         while i < nl {
             let j = i + by_rank[i..].iter().take_while(|&&l| rank[l as usize] == rank[by_rank[i] as usize]).count();
+            let r = rank[by_rank[i] as usize] as usize;
+            rank_stage.resize(r + 1, stages.len());
             for k in 0..crate::layer::LEVELS {
                 let at = sl.len();
                 for &lid in &by_rank[i..j] {
@@ -1325,6 +1360,8 @@ impl Gpu {
             sw[8 * i + 3..8 * i + 6].copy_from_slice(&[s.2, s.1, s.0]);
         }
         self.buf(25, most.max(self.nt).max(1) * 32);
+        self.res.max_dispatches = stages.iter().map(|s| if s.0 == 0 { 2 } else { 1 }).sum::<usize>() + 3;
+        self.res.rank_stage = rank_stage;
         self.res.alloc = Some(ls.alloc_epoch);
         (self.res.rank, self.res.lb, self.res.stages, self.res.nslots) = (rank, lb, stages, ns);
     }

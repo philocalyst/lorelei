@@ -1244,3 +1244,53 @@ fn spring_hull_parks_and_wakes_at_output_ages_one_to_four() {
     }
     eprintln!("motion hull: 240 CPU frames and 125 Metal draws at ages 1..4, zero mismatching words");
 }
+
+#[test]
+fn resident_layers_have_no_dispatch_when_all_events_are_above_them() {
+    use bough_paint::metal::Gpu;
+    let (fw, fh) = (128, 96);
+    let words = (fw * fh) as usize;
+    let pool = Pool::new(1);
+    let make = || {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        let under = scene.column::<Solid<Lane, Pmo<Uw<4>>>>(1);
+        let glass = scene.column::<Backdrop<Lane, Ki<1024>, Ki<1536>, Filt<K<256>, K<256>, K<256>>>>(8);
+        let above = scene.column::<Solid<Lane, Pmo<Uw<5>>>>(1);
+        scene.push(under, [0, 0, q(128.0), q(96.0)], Solid { b: Lane, c: Pmo { c: Uw } });
+        for i in 0..8 {
+            scene.push(glass, [q(16.0 + i as f32), q(16.0), q(96.0), q(80.0)], Backdrop { b: Lane, r: Ki, blur: Ki, f: V3 { a: K, b: K, c: K } });
+        }
+        scene.push(above, [q(40.0), q(40.0), q(46.0), q(46.0)], Solid { b: Lane, c: Pmo { c: Uw } });
+        scene
+    };
+    let mut scene = make();
+    scene.route_off = true;
+    // SAFETY: `scene` outlives `gpu` and writes occur between synchronous calls.
+    let mut gpu = unsafe { Gpu::new(&scene, words, 64) }.expect("headless Metal");
+    let mut u = U::default();
+    let mut era = 0;
+    let mut fresh = vec![0; words];
+    let mut tiles = Vec::new();
+    for step in 0..8u32 {
+        if step % 2 == 0 {
+            u.w[4] = 0x0020_4060 * (step / 2 + 1);
+        }
+        if step % 2 == 1 {
+            u.w[5] = 0x0000_4040 * step;
+        }
+        scene.update(&u);
+        scene.damage.tiles(&mut tiles);
+        scene.damage.clear();
+        let block = *scene.block();
+        era = gpu.resident(&mut scene, &block, &tiles, Some(era), fw as usize).1;
+        let stat = gpu.resident_stats();
+        if step % 2 == 1 {
+            assert_eq!(stat[0], 0, "above-glass frame repaired a prefix");
+            assert_eq!(stat[3], 3, "above-glass frame encoded a layer dispatch");
+        }
+        let mut oracle = make();
+        oracle.frame(&u, &mut fresh, fw as usize, &pool, 0);
+        assert_eq!(diff(gpu.out(words), &fresh), 0, "step {step}");
+    }
+    eprintln!("rank seeds: 4 above-glass frames used 3 output/reset dispatches each, 8 exact frames");
+}
