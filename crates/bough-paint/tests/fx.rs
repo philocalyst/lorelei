@@ -1437,3 +1437,76 @@ fn shadow_coverage_reuses_exact_samples_and_rejects_a_changed_phase() {
     }
     eprintln!("shadow coverage: {retained} retained bytes, five exact CPU and Metal frames");
 }
+
+#[test]
+fn a_rigid_world_pans_with_no_record_or_list_rewrites() {
+    type Moving = Hit<RRect<Pan, Ki<1280>, Any>, Rec>;
+    type Fixed = RRect<Lane, Ki<1024>, Pm<Uw<5>>>;
+    let (fw, fh, stride) = (179, 91, 184usize);
+    let words = stride * fh as usize;
+    let pool = Pool::new(1);
+    let make = |uniform| {
+        let mut scene = Scene::new(fw, fh, 32_768);
+        let bg = scene.column::<Solid<Lane, Pmo<K<0xffaa_4466>>>>(1);
+        scene.push(bg, [0, 0, q(179.0), q(91.0)], Solid { b: Lane, c: Pmo { c: K } });
+        let rows = scene.column::<Moving>(400);
+        let fixed = scene.column::<Fixed>(12);
+        for j in 0..240 {
+            let x = (j % 3) as f32 * 66.0 + (j % 5) as f32 * 0.375 - 63.0;
+            let y = (j / 3) as f32 * 34.0 - 92.0;
+            scene.push(rows, [q(x), q(y), q(x + 56.0), q(y + 24.0)], Hit { p: RRect { b: pan(), r: Ki, c: pm(0x9812_8341 + (j as u32) * 307) }, id: Rec(j as u32) });
+            if j < 8 {
+                scene.push(fixed, [q(5.0), q(j as f32 * 8.0), q(175.0), q(j as f32 * 8.0 + 21.0)], Fixed { b: Lane, r: Ki, c: Pm { c: Uw } });
+            }
+        }
+        if uniform {
+            scene.scroll(rows, 0, 1);
+            scene.uniform_pan(0, 1);
+        }
+        scene
+    };
+    let mut cpu = make(true);
+    let mut metal = make(true);
+    metal.route_off = true;
+    // SAFETY: the scene outlives Metal and changes only between synchronous calls.
+    let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 64) }.expect("headless Metal");
+    let (mut actual, mut expected, mut spec) = (vec![0; words], vec![0; words], vec![0; words]);
+    let mut u = U::default();
+    let mut era = 0;
+    let mut tiles = Vec::new();
+    let mut pans = 0;
+    for (step, (x, y)) in [(0.0, 0.0), (10.25, -40.125), (-9.5, -1520.0), (13.875, -1643.0), (42.0, -18.0), (-32.0, -32.0), (0.125, 19.0)].into_iter().enumerate() {
+        (u.w[0], u.w[1]) = (q(x) as u32, q(y) as u32);
+        if step == 0 || step == 4 {
+            u.w[5] = 0x8032_61d3 ^ ((step as u32) << 12);
+        }
+        let fs = cpu.frame(&u, &mut actual, stride, &pool, 0);
+        let mut oracle = make(false);
+        oracle.frame(&u, &mut expected, stride, &pool, 0);
+        oracle.spec(&u, &mut spec, stride);
+        assert_eq!(diff(&expected, &spec), 0);
+        assert_eq!(diff(&actual, &expected), 0, "CPU world frame {step}");
+        assert_eq!(cpu.pick(&u, 44, 53), oracle.pick(&u, 44, 53));
+        if step != 0 && step != 4 {
+            assert_eq!((fs.recs_visited, fs.rebinned), (0, false));
+            pans += 1;
+        }
+        metal.update(&u);
+        metal.damage.tiles(&mut tiles);
+        metal.damage.clear();
+        let block = *metal.block();
+        era = gpu.resident(&mut metal, &block, &tiles, Some(era), stride).1;
+        assert_eq!(diff(gpu.out(words), &expected), 0, "Metal world frame {step}");
+        assert_eq!(
+            gpu.world_uploads(),
+            if step == 0 {
+                0
+            } else if step <= 4 {
+                1
+            } else {
+                2
+            }
+        );
+    }
+    eprintln!("world scroll: {pans} pans visited zero records, 7 exact CPU and Metal frames, 2 uploads across 2 geometry epochs");
+}

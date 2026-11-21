@@ -19,6 +19,7 @@ use wgsl_rs::std::{Vec4, Vec4i, Vec4u};
 /// One worker's tile state.
 pub struct Tile<'a> {
     acc: Box<[[u16; 4]; 1024]>,
+    pub(crate) world_candidates: Vec<u32>,
     pub ox: i32,
     pub oy: i32,
     cols: i32,
@@ -141,7 +142,7 @@ fn over(row: &mut [[u16; 4]], sh: Vec4u) {
 
 impl<'a> Tile<'a> {
     pub fn new(atlas: &'a [u8], aw: u32, tabs: &'a [u32]) -> Tile<'a> {
-        Tile { acc: Box::new([[0; 4]; 1024]), ox: 0, oy: 0, cols: 0, all: 0, same: 0, need: 0, hide: EMPTY, masks: Vec::new(), cur: 0, atlas, aw: aw as usize, tabs, st: Stats::default() }
+        Tile { acc: Box::new([[0; 4]; 1024]), world_candidates: Vec::new(), ox: 0, oy: 0, cols: 0, all: 0, same: 0, need: 0, hide: EMPTY, masks: Vec::new(), cur: 0, atlas, aw: aw as usize, tabs, st: Stats::default() }
     }
     /// Start a tile at (ox, oy) with `cols` x `nrows` pixels inside the frame.
     pub fn begin(&mut self, ox: i32, oy: i32, cols: usize, nrows: usize, flat: bool) {

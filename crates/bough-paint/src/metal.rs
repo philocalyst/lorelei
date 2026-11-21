@@ -380,11 +380,12 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
     // ---- shade: `k_shade` (a whole tile program per damaged tile, into the surface) and `k_seg` (the
     // ---- staged frame's jobs: a range of a tile's list, from a stored prefix or from nothing, into the
     // ---- surface or into a layer's level 0) are one body ----
-    for variant in 0..3 {
+    for variant in 0..4 {
         // 0: `k_shade`; 1: `k_seg`; 2: `k_segr` (the resident plan's: a prefix job compares before it writes
         // and stamps its block changed)
-        let seg = variant > 0;
-        s.push_str(["\nkernel void k_shade(", "\nkernel void k_seg(", "\nkernel void k_segr(device metal::atomic_uint* CHG [[buffer(21)]], device metal::atomic_uint* KT [[buffer(23)]], device metal::atomic_uint* ARGS [[buffer(24)]], const device uint* RP [[buffer(26)]], "][variant]);
+        let seg = variant == 1 || variant == 2;
+        let panned = variant == 3;
+        s.push_str(["\nkernel void k_shade(", "\nkernel void k_seg(", "\nkernel void k_segr(device metal::atomic_uint* CHG [[buffer(21)]], device metal::atomic_uint* KT [[buffer(23)]], device metal::atomic_uint* ARGS [[buffer(24)]], const device uint* RP [[buffer(26)]], ", "\nkernel void k_pan(const device uint* WORLD [[buffer(28)]], "][variant]);
         s.push_str(
             r#"const device uint* COLS [[buffer(0)]], const device uint* META [[buffer(1)]], const device uint* ORDER [[buffer(2)]],
                     const device uint* WINS [[buffer(3)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]],
@@ -400,7 +401,27 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
             s.push_str("    if (wg.x >= metal::atomic_load_explicit(&ARGS[0], metal::memory_order_relaxed)) { return; }\n");
         }
         s.push_str(&load_u('u', M_UNEW));
-        s.push_str(if seg {
+        s.push_str(if panned {
+            r#"    uint t = wg.x, init = 0xFFFFFFFFu, dest = 0xFFFFFFFFu;
+    int panx = int(META[16u + WORLD[0]]), pany = int(META[16u + WORLD[1]]);
+    int cx = int(t % TX) - (panx >> 13) - int((panx & 8191) != 0);
+    int cy = int(t / TX) - (pany >> 13) - int((pany & 8191) != 0);
+    uint fixed_at = WORLD[4u + 2u * t], fixed_n = WORLD[5u + 2u * t];
+    uint base = 4u + 2u * WORLD[2], lo = 0u, hi = WORLD[3];
+    while (lo < hi) {
+        uint m = lo + (hi - lo) / 2u, at = base + 4u * m;
+        int wy = int(WORLD[at]), wx = int(WORLD[at + 1u]);
+        if (wy < cy || (wy == cy && wx < cx)) { lo = m + 1u; } else { hi = m; }
+    }
+    uint world_at = 0u, world_n = 0u;
+    if (lo < WORLD[3]) {
+        uint at = base + 4u * lo;
+        if (int(WORLD[at]) == cy && int(WORLD[at+1u]) == cx) {
+            world_at = WORLD[at+2u]; world_n = WORLD[at+3u];
+        }
+    }
+"#
+        } else if seg {
             r#"    const device uint* J = JOBS + wg.x * 8u;
     uint t = J[0], from = J[1], to = J[2], init = J[3], dest = J[4];
 "#
@@ -411,7 +432,6 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
         s.push_str(
             r#"    uint ux = (t % TX) * 32u + 2u * tp.x, uy = (t / TX) * 32u + 2u * tp.y;
     int x = int(ux), y = int(uy);
-    uint off = TILES[2u * t];
     metal::uint4 a0 = metal::uint4(0u), a1 = metal::uint4(0u), a2 = metal::uint4(0u), a3 = metal::uint4(0u);
     if (init != 0xFFFFFFFFu) {
         // the stored prefix of a layer that holds this whole tile
@@ -420,6 +440,20 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
         if (ux < fw && uy + 1u < fh) { a2 = x_unstore(POOL[fx_at(LT, init, 0u, x, y + 1)]); }
         if (ux + 1u < fw && uy + 1u < fh) { a3 = x_unstore(POOL[fx_at(LT, init, 0u, x + 1, y + 1)]); }
     }
+"#,
+        );
+        s.push_str(if panned {
+            r#"    uint fi = 0u, wi = 0u;
+    while (fi < fixed_n || wi < world_n) {
+        uint f = fi < fixed_n ? WORLD[fixed_at + fi] : 0xFFFFFFFFu;
+        uint w = wi < world_n ? WORLD[world_at + wi] : 0xFFFFFFFFu;
+        uint z;
+        if (f < w) { z = f; fi++; } else { z = w; wi++; }
+        uint o = ORDER[z], idx = o & IDXMASK;
+        switch (o >> IDXBITS) {
+"#
+        } else {
+            r#"    uint off = TILES[2u * t];
     // the occlusion cut at pixel grain: start at the topmost entry whose opaque cover holds this 2 x 2 block
     uint start = from;
     for (uint i = to; i > from; i--) {
@@ -434,7 +468,7 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
         uint o = ORDER[z], idx = o & IDXMASK;
         switch (o >> IDXBITS) {
 "#,
-        );
+        });
         for (k, d) in descs.iter().enumerate() {
             write!(s, "        case {k}u: {{ {}", record(k, &lays[k])).unwrap();
             let (w, u) = (loads(d), unis(d, 'u'));
@@ -672,6 +706,7 @@ struct Res {
     command_at: Vec<usize>,
     first_stage: usize,
     last_dispatches: usize,
+    world_tiles: Option<u32>,
     nslots: usize,
     era: u32,
 }
@@ -680,6 +715,9 @@ pub struct Gpu {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     shade: Pso,
+    pan: Pso,
+    world_seen: Option<u64>,
+    world_uploads: u64,
     pick: Pso,
     bin: Pso,
     compact: Pso,
@@ -693,7 +731,7 @@ pub struct Gpu {
     /// 7 output, 8 atlas, 9 damage, 10 pick, 11 rewritten records (a bit per key), 12 table jobs; the staged
     /// frame's: 13 the layers' pool (this executor's own retained copy), 14 the layer table, 15 the media
     /// pool (the scene's, no copy), 16 layer of key, 17 jobs.
-    bufs: [Option<Buf>; 28],
+    bufs: [Option<Buf>; 29],
     /// The resident plan's kernels and state (`resident`).
     rk: [Pso; 5],
     icb_pipelines: Option<[Pso; 3]>,
@@ -787,6 +825,9 @@ impl Gpu {
             device,
             queue,
             shade,
+            pan: pso("k_pan"),
+            world_seen: None,
+            world_uploads: 0,
             pick,
             bin,
             compact,
@@ -868,6 +909,7 @@ impl Gpu {
     /// already here: they are the arena.) Called after records are pushed; the next frame redraws everything.
     pub fn sync(&mut self, scene: &Scene) {
         assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
+        self.world_seen = None;
         self.nz = scene.order.len();
         self.lens = scene.cols.iter().map(|c| c.len).collect();
         self.buf(2, self.nz.max(1) * 4);
@@ -983,6 +1025,9 @@ impl Gpu {
     /// repair what the previous ones left), with `tiles` the output tiles to draw (the frame's damage, or
     /// more for an older surface). This is the path for scenes with layers; `frame` refuses them.
     pub fn staged(&mut self, scene: &Scene, u: &U, tiles: &[u32], stride: usize) -> GpuTime {
+        if let Some(world) = scene.world_frame() {
+            return self.draw_world(scene, world, u, stride);
+        }
         assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
         assert!(std::ptr::eq(self.media, scene.media.arena().ptr()), "the scene's media pool was replaced after the executor was made");
         assert!(tiles.iter().all(|&t| (t as usize) < self.nt));
@@ -1131,6 +1176,13 @@ impl Gpu {
         assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
         assert!(std::ptr::eq(self.media, scene.media.arena().ptr()), "the scene's media pool was replaced after the executor was made");
         assert!(scene.order.len() == self.nz, "records were pushed: call `sync`");
+        if let Some(world) = scene.world_frame() {
+            self.res.era += 1;
+            let stats = if since.is_some() { self.draw_world(scene, world, u, stride) } else { GpuTime::default() };
+            self.res.world_tiles = Some(if since.is_some() { self.nt as u32 } else { 0 });
+            return (stats, self.res.era);
+        }
+        self.res.world_tiles = None;
         let (nt, tx, ty) = (self.nt, scene.tx, scene.ty);
         let whole = !self.res.mirrored;
         // ---- the lanes: every key once, then the keys that changed ----
@@ -1362,6 +1414,9 @@ impl Gpu {
     /// What the last `resident` frame ran, read from the stages' counters after the fact (a report; nothing
     /// is scheduled from it): prefix jobs, pyramid blocks, output tiles, dispatches encoded.
     pub fn resident_stats(&self) -> [u32; 4] {
+        if let Some(tiles) = self.res.world_tiles {
+            return [0, 0, tiles, u32::from(tiles != 0)];
+        }
         let args = self.words(24);
         let mut st = [0u32; 4];
         for (i, s) in self.res.stages.iter().enumerate().skip(self.res.first_stage) {
@@ -1375,7 +1430,7 @@ impl Gpu {
     }
     /// Tiles drawn by the last resident frame, read in constant time for the chooser.
     pub(crate) fn resident_output_tiles(&self) -> u32 {
-        self.words(24)[8 * self.res.stages.len()]
+        self.res.world_tiles.unwrap_or_else(|| self.words(24)[8 * self.res.stages.len()])
     }
     /// Upper bound of dispatches a resident frame encodes (0 before its plan is built).
     pub fn resident_dispatches(&self) -> usize {
@@ -1385,6 +1440,44 @@ impl Gpu {
     pub fn resident_shape(&self) -> (u32, usize) {
         (self.res.rank.iter().copied().max().map_or(0, |r| r + 1), self.res.nslots)
     }
+    /// Number of world table uploads by the executor. Pure pans reuse the table.
+    pub fn world_uploads(&self) -> u64 {
+        self.world_uploads
+    }
+
+    fn draw_world(&mut self, scene: &Scene, world: &crate::scene::WorldPan, u: &U, stride: usize) -> GpuTime {
+        assert!(std::ptr::eq(self.arena, scene.arena.ptr()), "another scene than the one bound");
+        assert!(stride >= scene.fw as usize && (scene.fh as usize - 1) * stride + scene.fw as usize <= self.words(7).len());
+        assert_eq!(scene.order.len(), self.nz, "records were pushed: call sync");
+        let slots = [world.packed[0] as usize, world.packed[1] as usize];
+        if self.world_seen != Some(world.version) {
+            self.buf(28, world.packed.len() * 4);
+            self.words_mut(28)[..world.packed.len()].copy_from_slice(&world.packed);
+            self.world_seen = Some(world.version);
+            self.world_uploads += 1;
+        }
+        let m = self.words_mut(1);
+        m[2] = stride as u32;
+        m[M_UNEW..M_UNEW + 64].copy_from_slice(&u.w);
+        if cfg!(feature = "mutant_world_origin") {
+            m[M_UNEW + slots[0]] = 0;
+            m[M_UNEW + slots[1]] = 0;
+        }
+        let start = std::time::Instant::now();
+        let cmd = self.queue.commandBuffer().expect("command buffer");
+        let enc = cmd.computeCommandEncoder().expect("encoder");
+        self.bind(&enc, None);
+        // SAFETY: buffer 28 contains the fixed and world lists sized for this scene and is retained by self.
+        unsafe { enc.setBuffer_offset_atIndex(self.bufs[28].as_deref(), 0, 28) };
+        enc.setComputePipelineState(&self.pan);
+        enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: self.nt, height: 1, depth: 1 }, MTLSize { width: 16, height: 16, depth: 1 });
+        enc.endEncoding();
+        cmd.commit();
+        cmd.waitUntilCompleted();
+        self.first = true;
+        GpuTime { wall: start.elapsed().as_secs_f64(), gpu: cmd.GPUEndTime() - cmd.GPUStartTime() }
+    }
+
     /// The slots: every (layer, level, block its storage can hold), ordered by (rank, level).
     fn res_slots(&mut self, scene: &Scene) {
         let ls = &scene.layers;
