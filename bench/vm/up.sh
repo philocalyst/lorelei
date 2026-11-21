@@ -11,9 +11,11 @@ if ! command -v limactl >/dev/null 2>&1; then
   echo "up: installing lima with Homebrew"
   brew install lima
 fi
+# lima 2.x takes the instance name as an argument; `--filter name=...` is a syntax error there.
 if limactl list --format '{{.Name}}' | grep -qx "$VM"; then
   echo "up: $VM exists"
-  if [ "$(limactl list --format '{{.Status}}' --filter "name=$VM")" != "Running" ]; then
+  STATUS=$(limactl list --format '{{.Status}}' "$VM")
+  if [ "$STATUS" != "Running" ]; then
     limactl start "$VM"
   fi
 else
@@ -33,4 +35,4 @@ guest 'rustup toolchain install nightly-2026-10-17 --profile minimal -c rustfmt 
 guest 'rustup toolchain install nightly-2026-04-16 --profile minimal -c rustfmt 2>&1 | tail -2'
 
 echo "up: $VM ready"
-limactl list --format 'table {{.Name}} {{.Status}} {{.VMTYPE}} {{.Arch}} {{.CPUs}} {{.Memory}} {{.Disk}}' --filter "name=$VM"
+limactl list "$VM"

@@ -3,13 +3,24 @@
 #   bench/vm/run.sh [runner arguments...]
 # Defaults: --quick, rows/spinner/search/table at their smallest sizes, frameworks bough,bough-x,zgui.
 # Every argument after the script name goes to the runner unchanged.
-# Output: bench/results/vm/<stamp>/ (run.json, per-cell JSON, screenshots, CONTRACT.txt).
+# Output: $BENCH_RESULTS/<stamp>/ (default bench/results/vm/; run.json, per-cell JSON, screenshots,
+# CONTRACT.txt, VALIDITY.txt/json).
+# Environment: GB_TIMING=fixed|unthrottled|vrr (default fixed), GB_PIN=<cpu list> (default 0-5),
+# STRICT_VALIDITY=1 (exit 4 when any report is invalid or unchecked).
+# Exit status: the runner's if non-zero, else check.py's (2 = cell errors / missing cells / no
+# run.json, 4 = strict validity). The runner itself returns 0 on cell errors, so the status of the
+# runner alone is not evidence of a good run.
 set -eu
 . "$(dirname "$0")/lib.sh"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 OUT=results/vm-$STAMP
 FRAMEWORKS=${FRAMEWORKS:-bough,bough-x,zgui}
 SCENARIOS=${SCENARIOS:-rows,spinner,search,table}
+GB_TIMING=${GB_TIMING:-fixed}
+GB_PIN=${GB_PIN:-0-5}
+case "$GB_TIMING" in fixed|unthrottled|vrr) ;; *) echo "run: GB_TIMING=$GB_TIMING: expected fixed, unthrottled or vrr" >&2; exit 2 ;; esac
+export GB_TIMING GB_PIN
+RESULTS=${BENCH_RESULTS:-$ROOT/bench/results/vm}
 
 if [ "$#" -eq 0 ]; then
   set -- --quick --frameworks "$FRAMEWORKS" --scenarios "$SCENARIOS" --out "$OUT"
@@ -22,7 +33,7 @@ else
 fi
 
 # The contract of every number this run produces, written beside the results.
-CONTRACT="$ROOT/bench/results/vm/$STAMP"
+CONTRACT="$RESULTS/$STAMP"
 mkdir -p "$CONTRACT"
 {
   printf 'run %s\n' "$STAMP"
@@ -35,8 +46,11 @@ mkdir -p "$CONTRACT"
   printf 'toolchain-lorelei %s\n' "$(guest "cd $LOR && rustc -V")"
   printf 'toolchain-gui-bench nightly-2026-04-16 (its rust-toolchain.toml)\n'
   printf 'renderer lavapipe (Mesa software Vulkan; VK_LOADER_DRIVERS_DISABLE is emptied so Mesa device-select does not hide it); bough CPU executor into wl_shm\n'
-  printf 'timing fixed 60 Hz (fakeland fake display default); no GB_TIMING patch\n'
-  printf 'pinning taskset -c 0-5 for the runner and every app it launches\n'
+  printf 'timing %s (GB_TIMING; fixed = fakeland fixed rate of each cell, 60 Hz by default)\n' "$GB_TIMING"
+  printf 'pinning taskset -c %s for the runner and every app it launches\n' "$GB_PIN"
+  printf 'lorelei-head %s%s\n' "$(git -C "$WT" rev-parse HEAD)" "$(git -C "$WT" status --porcelain -- crates bench/vm | head -1 | sed 's/.*/ (dirty)/')"
+  printf 'guest-base %s\n' "$GB"
+  printf 'runner-args %s\n' "$*"
   printf 'load-before %s\n' "$(guest 'cat /proc/loadavg')"
   printf 'icd %s\n' "$(guest 'ls /usr/share/vulkan/icd.d/ | tr "\n" " "')"
   printf 'runner-sha256 %s\n' "$(guest "sha256sum $GUI/target/release/gui-bench | cut -d' ' -f1")"
@@ -59,6 +73,22 @@ printf 'load-after %s\n' "$(guest 'cat /proc/loadavg')" >> "$CONTRACT/CONTRACT.t
 # Copy the guest's result directory back through a tar stream (the home mount is read-only). The
 # contract file is already in place, so the cell files are unpacked beside it.
 guest "cd $GUI/$OUT && tar -cf - ." | tar -C "$CONTRACT" -xf -
-echo "run: results copied to bench/results/vm/$STAMP (runner exit $RC)"
-[ "$RC" -eq 0 ] || echo "run: the runner reported cell errors; see $STAMP/run.json" >&2
-exit "$RC"
+echo "run: results copied to $CONTRACT (runner exit $RC)"
+[ "$RC" -eq 0 ] || echo "run: the runner failed (exit $RC); see $CONTRACT/run.json" >&2
+
+# Audit: the runner exits 0 with failed cells, so read the cells themselves.
+FW=$FRAMEWORKS; SC=$SCENARIOS
+prev=
+for a in "$@"; do
+  case "$prev" in --frameworks) FW=$a ;; --scenarios) SC=$a ;; esac
+  prev=$a
+done
+STRICT=
+[ "${STRICT_VALIDITY:-0}" = 1 ] && STRICT=--strict-validity
+set +e
+python3 "$ROOT/bench/vm/check.py" "$CONTRACT" --frameworks "$FW" --scenarios "$SC" $STRICT
+CK=$?
+set -e
+printf 'check-exit %s\n' "$CK" >> "$CONTRACT/CONTRACT.txt"
+[ "$RC" -eq 0 ] || exit "$RC"
+exit "$CK"

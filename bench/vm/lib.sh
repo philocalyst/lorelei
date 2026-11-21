@@ -10,10 +10,13 @@ EXTRA=${BENCH_EXTRA:-$HOME/work/ref-extra}
 WT=${BENCH_WORKTREE:-$ROOT}
 # Guest locations and the guest-only target directory (never a host target).
 U=$(id -un)
-SRC=/home/$U.guest/src
-TARGET=/home/$U.guest/targets/lorelei-release
-GUI=/home/$U.guest/src/gui-bench
-LOR=/home/$U.guest/src/lorelei
+# BENCH_GUEST_BASE moves every guest path (sources, build targets) to another directory, so a second
+# user of the same VM never rsync --delete's or rebuilds the first one's trees.
+GB=${BENCH_GUEST_BASE:-/home/$U.guest}
+SRC=$GB/src
+TARGET=$GB/targets/lorelei-release
+GUI=$SRC/gui-bench
+LOR=$SRC/lorelei
 
 # Run a command in the guest with cargo on PATH and the pinned wrapper cleared.
 guest() {

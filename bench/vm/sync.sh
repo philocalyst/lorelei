@@ -25,11 +25,9 @@ if [ -d "$EXTRA/zgui-fakeland-marks" ]; then
   guest "rsync -a --delete $SKIP '$EXTRA/zgui-fakeland-marks/' $SRC/zgui-fakeland-marks/"
 fi
 
-# The runner does not know lorelei: register the two rows. Applied to a freshly synced tree every
-# time, so --forward failing on an already-applied hunk is not expected but is harmless.
-guest "cd $GUI && patch -p1 --forward --silent < $LOR/bench/vm/patches/gui-bench-bough.patch"
-# bough-vk names ash's c_char as i8, which is only true on x86-64 and macOS. On aarch64 Linux the
-# type is u8. See bench/vm/README.md.
-guest "cd $LOR && patch -p1 --forward --silent < $LOR/bench/vm/patches/bough-vk-c_char.patch"
+# The runner does not know lorelei: register the two rows, and let GB_TIMING choose the display
+# timing (fixed, the default and the old behaviour, | unthrottled | vrr). Applied to a freshly synced
+# tree every time. lorelei's own source is built as committed: no patch touches it.
+guest "cd $GUI && patch -p1 --silent < $LOR/bench/vm/patches/gui-bench-bough.patch && patch -p1 --silent < $LOR/bench/vm/patches/gui-bench-timing.patch"
 
 echo "sync: $LOR and $GUI up to date"

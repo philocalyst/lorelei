@@ -40,18 +40,32 @@ starts a private bus), DejaVu fonts. Rust: `nightly-2026-10-17` (lorelei) and `n
   `$BENCH_EXTRA/zgui-fakeland-marks` (`git clone -b feat/fakeland-marks https://github.com/zortax/zgui
   zgui-fakeland-marks`). Without it, build `FRAMEWORKS=bough,bough-x` and the zgui cells are absent.
 
-## Patches (applied to the VM's copies only, never to the repository)
+## Patches (applied to the VM's copies of gui-bench only, never to the repository)
 
 | patch | why |
 |---|---|
 | `patches/gui-bench-bough.patch` | registers `bough` and `bough-x` in `runner/src/frameworks.rs` and the runner's default list. Both crates build a binary named `bough-bench`, so the registration overrides `Framework::binary` for those two names. |
-| `patches/bough-vk-c_char.patch` | `crates/bough-vk` types ash's `c_char` as `*const i8`, which is true on macOS and x86-64 Linux but not on aarch64 Linux (`c_char = u8`). Three type-only lines. **The repository source is not changed**; this is a portability bug to fix in the framework's own area. |
+| `patches/gui-bench-timing.patch` | `GB_TIMING=fixed` (default, the previous behaviour) `\| unthrottled \| vrr` (48-144 Hz) selects fakeland's display timing for every cell; any other value panics, never falls back to fixed. |
 
-`sync.sh` re-applies both to freshly rsynced trees, so edits to the VM copies never survive.
+lorelei's own source is built exactly as committed. (The former `bough-vk-c_char.patch` is gone:
+`crates/bough-vk` now names `core::ffi::c_char`, which is `u8` on aarch64 Linux and `i8` elsewhere.)
+
+## Exit status and validity
+
+`run.sh` exits with the runner's status if it is non-zero, else with `check.py`'s: 0 clean; 2 a
+cell has errors or skipped phases, a requested scenario x framework has no cell, or `run.json` is
+missing (the runner itself returns 0 for failed cells); 4 (`STRICT_VALIDITY=1` only) some report is
+invalid or has no `validity`. `VALIDITY.txt/json` in the result directory list every invalid or
+unchecked report; an invalid report is reported, never ranked. `bench/vm/test.sh` runs the host-side
+tests.
+
+Environment: `GB_TIMING`, `GB_PIN` (cpu list, default `0-5`), `BENCH_RESULTS` (result root),
+`BENCH_GUEST_BASE` (guest directory for sources and targets, so a second user of the VM does not
+overwrite the first one's trees).
 
 ## Timing contract
 
-Fixed 60 Hz (fakeland's fake display default; no `GB_TIMING` patch). `taskset -c 0-5` pins the
+Fixed 60 Hz by default (`GB_TIMING=fixed`, recorded in `CONTRACT.txt`; `unthrottled` and `vrr` are separate contracts, never pooled with it). `taskset -c 0-5` pins the
 runner and every app it launches. Software rendering only: Vulkan apps on lavapipe, bough's façade
 and new core on the CPU into `wl_shm`; `environment.renderer: "pixman"` in a report is the
 compositor's renderer. `VK_LOADER_DRIVERS_DISABLE=` is set empty: with it unset, Mesa's device-select
