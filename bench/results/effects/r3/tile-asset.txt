@@ -1,0 +1,5 @@
+Contract PNG: comparisons/bough-fx-bench/src/tile.png
+IHDR: 12 x 12, 8-bit straight RGBA, no interlace
+PNG SHA-256: 2c71fe716883cdd8d9633a8f57c287a4fee25ecffbd390f6c1ffa453a9d7ea2e
+Decoded RGBA SHA-256: a92fdb94b86c765ca8b27a8f35e5503a65bb4d3e14315be5ce8654e3174e2ee4
+Verified equality with the zgx adapter's procedurally reconstructed RGBA samples by independently inflating the IDAT bytes and checking all rows use filter 0.
