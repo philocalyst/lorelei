@@ -1,6 +1,7 @@
 """Read each fixture's operation counters by column or field name."""
 
 import re
+import statistics
 
 
 TABLES = {
@@ -109,6 +110,37 @@ def effects(stdout, args):
     return {cell: counters}
 
 
+def effects_core(stdout, args):
+    _, cards, cell = args
+    startup = []
+    steps = []
+    idle = []
+    for line in stdout.splitlines():
+        fields = line.split(",")
+        if fields[0] == "core_startup":
+            if fields[1:4] != [cards, cell, "4"] or len(fields) != 8:
+                raise ValueError("mismatched typed-core effect startup")
+            startup.append(dict(zip(("wall_ns", "instructions", "rss", "footprint"), map(unsigned, fields[4:]))))
+        elif fields[0] == "core_step":
+            if fields[1:5] != [cards, cell, "4", str(len(steps))] or len(fields) != 11:
+                raise ValueError("mismatched typed-core effect step")
+            labels = ("wall_ns", "instructions", "cpu_ns", "rss", "footprint", "tiles")
+            steps.append(dict(zip(labels, map(unsigned, fields[5:]))))
+        elif fields[0] == "core_idle":
+            if fields[1] != cards or len(fields) != 5:
+                raise ValueError("mismatched typed-core effect idle")
+            idle.append(dict(zip(("instructions", "rss", "footprint"), map(unsigned, fields[2:]))))
+    if len(startup) != 1 or startup[0]["instructions"] == 0:
+        raise ValueError("missing typed-core startup counters")
+    if cell == "startup" and not idle and not steps:
+        return {cell: startup[0]}
+    if cell == "idle" and len(idle) == 1 and not steps:
+        return {cell: idle[0]}
+    if cell not in ("startup", "idle") and len(steps) == 20 and not idle:
+        return {cell: {key: statistics.median(row[key] for row in steps) for key in steps[0]}}
+    raise ValueError("incomplete typed-core effect trace")
+
+
 def parse(kind, stdout, stderr, args, env):
     if kind in TABLES:
         return table(kind, stdout, env)
@@ -116,6 +148,8 @@ def parse(kind, stdout, stderr, args, env):
         return guibench(stdout + "\n" + stderr, args[args.index("--op") + 1])
     if kind == "effects":
         return effects(stdout, args)
+    if kind == "effects-core":
+        return effects_core(stdout, args)
     if kind == "pbench":
         if not re.search(r"^# cross-check failures: 0;", stdout, re.M):
             raise ValueError("pbench cross-check did not pass")

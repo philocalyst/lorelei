@@ -130,7 +130,7 @@ def main():
             continue
         limits = {**DEFAULT_LIMITS, **thresholds.get(name, {})}
         if not legacy:
-            keys = ("binary", "argv", "env", "parser")
+            keys = ("binary", "argv", "env", "parser", "counter_scope", "check")
             if any(a[key] != b[key] for key in keys):
                 raise ValueError(f"workload parameters changed for {name}")
             bin_name = a["binary"]

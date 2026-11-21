@@ -29,6 +29,7 @@ class Cell:
     argv: tuple
     env: dict
     parser: str
+    check: tuple = ()
 
 
 def example(name, parser, **env):
@@ -65,8 +66,14 @@ def cells(worktree):
     if (worktree / "comparisons/bough-fx-bench/Cargo.toml").is_file():
         for count in ("200", "1000", "5000"):
             for op in ("startup", "idle", "one", "many", "hover", "theme", "scroll", "resize"):
-                args = ("cold", count, op, "1") if op == "startup" else ("measure", count, op, "20")
-                matrix.append(Cell(f"effects/{count}/{op}", "bough-fx-bench", args, {}, "effects"))
+                args = (("cold", count, op, "1") if op == "startup" else
+                        ("measure", count, op, "1" if op == "idle" else "20"))
+                check = ("check", count, op, "20")
+                matrix.append(Cell(f"effects/{count}/{op}", "bough-fx-bench", args, {}, "effects", check))
+            for op in ("startup", "idle", "one", "many", "theme"):
+                args = ("measure", count, op)
+                matrix.append(Cell(f"effects-core/{count}/{op}", "typed-core", args, {}, "effects-core",
+                                   ("check", count, op)))
     else:
         unavailable["effects"] = "the effects adapter is absent from this checkout"
     unavailable["video"] = "staged video requires the separately pinned paint seam"
@@ -84,10 +91,10 @@ def binary_spec(name):
     if name == "headless":
         return "release/headless", ["--release", "--manifest-path", "comparisons/bough-guibench/Cargo.toml",
                                     "--bin", "headless"]
-    if name == "bough-fx-bench":
-        return "release/bough-fx-bench", ["--locked", "--release", "--manifest-path",
-                                          "comparisons/bough-fx-bench/Cargo.toml",
-                                          "--features", "full-effects", "--bin", name]
+    if name in ("bough-fx-bench", "typed-core"):
+        return f"release/{name}", ["--locked", "--release", "--manifest-path",
+                                   "comparisons/bough-fx-bench/Cargo.toml",
+                                   "--features", "full-effects,typed-core", "--bin", name]
     package = "bough-paint" if name == "pbench" else "bough-x"
     return f"dist/examples/{name}", ["--locked", "--profile", "dist", "-p", package, "--example", name]
 
@@ -170,15 +177,34 @@ def build(worktree, target, binaries, toolchain, log, reuse):
 
 
 ENV_KEYS = set("ROWS REPS H NEAR SWEPT PART COLD WORKERS BOUGH_PMU SKIP_K".split())
+SCOPES = {
+    "sheet": "calling-thread instructions per operation",
+    "events": "calling-thread dispatch and dispatch-plus-settle instructions per operation",
+    "text": "calling-thread instructions per operation",
+    "anim": "calling-thread instructions per operation",
+    "ops": "calling-thread instructions per operation",
+    "guibench": "calling-thread instructions per batch, except mount",
+    "effects": "process instructions per operation, mean of trace, or spawn-to-first for startup",
+    "effects-core": "process instructions per operation, median of trace, or setup-to-first for startup",
+    "pbench": "process instructions for the full offscreen CPU and Metal benchmark",
+}
+
+
+def cell_env(cell):
+    return {**{name: value for name, value in os.environ.items() if name not in ENV_KEYS}, **cell.env}
+
+
+def check_cell(cell, binary, cwd, log):
+    with log.open("w") as stream:
+        subprocess.run([str(binary), *cell.check], cwd=cwd, env=cell_env(cell), timeout=600,
+                       stdout=stream, stderr=subprocess.STDOUT, check=True)
 
 
 def measure(cell, binary, cwd, log):
-    env = {name: value for name, value in os.environ.items() if name not in ENV_KEYS}
-    env.update(cell.env)
     command = ["/usr/bin/time", "-l", str(binary), *cell.argv]
     start = time.monotonic_ns()
     with log.with_suffix(".stdout").open("w+") as out, log.with_suffix(".stderr").open("w+") as err:
-        proc = subprocess.run(command, cwd=cwd, env=env, stdout=out, stderr=err, timeout=600, check=True)
+        proc = subprocess.run(command, cwd=cwd, env=cell_env(cell), stdout=out, stderr=err, timeout=600, check=True)
         elapsed = time.monotonic_ns() - start
         out.seek(0)
         err.seek(0)
@@ -258,12 +284,26 @@ def main():
     except (OSError, ValueError, subprocess.SubprocessError, KeyError) as error:
         print(f"baseline: build unavailable: {error}", file=sys.stderr)
         errors.append({"stage": "build", "reason": type(error).__name__})
+    failed_checks = set()
+    if manifest:
+        for cell in matrix:
+            if not cell.check:
+                continue
+            binary = target / manifest[cell.binary]["path"]
+            try:
+                check_cell(cell, binary, worktree, log / f"check-{cell.name.replace('/', '_')}.log")
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"{cell.name} correctness gate FAILED: {error}", file=sys.stderr)
+                errors.append({"cell": cell.name, "stage": "correctness", "reason": type(error).__name__})
+                failed_checks.add(cell.name)
     random_order = random.Random(71)
     for rep in range(args.reps) if manifest else ():
         batch = matrix.copy()
         random_order.shuffle(batch)
         order.append([cell.name for cell in batch])
         for cell in batch:
+            if cell.name in failed_checks:
+                continue
             binary = target / manifest[cell.binary]["path"]
             path = log / f"{rep}-{cell.name.replace('/', '_')}"
             try:
@@ -282,7 +322,8 @@ def main():
     for cell in matrix:
         runs = records[cell.name]
         result = {"binary": cell.binary, "argv": list(cell.argv), "env": cell.env, "parser": cell.parser,
-                  "load": [run["load"] for run in runs], "valid": len(runs) == args.reps}
+                  "load": [run["load"] for run in runs], "valid": len(runs) == args.reps,
+                  "counter_scope": SCOPES[cell.parser], "check": list(cell.check)}
         if result["valid"]:
             try:
                 result.update(summarize(runs))
