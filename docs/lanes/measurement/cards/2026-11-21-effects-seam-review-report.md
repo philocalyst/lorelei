@@ -20,6 +20,8 @@ The two reference adapters classified all 54 rows. zgx passed the dynamic gates 
 
 Native PNG zgui `one` and 200-card `many` recorded 131 redraw requests over the 239 observable transitions between sampled ticks. The separate 480-tick run tests whether those cells reach 200 distinct redraw steps. Startup for each reference has one observation in the stock matrix. The separate fresh-process 240-repeat capture is queued. Assets share the same decoded RGBA samples. Geometry, motion semantics and GPU completion boundaries still differ across adapters. [27 comparison rows](../../../../bench/results/effects/r3/matrix-native-png.md)
 
+The legacy staged video replay at `64101ac59d` passed all three retained/full gates and recorded 240 ticks per size. See the separate CPU1 synthetic-decode-inclusive column. [Legacy staged video](../../../../bench/results/effects/r3/staged-video-64101ac59d.md)
+
 ## Review candidates
 
 1. **Layered driver routing.** `Driver::frame` selects the resident renderer when a GPU is present, while `Gpu::run` rejects a layered scene. The driver's CPU branch calls `shade` without `prepare`. The patch uses the CPU schedule on both branches. Each chosen executor maintains its own layer contents over successive frames. The direct resident refusal remains a separate probe. See [the driver candidate](../../../../bench/results/effects/r3/paint-driver-layered.patch).
