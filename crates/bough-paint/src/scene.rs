@@ -1412,7 +1412,7 @@ impl Scene {
             }
             self.lay_todo.extend(regeo.iter().map(|&z| self.layers.lid(z)));
             for &(w, z) in events.iter().filter(|_| !self.route_off) {
-                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, w, z, self.fx_nocache);
             }
         }
         (fs.prefix_tiles, fs.blocks, fs.layer_px) = (self.plan.prefix_tiles, self.plan.blocks, self.plan.px);
@@ -1421,23 +1421,38 @@ impl Scene {
         self.first = false;
         fs
     }
-    /// An event (a window that changed, and its record's key) reaches the layers above it on the tiles it
-    /// touches: their level-0 tiles there are due.
-    fn route(bins: &Bins, cert: bool, cover: &[[i16; 4]], layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, tx: i32, ty: i32, w: [i32; 4], z: u32) {
+    /// Route an event to the next prefix checkpoint on each tile. Eager scheduling has no repair result,
+    /// so it routes to every later reader. Level-0 windows are tile-aligned and clipped to the frame.
+    /// Any nonempty intersection contains the whole frame portion of the tile.
+    fn route(bins: &Bins, cert: bool, cover: &[[i16; 4]], layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, w: [i32; 4], z: u32, eager: bool) {
+        let (tx, ty) = (bins.tx as i32, bins.ty as i32);
         for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty) {
             for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx) {
                 let t = (y * tx + x) as usize;
-                let ls = bins.layers(t);
-                let from = ls.partition_point(|&k| k <= z);
-                if from == ls.len() {
+                let readers = bins.layers(t);
+                let readers = &readers[readers.partition_point(|&key| key <= z)..];
+                let Some(&last) = readers.last() else { continue };
+                let holds_prefix = |key: u32| {
+                    let level = &layers.list[layers.of[key as usize] as usize].lv[0];
+                    let r = level.r;
+                    !level.empty() && r[0] < (x + 1) * 32 && r[1] < (y + 1) * 32 && r[2] > x * 32 && r[3] > y * 32
+                };
+                let first;
+                let readers = if eager {
+                    readers
+                } else if let Some(&key) = readers.iter().find(|&&key| holds_prefix(key)) {
+                    first = [key];
+                    &first
+                } else {
                     continue;
-                }
-                let stop = if cert { bins.cover_above(t, z, w, cover, *ls.last().unwrap()) } else { u32::MAX };
-                for &lz in &ls[from..] {
-                    if lz > stop {
+                };
+                let below = if eager { last } else { readers[0] };
+                let stop = if cert { bins.cover_above(t, z, w, cover, below) } else { u32::MAX };
+                for &key in readers {
+                    if key > stop {
                         break;
                     }
-                    let lid = layers.of[lz as usize];
+                    let lid = layers.of[key as usize];
                     layers.list[lid as usize].pending.push(t as u32);
                     todo.insert(lid);
                 }
@@ -1451,6 +1466,12 @@ impl Scene {
     /// changed nothing.)
     pub fn plan_eager(&mut self) -> &layer::Plan {
         let mut todo = std::mem::take(&mut self.lay_todo);
+        // `update` may have queued the nearest checkpoints. Replay the original events for the eager plan.
+        if !self.plan.full {
+            for &(w, z) in &self.events {
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, w, z, true);
+            }
+        }
         let mut outs: Vec<[i32; 4]> = Vec::new();
         while let Some(lid) = todo.pop_first() {
             outs.clear();
@@ -1458,7 +1479,7 @@ impl Scene {
             let z = self.layers.list[lid as usize].z;
             for r in &outs {
                 self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, *r, z, true);
             }
         }
         self.lay_todo = todo;
@@ -1493,7 +1514,7 @@ impl Scene {
         let events = std::mem::take(&mut self.events);
         if self.layers.any() && !self.plan.full {
             for &(w, z) in &events {
-                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, w, z, self.fx_nocache);
             }
         }
         self.events = events;
@@ -1709,6 +1730,11 @@ impl Scene {
                         changed.push(bb);
                     }
                 }
+                // Later tile programs restart at this checkpoint. The backdrop also composites its
+                // input accumulator, including in the halo outside the ink window where it flattens.
+                if !self.fx_nocache && !cfg!(feature = "mutant_prefix_lost") {
+                    outs.extend_from_slice(&changed);
+                }
                 let mut read_changed: Vec<(u32, Vec<[i32; 4]>)> = Vec::new();
                 if l.lvl == 0 {
                     read_changed.push((0, changed.clone()));
@@ -1765,7 +1791,7 @@ impl Scene {
             let z = self.layers.list[lid as usize].z;
             for r in &outs {
                 self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, *r, z, self.fx_nocache);
             }
         }
         self.layers.pool = pool;
