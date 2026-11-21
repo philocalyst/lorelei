@@ -1287,7 +1287,11 @@ fn list_plan(
     leaves: usize,
     src: crate::store::RowSrc,
 ) -> Mk {
+    let first_watch = st.journal.is_none();
     l.edits.follow(&mut st.journal);
+    if first_watch {
+        st.bump_structure();
+    }
     let (from, upd, nupd) = l.edits.since(st.seen);
     // inserts and removes since the last pass, for whoever holds a row by its index (focus, a press)
     st.moved_ok = if l.edits.ver.wrapping_sub(st.seen) == nupd as u32 {

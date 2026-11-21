@@ -175,7 +175,8 @@ pub struct World<V, B> {
     cols: Vec<Column>,
     spaces: Vec<(u64, *const Store)>,
     shape: u64,
-    relations: Vec<(std::sync::Arc<core::sync::atomic::AtomicU32>, u32)>,
+    /// Published stores that observe a journal. Their current watcher and seen version are read in place.
+    relations: Vec<*const Store>,
     pub retables: usize,
     /// The fields of the root view the block's words are gathered from, when the view keeps its Frame state
     /// as its own fields (learned from the columns' lenses; empty for a view that declares a block).
@@ -256,28 +257,24 @@ impl<V: View, B: Backend> World<V, B> {
     }
 
     fn relation_epoch(&self) -> u32 {
-        if self
-            .relations
-            .iter()
-            .any(|(r, seen)| r.load(Ordering::Relaxed) != *seen)
-        {
+        if self.shape == STALE {
+            return self.epoch.wrapping_add(1);
+        }
+        if self.relations.iter().any(|&store| {
+            // SAFETY: the published table is current, and the shared world borrow excludes a view
+            // pass. Each pointer is an owning store address recorded when the table was built.
+            let store = unsafe { &*store };
+            store
+                .journal
+                .as_ref()
+                .is_some_and(|watch| watch.load(Ordering::Relaxed) != store.seen)
+        }) {
             self.epoch.wrapping_add(1)
         } else {
             self.epoch
         }
     }
-    fn observe_relations(&mut self) {
-        fn walk(st: &Store, out: &mut Vec<(std::sync::Arc<core::sync::atomic::AtomicU32>, u32)>) {
-            if let Some(j) = &st.journal {
-                out.push((j.clone(), st.seen));
-            }
-            for child in &st.subs {
-                walk(child, out);
-            }
-        }
-        self.relations.clear();
-        walk(&self.root, &mut self.relations);
-    }
+
     pub fn input_revision(&self) -> u64 {
         self.inputs.revision()
     }
@@ -399,7 +396,6 @@ impl<V: View, B: Backend> World<V, B> {
         self.revision = self.revision.wrapping_add(cx.changed + 1);
         self.root.resweep(&self.shown, &mut self.tiles);
         self.retable();
-        self.observe_relations();
         self.refocus();
     }
 
@@ -408,7 +404,6 @@ impl<V: View, B: Backend> World<V, B> {
     /// follows a pass that changed the tree's shape, and a view has finitely many fields to name.
     #[inline]
     fn learn(&mut self, v: &V) {
-        self.observe_relations();
         for _ in 0..8 {
             if self.shape != STALE {
                 return;
@@ -440,12 +435,17 @@ impl<V: View, B: Backend> World<V, B> {
         let mut cols = core::mem::take(&mut self.cols);
         cols.clear();
         self.spaces.clear();
+        self.relations.clear();
         fn visit(
             owner: &StoreOwner,
             cols: &mut Vec<Column>,
             spaces: &mut Vec<(u64, *const Store)>,
+            relations: &mut Vec<*const Store>,
         ) {
             let store = owner.as_ptr();
+            if owner.journal.is_some() {
+                relations.push(store);
+            }
             let reads = owner.space.reads();
             if reads != 0 {
                 spaces.push((reads, store));
@@ -459,12 +459,12 @@ impl<V: View, B: Backend> World<V, B> {
                         kinds: 0,
                     }),
                     crate::store::Pass::Sub(child) => {
-                        visit(owner.subs.owner(child as usize), cols, spaces)
+                        visit(owner.subs.owner(child as usize), cols, spaces, relations)
                     }
                 }
             }
         }
-        visit(&self.root, &mut cols, &mut self.spaces);
+        visit(&self.root, &mut cols, &mut self.spaces, &mut self.relations);
         self.handlers.clear();
         self.col_reads.clear();
         self.fast.clear();
