@@ -186,6 +186,9 @@ fn main() {
     let mut candidates = Vec::with_capacity(stale[0].len());
     let mut tiles = Vec::with_capacity(stale[0].len());
     let mut witness = 0;
+    let mut reference = check.then(|| Fixture::new(cards));
+    let mut reference_words = U::default();
+    let mut reference_pixels = if check { vec![0; W * H] } else { Vec::new() };
     for k in 0..=20 {
         let a0 = perf::snap();
         let start = Instant::now();
@@ -214,15 +217,27 @@ fn main() {
         f.scene.media.reclaim();
         let ns = start.elapsed().as_nanos();
         let a1 = perf::snap();
-        if check {
-            let mut exact = vec![0; W * H];
-            f.scene.spec(&u, &mut exact, W);
+        if let Some(reference) = &mut reference {
+            reference.step(k, &mut reference_words);
+            reference.scene.invalidate();
+            reference.scene.fx_nocache = true;
+            reference
+                .scene
+                .frame(&reference_words, &mut reference_pixels, W, &pool, 0);
+            reference.scene.media.reclaim();
+            if k == 0 {
+                // Keep the independent shader and backdrop reference at every size. The
+                // uncached full draw checks all subsequent frames and ring ages.
+                let mut exact = vec![0; W * H];
+                f.scene.spec(&u, &mut exact, W);
+                assert!(exact == reference_pixels, "independent full frame differs");
+            }
             for (age, px) in surfaces.iter().enumerate() {
                 if k % (age + 1) == 0 {
-                    assert!(*px == exact, "age {}, frame {k}", age + 1);
+                    assert!(*px == reference_pixels, "age {}, frame {k}", age + 1);
                 }
             }
-            let px = exact[178 * W + 365];
+            let px = reference_pixels[178 * W + 365];
             if k == 0 {
                 witness = px;
             }

@@ -66,7 +66,14 @@ Wall, CPU, RSS, footprint, tile counts and loads are in `bench/results/effects/t
 
 ## Staged paint and reference coverage
 
-The `bough-paint` seam at `64101ac59d` has a CPU staged adapter for glass over synthetic NV12 video, brightness and saturation, four rounded panels, two built-in shader paints and spring motion. The card bodies use translucent solid fills. It includes video generation in each publication step. The other eight staged scene cells, application shader registration, subtree filters, path and mask coverage, compressed video decode and Metal execution remain open. The first two staged sizes passed the independent whole-frame spec at all sampled ages. The 5,000-card independent spec loop was terminated after 4m10s. The retry compares independent whole-frame output on the initial frame and an uncached full redraw on every subsequent frame.
+The `bough-paint` seam at `64101ac59d` has a CPU staged adapter for glass over synthetic NV12 video, brightness and saturation, four rounded panels, two built-in shader paints and spring motion. The card bodies use translucent solid fills. It includes video generation in each publication step. The other eight staged scene cells, application shader registration, subtree filters, path and mask coverage, compressed video decode and Metal execution remain open. The first two staged sizes passed the independent whole-frame spec at all sampled ages. The 5,000-card independent spec loop was terminated after 4m10s. The retry passed all three sizes. It checks the independent whole-frame specification on the initial frame and compares the retained surfaces against an uncached full redraw from a second scene on every frame. Each video update repaired 90 output tiles, rebuilt 32 prefix tiles and 168 pyramid blocks. A motion-only step repaired 40 output tiles.
+
+
+| Staged video cards | Instructions / tick | Wall ms p50/p95/p99 | Load around cell |
+|---:|---:|---|---|
+| 200 | 19,991,395 | 0.720/2.184/2.188 | 17.13 |
+| 1,000 | 29,703,172 | 1.064/3.243/3.303 | 17.13 |
+| 5,000 | 78,274,339 | 2.811/8.869/8.869 | 17.13–17.79 |
 
 The two pinned reference probes ran a single-moving-card trace over stacked shadows and gradient fills. The zgui timing boundary covers the virtual-clock turn and pump. The zgx timing boundary covers scene flush and GPU submission. Neither boundary includes a per-step GPU completion fence. zgui reported 12 redraw requests after startup and 20 samples. zgx used the same offscreen renderer configuration to check its final retained frame against a full redraw and witnessed pixel changes. All six jobs exited 0. The compiled zgui and zgx probes have different effect coverage and there is no matched cross-framework ranking. The table covers every reference probe that ran. Startup, idle, many, hover, theme, scroll, resize and glass over video remain unavailable for both reference adapters.
 
@@ -84,3 +91,13 @@ The two pinned reference probes ran a single-moving-card trace over stacked shad
 Default-cap 10,000-row filter and clear aborted in both baseline blocks and finished in both candidate blocks. Filter cost 401,075,076 and 400,648,999 calling-thread instructions. Clear cost 416,175,773 and 413,787,493. Load was 13.64. The changed runtime reclaims retired glyph blocks when a label allocation approaches the column's tail. The 2,048-slot regression fixture passed eight removal and remount steps at each age 1–4. The baseline specimen aborted at `glyph_x` capacity 2048, need 2064. The test and the existing CPU ring oracle passed with the change. See `bench/results/effects/glyph-pressure-abba.tsv`.
 
 The next card should bind the staged effects to the author frontend, align one reference trace down to identical assets and submitted frame counts, and test tile-prefix reuse against the measured one-moving-card slope. Reproduce the failing Wayland transport cells in the VM before selecting a host-side fix.
+
+## Fresh-process frontend startup
+
+`comparisons/bough-fx-bench/scripts/run-startup.sh` measured 20 independent process launches per size. The OS page cache was left in its usual state. The process clock includes font loading, scene mount and the first paint. Load was 18.10 during the runs and 17.13 after the final block. The 228.904 ms p99 at 200 cards is one observed maximum. Per-process instruction and memory samples are in `bench/results/effects/spawn-first.tsv`.
+
+| Cards | Spawn to first ms p50/p95/p99 | Average process instructions |
+|---:|---|---:|
+| 200 | 11.660/15.404/228.904 | 60,793,477 |
+| 1,000 | 13.539/14.408/14.443 | 129,971,120 |
+| 5,000 | 20.919/22.026/23.516 | 460,055,809 |
