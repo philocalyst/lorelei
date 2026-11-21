@@ -551,8 +551,6 @@ pub struct ColEnt {
 impl ColEnt {
     pub const TIMED: u32 = 1;
     pub const STATE: u32 = 2;
-    /// Set on a published entry when the world maintains a bounded delta for that column.
-    pub(crate) const FAST: u32 = 4;
     /// SAFETY: the entry is current (built since the store tree last changed shape).
     #[inline(always)]
     unsafe fn live(&self) -> Live<'_> {
@@ -971,6 +969,12 @@ impl Store {
         self.structure
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .expect("structure revision exhausted");
+    }
+    pub(crate) fn set_space(&mut self, space: Space) {
+        if self.space.reads() != space.reads() {
+            self.bump_structure();
+        }
+        self.space = space;
     }
     pub(crate) fn new(cap: u32, space: Space) -> Store {
         assert!(cap == 1 || (cap >= 64 && cap.is_power_of_two()));

@@ -12,38 +12,19 @@ use crate::store::{Backend, ColEnt, Path, Space, Store, Tiles};
 use core::marker::PhantomData;
 use core::sync::atomic::Ordering;
 
-/// The world's store tree, owned through a raw pointer (soundness review S15). The column table keeps
-/// pointers into the tree across moves of the world; a `Box` field is retagged as unique whenever the world
-/// moves (Stacked Borrows) and so would end them. Every borrow of the tree is derived from this one pointer:
-/// shared ones by `Deref` (what the table is built from), unique ones by `DerefMut` (a pass), after which the
-/// table's pointers are derived again (`World::rederive`, `World::retable`).
-struct Root(core::ptr::NonNull<Store>);
-impl Root {
-    fn new(st: Store) -> Root {
-        Root(core::ptr::NonNull::from(Box::leak(Box::new(st))))
-    }
+/// Index of a child store relative to a preceding route. Route zero is the root.
+#[derive(Clone, Copy)]
+struct StoreRoute {
+    parent: u32,
+    child: u32,
 }
-impl core::ops::Deref for Root {
-    type Target = Store;
-    #[inline(always)]
-    fn deref(&self) -> &Store {
-        // SAFETY: allocated by `Root::new` and freed only by `Drop`; shared access through `&self`.
-        unsafe { self.0.as_ref() }
-    }
-}
-impl core::ops::DerefMut for Root {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut Store {
-        // SAFETY: as `deref`; `&mut self` is the only path to the tree for as long as the borrow lives (the
-        // table's pointers are not read while a pass holds it).
-        unsafe { self.0.as_mut() }
-    }
-}
-impl Drop for Root {
-    fn drop(&mut self) {
-        // SAFETY: from `Box::leak` in `Root::new`, dropped once.
-        drop(unsafe { Box::from_raw(self.0.as_ptr()) });
-    }
+
+/// One published column. Its route is interpreted against the current tree while the world is borrowed.
+#[derive(Clone, Copy)]
+struct Column {
+    store: u32,
+    index: u32,
+    fast: u32,
 }
 
 /// A `shape` no store tree has: structure revisions count up from 0 with a checked add.
@@ -153,10 +134,10 @@ struct Fast {
 pub struct World<V, B> {
     id: WorldId,
     inputs: crate::el::InputToken,
-    /// Boxed: the column table points into the tree, and the world itself may be moved. Private (review C01):
+    /// Private (review C01):
     /// its columns' descriptors were made for `B` and for the view mounted; outside code reads it through
     /// [`World::root`] and changes it only through the world's own passes.
-    root: Root,
+    root: Box<Store>,
     /// The block as of the last settle: what the pixels on screen were shaded with.
     pub shown: U,
     pub tiles: Tiles,
@@ -179,8 +160,7 @@ pub struct World<V, B> {
     union_seen: Vec<u32>,
     pub delta_stats: DeltaStats,
     pub fast_stats: FastStats,
-    /// Per column with a bounded delta (`fast_of[k]`: its index here, or `u32::MAX`), what the world keeps for it.
-    fast_of: Vec<u32>,
+    /// The bounded-delta state indexed by a column entry.
     fast: Vec<Fast>,
     /// The number of the last description pass (mount, a list pass, a re-description): the only things that
     /// write a record's operands or change which records are live.
@@ -197,9 +177,9 @@ pub struct World<V, B> {
     pub broad: u64,
     /// The clip the current delta last marked for a broad word (so a space is marked once a delta).
     broad_last: Option<crate::store::Rect>,
-    cols: Vec<ColEnt>,
-    cold: Vec<(*const Store, u32)>,
-    spaces: Vec<(u64, *const Store)>,
+    cols: Vec<Column>,
+    stores: Vec<StoreRoute>,
+    spaces: Vec<(u64, u32)>,
     shape: u64,
     relations: Vec<(std::sync::Arc<core::sync::atomic::AtomicU32>, u32)>,
     pub retables: usize,
@@ -241,7 +221,7 @@ impl<V: View, B: Backend> World<V, B> {
         World {
             id,
             inputs: crate::el::InputToken::new(),
-            root: Root::new(root),
+            root: Box::new(root),
             shown,
             tiles: Tiles::new(w, h),
             nwords,
@@ -255,14 +235,13 @@ impl<V: View, B: Backend> World<V, B> {
             union_seen: Vec::new(),
             delta_stats: DeltaStats::default(),
             fast_stats: FastStats::default(),
-            fast_of: Vec::new(),
             fast: Vec::new(),
             wrote: 1,
             no_fast: false,
             broad: 0,
             broad_last: None,
             cols: Vec::new(),
-            cold: Vec::new(),
+            stores: Vec::new(),
             spaces: Vec::new(),
             shape: u64::MAX,
             relations: Vec::new(),
@@ -416,8 +395,7 @@ impl<V: View, B: Backend> World<V, B> {
             changed: 0,
             scale: f32::from_bits(self.shown.w[U_SCALE]),
         };
-        // The column table points into the tree the view is about to grow: until it is rebuilt below it names
-        // no tree (a panic in `view` must not leave it naming freed stores; soundness review S03).
+        // A pass publishes a new table only after the view returns. An unwound pass leaves it unavailable.
         self.shape = STALE;
         crate::el::track_inputs(&self.inputs, || {
             v.view(&mut Write::<V, B>::new(&mut self.root, &mut cx, true))
@@ -463,33 +441,65 @@ impl<V: View, B: Backend> World<V, B> {
     #[inline(never)]
     fn retable(&mut self) {
         self.retables += 1;
-        self.shape = self.root.structure_revision();
+        self.shape = STALE;
         self.cols.clear();
-        self.cold.clear();
+        self.stores.clear();
+        self.stores.push(StoreRoute {
+            parent: 0,
+            child: 0,
+        });
         self.spaces.clear();
-        self.root.table(&mut self.cols, &mut self.cold);
-        self.root.moving_spaces(&mut self.spaces);
-        self.handlers.clear();
-        for (k, &(st, j)) in self.cold.iter().enumerate() {
-            // SAFETY: the table was just built from this tree, so `st` is one of its stores.
-            let st = unsafe { &*st };
-            if let Some(o) = st.cols[j as usize].hover {
-                self.handlers.push((k as u32, o.kinds));
+        fn visit(
+            st: &Store,
+            store: u32,
+            cols: &mut Vec<Column>,
+            stores: &mut Vec<StoreRoute>,
+            spaces: &mut Vec<(u64, u32)>,
+        ) {
+            let reads = st.space.reads();
+            if reads != 0 {
+                spaces.push((reads, store));
+            }
+            for pass in &st.order {
+                match *pass {
+                    crate::store::Pass::Col(index) => cols.push(Column {
+                        store,
+                        index,
+                        fast: u32::MAX,
+                    }),
+                    crate::store::Pass::Sub(child) => {
+                        let route = u32::try_from(stores.len()).expect("too many stores");
+                        stores.push(StoreRoute {
+                            parent: store,
+                            child,
+                        });
+                        visit(&st.subs[child as usize], route, cols, stores, spaces);
+                    }
+                }
             }
         }
+        visit(
+            &self.root,
+            0,
+            &mut self.cols,
+            &mut self.stores,
+            &mut self.spaces,
+        );
+        self.handlers.clear();
         self.col_reads.clear();
-        self.col_reads.extend(self.cols.iter().map(|e| e.reads));
-        // the columns whose archetype declares a key or a reach (cold: read off each column's descriptor)
         self.fast.clear();
-        self.fast_of.clear();
-        for &(st, j) in &self.cold {
-            // SAFETY: the table was just built from this tree.
-            let fns = unsafe { (&(*st).cols)[j as usize].desc.fast };
+        for (k, route) in self.cols.iter_mut().enumerate() {
+            let st = Self::store_at(&self.root, &self.stores, route.store);
+            let c = &st.cols[route.index as usize];
+            if let Some(o) = c.hover {
+                self.handlers.push((k as u32, o.kinds));
+            }
+            self.col_reads.push(c.reads);
+            let fns = c.desc.fast;
             if fns.key.is_some() || fns.near.is_some() {
-                self.fast_of.push(self.fast.len() as u32);
                 #[cfg(not(feature = "mutant_fastcol"))]
                 {
-                    self.cols[self.fast_of.len() - 1].timed |= ColEnt::FAST;
+                    route.fast = self.fast.len() as u32;
                 }
                 self.fast.push(Fast {
                     fns,
@@ -500,8 +510,6 @@ impl<V: View, B: Backend> World<V, B> {
                     box_asked: 0,
                     boxes: Vec::new(),
                 });
-            } else {
-                self.fast_of.push(u32::MAX);
             }
         }
         assert!(
@@ -522,9 +530,9 @@ impl<V: View, B: Backend> World<V, B> {
         self.by_word[64] = self.readers.len() as u32;
         // The root view's fields the columns' lenses name. Two fields in one word cannot both be Frame state.
         self.slots.clear();
-        for &(st, j) in &self.cold {
-            // SAFETY: the table was just built from this tree.
-            let d = unsafe { (&(*st).cols)[j as usize].desc };
+        for route in &self.cols {
+            let st = Self::store_at(&self.root, &self.stores, route.store);
+            let d = st.cols[route.index as usize].desc;
             (d.slots)(
                 &mut |s: Slot| match self.slots.iter().find(|t| t.index() == s.index()) {
                     Some(t) => assert!(
@@ -544,36 +552,21 @@ impl<V: View, B: Backend> World<V, B> {
             .spaces
             .iter()
             .fold(self.root.reads_all(), |m, s| m | s.0);
+        self.shape = self.root.structure_revision();
     }
 
-    /// After a pass, when the tree kept its shape: the table's pointers into the tree again, from a fresh shared
-    /// borrow of it (soundness review S15). The pass reached the stores through `&mut`, which ends every
-    /// borrow the table's pointers were derived from (Stacked and Tree Borrows both reject reading through
-    /// them afterwards). Same entries, same order, no allocation: a walk of the stores and their columns.
-    fn rederive(&mut self) {
-        if self.shape != self.root.structure_revision() {
-            // the tree changed shape: the next entry point rebuilds the whole table (`columns`, `learn`)
-            return;
+    #[inline]
+    fn store_at<'a>(root: &'a Store, routes: &[StoreRoute], key: u32) -> &'a Store {
+        if key == 0 {
+            return root;
         }
-        fn go(st: &Store, cols: &mut [ColEnt], cold: &mut [(*const Store, u32)], k: &mut usize) {
-            for p in &st.order {
-                match *p {
-                    crate::store::Pass::Col(j) => {
-                        let fast = cols[*k].timed & ColEnt::FAST;
-                        cols[*k] = st.ent(&st.cols[j as usize]);
-                        cols[*k].timed |= fast;
-                        cold[*k] = (st, j);
-                        *k += 1;
-                    }
-                    crate::store::Pass::Sub(q) => go(&st.subs[q as usize], cols, cold, k),
-                }
-            }
-        }
-        let mut k = 0;
-        go(&self.root, &mut self.cols, &mut self.cold, &mut k);
-        debug_assert_eq!(k, self.cols.len());
-        self.spaces.clear();
-        self.root.moving_spaces(&mut self.spaces);
+        let StoreRoute { parent, child } = routes[key as usize];
+        let st = if parent == 0 {
+            root
+        } else {
+            Self::store_at(root, routes, parent)
+        };
+        &st.subs[child as usize]
     }
 
     /// The damage of the block going from what is shown to `u` (`ch`: the changed words). The path from here
@@ -588,10 +581,9 @@ impl<V: View, B: Backend> World<V, B> {
         if ch & self.reads == 0 {
             return;
         }
-        for &(reads, st) in &self.spaces {
+        for &(reads, key) in &self.spaces {
             if reads & ch != 0 {
-                // SAFETY: the table is current, so `st` is a store of this world's tree.
-                let st = unsafe { &*st };
+                let st = Self::store_at(&self.root, &self.stores, key);
                 // the space moved: everything it shows is somewhere else
                 self.tiles.mark(st.space.clip);
                 if st.timed & (st.reads & ch != 0) {
@@ -656,96 +648,98 @@ impl<V: View, B: Backend> World<V, B> {
     #[inline(always)]
     fn delta_one(&mut self, k: usize, u: &U, ch: u64) {
         self.delta_stats.evaluated_columns += 1;
-        let e = &self.cols[k];
+        let route = self.cols[k];
+        let st = Self::store_at(&self.root, &self.stores, route.store);
+        let c = &st.cols[route.index as usize];
+        let e = st.ent(c);
         if e.skip & ch != 0 {
             return;
         }
         if e.reads & ch & self.broad != 0 && e.timed & ColEnt::STATE == 0 && !self.no_fast {
-            // SAFETY: the table is current: `space` is the column's store's.
-            let clip = unsafe { (*e.space).clip };
-            // columns of one space follow one another in the table: the space is marked once
+            let clip = st.space.clip;
             #[cfg(not(feature = "mutant_broad"))]
             if self.broad_last != Some(clip) {
                 self.tiles.mark(clip);
             }
             self.broad_last = Some(clip);
             self.fast_stats.broad_hits += 1;
-        } else if e.timed & ColEnt::FAST == 0 {
-            // the common column: no bounded delta, one entry read, no second lookup
-            // SAFETY: the table is current; `delta` was instantiated for the entry's archetype.
-            unsafe { (e.delta)(e, &self.shown, u, &mut self.tiles) };
-            if e.timed & ColEnt::TIMED != 0 {
-                let (st, j) = self.cold[k];
-                // SAFETY: as above: `st` is a store of this tree and `j` one of its columns.
-                unsafe { (*st).resweep_col(&(&(*st).cols)[j as usize], u, &mut self.tiles) };
-            }
-            return;
-        } else if self.delta_fast(k, u, ch) {
-            // answered from the records the change concerns
-        } else {
-            let e = &self.cols[k];
-            // SAFETY: the table is current; `delta` was instantiated for the entry's archetype.
-            unsafe { (e.delta)(e, &self.shown, u, &mut self.tiles) };
+        } else if route.fast == u32::MAX
+            || !Self::delta_fast(
+                &mut self.fast[route.fast as usize],
+                &e,
+                &self.shown,
+                u,
+                ch,
+                &mut self.tiles,
+                &mut self.fast_stats,
+                self.wrote,
+                self.no_fast,
+            )
+        {
+            // SAFETY: the entry borrows the current column. Its kernel was instantiated for its archetype.
+            unsafe { (e.delta)(&e, &self.shown, u, &mut self.tiles) };
         }
-        let e = &self.cols[k];
         if e.timed & ColEnt::TIMED != 0 {
-            let (st, j) = self.cold[k];
-            // SAFETY: as above: `st` is a store of this tree and `j` one of its columns.
-            unsafe { (*st).resweep_col(&(&(*st).cols)[j as usize], u, &mut self.tiles) };
+            st.resweep_col(c, u, &mut self.tiles);
         }
     }
 
-    /// The delta of column `k`, whose archetype declares a key or a reach, if this change is one its declaration
-    /// bounds (`store::fast`); `false` if the page scan must answer. An index or a set of page boxes is built
-    /// when a column comes here for the second time with no description pass between, so a change that
-    /// alternates with passes (a hover while the list scrolls) never pays for a structure it would use once.
     #[inline(never)]
-    fn delta_fast(&mut self, k: usize, u: &U, ch: u64) -> bool {
+    #[allow(clippy::too_many_arguments)]
+    fn delta_fast(
+        f: &mut Fast,
+        e: &ColEnt,
+        old: &U,
+        u: &U,
+        ch: u64,
+        tiles: &mut Tiles,
+        stats: &mut FastStats,
+        wrote: u64,
+        no_fast: bool,
+    ) -> bool {
         const PTR: u64 = 1 << U_PTR_X | 1 << U_PTR_Y;
-        if self.no_fast {
+        if no_fast {
             return false;
         }
-        let e = &self.cols[k];
-        let f = &mut self.fast[self.fast_of[k] as usize];
         let rd = ch & e.reads;
         if let Some((word, build, delta)) = f.fns.key
             && rd == 1u64 << word
         {
-            if f.key_valid != self.wrote {
-                if f.key_asked != self.wrote {
-                    f.key_asked = self.wrote;
-                    self.fast_stats.key_scans += 1;
+            if f.key_valid != wrote {
+                if f.key_asked != wrote {
+                    f.key_asked = wrote;
+                    stats.key_scans += 1;
                     return false;
                 }
                 // SAFETY: the table is current; the kernels are this column's archetype's.
                 unsafe { build(e, &mut f.keys) };
-                f.key_valid = self.wrote;
-                self.fast_stats.key_builds += 1;
+                f.key_valid = wrote;
+                stats.key_builds += 1;
             }
             // SAFETY: as above; the index is of the records as they are (no pass since it was built).
-            let n = unsafe { delta(e, &f.keys, &self.shown, u, &mut self.tiles) };
-            self.fast_stats.key_hits += 1;
-            self.fast_stats.key_records += n as u64;
+            let n = unsafe { delta(e, &f.keys, old, u, tiles) };
+            stats.key_hits += 1;
+            stats.key_records += n as u64;
             return true;
         }
         if let Some((boxes, delta)) = f.fns.near
             && rd & !PTR == 0
         {
-            if f.box_valid != self.wrote {
-                if f.box_asked != self.wrote {
-                    f.box_asked = self.wrote;
+            if f.box_valid != wrote {
+                if f.box_asked != wrote {
+                    f.box_asked = wrote;
                 } else {
                     // SAFETY: as above.
                     unsafe { boxes(e, &mut f.boxes) };
-                    f.box_valid = self.wrote;
-                    self.fast_stats.near_builds += 1;
+                    f.box_valid = wrote;
+                    stats.near_builds += 1;
                 }
             }
-            let b = (f.box_valid == self.wrote).then_some(&f.boxes[..]);
+            let b = (f.box_valid == wrote).then_some(&f.boxes[..]);
             // SAFETY: as above.
-            let n = unsafe { delta(e, b, &self.shown, u, &mut self.tiles) };
-            self.fast_stats.near_hits += 1;
-            self.fast_stats.near_records += n as u64;
+            let n = unsafe { delta(e, b, old, u, tiles) };
+            stats.near_hits += 1;
+            stats.near_records += n as u64;
             return true;
         }
         false
@@ -840,7 +834,6 @@ impl<V: View, B: Backend> World<V, B> {
             self.shape = shape;
             self.lists |= cx.lists;
             self.revision = self.revision.wrapping_add(cx.changed);
-            self.rederive();
             if ch != 0 {
                 self.shown = *u;
             }
@@ -885,7 +878,6 @@ impl<V: View, B: Backend> World<V, B> {
         self.lists |= cx.lists;
         let regroup = cx.regroup;
         self.revision = self.revision.wrapping_add(cx.changed);
-        self.rederive();
         if self.root.timed {
             self.root.resweep(u, &mut self.tiles);
         }
@@ -925,9 +917,12 @@ impl<V: View, B: Backend> World<V, B> {
     }
     fn col_index(&self, st: &Store, col: u32) -> Option<u32> {
         let st = st as *const Store;
-        self.cold
+        self.cols
             .iter()
-            .position(|&(s, c)| core::ptr::eq(s, st) && c == col)
+            .position(|entry| {
+                entry.index == col
+                    && core::ptr::eq(Self::store_at(&self.root, &self.stores, entry.store), st)
+            })
             .map(|i| i as u32)
     }
     /// The store, column and record a place names (the column table holds the store: no walk).
@@ -941,9 +936,10 @@ impl<V: View, B: Backend> World<V, B> {
         if self.shape != self.root.structure_revision() {
             return None;
         }
-        let &(st, col) = self.cold.get((place >> PLACE_REC_BITS) as usize)?;
-        // SAFETY: the table is current (see above), so `st` is a store of this world's tree.
-        let st = unsafe { &*st };
+        let &Column {
+            store, index: col, ..
+        } = self.cols.get((place >> PLACE_REC_BITS) as usize)?;
+        let st = Self::store_at(&self.root, &self.stores, store);
         let rec = place & ((1 << PLACE_REC_BITS) - 1);
         let c = st.cols.get(col as usize)?;
         // A store admits capacity one or a power-of-two ring. At capacity
@@ -998,10 +994,9 @@ impl<V: View, B: Backend> World<V, B> {
             if hears & kinds == 0 {
                 continue;
             }
-            let (st, j) = self.cold[k as usize];
-            // SAFETY: the table is current, so `st` is a store of this world's tree.
-            let st = unsafe { &*st };
-            let c = &st.cols[j as usize];
+            let route = self.cols[k as usize];
+            let st = Self::store_at(&self.root, &self.stores, route.store);
+            let c = &st.cols[route.index as usize];
             let Some(o) = c.hover else { continue };
             let sv = crate::store::StoreView {
                 space: &st.space,
@@ -1540,10 +1535,9 @@ impl<V: View, B: Backend> World<V, B> {
         self.columns();
         let mut out = self.take();
         let mut recs = self.take();
-        for (i, &(st, col)) in self.cold.iter().enumerate() {
-            // SAFETY: the table is current, so `st` is a store of this world's tree.
-            let st = unsafe { &*st };
-            let c = &st.cols[col as usize];
+        for (i, route) in self.cols.iter().enumerate() {
+            let st = Self::store_at(&self.root, &self.stores, route.store);
+            let c = &st.cols[route.index as usize];
             if c.hover.is_none_or(|o| o.kinds & kind::FOCUSABLE == 0) {
                 continue;
             }

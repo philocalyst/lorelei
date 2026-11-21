@@ -642,7 +642,7 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
                 self.cx.tiles.mark(st.space.clip);
                 self.cx.tiles.mark(space.clip);
             }
-            st.space = space;
+            st.set_space(space);
         }
         st.row_live[0] = 1;
         let mut sub = Write::<V, B>::new(st, self.cx, fresh);
@@ -1216,7 +1216,7 @@ fn list_plan(
     #[cfg(feature = "mutant_journal")]
     let (from, nupd) = (u32::MAX, 0 * nupd);
     st.seen = l.edits.ver;
-    st.space = space;
+    st.set_space(space);
     st.n = l.n;
     st.plan.clear();
     let mk = Mk {
