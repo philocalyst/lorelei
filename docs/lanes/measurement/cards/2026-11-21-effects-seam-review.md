@@ -14,3 +14,6 @@ The staged video replay has a second input mode with 120 predecoded NV12 frames.
 
 
 The native-PNG zgui draw-count replay adds a counter at the offscreen renderer's `FrameOutcome::Presented` return. Keep the same inputs and retained/full gates. The counter must stay at zero during idle and increase on changing traces. Record requests and successful draws separately from the uninstrumented wall values. A failed gate still refuses timing. Use 480 ticks for motion so at least 200 active draw ticks can be observed. Startup uses 240 fresh child processes. The count scope ends at the successful renderer outcome.
+
+
+The dense shader control keeps identical records, paint order, and random colors at 600 cards. Run both arms on the same instrumentation build. Both animate the same spring. One advances the shader word with the spring clock. The other holds the shader word at its initial value. Expect equal mounted record and layer counts, fewer visited records and reached prefix jobs with the frozen shader word, and exact final redraw in both arms. The separate `NOSHADER=1` run removes the shader records and changes the later random color stream. Use that run as a sensitivity check.
