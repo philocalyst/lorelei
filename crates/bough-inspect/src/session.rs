@@ -32,15 +32,19 @@ pub enum Input {
 }
 
 /// A typed state field the application exposes. The application's registration is the authority: `get` reads
-/// the real field and `set` writes it through the same typed path a handler would (a lens, a `Signal`), never
-/// through memory.
+/// the real field and `set` writes it through the same typed path a handler would (a lens or a `Signal`).
+/// A setter must validate before writing, leave the app unchanged on `Err`, and return `Ok` only if
+/// `get` will report the admitted value. Arbitrary application effects cannot be rolled back by a session.
 pub struct FieldDef<V> {
+    /// Stable field name used by tools and state files.
     pub name: &'static str,
+    /// Canonical kind accepted by the setter and returned by the getter.
     pub kind: FieldKind,
     /// The block word it lands in, when it is a block field.
     pub word: Option<u32>,
+    /// Read the current typed value without changing the application.
     pub get: fn(&V) -> PropValue,
-    /// `None`: read-only (a derived value).
+    /// Apply an admitted value, or return a refusal before mutation. `None` marks a read-only field.
     pub set: Option<fn(&mut V, &PropValue) -> Result<(), Refusal>>,
 }
 impl<V> Clone for FieldDef<V> {
@@ -226,6 +230,7 @@ struct CacheKey {
     damage: u32,
 }
 
+/// Owns one program and its derived inspector state on the application thread.
 pub struct Session<P: Program> {
     app: P,
     refl: Option<Reflect<P::V, P::B>>,
@@ -251,6 +256,7 @@ pub struct Session<P: Program> {
 }
 
 impl<P: Program> Session<P> {
+    /// Start inspecting a mounted program.
     pub fn new(app: P) -> Session<P> {
         let last_shown = app.world().shown;
         let last_damage = capture(&app.world().tiles, &app.world().shown);
@@ -569,6 +575,7 @@ impl<P: Program> Session<P> {
             self.log = Some(log);
         }
     }
+    /// Return current turn counters, retained sizes and the most recent CPU timing samples.
     pub fn counters(&mut self) -> Counters {
         let world = self.app.world();
         let (records, pages, bytes) = world.root().stats();
