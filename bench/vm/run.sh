@@ -72,7 +72,13 @@ printf 'load-after %s\n' "$(guest 'cat /proc/loadavg')" >> "$CONTRACT/CONTRACT.t
 
 # Copy the guest's result directory back through a tar stream (the home mount is read-only). The
 # contract file is already in place, so the cell files are unpacked beside it.
-guest "cd $GUI/$OUT && tar -cf - ." | tar -C "$CONTRACT" -xf -
+archive=$(mktemp "$CONTRACT/transfer.XXXXXX")
+trap 'rm -f "$archive"' EXIT
+if ! guest "cd $GUI/$OUT && tar -cf - ." > "$archive" || ! tar -C "$CONTRACT" -xf "$archive"; then
+  echo "run: could not copy the guest results" >&2
+  [ "$RC" -eq 0 ] || exit "$RC"
+  exit 2
+fi
 echo "run: results copied to $CONTRACT (runner exit $RC)"
 [ "$RC" -eq 0 ] || echo "run: the runner failed (exit $RC); see $CONTRACT/run.json" >&2
 

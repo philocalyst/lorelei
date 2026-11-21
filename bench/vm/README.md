@@ -47,13 +47,12 @@ starts a private bus), DejaVu fonts. Rust: `nightly-2026-10-17` (lorelei) and `n
 | `patches/gui-bench-bough.patch` | registers `bough` and `bough-x` in `runner/src/frameworks.rs` and the runner's default list. Both crates build a binary named `bough-bench`, so the registration overrides `Framework::binary` for those two names. |
 | `patches/gui-bench-timing.patch` | `GB_TIMING=fixed` (default, the previous behaviour) `\| unthrottled \| vrr` (48-144 Hz) selects fakeland's display timing for every cell; any other value panics, never falls back to fixed. |
 
-lorelei's own source is built exactly as committed. (The former `bough-vk-c_char.patch` is gone:
-`crates/bough-vk` now names `core::ffi::c_char`, which is `u8` on aarch64 Linux and `i8` elsewhere.)
+The VM builds lorelei's source directly. Vulkan extension and layer names use the target's `core::ffi::c_char` type.
 
 ## Exit status and validity
 
 `run.sh` exits with the runner's status if it is non-zero, else with `check.py`'s: 0 clean; 2 a
-cell has errors or skipped phases, a requested scenario x framework has no cell, or `run.json` is
+cell has errors or skipped phases, a required cell or phase report is absent, or `run.json` is
 missing (the runner itself returns 0 for failed cells); 4 (`STRICT_VALIDITY=1` only) some report is
 invalid or has no `validity`. `VALIDITY.txt/json` in the result directory list every invalid or
 unchecked report; an invalid report is reported, never ranked. `bench/vm/test.sh` runs the host-side

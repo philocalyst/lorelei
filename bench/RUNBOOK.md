@@ -33,27 +33,18 @@ and for rustup, and the reference checkouts under `$HOME/work/reactivity/ref` pl
 `$HOME/work/ref-extra/{fakeland,zgui-fakeland-marks}` (see `bench/vm/README.md` for why).
 
 ```sh
-bench/vm/up.sh                                  # first time: ~10 min (image + apt + toolchains)
-FRAMEWORKS=bough,bough-x,zgui bench/vm/build.sh  # first time: ~10 min (zgui dominates)
-FRAMEWORKS=bough,bough-x,zgui SCENARIOS=rows,table,search bench/vm/run.sh
+lock="${BENCH_LOCK:-$HOME/work/locks/bench.lock}"
+mkdir -p "$(dirname "$lock")"
+bench/vm/up.sh
+FRAMEWORKS=bough,bough-x,zgui lockf -k "$lock" bench/vm/build.sh
+FRAMEWORKS=bough,bough-x,zgui SCENARIOS=rows,table,search,spinner,ticker,typing,virtual,resize bench/vm/run.sh
 ```
 
-`run.sh` takes the lock (`lockf -k $HOME/work/locks/bench.lock`) around the whole build and run;
-its timestamped output lands in `bench/results/vm/<stamp>/` with `CONTRACT.txt` (guest, VM, toolchains,
-renderer, timing, CPUs, load, binary sha256) beside `run.json` and one directory per cell. Read a
-cell's numbers in `startup.json` (`first_present_ms`), `hover.json` / `scroll.json` (the `latency`
-section, and `validity`), `idle.json`, `op-*.json`, `churn.json`, `filter.json`, `typing.json`.
-Every cell must be present in `run.json`; a cell error is printed at the end and is a failure.
+`run.sh` takes the lock around the guest replay. Its raw output defaults to `bench/results/vm/<stamp>/`, which is ignored by Git. `CONTRACT.txt` records the guest, toolchains, renderer, timing, CPUs, load and binary hashes. `run.json` describes each cell. The audited `VALIDITY.txt` and `VALIDITY.json` name the failed or invalid reports.
 
-Exit status: the runner's. The runner currently returns 0 even when a cell had errors (its own
-behaviour); `run.sh` prints the error count and its own exit follows the runner. Treat a non-empty
-`"errors"` in any `cell.json` as a failed cell whatever the exit status.
+The wrapper returns the runner's nonzero exit status or the audit status. Exit 2 covers a failed or skipped phase, a missing cell or report, or a failed result transfer. With `STRICT_VALIDITY=1`, exit 4 means the run transferred successfully and has an invalid or unchecked timing report. A fixed-rate result qualifies only when Fakeland's validity check passes. Startup and retained-memory churn have no timing verdict.
 
-The VM needs these workarounds, recorded in the contract: `VK_LOADER_DRIVERS_DISABLE=` is emptied
-(otherwise Mesa's device-select layer hides lavapipe and no Vulkan adapter exists), `taskset -c 0-5`
-pins the runner and every app, and `dbus-daemon` must be installed (fakeland starts a private bus).
-`bench/vm/patches/` carries the two source-level registrations the VM applies to its *copies* of
-lorelei and gui-bench; the repository's framework source is untouched.
+The VM stages the framework source directly, including the Vulkan `c_char` fix. Its gui-bench copy applies the registration and timing patches. `GB_PIN` defaults to `0-5`. `GB_TIMING` accepts `fixed`, `unthrottled` and `vrr`. Record a separate report for each timing mode. Set `BENCH_GUEST_BASE` to isolate the guest source and build directories for another checkout. See the [VM setup and timing contract](vm/README.md).
 
 ## 2. The assembly and graph harness
 
@@ -117,6 +108,6 @@ The slope and micro jobs also require the corresponding `zgx` binaries. Point `B
 * `validity.valid` from fakeland is the VM cell's authority. Missing validity is not valid.
 * Instructions are the primary column; wall time is secondary and is compared only inside its own
   spread. Retained state is compared with the output's own counters, not inferred.
-* A job that cannot build a binary writes the error and exits non-zero; it does not write a cell.
+* A job that cannot build a binary records the error and exits nonzero. Any affected cell has no measurement.
 * A gate whose mutant passes is a broken gate: run `bench/asm/asm.py check` and the baseline's
   `--cells` on a different build before trusting either comparison.
