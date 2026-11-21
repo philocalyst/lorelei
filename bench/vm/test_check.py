@@ -1,18 +1,24 @@
 import json, os, subprocess, sys, tempfile, unittest
+from pathlib import Path
 HERE = os.path.dirname(os.path.abspath(__file__))
 CHECK = os.path.join(HERE, "check.py")
 
 
 def mk(root, cells, reports):
-    os.makedirs(root, exist_ok=True)
-    json.dump({"cells": cells}, open(os.path.join(root, "run.json"), "w"))
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "run.json").write_text(json.dumps({"cells": cells}))
+    for c in cells:
+        for phase in c["done"]:
+            if phase != "layout":
+                reports.setdefault(f"{c['dir']}/{phase}.json", {} if phase == "startup" else OK)
     for rel, body in reports.items():
-        p = os.path.join(root, rel)
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        json.dump(body, open(p, "w"))
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(body))
 
 
-def cell(s, fw, errors=(), skipped=(), done=("startup",)):
+def cell(s, fw, errors=(), skipped=(), done=("startup", "layout", "idle", "hover", "scroll")):
     return {"cell": {"scenario": s, "framework": fw}, "dir": f"{s}/{fw}", "errors": list(errors),
             "skipped": list(skipped), "done": list(done)}
 
@@ -29,10 +35,12 @@ def run(root, *extra):
 
 class T(unittest.TestCase):
     def setUp(self):
-        self.d = tempfile.mkdtemp()
+        out = tempfile.TemporaryDirectory()
+        self.addCleanup(out.cleanup)
+        self.d = out.name
 
     def test_clean(self):
-        mk(self.d, [cell("rows", "a", done=("startup", "hover"))],
+        mk(self.d, [cell("rows", "a")],
            {"rows/a/startup.json": {}, "rows/a/hover.json": OK})
         self.assertEqual(run(self.d)[0], 0)
         self.assertEqual(run(self.d, "--strict-validity")[0], 0)
@@ -53,18 +61,31 @@ class T(unittest.TestCase):
         self.assertEqual(run(self.d)[0], 2)
 
     def test_invalid_reported_and_strict_boundary(self):
-        mk(self.d, [cell("rows", "a", done=("hover",))], {"rows/a/hover.json": BAD})
+        mk(self.d, [cell("rows", "a")], {"rows/a/hover.json": BAD})
         c, out = run(self.d)
         self.assertEqual(c, 0); self.assertIn("INVALID rows/a/hover.json: wake_lateness", out)
         self.assertEqual(run(self.d, "--strict-validity")[0], 4)
 
     def test_missing_validity_is_never_valid(self):
-        mk(self.d, [cell("rows", "a", done=("hover",))], {"rows/a/hover.json": {}})
+        mk(self.d, [cell("rows", "a")], {"rows/a/hover.json": {}})
         self.assertEqual(run(self.d, "--strict-validity")[0], 4)
 
     def test_startup_without_validity_is_fine(self):
-        mk(self.d, [cell("rows", "a")], {"rows/a/startup.json": {}, "rows/a/idle.json": {}})
+        mk(self.d, [cell("rows", "a")], {"rows/a/startup.json": {}})
         self.assertEqual(run(self.d, "--strict-validity")[0], 0)
+
+    def test_missing_output_of_done_phase_fails(self):
+        mk(self.d, [cell("rows", "a")], {})
+        (Path(self.d) / "rows/a/hover.json").unlink()
+        self.assertEqual(run(self.d, "--strict-validity")[0], 2)
+
+    def test_idle_is_a_checked_report(self):
+        mk(self.d, [cell("rows", "a")], {"rows/a/idle.json": BAD})
+        self.assertEqual(run(self.d, "--strict-validity")[0], 4)
+
+    def test_empty_phase_set_fails(self):
+        mk(self.d, [cell("rows", "a", done=())], {})
+        self.assertEqual(run(self.d, "--strict-validity")[0], 2)
 
     def test_failure_outranks_invalid(self):
         mk(self.d, [cell("rows", "a", errors=["x"], done=("hover",))], {"rows/a/hover.json": BAD})
