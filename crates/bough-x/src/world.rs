@@ -1628,11 +1628,12 @@ impl<V: View, B: Backend> World<V, B> {
     fn refocus(&mut self) {
         let Some(mut f) = self.focus else { return };
         self.columns();
+        let Some(st) = self.root.at(&f.path) else {
+            self.core_word(U_FOCUS, NONE);
+            return;
+        };
         // the focused row follows its item through the inserts and removes the last pass replayed
-        if let Some(st) = self.root.at(&f.path)
-            && st.src.is_some()
-            && st.seen != f.seen
-        {
+        if st.src.is_some() && st.seen != f.seen {
             if st.moved_from == f.seen && st.moved_ok {
                 for e in &st.moved {
                     match *e {
@@ -1652,7 +1653,6 @@ impl<V: View, B: Backend> World<V, B> {
             self.focus = Some(f);
         }
         let place = (|| {
-            let st = self.root.at(&f.path)?;
             let s = st.sites.get(f.site as usize)?;
             let exposed = st.cap == 1 || (f.row >= st.lo && f.row < st.hi);
             if !exposed {
