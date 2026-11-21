@@ -431,7 +431,7 @@ fn an_abandoned_lease_is_not_lost_for_good() {
 /// never merged, so a pool that is entirely free can refuse a frame of another size.
 #[test]
 fn a_resolution_change_does_not_strand_a_pool_of_free_slots() {
-    let mut p = Media::new(1 << 12);
+    let mut p = Media::new(1 << 13);
     let mut shown: Option<u32> = None;
     let mut n = 0;
     // fill the pool with 64 x 48 frames, one shown at a time
@@ -444,6 +444,10 @@ fn a_resolution_change_does_not_strand_a_pool_of_free_slots() {
     // the last frame is shown; retire it too by publishing... there is no `retire`: free what we can.
     // Everything but one slot is Free. A larger frame must still fit: 96 x 54 needs at most 2 slots of 64 x 48 worth.
     let words = p.words().len();
+    let larger = bough_paint::media::frame_words(96, 54);
+    let old = bough_paint::media::frame_words(VW, VH);
+    assert!(words - n as usize * old < larger, "unallocated tail would fit the larger frame");
+    assert!(2 * old >= larger && n >= 3, "the first two adjacent retired slots must fit the larger frame");
     let l = p.lease(96, 54);
     assert!(l.is_some(), "no room for a 96 x 54 frame in a {words}-word pool holding one shown 64 x 48 frame and {} free slots ({:?} slots, {:?} words used)", n - 1, p.stats().0, p.stats().1);
 }
