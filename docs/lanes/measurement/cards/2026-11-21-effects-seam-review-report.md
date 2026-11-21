@@ -24,6 +24,12 @@ The driver and spring candidates apply to paint-lane head `106e21c922`. Its P6 s
 
 The candidates await the focused run receipts. The motion and media fixture also covers a combined backdrop, video and spring. Each of its 96 ticks checks retained repair against full drawing and validates a neutral BT.709 endpoint pixel. The media-slot design in the shared notes specifies release after scene references and in-flight frame fences expire.
 
+## Blur and layer storage model
+
+The scalar model predicts **12.30 maximum and 4.62 RMS byte error** for the contract's σ=6 step under the seven tested sub-grid positions, within the review envelope of 16 maximum and 5 RMS. At σ=24 the model predicts **22.18 maximum and 6.78 RMS**. At σ=40 it predicts **51.88 maximum and 21.35 RMS**. The coarsest level is selected when σ reaches 20.625, and all larger radii use the same reconstruction. This accounts for the growing error against the Gaussian at large radii. The byte comparison with the renderer remains queued. [Source-derived step error](../../../../bench/results/effects/r3/gaussian-step-model.tsv)
+
+At 640×400 the four 112×76 σ=6 panels require **502,960 bytes** for their live BGRA8 level pixels. Toroidal padding and inactive level sentinels bring the first-update pool reservation to **698,688 bytes**. Individual panels reserve **135,040–208,160 bytes**. These counts follow the source allocation rules and exclude metadata, `Vec` capacity rounding, and any Metal copy. The runtime fixture also reports capacity. [Source-derived allocation ledger](../../../../bench/results/effects/r3/four-pane-source-ledger.tsv)
+
 ## Dense layer work
 
 The published `effects 600 dense` script advances 38 shader records along with the one spring. The published 3.19 G instructions belong to that combined workload. The independent profile repeats it with the same script and separately disables endless shader motion. The profile distinguishes the rebin, event reach, prefix selection and shading, pyramid downsample, and final output phases. The patch applies to the pinned source and the instrumented executable has built. Its grouped phase table preserves the rounding residual. The corrected instruction means and stock per-frame medians have different aggregation. The timing runner records early exits for the larger dense reproductions. [Profiler patch and commands](../../../../comparisons/bough-fx-bench/scripts/paint-profile)
