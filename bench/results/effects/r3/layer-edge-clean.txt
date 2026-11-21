@@ -1,0 +1,11 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling bough-paint v0.0.0 ($HOME/work/lorelei-wt/solfx/runtime/round3/tree/crates/bough-paint)
+    Finished `release` profile [optimized + debuginfo] target(s) in 24.79s
+     Running tests/solfx_layer_mutants.rs ($HOME/work/targets/solfx/round3-motionmedia/release/build/bough-paint/4ac3aecdeb92a8ab/out/solfx_layer_mutants-4ac3aecdeb92a8ab)
+
+running 1 test
+sweep spot beneath: 2412 frames, 79380 prefix tiles, 355863 blocks, output 66672 of 135072 tiles, 0 failing
+test sweep_content_beneath_over_every_edge_pixel ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 9.84s

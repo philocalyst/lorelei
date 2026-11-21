@@ -1,0 +1,36 @@
+
+running 11 tests
+test frame_sizes_equal_fresh ... solfx frame sizes: 540 steps (38 idle, 180 against the specification); layer work 4329 prefix tiles, 24496 pyramid blocks; output 4451 of 9309 tiles; 0 failing steps
+ok
+test gpu::gpu_staged_equals_cpu_and_fresh ... solfx gpu staged: 180 steps, 0 failing
+ok
+test gpu::probe_layered_gpu_frame ...
+thread 'gpu::probe_layered_gpu_frame' (11740706) panicked at crates/bough-paint/src/metal.rs:829:9:
+a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+probe: Gpu::frame on a layered scene panics: a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+
+thread 'gpu::probe_layered_gpu_frame' (11740706) panicked at crates/bough-paint/src/metal.rs:829:9:
+a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+probe: Gpu::catch_up on a layered scene panics
+ok
+test retained_walk_equals_fresh ... solfx walk 300x230: 180 steps (10 idle, 60 against the specification); layer work 2478 prefix tiles, 9719 pyramid blocks; output 2622 of 14160 tiles; 0 failing steps
+ok
+test sweep_content_beneath_over_every_edge_pixel ... sweep spot beneath: 2412 frames, 79380 prefix tiles, 355863 blocks, output 66672 of 135072 tiles, 0 failing
+ok
+test sweep_enter_and_leave_every_side ... sweep enter/leave: 4812 frames, 55302 prefix tiles, 361994 blocks, output 77932 of 269472 tiles, 0 failing
+ok
+test sweep_move_diagonal_by_tile_less_one ... sweep diagonal 31: 180 frames, 2578 prefix tiles, 13007 blocks, output 3284 of 10080 tiles, 0 failing
+ok
+test sweep_move_x_across_every_edge ... sweep move x: 1332 frames, 15480 prefix tiles, 126566 blocks, output 24158 of 74592 tiles, 0 failing
+ok
+test sweep_move_y_across_every_edge ... sweep move y: 1212 frames, 14449 prefix tiles, 111997 blocks, output 22460 of 67872 tiles, 0 failing
+ok
+test sweep_resize_left_and_top ... sweep resize from the origin side: 1212 frames, 26808 prefix tiles, 150326 blocks, output 25987 of 67872 tiles, 0 failing
+ok
+test sweep_resize_right_and_bottom ... sweep resize: 1572 frames, 29855 prefix tiles, 191674 blocks, output 39668 of 88032 tiles, 0 failing
+ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 42.09s
+
+exit 0

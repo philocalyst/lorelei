@@ -1,0 +1,19 @@
+ 6:46  up 4 days,  9:38, 1 user, load averages: 61.16 57.24 53.17
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 3, vector_passes: 0, damage_px: 256000, bytes_uploaded: 3158236, memory: MemoryReport { fixed: 0, targets: 1572864, scratch: 0, atlases: 0, buffers: 8721824 } })
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 594, vector_passes: 0, damage_px: 247544, bytes_uploaded: 1176696, memory: MemoryReport { fixed: 0, targets: 1572864, scratch: 0, atlases: 4194304, buffers: 9050992 } })
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 594, vector_passes: 0, damage_px: 247544, bytes_uploaded: 1506976, memory: MemoryReport { fixed: 0, targets: 1572864, scratch: 0, atlases: 4194304, buffers: 9640580 } })
+zgui_sample,5000,many,0,380732958,3
+solfx_device_lost,Unknown,Device is lost
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 10325, vector_passes: 0, damage_px: 247544, bytes_uploaded: 3607676, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 16062836 } })
+
+thread 'main' (10990199) panicked at $HOME/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wgpu-29.0.4/src/backend/wgpu_core.rs:2231:22:
+wgpu error: Validation Error
+
+Caused by:
+  In Buffer::map_async
+    Buffer with 'zgui.readback' label is invalid
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+check_exit=101
+ 6:46  up 4 days,  9:38, 1 user, load averages: 60.59 57.19 53.17

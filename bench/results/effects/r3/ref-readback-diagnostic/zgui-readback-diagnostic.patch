@@ -1,0 +1,23 @@
+--- a/crates/zgui-bench/src/bin/solfx.rs
++++ b/crates/zgui-bench/src/bin/solfx.rs
+@@ -61,6 +61,7 @@
+     }
+     fn draw(&mut self, scene: &zgui::scene::Scene, damage: &DamageSet) -> FrameOutcome {
+         let outcome = self.renderer.draw(scene, damage);
++        eprintln!("solfx_draw_outcome,{outcome:?}");
+         let retained = self.renderer.read_composed();
+         assert!(!retained.bytes().is_empty());
+         let hash = retained
+@@ -94,6 +95,12 @@
+             false,
+         )
+         .map_err(AppError::GpuUnavailable)?;
++    let gpu = renderer.gpu();
++    let loss = Arc::clone(gpu.loss());
++    gpu.device().set_device_lost_callback(move |reason, message| {
++        eprintln!("solfx_device_lost,{reason:?},{message}");
++        loss.report(reason, &message);
++    });
+     Ok(match gate {
+         Some(pixels) => Box::new(PixelGate { renderer, pixels }),
+         None => Box::new(renderer),

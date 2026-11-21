@@ -310,6 +310,312 @@ pane-300.txt	COUNT	pane	300	sparse	published	glass moves 1 px	prefix_from_stored
 pane-300.txt	COUNT	pane	300	sparse	published	glass moves 1 px	out_from_stored	0.00
 pane-300.txt	COUNT	pane	300	sparse	published	glass moves 1 px	backdrop_runs	15.83
 pane-300.txt	COUNT	pane	300	sparse	published	glass moves 1 px	sched_layers_with_work	0.08
+pane-3000.txt	SUMMARY	pane	3000	sparse	published	idle	3754	1	0	5568	5567	30431	17	3605	0.0	0.0	0.0	0.0	1578
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	0	harness_other	158	9626	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	1	update_glue	281	5015	3.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	3	update_block_diff	63	1641	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	5	update_layer_regeo_repack	28	1606	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	12	prepare_glue	10	1588	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	17	shade_admission_checks	278	1856	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	21	shade_glue	2636	5792	2.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	22	harness_damage_tiles_clear	130	1708	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	idle	23	turn_script_set_retarget	21	1599	1.0
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	bin_calls	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	bin_records_walked	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	bin_records_live	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	bin_cells_count_pass	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	bin_cells_fill_pass	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	bin_list_entries	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	bin_tiles	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	window_records	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	window_columns	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	rewin_records	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	prefix_tiles	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	prefix_entries	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	out_tiles	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	out_entries	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	tent_blocks	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	tent_px	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	sched_calls	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	sched_events_seen	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	damage_adds	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	frames	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	prefix_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	out_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	backdrop_runs	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	idle	sched_layers_with_work	0.00
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	arena bytes (columns, lanes, records, tabs)	17547264
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	arena column words used (bytes)	409344
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layer pool (Vec len, bytes)	248208
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layer pool (Vec capacity, bytes)	248208
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layer pool words in use by allocator (bytes)	248208
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layer pool live words (bytes)	248208
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layer level capacity px*4 (sum cw*ch)	248208
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layer level window px*4 (sum of level windows)	185100
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layers (count)	1
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layer struct bytes (list)	1408
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	layers.of (by key)	36
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	bins.list	16500
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	bins.off	4004
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	bins.count	4000
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	bins.floor	4000
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	bins.mark	1000
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	win lane	32768
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	cover lane	32768
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	halo lane	32768
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	order	16384
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	events/regeo/act scratch	1296
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	damage bitset (struct, approx)	1064
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	atlas	0
+pane-3000.txt	LEDGER	pane	3000	sparse	published	idle	tab region (bytes touched, upper bound used)	21768
+pane-3000.txt	COLUMN	pane	3000	sparse	published	idle	0	c0: records 1 (cap 64), words/record 2, layer false, Uw<3>>>
+pane-3000.txt	COLUMN	pane	3000	sparse	published	idle	1	c1: records 2002 (cap 3392), words/record 7, layer false, Uw<3>>>>>
+pane-3000.txt	COLUMN	pane	3000	sparse	published	idle	2	c2: records 1000 (cap 3008), words/record 7, layer false, Rec>>>
+pane-3000.txt	COLUMN	pane	3000	sparse	published	idle	3	c3: records 1 (cap 384), words/record 23, layer true, Rec>>>
+pane-3000.txt	COLUMN	pane	3000	sparse	published	idle	4	c4: records 0 (cap 192), words/record 3, layer false, Rec>>
+pane-3000.txt	COLUMN	pane	3000	sparse	published	idle	5	c5: records 750 (cap 768), words/record 11, layer false, Rec>>
+pane-3000.txt	COLUMN	pane	3000	sparse	published	idle	6	c6: records 0 (cap 64), words/record 3, layer false, Rec>
+pane-3000.txt	SUMMARY	pane	3000	sparse	published	one spring	3754	1	1	2281677	983708	1949077	65	1847033	3.3	1.0	0.0	0.0	1578
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	0	harness_other	158	9626	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	1	update_glue	792	16572	10.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	3	update_block_diff	256	1834	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	5	update_layer_regeo_repack	28	1606	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	6	bins_clear_resize	831	2409	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	7	bins_count_pass	286643	288221	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	8	bins_offsets	19364	20942	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	9	bins_fill_pass	259164	260742	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	10	layer_schedule_dependency	673	2251	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	11	layer_damage_add_vis_events	15	1593	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	12	prepare_glue	10	1588	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	17	shade_admission_checks	330	1908	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	18	out_tile_setup(begin,cover,load)	9269	14529	3.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	19	out_tile_store	26403	31663	3.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	21	shade_glue	3651	33370	18.8
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	22	harness_damage_tiles_clear	170	1748	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	23	turn_script_set_retarget	34	1612	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	37	window_pass[c5]	1264	2842	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	96	out_shade[c0]	5151	8833	2.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	97	out_shade[c1]	941548	946808	3.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	98	out_shade[c2]	269196	271300	1.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	one spring	101	out_shade[c5]	22082	27079	3.2
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	bin_calls	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	bin_records_walked	3754.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	bin_records_live	2464.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	bin_cells_count_pass	4325.17
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	bin_cells_fill_pass	4325.17
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	bin_list_entries	4126.17
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	bin_tiles	1000.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	window_records	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	window_columns	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	rewin_records	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	prefix_tiles	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	prefix_entries	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	out_tiles	3.33
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	out_entries	10.17
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	tent_blocks	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	tent_px	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	sched_calls	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	sched_events_seen	2.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	damage_adds	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	frames	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	prefix_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	out_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	backdrop_runs	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	one spring	sched_layers_with_work	0.00
+pane-3000.txt	SUMMARY	pane	3000	sparse	published	all springs	3754	1	375	25843510	20102860	25483350	473	24736430	35.7	375.0	0.0	0.0	1578
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	0	harness_other	158	9626	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	1	update_glue	612	16392	10.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	3	update_block_diff	256	1834	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	5	update_layer_regeo_repack	28	1606	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	6	bins_clear_resize	831	2409	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	7	bins_count_pass	286829	288407	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	8	bins_offsets	19369	20947	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	9	bins_fill_pass	259468	261046	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	10	layer_schedule_dependency	4364	5942	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	11	layer_damage_add_vis_events	15	1593	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	12	prepare_glue	10	1588	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	17	shade_admission_checks	815	2393	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	18	out_tile_setup(begin,cover,load)	132265	188547	35.7
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	19	out_tile_store	282517	338799	35.7
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	21	shade_glue	12703	364860	223.2
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	22	harness_damage_tiles_clear	616	2194	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	23	turn_script_set_retarget	34	1612	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	37	window_pass[c5]	260426	262004	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	96	out_shade[c0]	66996	116834	31.6
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	97	out_shade[c1]	17620192	17704221	53.2
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	98	out_shade[c2]	5533733	5581073	30.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	all springs	101	out_shade[c5]	254194	309424	35.0
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	bin_calls	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	bin_records_walked	3754.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	bin_records_live	2464.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	bin_cells_count_pass	4336.83
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	bin_cells_fill_pass	4336.83
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	bin_list_entries	4137.83
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	bin_tiles	1000.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	window_records	375.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	window_columns	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	rewin_records	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	prefix_tiles	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	prefix_entries	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	out_tiles	35.67
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	out_entries	169.17
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	tent_blocks	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	tent_px	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	sched_calls	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	sched_events_seen	463.33
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	damage_adds	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	frames	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	prefix_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	out_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	backdrop_runs	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	all springs	sched_layers_with_work	0.00
+pane-3000.txt	SUMMARY	pane	3000	sparse	published	hover above glass	3754	1	0	11369198	11368620	11553505	117	11368879	6.0	2002.0	0.0	0.0	1578
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	0	harness_other	158	9626	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	1	update_glue	385	9853	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	3	update_block_diff	256	1834	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	5	update_layer_regeo_repack	28	1606	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	10	layer_schedule_dependency	633	2211	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	11	layer_damage_add_vis_events	15	1593	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	12	prepare_glue	10	1588	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	17	shade_admission_checks	370	1948	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	18	out_tile_setup(begin,cover,load)	11958	21426	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	19	out_tile_store	47526	56994	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	20	out_backdrop_flatten_sample	2217190	2226658	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	21	shade_glue	4572	72426	43.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	22	harness_damage_tiles_clear	207	1785	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	23	turn_script_set_retarget	28	1606	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	33	window_pass[c1]	168599	170177	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	96	out_shade[c0]	7869	14181	4.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	97	out_shade[c1]	8025044	8047136	14.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	98	out_shade[c2]	831517	839407	5.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover above glass	99	out_shade[c3]	52513	71449	12.0
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	bin_calls	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	bin_records_walked	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	bin_records_live	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	bin_cells_count_pass	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	bin_cells_fill_pass	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	bin_list_entries	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	bin_tiles	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	window_records	2002.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	window_columns	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	rewin_records	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	prefix_tiles	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	prefix_entries	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	out_tiles	6.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	out_entries	39.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	tent_blocks	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	tent_px	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	sched_calls	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	sched_events_seen	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	damage_adds	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	frames	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	prefix_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	out_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	backdrop_runs	6.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover above glass	sched_layers_with_work	0.00
+pane-3000.txt	SUMMARY	pane	3000	sparse	published	hover beneath glass	3754	1	0	44079772	44069154	45236241	729	44085879	22.0	2002.0	16.0	116.0	1578
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	0	harness_other	160	9628	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	1	update_glue	2633	12101	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	3	update_block_diff	256	1834	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	5	update_layer_regeo_repack	28	1606	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	10	layer_schedule_dependency	44094	45672	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	11	layer_damage_add_vis_events	6219	7797	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	12	prepare_glue	6169	299677	186.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	13	prefix_tile_setup(begin,cover,load)	22434	47682	16.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	14	prefix_store_layer	465728	490976	16.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	15	tent_pyramid_down	2061872	2244920	116.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	17	shade_admission_checks	610	2188	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	18	out_tile_setup(begin,cover,load)	37914	72630	22.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	19	out_tile_store	174262	208978	22.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	20	out_backdrop_flatten_sample	5186996	5221712	22.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	21	shade_glue	9468	243012	148.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	22	harness_damage_tiles_clear	417	1995	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	23	turn_script_set_retarget	27	1605	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	33	window_pass[c1]	168773	170351	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	64	prefix_shade[c0]	31226	53318	14.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	65	prefix_shade[c1]	7233620	7258868	16.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	66	prefix_shade[c2]	1852073	1863119	7.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	96	out_shade[c0]	40144	70126	19.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	97	out_shade[c1]	24033867	24108033	47.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	98	out_shade[c2]	2513651	2535743	14.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	hover beneath glass	99	out_shade[c3]	193237	262669	44.0
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	bin_calls	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	bin_records_walked	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	bin_records_live	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	bin_cells_count_pass	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	bin_cells_fill_pass	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	bin_list_entries	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	bin_tiles	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	window_records	2002.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	window_columns	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	rewin_records	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	prefix_tiles	16.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	prefix_entries	45.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	out_tiles	22.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	out_entries	139.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	tent_blocks	116.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	tent_px	7281.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	sched_calls	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	sched_events_seen	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	damage_adds	45.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	frames	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	prefix_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	out_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	backdrop_runs	22.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	hover beneath glass	sched_layers_with_work	1.00
+pane-3000.txt	SUMMARY	pane	3000	sparse	published	glass moves 1 px	3754	1	0	22146637	20746115	22650995	279	22210733	15.8	0.0	0.3	4.0	1578
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	0	harness_other	158	9626	6.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	1	update_glue	579	16359	10.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	3	update_block_diff	63	1641	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	4	update_rewin_touched	1561	3139	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	5	update_layer_regeo_repack	1085	2663	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	6	bins_clear_resize	831	2409	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	7	bins_count_pass	286638	288216	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	8	bins_offsets	19836	21414	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	9	bins_fill_pass	259160	260738	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	10	layer_schedule_dependency	2270	3848	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	11	layer_damage_add_vis_events	262	1840	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	12	prepare_glue	276	10270	6.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	13	prefix_tile_setup(begin,cover,load)	464	990	0.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	14	prefix_store_layer	9703	10229	0.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	15	tent_pyramid_down	45912	52224	4.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	17	shade_admission_checks	518	2096	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	18	out_tile_setup(begin,cover,load)	28818	53803	15.8
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	19	out_tile_store	125416	150401	15.8
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	20	out_backdrop_flatten_sample	5191609	5216594	15.8
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	21	shade_glue	7501	172928	104.8
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	22	harness_damage_tiles_clear	335	1913	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	23	turn_script_set_retarget	209	1787	1.0
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	64	prefix_shade[c0]	800	1326	0.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	65	prefix_shade[c1]	121570	122096	0.3
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	96	out_shade[c0]	26072	46323	12.8
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	97	out_shade[c1]	14279607	14329709	31.8
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	98	out_shade[c2]	1594048	1611012	10.8
+pane-3000.txt	PHASE	pane	3000	sparse	published	glass moves 1 px	99	out_shade[c3]	205432	255402	31.7
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	bin_calls	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	bin_records_walked	3754.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	bin_records_live	2464.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	bin_cells_count_pass	4325.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	bin_cells_fill_pass	4325.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	bin_list_entries	4126.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	bin_tiles	1000.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	window_records	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	window_columns	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	rewin_records	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	prefix_tiles	0.33
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	prefix_entries	0.67
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	out_tiles	15.83
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	out_entries	92.17
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	tent_blocks	4.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	tent_px	161.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	sched_calls	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	sched_events_seen	2.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	damage_adds	1.75
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	frames	1.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	prefix_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	out_from_stored	0.00
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	backdrop_runs	15.83
+pane-3000.txt	COUNT	pane	3000	sparse	published	glass moves 1 px	sched_layers_with_work	0.08
 pane-600.txt	SUMMARY	pane	600	sparse	published	idle	754	1	0	5879	5766	30498	17	3689	0.0	0.0	0.0	0.0	1577
 pane-600.txt	PHASE	pane	600	sparse	published	idle	0	harness_other	164	9626	6.0
 pane-600.txt	PHASE	pane	600	sparse	published	idle	1	update_glue	284	5015	3.0

@@ -1,0 +1,495 @@
+# fxprof pane 3000; 1280x800; reps 12 warm 8; counter-read cost o = 1578 instructions/interval; load at start: 41.05 49.82 53.20
+
+## pane 3000 cell=idle | 3754 records, 1 layers, active 0 | uninstrumented instr/frame median 5.6K min 5.6K mean 5.6K | tiles 0.0 recs_visited 0.0 prefix 0.0 blocks 0.0 | bracket raw 30.4K, intervals 17.0, corrected sum 3.6K (-35.26% vs uninstr median) | wall med 2us | mismatch 0
+SUMMARY	pane	3000	sparse	published	idle	3754	1	0	5568	5567	30431	17	3605	0.0	0.0	0.0	0.0	1578
+PHASE	pane	3000	sparse	published	idle	0	harness_other	158	9626	6.0
+PHASE	pane	3000	sparse	published	idle	1	update_glue	281	5015	3.0
+PHASE	pane	3000	sparse	published	idle	3	update_block_diff	63	1641	1.0
+PHASE	pane	3000	sparse	published	idle	5	update_layer_regeo_repack	28	1606	1.0
+PHASE	pane	3000	sparse	published	idle	12	prepare_glue	10	1588	1.0
+PHASE	pane	3000	sparse	published	idle	17	shade_admission_checks	278	1856	1.0
+PHASE	pane	3000	sparse	published	idle	21	shade_glue	2636	5792	2.0
+PHASE	pane	3000	sparse	published	idle	22	harness_damage_tiles_clear	130	1708	1.0
+PHASE	pane	3000	sparse	published	idle	23	turn_script_set_retarget	21	1599	1.0
+phase	corrected_instr_per_frame	%_of_corrected	raw_instr_per_frame	intervals_per_frame
+shade_glue	2636	73.13	5792	2.0
+update_glue	281	7.79	5015	3.0
+shade_admission_checks	278	7.71	1856	1.0
+harness_other	158	4.38	9626	6.0
+harness_damage_tiles_clear	130	3.61	1708	1.0
+update_block_diff	63	1.75	1641	1.0
+update_layer_regeo_repack	28	0.78	1606	1.0
+turn_script_set_retarget	21	0.58	1599	1.0
+prepare_glue	10	0.28	1588	1.0
+COUNT	pane	3000	sparse	published	idle	bin_calls	0.00
+COUNT	pane	3000	sparse	published	idle	bin_records_walked	0.00
+COUNT	pane	3000	sparse	published	idle	bin_records_live	0.00
+COUNT	pane	3000	sparse	published	idle	bin_cells_count_pass	0.00
+COUNT	pane	3000	sparse	published	idle	bin_cells_fill_pass	0.00
+COUNT	pane	3000	sparse	published	idle	bin_list_entries	0.00
+COUNT	pane	3000	sparse	published	idle	bin_tiles	0.00
+COUNT	pane	3000	sparse	published	idle	window_records	0.00
+COUNT	pane	3000	sparse	published	idle	window_columns	0.00
+COUNT	pane	3000	sparse	published	idle	rewin_records	0.00
+COUNT	pane	3000	sparse	published	idle	prefix_tiles	0.00
+COUNT	pane	3000	sparse	published	idle	prefix_entries	0.00
+COUNT	pane	3000	sparse	published	idle	out_tiles	0.00
+COUNT	pane	3000	sparse	published	idle	out_entries	0.00
+COUNT	pane	3000	sparse	published	idle	tent_blocks	0.00
+COUNT	pane	3000	sparse	published	idle	tent_px	0.00
+COUNT	pane	3000	sparse	published	idle	sched_calls	0.00
+COUNT	pane	3000	sparse	published	idle	sched_events_seen	0.00
+COUNT	pane	3000	sparse	published	idle	damage_adds	0.00
+COUNT	pane	3000	sparse	published	idle	frames	1.00
+COUNT	pane	3000	sparse	published	idle	prefix_from_stored	0.00
+COUNT	pane	3000	sparse	published	idle	out_from_stored	0.00
+COUNT	pane	3000	sparse	published	idle	backdrop_runs	0.00
+COUNT	pane	3000	sparse	published	idle	sched_layers_with_work	0.00
+counters/frame: bin_calls=0.0 bin_records_walked=0.0 bin_records_live=0.0 bin_cells_count_pass=0.0 bin_cells_fill_pass=0.0 bin_list_entries=0.0 bin_tiles=0.0 window_records=0.0 window_columns=0.0 rewin_records=0.0 prefix_tiles=0.0 prefix_entries=0.0 out_tiles=0.0 out_entries=0.0 tent_blocks=0.0 tent_px=0.0 sched_calls=0.0 sched_events_seen=0.0 damage_adds=0.0 frames=1.0 prefix_from_stored=0.0 out_from_stored=0.0 backdrop_runs=0.0 sched_layers_with_work=0.0
+columns:
+  c0: records 1 (cap 64), words/record 2, layer false, Uw<3>>>
+  c1: records 2002 (cap 3392), words/record 7, layer false, Uw<3>>>>>
+  c2: records 1000 (cap 3008), words/record 7, layer false, Rec>>>
+  c3: records 1 (cap 384), words/record 23, layer true, Rec>>>
+  c4: records 0 (cap 192), words/record 3, layer false, Rec>>
+  c5: records 750 (cap 768), words/record 11, layer false, Rec>>
+  c6: records 0 (cap 64), words/record 3, layer false, Rec>
+LEDGER	pane	3000	sparse	published	idle	arena bytes (columns, lanes, records, tabs)	17547264
+LEDGER	pane	3000	sparse	published	idle	arena column words used (bytes)	409344
+LEDGER	pane	3000	sparse	published	idle	layer pool (Vec len, bytes)	248208
+LEDGER	pane	3000	sparse	published	idle	layer pool (Vec capacity, bytes)	248208
+LEDGER	pane	3000	sparse	published	idle	layer pool words in use by allocator (bytes)	248208
+LEDGER	pane	3000	sparse	published	idle	layer pool live words (bytes)	248208
+LEDGER	pane	3000	sparse	published	idle	layer level capacity px*4 (sum cw*ch)	248208
+LEDGER	pane	3000	sparse	published	idle	layer level window px*4 (sum of level windows)	185100
+LEDGER	pane	3000	sparse	published	idle	layers (count)	1
+LEDGER	pane	3000	sparse	published	idle	layer struct bytes (list)	1408
+LEDGER	pane	3000	sparse	published	idle	layers.of (by key)	36
+LEDGER	pane	3000	sparse	published	idle	bins.list	16500
+LEDGER	pane	3000	sparse	published	idle	bins.off	4004
+LEDGER	pane	3000	sparse	published	idle	bins.count	4000
+LEDGER	pane	3000	sparse	published	idle	bins.floor	4000
+LEDGER	pane	3000	sparse	published	idle	bins.mark	1000
+LEDGER	pane	3000	sparse	published	idle	win lane	32768
+LEDGER	pane	3000	sparse	published	idle	cover lane	32768
+LEDGER	pane	3000	sparse	published	idle	halo lane	32768
+LEDGER	pane	3000	sparse	published	idle	order	16384
+LEDGER	pane	3000	sparse	published	idle	events/regeo/act scratch	1296
+LEDGER	pane	3000	sparse	published	idle	damage bitset (struct, approx)	1064
+LEDGER	pane	3000	sparse	published	idle	atlas	0
+LEDGER	pane	3000	sparse	published	idle	tab region (bytes touched, upper bound used)	21768
+COLUMN	pane	3000	sparse	published	idle	0	c0: records 1 (cap 64), words/record 2, layer false, Uw<3>>>
+COLUMN	pane	3000	sparse	published	idle	1	c1: records 2002 (cap 3392), words/record 7, layer false, Uw<3>>>>>
+COLUMN	pane	3000	sparse	published	idle	2	c2: records 1000 (cap 3008), words/record 7, layer false, Rec>>>
+COLUMN	pane	3000	sparse	published	idle	3	c3: records 1 (cap 384), words/record 23, layer true, Rec>>>
+COLUMN	pane	3000	sparse	published	idle	4	c4: records 0 (cap 192), words/record 3, layer false, Rec>>
+COLUMN	pane	3000	sparse	published	idle	5	c5: records 750 (cap 768), words/record 11, layer false, Rec>>
+COLUMN	pane	3000	sparse	published	idle	6	c6: records 0 (cap 64), words/record 3, layer false, Rec>
+ledger (bytes):
+  arena bytes (columns, lanes, records, tabs)	17547264
+  arena column words used (bytes)	409344
+  layer pool (Vec len, bytes)	248208
+  layer pool (Vec capacity, bytes)	248208
+  layer pool words in use by allocator (bytes)	248208
+  layer pool live words (bytes)	248208
+  layer level capacity px*4 (sum cw*ch)	248208
+  layer level window px*4 (sum of level windows)	185100
+  layers (count)	1
+  layer struct bytes (list)	1408
+  layers.of (by key)	36
+  bins.list	16500
+  bins.off	4004
+  bins.count	4000
+  bins.floor	4000
+  bins.mark	1000
+  win lane	32768
+  cover lane	32768
+  halo lane	32768
+  order	16384
+  events/regeo/act scratch	1296
+  damage bitset (struct, approx)	1064
+  atlas	0
+  tab region (bytes touched, upper bound used)	21768
+# cell wall 0.1s; load 41.05 49.82 53.20
+
+## pane 3000 cell=one spring | 3754 records, 1 layers, active 1 | uninstrumented instr/frame median 2281.7K min 983.7K mean 1851.3K | tiles 3.3 recs_visited 1.0 prefix 0.0 blocks 0.0 | bracket raw 1949.1K, intervals 64.7, corrected sum 1847.0K (-19.05% vs uninstr median) | wall med 123us | mismatch 0
+SUMMARY	pane	3000	sparse	published	one spring	3754	1	1	2281677	983708	1949077	65	1847033	3.3	1.0	0.0	0.0	1578
+PHASE	pane	3000	sparse	published	one spring	0	harness_other	158	9626	6.0
+PHASE	pane	3000	sparse	published	one spring	1	update_glue	792	16572	10.0
+PHASE	pane	3000	sparse	published	one spring	3	update_block_diff	256	1834	1.0
+PHASE	pane	3000	sparse	published	one spring	5	update_layer_regeo_repack	28	1606	1.0
+PHASE	pane	3000	sparse	published	one spring	6	bins_clear_resize	831	2409	1.0
+PHASE	pane	3000	sparse	published	one spring	7	bins_count_pass	286643	288221	1.0
+PHASE	pane	3000	sparse	published	one spring	8	bins_offsets	19364	20942	1.0
+PHASE	pane	3000	sparse	published	one spring	9	bins_fill_pass	259164	260742	1.0
+PHASE	pane	3000	sparse	published	one spring	10	layer_schedule_dependency	673	2251	1.0
+PHASE	pane	3000	sparse	published	one spring	11	layer_damage_add_vis_events	15	1593	1.0
+PHASE	pane	3000	sparse	published	one spring	12	prepare_glue	10	1588	1.0
+PHASE	pane	3000	sparse	published	one spring	17	shade_admission_checks	330	1908	1.0
+PHASE	pane	3000	sparse	published	one spring	18	out_tile_setup(begin,cover,load)	9269	14529	3.3
+PHASE	pane	3000	sparse	published	one spring	19	out_tile_store	26403	31663	3.3
+PHASE	pane	3000	sparse	published	one spring	21	shade_glue	3651	33370	18.8
+PHASE	pane	3000	sparse	published	one spring	22	harness_damage_tiles_clear	170	1748	1.0
+PHASE	pane	3000	sparse	published	one spring	23	turn_script_set_retarget	34	1612	1.0
+PHASE	pane	3000	sparse	published	one spring	37	window_pass[c5]	1264	2842	1.0
+PHASE	pane	3000	sparse	published	one spring	96	out_shade[c0]	5151	8833	2.3
+PHASE	pane	3000	sparse	published	one spring	97	out_shade[c1]	941548	946808	3.3
+PHASE	pane	3000	sparse	published	one spring	98	out_shade[c2]	269196	271300	1.3
+PHASE	pane	3000	sparse	published	one spring	101	out_shade[c5]	22082	27079	3.2
+phase	corrected_instr_per_frame	%_of_corrected	raw_instr_per_frame	intervals_per_frame
+out_shade[c1]	941548	50.98	946808	3.3
+bins_count_pass	286643	15.52	288221	1.0
+out_shade[c2]	269196	14.57	271300	1.3
+bins_fill_pass	259164	14.03	260742	1.0
+out_tile_store	26403	1.43	31663	3.3
+out_shade[c5]	22082	1.20	27079	3.2
+bins_offsets	19364	1.05	20942	1.0
+out_tile_setup(begin,cover,load)	9269	0.50	14529	3.3
+out_shade[c0]	5151	0.28	8833	2.3
+shade_glue	3651	0.20	33370	18.8
+window_pass[c5]	1264	0.07	2842	1.0
+bins_clear_resize	831	0.04	2409	1.0
+update_glue	792	0.04	16572	10.0
+layer_schedule_dependency	673	0.04	2251	1.0
+shade_admission_checks	330	0.02	1908	1.0
+update_block_diff	256	0.01	1834	1.0
+harness_damage_tiles_clear	170	0.01	1748	1.0
+harness_other	158	0.01	9626	6.0
+turn_script_set_retarget	34	0.00	1612	1.0
+update_layer_regeo_repack	28	0.00	1606	1.0
+layer_damage_add_vis_events	15	0.00	1593	1.0
+prepare_glue	10	0.00	1588	1.0
+COUNT	pane	3000	sparse	published	one spring	bin_calls	1.00
+COUNT	pane	3000	sparse	published	one spring	bin_records_walked	3754.00
+COUNT	pane	3000	sparse	published	one spring	bin_records_live	2464.00
+COUNT	pane	3000	sparse	published	one spring	bin_cells_count_pass	4325.17
+COUNT	pane	3000	sparse	published	one spring	bin_cells_fill_pass	4325.17
+COUNT	pane	3000	sparse	published	one spring	bin_list_entries	4126.17
+COUNT	pane	3000	sparse	published	one spring	bin_tiles	1000.00
+COUNT	pane	3000	sparse	published	one spring	window_records	1.00
+COUNT	pane	3000	sparse	published	one spring	window_columns	1.00
+COUNT	pane	3000	sparse	published	one spring	rewin_records	0.00
+COUNT	pane	3000	sparse	published	one spring	prefix_tiles	0.00
+COUNT	pane	3000	sparse	published	one spring	prefix_entries	0.00
+COUNT	pane	3000	sparse	published	one spring	out_tiles	3.33
+COUNT	pane	3000	sparse	published	one spring	out_entries	10.17
+COUNT	pane	3000	sparse	published	one spring	tent_blocks	0.00
+COUNT	pane	3000	sparse	published	one spring	tent_px	0.00
+COUNT	pane	3000	sparse	published	one spring	sched_calls	1.00
+COUNT	pane	3000	sparse	published	one spring	sched_events_seen	2.00
+COUNT	pane	3000	sparse	published	one spring	damage_adds	0.00
+COUNT	pane	3000	sparse	published	one spring	frames	1.00
+COUNT	pane	3000	sparse	published	one spring	prefix_from_stored	0.00
+COUNT	pane	3000	sparse	published	one spring	out_from_stored	0.00
+COUNT	pane	3000	sparse	published	one spring	backdrop_runs	0.00
+COUNT	pane	3000	sparse	published	one spring	sched_layers_with_work	0.00
+counters/frame: bin_calls=1.0 bin_records_walked=3754.0 bin_records_live=2464.0 bin_cells_count_pass=4325.2 bin_cells_fill_pass=4325.2 bin_list_entries=4126.2 bin_tiles=1000.0 window_records=1.0 window_columns=1.0 rewin_records=0.0 prefix_tiles=0.0 prefix_entries=0.0 out_tiles=3.3 out_entries=10.2 tent_blocks=0.0 tent_px=0.0 sched_calls=1.0 sched_events_seen=2.0 damage_adds=0.0 frames=1.0 prefix_from_stored=0.0 out_from_stored=0.0 backdrop_runs=0.0 sched_layers_with_work=0.0
+# cell wall 0.1s; load 41.05 49.82 53.20
+
+## pane 3000 cell=all springs | 3754 records, 1 layers, active 375 | uninstrumented instr/frame median 25843.5K min 20102.9K mean 24733.5K | tiles 35.7 recs_visited 375.0 prefix 0.0 blocks 0.0 | bracket raw 25483.3K, intervals 473.3, corrected sum 24736.4K (-4.28% vs uninstr median) | wall med 1417us | mismatch 0
+SUMMARY	pane	3000	sparse	published	all springs	3754	1	375	25843510	20102860	25483350	473	24736430	35.7	375.0	0.0	0.0	1578
+PHASE	pane	3000	sparse	published	all springs	0	harness_other	158	9626	6.0
+PHASE	pane	3000	sparse	published	all springs	1	update_glue	612	16392	10.0
+PHASE	pane	3000	sparse	published	all springs	3	update_block_diff	256	1834	1.0
+PHASE	pane	3000	sparse	published	all springs	5	update_layer_regeo_repack	28	1606	1.0
+PHASE	pane	3000	sparse	published	all springs	6	bins_clear_resize	831	2409	1.0
+PHASE	pane	3000	sparse	published	all springs	7	bins_count_pass	286829	288407	1.0
+PHASE	pane	3000	sparse	published	all springs	8	bins_offsets	19369	20947	1.0
+PHASE	pane	3000	sparse	published	all springs	9	bins_fill_pass	259468	261046	1.0
+PHASE	pane	3000	sparse	published	all springs	10	layer_schedule_dependency	4364	5942	1.0
+PHASE	pane	3000	sparse	published	all springs	11	layer_damage_add_vis_events	15	1593	1.0
+PHASE	pane	3000	sparse	published	all springs	12	prepare_glue	10	1588	1.0
+PHASE	pane	3000	sparse	published	all springs	17	shade_admission_checks	815	2393	1.0
+PHASE	pane	3000	sparse	published	all springs	18	out_tile_setup(begin,cover,load)	132265	188547	35.7
+PHASE	pane	3000	sparse	published	all springs	19	out_tile_store	282517	338799	35.7
+PHASE	pane	3000	sparse	published	all springs	21	shade_glue	12703	364860	223.2
+PHASE	pane	3000	sparse	published	all springs	22	harness_damage_tiles_clear	616	2194	1.0
+PHASE	pane	3000	sparse	published	all springs	23	turn_script_set_retarget	34	1612	1.0
+PHASE	pane	3000	sparse	published	all springs	37	window_pass[c5]	260426	262004	1.0
+PHASE	pane	3000	sparse	published	all springs	96	out_shade[c0]	66996	116834	31.6
+PHASE	pane	3000	sparse	published	all springs	97	out_shade[c1]	17620192	17704221	53.2
+PHASE	pane	3000	sparse	published	all springs	98	out_shade[c2]	5533733	5581073	30.0
+PHASE	pane	3000	sparse	published	all springs	101	out_shade[c5]	254194	309424	35.0
+phase	corrected_instr_per_frame	%_of_corrected	raw_instr_per_frame	intervals_per_frame
+out_shade[c1]	17620192	71.23	17704221	53.2
+out_shade[c2]	5533733	22.37	5581073	30.0
+bins_count_pass	286829	1.16	288407	1.0
+out_tile_store	282517	1.14	338799	35.7
+window_pass[c5]	260426	1.05	262004	1.0
+bins_fill_pass	259468	1.05	261046	1.0
+out_shade[c5]	254194	1.03	309424	35.0
+out_tile_setup(begin,cover,load)	132265	0.53	188547	35.7
+out_shade[c0]	66996	0.27	116834	31.6
+bins_offsets	19369	0.08	20947	1.0
+shade_glue	12703	0.05	364860	223.2
+layer_schedule_dependency	4364	0.02	5942	1.0
+bins_clear_resize	831	0.00	2409	1.0
+shade_admission_checks	815	0.00	2393	1.0
+harness_damage_tiles_clear	616	0.00	2194	1.0
+update_glue	612	0.00	16392	10.0
+update_block_diff	256	0.00	1834	1.0
+harness_other	158	0.00	9626	6.0
+turn_script_set_retarget	34	0.00	1612	1.0
+update_layer_regeo_repack	28	0.00	1606	1.0
+layer_damage_add_vis_events	15	0.00	1593	1.0
+prepare_glue	10	0.00	1588	1.0
+COUNT	pane	3000	sparse	published	all springs	bin_calls	1.00
+COUNT	pane	3000	sparse	published	all springs	bin_records_walked	3754.00
+COUNT	pane	3000	sparse	published	all springs	bin_records_live	2464.00
+COUNT	pane	3000	sparse	published	all springs	bin_cells_count_pass	4336.83
+COUNT	pane	3000	sparse	published	all springs	bin_cells_fill_pass	4336.83
+COUNT	pane	3000	sparse	published	all springs	bin_list_entries	4137.83
+COUNT	pane	3000	sparse	published	all springs	bin_tiles	1000.00
+COUNT	pane	3000	sparse	published	all springs	window_records	375.00
+COUNT	pane	3000	sparse	published	all springs	window_columns	1.00
+COUNT	pane	3000	sparse	published	all springs	rewin_records	0.00
+COUNT	pane	3000	sparse	published	all springs	prefix_tiles	0.00
+COUNT	pane	3000	sparse	published	all springs	prefix_entries	0.00
+COUNT	pane	3000	sparse	published	all springs	out_tiles	35.67
+COUNT	pane	3000	sparse	published	all springs	out_entries	169.17
+COUNT	pane	3000	sparse	published	all springs	tent_blocks	0.00
+COUNT	pane	3000	sparse	published	all springs	tent_px	0.00
+COUNT	pane	3000	sparse	published	all springs	sched_calls	1.00
+COUNT	pane	3000	sparse	published	all springs	sched_events_seen	463.33
+COUNT	pane	3000	sparse	published	all springs	damage_adds	0.00
+COUNT	pane	3000	sparse	published	all springs	frames	1.00
+COUNT	pane	3000	sparse	published	all springs	prefix_from_stored	0.00
+COUNT	pane	3000	sparse	published	all springs	out_from_stored	0.00
+COUNT	pane	3000	sparse	published	all springs	backdrop_runs	0.00
+COUNT	pane	3000	sparse	published	all springs	sched_layers_with_work	0.00
+counters/frame: bin_calls=1.0 bin_records_walked=3754.0 bin_records_live=2464.0 bin_cells_count_pass=4336.8 bin_cells_fill_pass=4336.8 bin_list_entries=4137.8 bin_tiles=1000.0 window_records=375.0 window_columns=1.0 rewin_records=0.0 prefix_tiles=0.0 prefix_entries=0.0 out_tiles=35.7 out_entries=169.2 tent_blocks=0.0 tent_px=0.0 sched_calls=1.0 sched_events_seen=463.3 damage_adds=0.0 frames=1.0 prefix_from_stored=0.0 out_from_stored=0.0 backdrop_runs=0.0 sched_layers_with_work=0.0
+# cell wall 0.1s; load 41.05 49.82 53.20
+
+## pane 3000 cell=hover above glass | 3754 records, 1 layers, active 0 | uninstrumented instr/frame median 11369.2K min 11368.6K mean 11370.4K | tiles 6.0 recs_visited 2002.0 prefix 0.0 blocks 0.0 | bracket raw 11553.5K, intervals 117.0, corrected sum 11368.9K (-0.00% vs uninstr median) | wall med 526us | mismatch 0
+SUMMARY	pane	3000	sparse	published	hover above glass	3754	1	0	11369198	11368620	11553505	117	11368879	6.0	2002.0	0.0	0.0	1578
+PHASE	pane	3000	sparse	published	hover above glass	0	harness_other	158	9626	6.0
+PHASE	pane	3000	sparse	published	hover above glass	1	update_glue	385	9853	6.0
+PHASE	pane	3000	sparse	published	hover above glass	3	update_block_diff	256	1834	1.0
+PHASE	pane	3000	sparse	published	hover above glass	5	update_layer_regeo_repack	28	1606	1.0
+PHASE	pane	3000	sparse	published	hover above glass	10	layer_schedule_dependency	633	2211	1.0
+PHASE	pane	3000	sparse	published	hover above glass	11	layer_damage_add_vis_events	15	1593	1.0
+PHASE	pane	3000	sparse	published	hover above glass	12	prepare_glue	10	1588	1.0
+PHASE	pane	3000	sparse	published	hover above glass	17	shade_admission_checks	370	1948	1.0
+PHASE	pane	3000	sparse	published	hover above glass	18	out_tile_setup(begin,cover,load)	11958	21426	6.0
+PHASE	pane	3000	sparse	published	hover above glass	19	out_tile_store	47526	56994	6.0
+PHASE	pane	3000	sparse	published	hover above glass	20	out_backdrop_flatten_sample	2217190	2226658	6.0
+PHASE	pane	3000	sparse	published	hover above glass	21	shade_glue	4572	72426	43.0
+PHASE	pane	3000	sparse	published	hover above glass	22	harness_damage_tiles_clear	207	1785	1.0
+PHASE	pane	3000	sparse	published	hover above glass	23	turn_script_set_retarget	28	1606	1.0
+PHASE	pane	3000	sparse	published	hover above glass	33	window_pass[c1]	168599	170177	1.0
+PHASE	pane	3000	sparse	published	hover above glass	96	out_shade[c0]	7869	14181	4.0
+PHASE	pane	3000	sparse	published	hover above glass	97	out_shade[c1]	8025044	8047136	14.0
+PHASE	pane	3000	sparse	published	hover above glass	98	out_shade[c2]	831517	839407	5.0
+PHASE	pane	3000	sparse	published	hover above glass	99	out_shade[c3]	52513	71449	12.0
+phase	corrected_instr_per_frame	%_of_corrected	raw_instr_per_frame	intervals_per_frame
+out_shade[c1]	8025044	70.59	8047136	14.0
+out_backdrop_flatten_sample	2217190	19.50	2226658	6.0
+out_shade[c2]	831517	7.31	839407	5.0
+window_pass[c1]	168599	1.48	170177	1.0
+out_shade[c3]	52513	0.46	71449	12.0
+out_tile_store	47526	0.42	56994	6.0
+out_tile_setup(begin,cover,load)	11958	0.11	21426	6.0
+out_shade[c0]	7869	0.07	14181	4.0
+shade_glue	4572	0.04	72426	43.0
+layer_schedule_dependency	633	0.01	2211	1.0
+update_glue	385	0.00	9853	6.0
+shade_admission_checks	370	0.00	1948	1.0
+update_block_diff	256	0.00	1834	1.0
+harness_damage_tiles_clear	207	0.00	1785	1.0
+harness_other	158	0.00	9626	6.0
+update_layer_regeo_repack	28	0.00	1606	1.0
+turn_script_set_retarget	28	0.00	1606	1.0
+layer_damage_add_vis_events	15	0.00	1593	1.0
+prepare_glue	10	0.00	1588	1.0
+COUNT	pane	3000	sparse	published	hover above glass	bin_calls	0.00
+COUNT	pane	3000	sparse	published	hover above glass	bin_records_walked	0.00
+COUNT	pane	3000	sparse	published	hover above glass	bin_records_live	0.00
+COUNT	pane	3000	sparse	published	hover above glass	bin_cells_count_pass	0.00
+COUNT	pane	3000	sparse	published	hover above glass	bin_cells_fill_pass	0.00
+COUNT	pane	3000	sparse	published	hover above glass	bin_list_entries	0.00
+COUNT	pane	3000	sparse	published	hover above glass	bin_tiles	0.00
+COUNT	pane	3000	sparse	published	hover above glass	window_records	2002.00
+COUNT	pane	3000	sparse	published	hover above glass	window_columns	1.00
+COUNT	pane	3000	sparse	published	hover above glass	rewin_records	0.00
+COUNT	pane	3000	sparse	published	hover above glass	prefix_tiles	0.00
+COUNT	pane	3000	sparse	published	hover above glass	prefix_entries	0.00
+COUNT	pane	3000	sparse	published	hover above glass	out_tiles	6.00
+COUNT	pane	3000	sparse	published	hover above glass	out_entries	39.00
+COUNT	pane	3000	sparse	published	hover above glass	tent_blocks	0.00
+COUNT	pane	3000	sparse	published	hover above glass	tent_px	0.00
+COUNT	pane	3000	sparse	published	hover above glass	sched_calls	1.00
+COUNT	pane	3000	sparse	published	hover above glass	sched_events_seen	1.00
+COUNT	pane	3000	sparse	published	hover above glass	damage_adds	0.00
+COUNT	pane	3000	sparse	published	hover above glass	frames	1.00
+COUNT	pane	3000	sparse	published	hover above glass	prefix_from_stored	0.00
+COUNT	pane	3000	sparse	published	hover above glass	out_from_stored	0.00
+COUNT	pane	3000	sparse	published	hover above glass	backdrop_runs	6.00
+COUNT	pane	3000	sparse	published	hover above glass	sched_layers_with_work	0.00
+counters/frame: bin_calls=0.0 bin_records_walked=0.0 bin_records_live=0.0 bin_cells_count_pass=0.0 bin_cells_fill_pass=0.0 bin_list_entries=0.0 bin_tiles=0.0 window_records=2002.0 window_columns=1.0 rewin_records=0.0 prefix_tiles=0.0 prefix_entries=0.0 out_tiles=6.0 out_entries=39.0 tent_blocks=0.0 tent_px=0.0 sched_calls=1.0 sched_events_seen=1.0 damage_adds=0.0 frames=1.0 prefix_from_stored=0.0 out_from_stored=0.0 backdrop_runs=6.0 sched_layers_with_work=0.0
+# cell wall 0.1s; load 41.05 49.82 53.20
+
+## pane 3000 cell=hover beneath glass | 3754 records, 1 layers, active 0 | uninstrumented instr/frame median 44079.8K min 44069.2K mean 44079.1K | tiles 22.0 recs_visited 2002.0 prefix 16.0 blocks 116.0 | bracket raw 45236.2K, intervals 729.0, corrected sum 44085.9K (+0.01% vs uninstr median) | wall med 2137us | mismatch 0
+SUMMARY	pane	3000	sparse	published	hover beneath glass	3754	1	0	44079772	44069154	45236241	729	44085879	22.0	2002.0	16.0	116.0	1578
+PHASE	pane	3000	sparse	published	hover beneath glass	0	harness_other	160	9628	6.0
+PHASE	pane	3000	sparse	published	hover beneath glass	1	update_glue	2633	12101	6.0
+PHASE	pane	3000	sparse	published	hover beneath glass	3	update_block_diff	256	1834	1.0
+PHASE	pane	3000	sparse	published	hover beneath glass	5	update_layer_regeo_repack	28	1606	1.0
+PHASE	pane	3000	sparse	published	hover beneath glass	10	layer_schedule_dependency	44094	45672	1.0
+PHASE	pane	3000	sparse	published	hover beneath glass	11	layer_damage_add_vis_events	6219	7797	1.0
+PHASE	pane	3000	sparse	published	hover beneath glass	12	prepare_glue	6169	299677	186.0
+PHASE	pane	3000	sparse	published	hover beneath glass	13	prefix_tile_setup(begin,cover,load)	22434	47682	16.0
+PHASE	pane	3000	sparse	published	hover beneath glass	14	prefix_store_layer	465728	490976	16.0
+PHASE	pane	3000	sparse	published	hover beneath glass	15	tent_pyramid_down	2061872	2244920	116.0
+PHASE	pane	3000	sparse	published	hover beneath glass	17	shade_admission_checks	610	2188	1.0
+PHASE	pane	3000	sparse	published	hover beneath glass	18	out_tile_setup(begin,cover,load)	37914	72630	22.0
+PHASE	pane	3000	sparse	published	hover beneath glass	19	out_tile_store	174262	208978	22.0
+PHASE	pane	3000	sparse	published	hover beneath glass	20	out_backdrop_flatten_sample	5186996	5221712	22.0
+PHASE	pane	3000	sparse	published	hover beneath glass	21	shade_glue	9468	243012	148.0
+PHASE	pane	3000	sparse	published	hover beneath glass	22	harness_damage_tiles_clear	417	1995	1.0
+PHASE	pane	3000	sparse	published	hover beneath glass	23	turn_script_set_retarget	27	1605	1.0
+PHASE	pane	3000	sparse	published	hover beneath glass	33	window_pass[c1]	168773	170351	1.0
+PHASE	pane	3000	sparse	published	hover beneath glass	64	prefix_shade[c0]	31226	53318	14.0
+PHASE	pane	3000	sparse	published	hover beneath glass	65	prefix_shade[c1]	7233620	7258868	16.0
+PHASE	pane	3000	sparse	published	hover beneath glass	66	prefix_shade[c2]	1852073	1863119	7.0
+PHASE	pane	3000	sparse	published	hover beneath glass	96	out_shade[c0]	40144	70126	19.0
+PHASE	pane	3000	sparse	published	hover beneath glass	97	out_shade[c1]	24033867	24108033	47.0
+PHASE	pane	3000	sparse	published	hover beneath glass	98	out_shade[c2]	2513651	2535743	14.0
+PHASE	pane	3000	sparse	published	hover beneath glass	99	out_shade[c3]	193237	262669	44.0
+phase	corrected_instr_per_frame	%_of_corrected	raw_instr_per_frame	intervals_per_frame
+out_shade[c1]	24033867	54.52	24108033	47.0
+prefix_shade[c1]	7233620	16.41	7258868	16.0
+out_backdrop_flatten_sample	5186996	11.77	5221712	22.0
+out_shade[c2]	2513651	5.70	2535743	14.0
+tent_pyramid_down	2061872	4.68	2244920	116.0
+prefix_shade[c2]	1852073	4.20	1863119	7.0
+prefix_store_layer	465728	1.06	490976	16.0
+out_shade[c3]	193237	0.44	262669	44.0
+out_tile_store	174262	0.40	208978	22.0
+window_pass[c1]	168773	0.38	170351	1.0
+layer_schedule_dependency	44094	0.10	45672	1.0
+out_shade[c0]	40144	0.09	70126	19.0
+out_tile_setup(begin,cover,load)	37914	0.09	72630	22.0
+prefix_shade[c0]	31226	0.07	53318	14.0
+prefix_tile_setup(begin,cover,load)	22434	0.05	47682	16.0
+shade_glue	9468	0.02	243012	148.0
+layer_damage_add_vis_events	6219	0.01	7797	1.0
+prepare_glue	6169	0.01	299677	186.0
+update_glue	2633	0.01	12101	6.0
+shade_admission_checks	610	0.00	2188	1.0
+harness_damage_tiles_clear	417	0.00	1995	1.0
+update_block_diff	256	0.00	1834	1.0
+harness_other	160	0.00	9628	6.0
+update_layer_regeo_repack	28	0.00	1606	1.0
+turn_script_set_retarget	27	0.00	1605	1.0
+COUNT	pane	3000	sparse	published	hover beneath glass	bin_calls	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	bin_records_walked	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	bin_records_live	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	bin_cells_count_pass	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	bin_cells_fill_pass	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	bin_list_entries	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	bin_tiles	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	window_records	2002.00
+COUNT	pane	3000	sparse	published	hover beneath glass	window_columns	1.00
+COUNT	pane	3000	sparse	published	hover beneath glass	rewin_records	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	prefix_tiles	16.00
+COUNT	pane	3000	sparse	published	hover beneath glass	prefix_entries	45.00
+COUNT	pane	3000	sparse	published	hover beneath glass	out_tiles	22.00
+COUNT	pane	3000	sparse	published	hover beneath glass	out_entries	139.00
+COUNT	pane	3000	sparse	published	hover beneath glass	tent_blocks	116.00
+COUNT	pane	3000	sparse	published	hover beneath glass	tent_px	7281.00
+COUNT	pane	3000	sparse	published	hover beneath glass	sched_calls	1.00
+COUNT	pane	3000	sparse	published	hover beneath glass	sched_events_seen	1.00
+COUNT	pane	3000	sparse	published	hover beneath glass	damage_adds	45.00
+COUNT	pane	3000	sparse	published	hover beneath glass	frames	1.00
+COUNT	pane	3000	sparse	published	hover beneath glass	prefix_from_stored	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	out_from_stored	0.00
+COUNT	pane	3000	sparse	published	hover beneath glass	backdrop_runs	22.00
+COUNT	pane	3000	sparse	published	hover beneath glass	sched_layers_with_work	1.00
+counters/frame: bin_calls=0.0 bin_records_walked=0.0 bin_records_live=0.0 bin_cells_count_pass=0.0 bin_cells_fill_pass=0.0 bin_list_entries=0.0 bin_tiles=0.0 window_records=2002.0 window_columns=1.0 rewin_records=0.0 prefix_tiles=16.0 prefix_entries=45.0 out_tiles=22.0 out_entries=139.0 tent_blocks=116.0 tent_px=7281.0 sched_calls=1.0 sched_events_seen=1.0 damage_adds=45.0 frames=1.0 prefix_from_stored=0.0 out_from_stored=0.0 backdrop_runs=22.0 sched_layers_with_work=1.0
+# cell wall 0.2s; load 41.05 49.82 53.20
+
+## pane 3000 cell=glass moves 1 px | 3754 records, 1 layers, active 0 | uninstrumented instr/frame median 22146.6K min 20746.1K mean 22214.0K | tiles 15.8 recs_visited 0.0 prefix 0.3 blocks 4.0 | bracket raw 22651.0K, intervals 279.0, corrected sum 22210.7K (+0.29% vs uninstr median) | wall med 1059us | mismatch 0
+SUMMARY	pane	3000	sparse	published	glass moves 1 px	3754	1	0	22146637	20746115	22650995	279	22210733	15.8	0.0	0.3	4.0	1578
+PHASE	pane	3000	sparse	published	glass moves 1 px	0	harness_other	158	9626	6.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	1	update_glue	579	16359	10.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	3	update_block_diff	63	1641	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	4	update_rewin_touched	1561	3139	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	5	update_layer_regeo_repack	1085	2663	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	6	bins_clear_resize	831	2409	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	7	bins_count_pass	286638	288216	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	8	bins_offsets	19836	21414	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	9	bins_fill_pass	259160	260738	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	10	layer_schedule_dependency	2270	3848	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	11	layer_damage_add_vis_events	262	1840	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	12	prepare_glue	276	10270	6.3
+PHASE	pane	3000	sparse	published	glass moves 1 px	13	prefix_tile_setup(begin,cover,load)	464	990	0.3
+PHASE	pane	3000	sparse	published	glass moves 1 px	14	prefix_store_layer	9703	10229	0.3
+PHASE	pane	3000	sparse	published	glass moves 1 px	15	tent_pyramid_down	45912	52224	4.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	17	shade_admission_checks	518	2096	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	18	out_tile_setup(begin,cover,load)	28818	53803	15.8
+PHASE	pane	3000	sparse	published	glass moves 1 px	19	out_tile_store	125416	150401	15.8
+PHASE	pane	3000	sparse	published	glass moves 1 px	20	out_backdrop_flatten_sample	5191609	5216594	15.8
+PHASE	pane	3000	sparse	published	glass moves 1 px	21	shade_glue	7501	172928	104.8
+PHASE	pane	3000	sparse	published	glass moves 1 px	22	harness_damage_tiles_clear	335	1913	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	23	turn_script_set_retarget	209	1787	1.0
+PHASE	pane	3000	sparse	published	glass moves 1 px	64	prefix_shade[c0]	800	1326	0.3
+PHASE	pane	3000	sparse	published	glass moves 1 px	65	prefix_shade[c1]	121570	122096	0.3
+PHASE	pane	3000	sparse	published	glass moves 1 px	96	out_shade[c0]	26072	46323	12.8
+PHASE	pane	3000	sparse	published	glass moves 1 px	97	out_shade[c1]	14279607	14329709	31.8
+PHASE	pane	3000	sparse	published	glass moves 1 px	98	out_shade[c2]	1594048	1611012	10.8
+PHASE	pane	3000	sparse	published	glass moves 1 px	99	out_shade[c3]	205432	255402	31.7
+phase	corrected_instr_per_frame	%_of_corrected	raw_instr_per_frame	intervals_per_frame
+out_shade[c1]	14279607	64.29	14329709	31.8
+out_backdrop_flatten_sample	5191609	23.37	5216594	15.8
+out_shade[c2]	1594048	7.18	1611012	10.8
+bins_count_pass	286638	1.29	288216	1.0
+bins_fill_pass	259160	1.17	260738	1.0
+out_shade[c3]	205432	0.92	255402	31.7
+out_tile_store	125416	0.56	150401	15.8
+prefix_shade[c1]	121570	0.55	122096	0.3
+tent_pyramid_down	45912	0.21	52224	4.0
+out_tile_setup(begin,cover,load)	28818	0.13	53803	15.8
+out_shade[c0]	26072	0.12	46323	12.8
+bins_offsets	19836	0.09	21414	1.0
+prefix_store_layer	9703	0.04	10229	0.3
+shade_glue	7501	0.03	172928	104.8
+layer_schedule_dependency	2270	0.01	3848	1.0
+update_rewin_touched	1561	0.01	3139	1.0
+update_layer_regeo_repack	1085	0.00	2663	1.0
+bins_clear_resize	831	0.00	2409	1.0
+prefix_shade[c0]	800	0.00	1326	0.3
+update_glue	579	0.00	16359	10.0
+shade_admission_checks	518	0.00	2096	1.0
+prefix_tile_setup(begin,cover,load)	464	0.00	990	0.3
+harness_damage_tiles_clear	335	0.00	1913	1.0
+prepare_glue	276	0.00	10270	6.3
+layer_damage_add_vis_events	262	0.00	1840	1.0
+turn_script_set_retarget	209	0.00	1787	1.0
+harness_other	158	0.00	9626	6.0
+update_block_diff	63	0.00	1641	1.0
+COUNT	pane	3000	sparse	published	glass moves 1 px	bin_calls	1.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	bin_records_walked	3754.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	bin_records_live	2464.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	bin_cells_count_pass	4325.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	bin_cells_fill_pass	4325.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	bin_list_entries	4126.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	bin_tiles	1000.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	window_records	0.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	window_columns	0.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	rewin_records	1.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	prefix_tiles	0.33
+COUNT	pane	3000	sparse	published	glass moves 1 px	prefix_entries	0.67
+COUNT	pane	3000	sparse	published	glass moves 1 px	out_tiles	15.83
+COUNT	pane	3000	sparse	published	glass moves 1 px	out_entries	92.17
+COUNT	pane	3000	sparse	published	glass moves 1 px	tent_blocks	4.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	tent_px	161.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	sched_calls	1.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	sched_events_seen	2.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	damage_adds	1.75
+COUNT	pane	3000	sparse	published	glass moves 1 px	frames	1.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	prefix_from_stored	0.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	out_from_stored	0.00
+COUNT	pane	3000	sparse	published	glass moves 1 px	backdrop_runs	15.83
+COUNT	pane	3000	sparse	published	glass moves 1 px	sched_layers_with_work	0.08
+counters/frame: bin_calls=1.0 bin_records_walked=3754.0 bin_records_live=2464.0 bin_cells_count_pass=4325.0 bin_cells_fill_pass=4325.0 bin_list_entries=4126.0 bin_tiles=1000.0 window_records=0.0 window_columns=0.0 rewin_records=1.0 prefix_tiles=0.3 prefix_entries=0.7 out_tiles=15.8 out_entries=92.2 tent_blocks=4.0 tent_px=161.0 sched_calls=1.0 sched_events_seen=2.0 damage_adds=1.8 frames=1.0 prefix_from_stored=0.0 out_from_stored=0.0 backdrop_runs=15.8 sched_layers_with_work=0.1
+# cell wall 0.1s; load 41.05 49.82 53.20
