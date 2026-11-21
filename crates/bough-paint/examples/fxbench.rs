@@ -106,6 +106,17 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
     let dots = s.column::<ADot>(n / 4 + 4);
     let vids = s.column::<AVideo>(1);
     s.push(back, [0, 0, q(FW as f32), q(FH as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Rec(0xff1a_1410) }, b: Pmo { c: Rec(0xffe8_ecf0) }, t: Uw } });
+    // words 0 and 1 pan every column but the backdrop; the cards compare word 2 with their id
+    if std::env::var("NOINDEX").is_err() {
+        s.scroll(cards, 0, 1);
+        s.scroll(grads, 0, 1);
+        s.scroll(glassc, 0, 1);
+        s.scroll(shaders, 0, 1);
+        s.scroll(dots, 0, 1);
+        s.keyed(cards, 2);
+    }
+    let keyed = std::env::var("NOINDEX").is_err();
+    let mut ncards = 0usize;
     let mut w = World { s, glass: glassc, dots, vids, g_rect: vec![], g_blur: vec![], g_sx: vec![], d_rect: vec![], d_col: vec![], d_sx: vec![], v_rect: vec![], v_dim: vec![], src: vec![], av: vec![], av_published: 0, av_quiet: 0, above: 0, beneath: 0 };
     let rows_in_frame = 8;
     for i in 0..n {
@@ -122,6 +133,10 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
                 rect,
                 Over(Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x3800_0000), tab: Tab::NONE }, Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x4000_0000), tab: Tab::NONE }), RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(id) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(g.color(true)) }, b: Pmo { c: Rec(g.color(true)) }, t: Uw } } }),
             );
+            if keyed {
+                w.s.set_key(cards, ncards, id);
+            }
+            ncards += 1;
         }
         if i % 12 == 5 && (!lean || i == 5) {
             // a glass panel over the two cards to its left and this one (they are beneath it in paint order)
@@ -140,6 +155,10 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
                     RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(chip) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(g.color(true)) }, b: Pmo { c: Rec(g.color(true)) }, t: Uw } } },
                 ),
             );
+            if keyed {
+                w.s.set_key(cards, ncards, chip);
+            }
+            ncards += 1;
         }
         if i % 16 == 9 && !lean {
             w.s.push(shaders, [q(x + 8.0), q(y + 44.0), q(x + 88.0), q(y + 76.0)], Shader { b: pan(), r: Ki, id: Rec((i / 16 % 2) as u32), now: Uw, c: pm(g.color(true)), c2: pm(g.color(false)) });
@@ -157,6 +176,10 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
         [q(430.0), q(40.0), q(490.0), q(70.0)],
         Over(Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x3800_0000), tab: Tab::NONE }, Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x4000_0000), tab: Tab::NONE }), RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(2_000_000) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(0xff40_80c0) }, b: Pmo { c: Rec(0xffc0_8040) }, t: Uw } } }),
     );
+    if keyed {
+        w.s.set_key(cards, ncards, 2_000_000);
+    }
+    ncards += 1;
     // hover targets: that chip, and the plain card in cell 4 beneath the first panel
     (w.above, w.beneath) = (2_000_000, 5);
     w

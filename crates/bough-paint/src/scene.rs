@@ -23,6 +23,9 @@ use wgsl_rs::std::{Vec4, Vec4i, Vec4u};
 /// still drawn exactly where it crosses the surface, and one that lies further away is refused at admission
 /// (`Scene::push` / `set`) rather than wrapped.
 pub const MAX_PX: i32 = 32767;
+/// How far from the origin a rect lane may lie, in pixels (a scrolled world): the record is staged where
+/// its pan puts it, and shaded only when that is near the frame.
+pub const MAX_WORLD_PX: i32 = 1 << 20;
 /// Lanes before the records in a page: x0, y0, x1, y1 (Q8) and the paint-order key.
 pub const LANES: usize = 5;
 /// `order` word: column in the high 12 bits, record index in the low 20.
@@ -177,6 +180,8 @@ pub struct Desc {
     pub(crate) spec: fn(ColView, i: u32, u: &U, x: i32, y: i32, acc: Vec4u, atlas: &[u8], aw: u32, tabs: &[u32], bd: &dyn Fn(Cmd, i32, i32) -> Vec4u, media: &[u32]) -> (Vec4u, bool),
     /// The backdrop command of a record that owns a layer.
     pub(crate) lay: fn(ColView, i: u32, u: &U) -> Option<Cmd>,
+    /// The record's window joined with its halo under `u` (unpacked: for the scroll index).
+    pub(crate) reach: fn(ColView, i: u32, u: &U) -> [i32; 4],
     /// The record as the generic kernel's commands.
     pub(crate) stage: fn(ColView, i: u32, u: &U, out: &mut bough_kernel::stage::Scene),
     pub(crate) pick: fn(ColView, i: u32, u: &U) -> u32,
@@ -334,6 +339,13 @@ fn shade_run<P: Paint>(c: ColView, zs: &[u32], first: usize, order: &[u32], u: &
         unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut Shade(t, fx, lid));
     }
 }
+fn reach_one<P: Paint>(c: ColView, i: u32, u: &U) -> [i32; 4] {
+    let mut ws = WinSink(EMPTY, EMPTY);
+    // SAFETY: as `window_pass`.
+    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i) }, NO_CLIP, &mut ws);
+    let w = crate::ops::ops::x_union(ws.0, ws.1);
+    [w.x, w.y, w.z, w.w]
+}
 fn lay_one<P: Paint>(c: ColView, i: u32, u: &U) -> Option<Cmd> {
     let mut s = LaySink(None);
     // SAFETY: as `window_pass`.
@@ -371,6 +383,7 @@ impl<P: Paint> D<P> {
         layers: P::LAYERS,
         layer: P::LAYER,
         lay: lay_one::<P>,
+        reach: reach_one::<P>,
         code: P::CODE,
         window: window_pass::<P>,
         flat: flat_run::<P>,
@@ -646,6 +659,44 @@ impl Bins {
     }
 }
 
+/// A column's pan and its records by scrolled-space row.
+struct Scroll {
+    wx: usize,
+    wy: usize,
+    /// Rows of 256 px of the scrolled space -> the records whose reach (window and halo, with the pan taken
+    /// out) meets them.
+    rows: std::collections::HashMap<i32, Vec<u32>>,
+    /// Per record: the rows it is listed in (first, one past last); empty when it has no reach.
+    at: Vec<(i32, i32)>,
+}
+impl Scroll {
+    /// Record `i` reaches rows `r` (of the scrolled space) now.
+    fn place(&mut self, i: u32, r: (i32, i32)) {
+        if self.at.len() <= i as usize {
+            self.at.resize(i as usize + 1, (0, 0));
+        }
+        let old = self.at[i as usize];
+        if old == r {
+            return;
+        }
+        for row in old.0..old.1 {
+            if let Some(v) = self.rows.get_mut(&row) {
+                v.retain(|&k| k != i);
+            }
+        }
+        for row in r.0..r.1 {
+            self.rows.entry(row).or_default().push(i);
+        }
+        self.at[i as usize] = r;
+    }
+}
+/// A column's key word and its records by key.
+struct Keyed {
+    word: usize,
+    by_id: std::collections::HashMap<u32, Vec<u32>>,
+    id: Vec<u32>,
+}
+
 /// What a frame did.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FrameStats {
@@ -689,6 +740,10 @@ pub struct Scene {
     rebin: Vec<u32>,
     /// Layers with something due (pending tiles, entered strips, or fresh) and not yet scheduled or repaired.
     lay_todo: std::collections::BTreeSet<u32>,
+    /// Per column: its declared pan and the index of its records by where they are in the scrolled space.
+    scrolls: Vec<Option<Scroll>>,
+    /// Per column: the block word its records are compared with, and its records by key.
+    keys: Vec<Option<Keyed>>,
     /// Bumped when the bins were rebuilt (an executor that mirrors them re-reads them).
     pub bins_epoch: u64,
     /// Measurement switch, never a result's configuration: every layer is recomputed whole on every
@@ -772,6 +827,8 @@ impl Scene {
             act: Vec::new(),
             rebin: Vec::new(),
             lay_todo: Default::default(),
+            scrolls: Vec::new(),
+            keys: Vec::new(),
             bins_epoch: 0,
             fx_nocache: std::env::var("BOUGH_FX_NOCACHE").is_ok(),
             broad: 0,
@@ -796,8 +853,53 @@ impl Scene {
         assert!(self.used + words <= self.tab_base, "arena too small");
         assert!(self.cols.len() < 1 << (32 - IDX_BITS) && cap <= 1 << IDX_BITS);
         self.cols.push(Col { desc, base: self.used, cap, len: 0, active: Vec::new() });
+        self.scrolls.push(None);
+        self.keys.push(None);
         self.used += words;
         ColId(self.cols.len() - 1, PhantomData)
+    }
+    /// Declare that block words `wx` and `wy` are column `col`'s pan: its records depend on them only through
+    /// a translation of their boxes by (`u[wx]`, `u[wy]`) (Q8), as `Off<Lane, I<Uw<wx>>, I<Uw<wy>>>` does.
+    /// A change of the pan then visits only the records near the old and the new viewport: the scene keeps
+    /// the column's records by where they are in the scrolled space. The declaration is trusted (a column
+    /// that read the words any other way would be drawn stale; `tests/fx.rs` holds the declared scene equal
+    /// to the undeclared one).
+    pub fn scroll<P: Paint>(&mut self, col: ColId<P>, wx: usize, wy: usize) {
+        assert!(wx < 64 && wy < 64 && wx != wy);
+        self.scrolls[col.0] = Some(Scroll { wx, wy, rows: Default::default(), at: Vec::new() });
+        self.first = true;
+    }
+    /// Declare that column `col`'s records depend on block word `word` only by comparing it with their own
+    /// key (`Eq<Uw<word>, Rec>`): a change of the word visits the records keyed by its old and its new
+    /// value (`set_key`). Trusted, as `scroll`.
+    pub fn keyed<P: Paint>(&mut self, col: ColId<P>, word: usize) {
+        assert!(word < 64);
+        self.keys[col.0] = Some(Keyed { word, by_id: Default::default(), id: Vec::new() });
+    }
+    /// Record `i` of a keyed column has key `id`.
+    pub fn set_key<P: Paint>(&mut self, col: ColId<P>, i: usize, id: u32) {
+        let k = self.keys[col.0].as_mut().expect("the column is not keyed");
+        if k.id.len() <= i {
+            k.id.resize(i + 1, u32::MAX);
+        }
+        let old = std::mem::replace(&mut k.id[i], id);
+        if old != id {
+            if let Some(v) = k.by_id.get_mut(&old) {
+                v.retain(|&r| r != i as u32);
+            }
+            k.by_id.entry(id).or_default().push(i as u32);
+        }
+    }
+    /// Bring record `i` of a scrolled column to where it is in the scrolled space under `u`: its reach is
+    /// evaluated under a pan that puts its box at the origin (so nothing is clamped), then the pan is taken out.
+    fn reindex(scroll: &mut Scroll, d: &Desc, v: ColView, i: u32, u: &U) {
+        let rect = v.rect(i);
+        let (px, py) = (-(rect[0] >> 8), -(rect[1] >> 8));
+        let mut at = *u;
+        (at.w[scroll.wx], at.w[scroll.wy]) = ((px << 8) as u32, (py << 8) as u32);
+        let w = (d.reach)(v, i, &at);
+        let rows = if w[0] < w[2] && w[1] < w[3] { ((w[1] - py) >> 8, ((w[3] - py - 1) >> 8) + 1) } else { (0, 0) };
+        scroll.place(i, rows);
     }
     /// Append a record: its rect lanes (Q8) and its value. Paint order is mount order. Returns its key.
     pub fn push<P: Paint>(&mut self, col: ColId<P>, rect: [i32; 4], p: P) -> u32 {
@@ -855,7 +957,13 @@ impl Scene {
     fn memo<P: Paint>(&mut self, rect: [i32; 4], mut p: P) -> P {
         // admission: the kernels' Q8 arithmetic (offsets from a pixel centre, products with a blur's
         // inverse width) is proved for coordinates of at most 2^15 pixels
-        assert!(rect.iter().all(|v| v.abs() <= MAX_PX * 256 + 255), "a rect lane beyond +-{MAX_PX} px: {rect:?}");
+        // ... and that is about the pixel being shaded against the staged box: windows are clamped to 16 bits
+        // and a box is only ever shaded inside its window, so what must be bounded is a record's own extent
+        // (a box wider than the range has edges no pixel of the frame is near) and, loosely, where it lies
+        // (so that Q8 lanes and a pan added to them stay inside 32 bits).
+        let near = rect.iter().all(|v| v.abs() <= MAX_PX * 256 + 255);
+        let far_but_small = rect.iter().all(|v| v.abs() <= MAX_WORLD_PX * 256) && (rect[2] as i64 - rect[0] as i64).abs() <= MAX_PX as i64 * 256 + 255 && (rect[3] as i64 - rect[1] as i64).abs() <= MAX_PX as i64 * 256 + 255;
+        assert!(near || far_but_small, "a rect lane beyond +-{MAX_PX} px of a record wider than that, or beyond +-{MAX_WORLD_PX} px: {rect:?}");
         if !self.memoise {
             return p;
         }
@@ -985,6 +1093,9 @@ impl Scene {
                         self.cols[ci].active.push(i);
                     }
                 }
+                if let Some(sc) = self.scrolls[ci].as_mut() {
+                    Self::reindex(sc, self.cols[ci].desc, view_of(&self.arena, &self.cols[ci]), o & IDX_MASK, u);
+                }
             }
         }
         touched.clear();
@@ -1002,17 +1113,85 @@ impl Scene {
             } else {
                 mask
             };
-            let full = first || d.reads & (mask & !tbit) != 0;
-            if !full && (mask & d.reads & tbit == 0 || self.cols[ci].active.is_empty()) {
+            // what moved for this column besides the clock; a pan or a key word it declared is answered by
+            // its index (the records that can show a difference), anything else by the whole column
+            let bits = d.reads & mask & !tbit;
+            let timed = mask & d.reads & tbit != 0 && !self.cols[ci].active.is_empty();
+            let mut cand: Option<Vec<u32>> = None;
+            if !first && bits != 0 {
+                let (mut rest, mut c) = (bits, Vec::new());
+                if let Some(sc) = self.scrolls[ci].as_ref() {
+                    if rest & (1 << sc.wx | 1 << sc.wy) != 0 {
+                        // the rows of the scrolled space the frame showed and shows
+                        for (k, b) in [&self.prev, u].into_iter().enumerate() {
+                            if k == 0 && cfg!(feature = "mutant_scroll_band") {
+                                continue;
+                            }
+                            let py = (b.w[sc.wy] as i32) >> 8;
+                            for row in (-py) >> 8..=(self.fh as i32 - py) >> 8 {
+                                if let Some(v) = sc.rows.get(&row) {
+                                    c.extend_from_slice(v);
+                                }
+                            }
+                        }
+                        rest &= !(1 << sc.wx | 1 << sc.wy);
+                    }
+                }
+                if let Some(k) = self.keys[ci].as_ref() {
+                    if rest & (1 << k.word) != 0 {
+                        for (j, id) in [self.prev.w[k.word], u.w[k.word]].into_iter().enumerate() {
+                            if j == 0 && cfg!(feature = "mutant_key_old") {
+                                continue;
+                            }
+                            if let Some(v) = k.by_id.get(&id) {
+                                c.extend_from_slice(v);
+                            }
+                        }
+                        rest &= !(1 << k.word);
+                    }
+                }
+                if rest == 0 {
+                    if timed {
+                        c.extend_from_slice(&self.cols[ci].active);
+                    }
+                    c.sort_unstable();
+                    c.dedup();
+                    cand = Some(c);
+                }
+            }
+            let indexed = cand.is_some();
+            let full = first || (bits != 0 && !indexed);
+            if !full && !indexed && !timed {
                 continue;
             }
-            let only = (!full).then(|| std::mem::take(&mut self.cols[ci].active));
+            // a pan-only visit leaves a record where it is in the scrolled space; any other visit may move it
+            let pan_only = indexed && self.scrolls[ci].as_ref().is_some_and(|sc| bits & !(1 << sc.wx | 1 << sc.wy) == 0) && !timed;
+            let keep_active = indexed && !timed;
+            let only = if full { None } else if indexed { cand } else { Some(std::mem::take(&mut self.cols[ci].active)) };
             fs.cols_visited += 1;
             fs.recs_visited += only.as_ref().map_or(self.cols[ci].len, Vec::len) as u32;
             let v = view_of(&self.arena, &self.cols[ci]);
             act.clear();
             moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
-            std::mem::swap(&mut self.cols[ci].active, &mut act);
+            if keep_active {
+                // the visit was by index: records in motion that it did not reach stay in the set
+                for &i in &act {
+                    if !self.cols[ci].active.contains(&i) {
+                        self.cols[ci].active.push(i);
+                    }
+                }
+            } else {
+                std::mem::swap(&mut self.cols[ci].active, &mut act);
+            }
+            if !pan_only {
+                if let Some(sc) = self.scrolls[ci].as_mut() {
+                    let v = view_of(&self.arena, &self.cols[ci]);
+                    match only.as_deref() {
+                        Some(o) => o.iter().for_each(|&i| Self::reindex(sc, d, v, i, u)),
+                        None => (0..self.cols[ci].len as u32).for_each(|i| Self::reindex(sc, d, v, i, u)),
+                    }
+                }
+            }
         }
         // the layers follow their records
         let lay_on = self.layers.any();

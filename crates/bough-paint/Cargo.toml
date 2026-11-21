@@ -64,3 +64,7 @@ mutant_broad_layers = []
 mutant_full_stale = []
 # a repaired block in an even column counts as unchanged whatever it holds (tests/fx.rs must fail)
 mutant_prune = []
+# a pan visits the records near the new viewport only, not those near the old one (tests/fx.rs must fail)
+mutant_scroll_band = []
+# a change of a key word visits the records of its new value only (tests/fx.rs must fail)
+mutant_key_old = []
