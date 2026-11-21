@@ -16,7 +16,7 @@ Calling-thread instructions per input tick. `BOUGH_KPROF=1` brackets cull, stagi
 | Residual | 120,352 | 113,925 | 126,499 |
 | Total | 2,416,912 | 11,382,146 | 54,698,944 |
 
-The one translucent card changes its position at the front of the same stack. Damaged tiles cover the same 1.23% of the surface on average, but all contributors in those tiles are staged, binned and blended. The 5,000-card case spends 96.8% of calling-thread instructions in raster. The next largest terms are command staging and binning. Both get more candidates from the dense stack even when the damaged area stays constant. Sample attribution places `bough_kernel::cpu::shade_tile` and its inlined edge closure on the CPU. The input slope comes from `Rt::step_transitions`, which calls the type-erased `is_active` for every registered operand. The new sorted active IDs preserve original applier order and remove the table scan.
+The one translucent card changes its position at the front of the same stack. Damaged tiles cover the same 1.23% of the surface on average, but all contributors in those tiles are staged, binned and blended. The 5,000-card case spends 96.8% of calling-thread instructions in raster. The next largest terms are command staging and binning. Both get more candidates from the dense stack even when the damaged area stays constant. Sample attribution places `bough_kernel::cpu::shade_tile` and its inlined edge closure on the CPU. The input slope comes from `Rt::step_transitions`, which calls the type-erased `is_active` for every registered operand. The measured slope is exactly 32 additional calling-thread instructions per dormant card across both size increments. The fixture registers four inactive operands per ordinary card, giving eight instructions per dormant operand in this trace. The new sorted active IDs preserve original applier order and remove the table scan.
 
 | Input/tick only | 200 | 1,000 | 5,000 |
 |---|---:|---:|---:|
@@ -40,6 +40,14 @@ The calling-thread phase brackets separately measure `tick`, input state writes 
 | Record visits after | 201 | 1,001 | 5,001 |
 
 `Soft::repair` used to call `World::paint` once per marked tile, including each tile in a first-use ring surface. `Store::paint` walks the paint order, then `ColRef::each` walks live bits and loads the rectangle and its record before the leaf clips it. The unsupplied state operands, pointer and exposed active set are outside the growing phase in this trace. This adapter does not run the `bough-span` executor. Rectangle coalescing eliminates redundant walks and retains exact clipping via an area certificate. Ring ages, a nonrectangular control, and the existing animation fixture cover the change. The remaining full-store walk makes the 1.2× end-to-end target an open structural change.
+
+The first use of each ring buffer contributed three large redraws to the 20-step mean. The warm-ring subtrace starts at step 3 and isolates repeated repair of the small damage. The data below are calling-thread paint instructions and record visits per tick in that subtrace.
+
+| Cards | Before paint instructions | After paint instructions | Before visits | After visits |
+|---:|---:|---:|---:|---:|
+| 200 | 60,963 | 20,455 | 804 | 201 |
+| 1000 | 273,171 | 84,399 | 4,004 | 1,001 |
+| 5000 | 1,334,427 | 404,173 | 20,004 | 5,001 |
 
 ## Structural locality design
 
