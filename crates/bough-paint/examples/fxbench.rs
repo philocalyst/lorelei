@@ -14,6 +14,8 @@
 //! The scenes are tall worlds seen through a 1280 x 800 frame (word 1 scrolls): more cards or videos is more
 //! world, as in an application, not more layers on one spot. `effects <n> dense` puts every card in the
 //! frame instead (depth grows with n), reported apart.
+use bough_audio::sync::Pacer;
+use bough_audio::{Block, NullSink, Spec, Tone};
 use bough_kernel::cpu::Pool;
 use bough_kernel::scenes::Rng;
 use bough_mem::pmu;
@@ -79,6 +81,13 @@ struct World {
     v_rect: Vec<[i32; 4]>,
     v_dim: Vec<(u32, u32)>,
     src: Vec<Synth>,
+    /// Per video: its audio (a null sink playing a tone, pumped at the tile's own device rate), the pacer
+    /// that picks its frame from that clock, and when its next audio block is due (host ns) and how long
+    /// a block lasts on its device.
+    av: Vec<(NullSink<Box<dyn FnMut(&mut Block) + Send>>, Pacer, u64, u64)>,
+    /// Frames published by the pacers, and refreshes at which no tile had a new frame.
+    av_published: u64,
+    av_quiet: u64,
     /// Ids of a card above every glass panel and of one beneath a glass panel (hover targets).
     above: u32,
     beneath: u32,
@@ -97,7 +106,7 @@ fn effects(n: usize, dense: bool, lean: bool) -> World {
     let dots = s.column::<ADot>(n / 4 + 4);
     let vids = s.column::<AVideo>(1);
     s.push(back, [0, 0, q(FW as f32), q(FH as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Rec(0xff1a_1410) }, b: Pmo { c: Rec(0xffe8_ecf0) }, t: Uw } });
-    let mut w = World { s, glass: glassc, dots, vids, g_rect: vec![], g_blur: vec![], g_sx: vec![], d_rect: vec![], d_col: vec![], d_sx: vec![], v_rect: vec![], v_dim: vec![], src: vec![], above: 0, beneath: 0 };
+    let mut w = World { s, glass: glassc, dots, vids, g_rect: vec![], g_blur: vec![], g_sx: vec![], d_rect: vec![], d_col: vec![], d_sx: vec![], v_rect: vec![], v_dim: vec![], src: vec![], av: vec![], av_published: 0, av_quiet: 0, above: 0, beneath: 0 };
     let rows_in_frame = 8;
     for i in 0..n {
         let (cx, row) = (i % 12, i / 12);
@@ -165,7 +174,7 @@ fn media(nv: usize) -> World {
     let glassc = s.column::<AGlass>(nv / 6 + 4);
     let dots = s.column::<ADot>(nv + 4);
     s.push(back, [0, 0, q(FW as f32), q(FH as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Rec(0xff10_1418) }, b: Pmo { c: Rec(0xffe8_ecf0) }, t: Uw } });
-    let mut w = World { s, glass: glassc, dots, vids, g_rect: vec![], g_blur: vec![], g_sx: vec![], d_rect: vec![], d_col: vec![], d_sx: vec![], v_rect: vec![], v_dim: vec![], src: vec![], above: 0, beneath: 0 };
+    let mut w = World { s, glass: glassc, dots, vids, g_rect: vec![], g_blur: vec![], g_sx: vec![], d_rect: vec![], d_col: vec![], d_sx: vec![], v_rect: vec![], v_dim: vec![], src: vec![], av: vec![], av_published: 0, av_quiet: 0, above: 0, beneath: 0 };
     for i in 0..nv {
         let (cx, row) = (i % 6, i / 6);
         let (x, y) = (12.0 + cx as f32 * 212.0, 12.0 + row as f32 * 132.0);
@@ -184,6 +193,11 @@ fn media(nv: usize) -> World {
         let slot = src.next(&mut w.s.media).expect("media pool");
         w.s.push(vids, rect, Video { b: pan(), r: Ki, slot: Rec(slot), dims: Rec(vw | vh << 16), op: Rec(if i % 5 == 4 { 26_000 } else { 32_768 }) });
         (w.v_rect.push(rect), w.v_dim.push((vw, vh)), w.src.push(src));
+        // its sound: 48 kHz, 10 ms blocks, on a device up to 0.5 % fast or slow (each tile its own)
+        let mut tone = Tone::new(220 + 20 * i as u32, 48_000, 6000);
+        let render: Box<dyn FnMut(&mut Block) + Send> = Box::new(move |b: &mut Block| tone.fill(b));
+        let skew = (i as i64 % 11 - 5) * 10_000;
+        w.av.push((NullSink::new(Spec::STEREO_48K, 480, render), Pacer::new(30, 1), 0, (10_000_000 + skew) as u64));
         if i % 12 == 2 {
             let r = [q(x - 120.0), q(y + 30.0), q(x + 110.0), q(y + 96.0)];
             let (sx, sy) = (Spring::rest(0), Spring::rest(0));
@@ -220,6 +234,8 @@ enum Cell {
     VideoUnderGlass,
     /// Every video publishes on every fourth frame (30 fps content at 120 Hz).
     AllVideos,
+    /// Every video shows the frame its own audio clock is playing at each 120 Hz refresh (30 fps content).
+    AvPlayback,
     /// The first glass panel moves a pixel a frame while the videos beneath it play (every fourth frame).
     GlassOverVideo,
 }
@@ -237,6 +253,7 @@ impl Cell {
             Cell::OneVideo => "one video frame",
             Cell::VideoUnderGlass => "video under glass",
             Cell::AllVideos => "all videos (every 4th)",
+            Cell::AvPlayback => "a/v playback (audio clocks)",
             Cell::GlassOverVideo => "glass over playing video",
         }
     }
@@ -245,12 +262,32 @@ impl Cell {
 /// Frame `f` of `cell`: the untimed part (a decoder's work). Returns the slots to publish.
 fn decode(cell: Cell, f: usize, w: &mut World) -> Vec<(usize, u32)> {
     let which: Vec<usize> = match cell {
-        Cell::OneVideo => vec![4],
+        Cell::OneVideo => vec![3],
         Cell::VideoUnderGlass => vec![1],
         Cell::AllVideos | Cell::GlassOverVideo if f % 4 == 0 => (0..w.src.len()).collect(),
         _ => vec![],
     };
     let mut out = Vec::new();
+    if cell == Cell::AvPlayback {
+        // the instant this refresh is shown; each tile's device has delivered its blocks up to it
+        let present = f as u64 * 1_000_000_000 / 120;
+        for i in 0..w.av.len() {
+            let (sink, pacer, due, block_ns) = &mut w.av[i];
+            while *due <= present {
+                sink.pump(480, *due);
+                *due += *block_ns;
+            }
+            if let Some(frame) = pacer.at(&sink.clock(), present) {
+                w.src[i].seq = frame as u32;
+                if let Some(slot) = w.src[i].next(&mut w.s.media) {
+                    out.push((i, slot));
+                    w.av_published += 1;
+                }
+            }
+        }
+        w.av_quiet += out.is_empty() as u64;
+        return out;
+    }
     for i in which {
         if i < w.src.len() {
             if let Some(slot) = w.src[i].next(&mut w.s.media) {
@@ -291,7 +328,7 @@ fn turn(cell: Cell, f: usize, u: &mut U, w: &mut World, slots: &[(usize, u32)]) 
                 w.s.set(w.glass, 0, w.g_rect[0], glass(w.g_blur[0], &w.g_sx[0], &Spring::rest(0)));
             }
         }
-        Cell::OneVideo | Cell::VideoUnderGlass | Cell::AllVideos => {}
+        Cell::OneVideo | Cell::VideoUnderGlass | Cell::AllVideos | Cell::AvPlayback => {}
     }
 }
 
@@ -358,6 +395,10 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
             }
             Some(g) => gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu,
         }
+        if cell == Cell::AvPlayback && f > 0 && slots.is_empty() {
+            // T1: a refresh at which no tile has a new frame is an idle frame
+            assert_eq!((tiles.len(), fs.recs_visited), (0, 0), "a refresh with no new video frame did work");
+        }
         let wall = t0.elapsed().as_secs_f64();
         let (i1, _) = pmu::instructions_cycles();
         w.s.media.reclaim();
@@ -374,6 +415,13 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
         }
     }
     row.active = w.s.active_records();
+    if cell == Cell::AvPlayback && exec == Exec::Cpu {
+        // T2: every frame an audio clock crossed was published once (the pacers' last frames say how many)
+        let crossed: u64 = w.av.iter().map(|a| a.1.shown().map_or(0, |f| f + 1)).sum();
+        let audio: Vec<String> = w.av.iter().take(6).map(|a| format!("{}", a.0.position())).collect();
+        println!("# a/v: {} tiles over {} refreshes: {} frames crossed by the audio clocks, {} published, {} refreshes with none; audio frames delivered by the first tiles: {}", w.av.len(), warm + reps - 1, crossed, w.av_published, w.av_quiet, audio.join(" "));
+        assert_eq!(crossed, w.av_published);
+    }
     row.layers_px = w.s.layers.list.iter().map(|l| l.lv.iter().map(|v| ((v.r[2] - v.r[0]) * (v.r[3] - v.r[1])) as u64).sum::<u64>()).sum();
     // validity: the retained surface against a full redraw of the same scene state (a second surface, every
     // tile, through the same scene: `invalidate` forgets what the surface shows)
@@ -399,7 +447,7 @@ fn main() {
     let lean = scene == "pane";
     let make: Box<dyn Fn() -> World> = if scene == "media" { Box::new(move || media(n)) } else { Box::new(move || effects(n, dense, lean)) };
     let cells: &[Cell] = match scene {
-        "media" => &[Cell::Idle, Cell::OneVideo, Cell::VideoUnderGlass, Cell::AllVideos, Cell::Scroll, Cell::HoverAbove, Cell::Theme, Cell::AllSprings, Cell::GlassOverVideo],
+        "media" => &[Cell::Idle, Cell::OneVideo, Cell::VideoUnderGlass, Cell::AllVideos, Cell::AvPlayback, Cell::Scroll, Cell::HoverAbove, Cell::Theme, Cell::AllSprings, Cell::GlassOverVideo],
         "pane" => &[Cell::Idle, Cell::OneSpring, Cell::AllSprings, Cell::HoverAbove, Cell::HoverBeneath, Cell::GlassMoves],
         _ => &[Cell::Idle, Cell::OneSpring, Cell::AllSprings, Cell::Scroll, Cell::HoverAbove, Cell::HoverBeneath, Cell::Theme, Cell::GlassMoves],
     };
@@ -408,6 +456,18 @@ fn main() {
     println!("# scene: {} records in {} columns, {} layers, {} glass / {} dots / {} videos; media pool {} slots", w.s.records(), w.s.cols().len(), w.s.layers.list.len(), w.g_rect.len(), w.d_rect.len(), w.v_rect.len(), w.s.media.stats().0);
     drop(w);
     println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch");
+    if scene == "media" {
+        // T3: what the pacer costs per tile per refresh
+        let mut sink = NullSink::new(Spec::STEREO_48K, 480, |_: &mut Block| {});
+        (0..100u64).for_each(|k| sink.pump(480, k * 10_000_000));
+        let (clock, mut pacer, mut n) = (sink.clock(), Pacer::new(30, 1), 0u64);
+        let (i0, _) = pmu::instructions_cycles();
+        for k in 0..100_000u64 {
+            n += pacer.at(&clock, std::hint::black_box(k * 8_333)).is_some() as u64;
+        }
+        let (i1, _) = pmu::instructions_cycles();
+        println!("# pacer: {:.1} instructions per call ({n} frame changes in 100000 calls)", (i1 - i0) as f64 / 1e5);
+    }
     let mut bad_total = 0;
     for &cell in cells {
         for (exec, name) in [(Exec::Cpu, "cpu1"), (Exec::CpuNoCache, "cpu1-nocache"), (Exec::Metal, "metal")] {

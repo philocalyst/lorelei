@@ -1,0 +1,75 @@
+## fxbench media 4 @audio  5:17  up 4 days,  8:10, 5 users, load averages: 18.95 18.91 20.46
+# fxbench media 4; 1280x800; reps 240; load at start: 17.64 18.53 20.28
+# scene: 14 records in 5 columns, 1 layers, 1 glass / 4 dots / 4 videos; media pool 4 slots
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch
+# pacer: 99.0 instructions per call (1 frame changes in 100000 calls)
+media	4	idle	cpu1	0.0	0.0	0.0	0.0	0	57556	0	5.4	5.4	5.5	0	0	0
+media	4	idle	cpu1-nocache	27.0	0.0	45.0	162.0	11476	57556	0	39532.5	39526.5	39533.2	2034	0	0
+media	4	idle	metal	0.0	0.0	0.0	0.0	0	57556	0	52.3	49.5	52.7	25	0	0
+media	4	one video frame	cpu1	28.0	0.0	0.0	0.0	0	57556	0	11141.4	11141.4	11143.0	561	0	0
+media	4	one video frame	cpu1-nocache	55.0	0.0	45.0	162.0	11476	57556	0	50663.3	50657.7	50664.1	2596	0	0
+media	4	one video frame	metal	28.0	0.0	0.0	0.0	0	57556	0	73.3	71.6	73.6	326	113	0
+media	4	video under glass	cpu1	44.0	0.0	20.0	132.0	8070	57556	0	38021.1	38015.5	38021.1	1948	0	0
+media	4	video under glass	cpu1-nocache	44.0	0.0	45.0	162.0	11476	57556	0	49211.6	49206.1	49213.2	2497	0	0
+media	4	video under glass	metal	44.0	0.0	20.0	132.0	8070	57556	0	158.5	155.9	158.8	565	330	0
+media	4	all videos (every 4th)	cpu1	27.0	0.0	9.0	40.5	2869	57556	0	7.1	5.4	17526.9	0	0	0
+media	4	all videos (every 4th)	cpu1-nocache	47.2	0.0	45.0	162.0	11476	57556	0	39529.3	39523.3	48334.7	2035	0	0
+media	4	all videos (every 4th)	metal	27.0	0.0	9.0	40.5	2869	57556	0	52.8	47.7	86.9	37	0	0
+# a/v: 4 tiles over 247 refreshes: 249 frames crossed by the audio clocks, 249 published, 173 refreshes with none; audio frames delivered by the first tiles: 99360 99360 99360 99360
+media	4	a/v playback (audio clocks)	cpu1	27.3	0.0	9.0	40.5	2869	57556	0	7.1	5.4	17725.8	1	0	0
+
+thread 'main' (6531183) panicked at crates/bough-paint/examples/fxbench.rs:400:13:
+assertion `left == right` failed: a refresh with no new video frame did work
+  left: (27, 0)
+ right: (0, 0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+## fxbench media 24 @audio  5:17  up 4 days,  8:10, 5 users, load averages: 18.15 18.62 20.30
+# fxbench media 24; 1280x800; reps 240; load at start: 18.59 18.80 20.31
+# scene: 75 records in 5 columns, 2 layers, 2 glass / 24 dots / 24 videos; media pool 24 slots
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch
+# pacer: 99.0 instructions per call (1 frame changes in 100000 calls)
+media	24	idle	cpu1	0.0	0.0	0.0	0.0	0	115112	0	5.5	5.5	5.6	0	0	0
+media	24	idle	cpu1-nocache	54.0	0.0	90.0	324.0	22952	115112	0	83918.3	83907.6	83924.1	4253	0	0
+media	24	idle	metal	0.0	0.0	0.0	0.0	0	115112	0	51.4	49.6	52.0	20	0	0
+media	24	one video frame	cpu1	28.0	0.0	0.0	0.0	0	115112	0	14337.5	14337.5	14339.7	691	0	0
+media	24	one video frame	cpu1-nocache	82.0	0.0	90.0	324.0	22952	115112	0	98239.4	98234.1	98242.1	4934	0	0
+media	24	one video frame	metal	28.0	0.0	0.0	0.0	0	115112	0	73.6	72.8	74.2	421	195	0
+media	24	video under glass	cpu1	44.0	0.0	20.0	132.0	8070	115112	0	39987.5	39981.7	39987.4	2023	0	0
+media	24	video under glass	cpu1-nocache	71.0	0.0	90.0	324.0	22952	115112	0	94449.7	94440.1	94459.3	4748	0	0
+media	24	video under glass	metal	44.0	0.0	20.0	132.0	8070	115112	0	160.3	157.7	160.7	611	380	0
+media	24	all videos (every 4th)	cpu1	170.0	0.0	20.2	81.0	5738	115112	0	8.5	5.4	99941.5	1	0	0
+media	24	all videos (every 4th)	cpu1-nocache	210.5	0.0	90.0	324.0	22952	115112	0	83911.1	83904.6	164559.0	4247	0	0
+media	24	all videos (every 4th)	metal	170.0	0.0	20.2	81.0	5738	115112	0	54.1	49.5	144.3	27	0	0
+# a/v: 24 tiles over 247 refreshes: 1491 frames crossed by the audio clocks, 1491 published, 101 refreshes with none; audio frames delivered by the first tiles: 99360 99360 99360 99360 99360 98880
+media	24	a/v playback (audio clocks)	cpu1	200.2	0.0	22.5	108.0	7022	115112	0	176328.1	5.3	125784.9	8340	0	0
+
+thread 'main' (6542806) panicked at crates/bough-paint/examples/fxbench.rs:400:13:
+assertion `left == right` failed: a refresh with no new video frame did work
+  left: (54, 0)
+ right: (0, 0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+## fxbench media 48 @audio  5:18  up 4 days,  8:11, 5 users, load averages: 16.87 18.43 20.16
+# fxbench media 48; 1280x800; reps 240; load at start: 28.12 25.79 23.37
+# scene: 149 records in 5 columns, 4 layers, 4 glass / 48 dots / 48 videos; media pool 48 slots
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch
+# pacer: 99.0 instructions per call (1 frame changes in 100000 calls)
+media	48	idle	cpu1	0.0	0.0	0.0	0.0	0	163452	0	5.4	5.3	5.5	0	0	0
+media	48	idle	cpu1-nocache	81.0	0.0	126.0	468.0	34428	163452	0	122180.6	122162.7	122184.1	6255	0	0
+media	48	idle	metal	0.0	0.0	0.0	0.0	0	163452	0	52.5	49.2	52.9	31	0	0
+media	48	one video frame	cpu1	28.0	0.0	0.0	0.0	0	163452	0	14338.4	14338.4	14340.2	692	0	0
+media	48	one video frame	cpu1-nocache	109.0	0.0	126.0	468.0	34428	163452	0	136510.2	136488.2	136514.7	6986	0	0
+media	48	one video frame	metal	28.0	0.0	0.0	0.0	0	163452	0	75.6	73.0	75.8	456	194	0
+media	48	video under glass	cpu1	44.0	0.0	20.0	132.0	8070	163452	0	39988.4	39982.8	39991.7	2040	0	0
+media	48	video under glass	cpu1-nocache	98.0	0.0	126.0	468.0	34428	163452	0	132711.5	132693.8	132714.9	6778	0	0
+media	48	video under glass	metal	44.0	0.0	20.0	132.0	8070	163452	0	166.9	160.1	173.5	762	376	0
+media	48	all videos (every 4th)	cpu1	250.0	0.0	29.2	117.0	8607	163452	0	9.5	5.3	152619.7	2	0	0
+media	48	all videos (every 4th)	cpu1-nocache	310.8	0.0	126.0	468.0	34428	163452	0	122165.0	122159.3	246504.3	6258	0	0
+media	48	all videos (every 4th)	metal	250.0	0.0	29.2	117.0	8607	163452	0	66.3	50.4	200.3	126	0	0
+# a/v: 48 tiles over 247 refreshes: 2981 frames crossed by the audio clocks, 2981 published, 101 refreshes with none; audio frames delivered by the first tiles: 99360 99360 99360 99360 99360 98880
+media	48	a/v playback (audio clocks)	cpu1	299.6	0.0	31.5	144.0	9890	163452	0	268456.3	5.3	193697.6	12622	0	0
+
+thread 'main' (6938813) panicked at crates/bough-paint/examples/fxbench.rs:400:13:
+assertion `left == right` failed: a refresh with no new video frame did work
+  left: (81, 0)
+ right: (0, 0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -187,3 +187,46 @@ Neither system's numbers for these effects were run here (the zgx checkout is sh
 drivers did not build in the measurement lane's run; zgui's effects benchmarks need its own harness): the
 comparisons above are of mechanisms, and the column on the right is this implementation measured against
 its own control, not against them.
+
+## 7. Audio (slice 2): a callback, a clock, and audio as the master of video
+
+Crate `bough-audio` (no dependencies; `bough-paint` does not depend on it, only its benchmark does). Card and
+report: `cards/2026-11-21-audio-seam-slice2*.md`.
+
+**The interface.** A stream has a `Spec` (rate, channels), a `Flow`, and one callback (`Render`, any
+`FnMut(&mut Block) + Send`). A `Block` is the interleaved samples for this call only (zeroed on entry), the
+stream position of its first frame, and the latency to the ear in frames. That is the whole playback
+surface. A decoder on another thread reaches the callback through `ring` (single producer, single consumer,
+samples as atomics: safe code; the producer leases slots the callback cannot see and commits them; the
+callback never waits, and what is missing is silence).
+
+**The clock.** The sink stamps a `Clock` after every block: frames delivered, the host time of the stamp,
+rate, latency, and the block's length. `Clock::audible_frame(host_ns)` is the delivered count less the
+latency, carried forward at the stream's rate by at most one block: a stream whose callback stopped coming
+is not playing, so its position holds. A sequence lock over atomics, sequentially consistent (the weaker
+orderings tore a stamp on arm64 under the gate).
+
+**A/V sync through the output-paced clock.** At each refresh the host has one instant: when the frame it is
+drawing will be shown. `motion::FrameClock::present(instant)` makes it the `Time` word; `sync::Pacer::at(clock,
+instant)` makes it "which video frame belongs to the sound heard at that instant". A changed index is a frame
+to publish (one record word; the video's window is damaged); an unchanged one is nothing: no record visited,
+no tile. The video never reads a wall clock, so a device 0.5 % fast drags the video with it, a stall holds the
+frame, and a seek is a change of the pacer's origin. Many videos are many clocks and many pacers; each costs a
+few dozen instructions per refresh and nothing in the raster unless its frame changed.
+
+**Sinks.** `NullSink` has no device and no thread: the test pumps it at host times of its choosing, which is
+what makes every gate deterministic (rate skew, jitter, stalls are scripted). `coreaudio::Output` (feature
+`coreaudio`, macOS) is the default output unit with the same callback and the same clock; output only, so no
+permission prompt; it was run here rendering silence.
+
+**What was taken from Boilerpipe** (`src/root.zig`, `src/Callback.zig`, `src/linux/jack.zig`), and what was not:
+
+| Boilerpipe | here |
+|---|---|
+| one callback started on the session; the buffer is acquired inside it and must not be cached across calls (`Connection.getBuffer`) | `Render` over a `Block` that borrows the samples for the call: the borrow checker enforces what Boilerpipe documents |
+| `Callback.init(pointer, function)`: a typed pointer and a function, to avoid globals | a closure: its captures are the typed state; `Send` is the thread contract |
+| `Flow { receives, sends }` from the port's side; one session-wide sample rate; a small fixed channel limit | `Flow` with the same words; one `Spec` per stream |
+| "boilerplate-less": default port, connect, start | `Output::start(spec, callback)`: one call to sound |
+| ports, port iteration, connections between other applications' ports, loopback and application capture | **not taken yet**: only the default output exists. `Flow::Sends` is declared so capture, loopback and application capture have their place; device enumeration is the next step |
+| JACK's process callback as the model of a low-latency backend | CoreAudio's render callback is the same shape |
+| (absent: the application keeps time) | the explicit `Clock`, the latency in every block, and the pacer: what a UI needs to put pictures on sound |
