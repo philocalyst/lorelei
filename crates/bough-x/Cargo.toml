@@ -45,3 +45,5 @@ mutant_keyed = []
 mutant_near = []
 # a swept rect is not handed over (tests/select.rs must fail)
 mutant_swept = []
+# the column-wide derivative of a constant-free archetype answers "unchanged" (tests/uniform.rs must fail)
+mutant_uniform = []

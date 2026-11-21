@@ -138,3 +138,23 @@ one binary (allocation of the result vector, most likely). Every ratio above aga
 7. zgui's gates worth porting next, in order: named-gate lists (a gate fails if a test it names is gone), the
    ledger self-test (every mutant feature is run by one script and must fail), a same-run slope gate for the
    "flat" claims above (the 2,048 / 16,384 pair is the first instance).
+
+## Amendment 1 (2026-11-21, after the lane changed hands)
+
+The lane was taken over by the orchestrating session at `6313f25e9a`. `lane/integration/wave3` (the independent
+review's recoveries and fixes, the effects benchmark) was merged in with no conflict; after the merge
+`cargo check --workspace --all-targets` is clean, `cargo test --release -p bough-x -p bough-expr` is 110 passed,
+0 failed, 5 ignored, and all six mutant features still fail their gates. Counts on the merged tree: `sheet_x`
+idle 63, hover 5,354, theme 30,789, edit_exposed 2,615, select 797, insert_row 88,721.
+
+**Constant-free columns are differentiated once** (the first piece of "partial evaluation by dependency", built
+before this amendment was written; recorded here rather than as a prediction). An archetype of size zero has one
+value, so `delta_col` asks `changed(old, new)` of one live record and either returns without opening a page or
+marks every live record without asking again (`store.rs::uniform_changed`). Admission: `size_of::<A>() == 0` and
+not `Arch::STATE`; everything else takes the page scan as before. Gate: `tests/uniform.rs` (evaluations per
+change are 2 at 8, 64 and 512 exposed rows, changed or not; retained == full redraw == fresh mount over 300
+steps), and the review's probe `pointer_change_without_damage_has_bounded_record_work` (TR1-09's evaluation
+half) is un-ignored and passes. Negative control: `--features mutant_uniform` fails both tests of
+`tests/uniform.rs`. After: 113 passed, 0 failed, 4 ignored; `sheet_x` and `anim_x` cells unchanged within noise
+(no column of those fixtures is constant-free). Not done: a record whose expression has a block-only
+*sub*expression beside record constants still evaluates it per record.
