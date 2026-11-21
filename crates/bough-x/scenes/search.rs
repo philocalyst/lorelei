@@ -92,6 +92,11 @@ impl Search {
         self.hits.journal.push(Edit::Shift(0));
         self.u.set::<Scroll>(0);
     }
+    /// A dataset edit: item `id` gets another label (and the result is scanned for again).
+    pub fn relabel(&mut self, id: u32, label: String) {
+        self.all[id as usize].label = label;
+        self.refilter();
+    }
     pub fn type_text(&mut self, t: &str) {
         let at = self.caret;
         self.query.edit(0).insert_str(at, t);

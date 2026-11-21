@@ -57,6 +57,9 @@ impl<E: Expr<Out = Color>> Arch for Fill<E> {
     const READS: u64 = E::READS;
     const NAME: &'static str = "fill";
     const STATE: bool = E::STATE;
+    // transparent over `E`: the expression's words are the record's
+    const KEYED: Option<(usize, usize)> = E::KEY;
+    const NEAR: Option<(usize, i32)> = E::NEAR;
     #[inline(always)]
     fn eq_ops(&self, o: &Self) -> bool {
         self.0.eq_ops(&o.0)

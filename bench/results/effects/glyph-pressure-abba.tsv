@@ -1,0 +1,49 @@
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67
+headless-before-reclaim search:filter
+mount instructions=430416653 ns=31607459 rss=68206592 footprint=59097832 records=50011 rows=10000
+
+thread 'main' panicked at crates/bough-mem/src/lib.rs:251:9:
+bough-mem: column `glyph_x` is full (capacity 524288, need 524304); raise it in the region layout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67
+headless-before-reclaim table:clear
+mount instructions=369871056 ns=23949750 rss=69632000 footprint=60588752 records=50007 rows=10000
+
+thread 'main' panicked at crates/bough-mem/src/lib.rs:251:9:
+bough-mem: column `glyph_x` is full (capacity 524288, need 524320); raise it in the region layout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67
+release/headless search:filter
+mount instructions=430342148 ns=30007167 rss=68304896 footprint=59179752 records=50011 rows=10000
+result op=filter repeats=1 render=false gate=false ring=4 instructions=401075076 rss=92651520 footprint=83444456 frames=3 surfaces=[1, 1, 1, 0]
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67
+release/headless table:clear
+mount instructions=371722764 ns=24988042 rss=71991296 footprint=62964480 records=50007 rows=10000
+result op=clear repeats=1 render=false gate=false ring=4 instructions=416175773 rss=101728256 footprint=92586800 frames=3 surfaces=[1, 1, 1, 0]
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67
+release/headless search:filter
+mount instructions=423162892 ns=27417875 rss=67141632 footprint=58032896 records=50011 rows=10000
+result op=filter repeats=1 render=false gate=false ring=4 instructions=400648999 rss=90701824 footprint=81527576 frames=3 surfaces=[1, 1, 1, 0]
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67
+release/headless table:clear
+mount instructions=369987919 ns=23870583 rss=69255168 footprint=60228352 records=50007 rows=10000
+result op=clear repeats=1 render=false gate=false ring=4 instructions=413787493 rss=95322112 footprint=86164248 frames=3 surfaces=[1, 1, 1, 0]
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67
+headless-before-reclaim search:filter
+mount instructions=426258505 ns=29585333 rss=70582272 footprint=61473512 records=50011 rows=10000
+
+thread 'main' panicked at crates/bough-mem/src/lib.rs:251:9:
+bough-mem: column `glyph_x` is full (capacity 524288, need 524304); raise it in the region layout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67
+headless-before-reclaim table:clear
+mount instructions=371453122 ns=24686125 rss=71778304 footprint=62751464 records=50007 rows=10000
+
+thread 'main' panicked at crates/bough-mem/src/lib.rs:251:9:
+bough-mem: column `glyph_x` is full (capacity 524288, need 524320); raise it in the region layout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+ 4:28  up 4 days,  7:20, 5 users, load averages: 13.64 17.32 17.67

@@ -1,0 +1,10 @@
+ 5:02  up 4 days,  7:55, 5 users, load averages: 15.51 24.20 23.27
+Sampling process <local pid> for 1 second with 1 millisecond of run time between samples
+Sampling completed, processing symbols...
+Sample analysis of process <local pid> written to file runtime/round2/sample-facade.txt
+sample_exit=0 run_exit=0
+ 5:02  up 4 days,  7:55, 5 users, load averages: 15.51 24.20 23.27
+Sampling process <local pid> for 1 second with 1 millisecond of run time between samples
+Sampling completed, processing symbols...
+sample_exit=0 run_exit=0
+ 5:02  up 4 days,  7:55, 5 users, load averages: 15.51 24.20 23.27

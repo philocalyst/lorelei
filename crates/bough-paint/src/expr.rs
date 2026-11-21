@@ -77,6 +77,14 @@ macro_rules! op {
             fn eval(&self, cx: &Cx) -> $out {
                 x::$leaf($(self.$f.eval(cx)),*)
             }
+            /// At rest when every operand is: a combinator adds no time of its own.
+            #[inline(always)]
+            fn until(&self, cx: &Cx) -> u32 {
+                let (now, t) = (cx.u.w[U_TIME], 0u32);
+                $(let t = bough_expr::latest(t, self.$f.until(cx), now);)*
+                let _ = now;
+                t
+            }
         }
     };
 }
@@ -96,7 +104,91 @@ op!(Fade = x_fade(a: A: Vec4u, k: T: u32) -> Vec4u; opaque = false);
 op!(/// A looping there-and-back progress of (now + phase) over `period` ticks, Q15.
     Tri = x_tri(now: N: u32, phase: P: u32, period: D: u32) -> u32; opaque = false);
 op!(Smooth = x_smooth(t: T: u32) -> u32; opaque = false);
-op!(Prog = x_prog(now: N: u32, t0: A: u32, dur: D: u32) -> u32; opaque = false);
+
+/// When a one-shot that starts at `t0` and lasts `dur` ticks stops changing, seen from `now`: 0 once it is
+/// over, its end while it runs or has yet to start (a staggered start is in the future).
+#[inline(always)]
+pub fn anim_end(t0: u32, dur: u32, now: u32) -> u32 {
+    let e = now.wrapping_sub(t0);
+    if (e as i32) >= 0 && e >= dur.clamp(1, 65535) {
+        return 0;
+    }
+    match t0.wrapping_add(dur.clamp(1, 65535)) {
+        0 | u32::MAX => 1,
+        t => t,
+    }
+}
+/// One-shot progress (Q15) of a transition started at `t0` lasting `dur` ticks. It says when it ends
+/// (`until`), so a record that only reads the clock through it leaves the scene's active set there.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Prog<N, A, D> {
+    pub now: N,
+    pub t0: A,
+    pub dur: D,
+}
+// SAFETY: `repr(C)` over `Words` operands.
+unsafe impl<N: Words, A: Words, D: Words> Words for Prog<N, A, D> {}
+impl<N: Expr<Out = u32>, A: Expr<Out = u32>, D: Expr<Out = u32>> Expr for Prog<N, A, D>
+where
+    (N::Stage, A::Stage, D::Stage): JoinAll,
+{
+    type Out = u32;
+    type Stage = <(N::Stage, A::Stage, D::Stage) as JoinAll>::Out;
+    const READS: u64 = N::READS | A::READS | D::READS;
+    const CODE: &'static Code = &Code::Call("x_prog", &[N::CODE, A::CODE, D::CODE]);
+    #[inline(always)]
+    fn eval(&self, cx: &Cx) -> u32 {
+        x::x_prog(self.now.eval(cx), self.t0.eval(cx), self.dur.eval(cx))
+    }
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        let now = cx.u.w[U_TIME];
+        let own = anim_end(self.t0.eval(cx), self.dur.eval(cx), self.now.eval(cx));
+        bough_expr::latest(bough_expr::latest(own, self.t0.until(cx), now), self.dur.until(cx), now)
+    }
+}
+
+/// A spring's value (Q8) as an expression of the clock: `ops::x_spring`. Its operands are what
+/// `motion::Spring::retarget` computes; it rests from `t0 + dur` on, exactly at `to`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Spr<N, A, D, T, P, Q, E, W> {
+    pub now: N,
+    pub t0: A,
+    pub dur: D,
+    pub to: T,
+    pub a0: P,
+    pub b0: Q,
+    pub decay: E,
+    pub omega: W,
+}
+// SAFETY: `repr(C)` over `Words` operands.
+unsafe impl<N: Words, A: Words, D: Words, T: Words, P: Words, Q: Words, E: Words, W: Words> Words for Spr<N, A, D, T, P, Q, E, W> {}
+impl<N: Expr<Out = u32>, A: Expr<Out = u32>, D: Expr<Out = u32>, T: Expr<Out = i32>, P: Expr<Out = i32>, Q: Expr<Out = i32>, E: Expr<Out = u32>, W: Expr<Out = u32>> Expr for Spr<N, A, D, T, P, Q, E, W>
+where
+    (N::Stage, A::Stage, D::Stage, T::Stage, P::Stage, Q::Stage, E::Stage, W::Stage): JoinAll,
+{
+    type Out = i32;
+    type Stage = <(N::Stage, A::Stage, D::Stage, T::Stage, P::Stage, Q::Stage, E::Stage, W::Stage) as JoinAll>::Out;
+    const READS: u64 = N::READS | A::READS | D::READS | T::READS | P::READS | Q::READS | E::READS | W::READS;
+    const CODE: &'static Code = &Code::Call("x_spring", &[N::CODE, A::CODE, D::CODE, T::CODE, P::CODE, Q::CODE, E::CODE, W::CODE]);
+    #[inline(always)]
+    fn eval(&self, cx: &Cx) -> i32 {
+        x::x_spring(self.now.eval(cx), self.t0.eval(cx), self.dur.eval(cx), self.to.eval(cx), self.a0.eval(cx), self.b0.eval(cx), self.decay.eval(cx), self.omega.eval(cx))
+    }
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        let now = cx.u.w[U_TIME];
+        // (a spring of no duration is at rest wherever the clock is)
+        let dur = self.dur.eval(cx);
+        let mut t = if dur == 0 { 0 } else { anim_end(self.t0.eval(cx), dur, self.now.eval(cx)) };
+        for o in [self.t0.until(cx), self.dur.until(cx), self.to.until(cx), self.a0.until(cx), self.b0.until(cx), self.decay.until(cx), self.omega.until(cx)] {
+            t = bough_expr::latest(t, o, now);
+        }
+        t
+    }
+}
 op!(EIn = x_ein(t: T: u32) -> u32; opaque = false);
 op!(EOut = x_eout(t: T: u32) -> u32; opaque = false);
 op!(EInOut = x_einout(t: T: u32) -> u32; opaque = false);
@@ -108,6 +200,8 @@ op!(MixR = x_mixr(a: A: Vec4i, b: B: Vec4i, t: T: u32) -> Vec4i; opaque = false)
 op!(MixI = x_mixi(a: A: i32, b: B: i32, t: T: u32) -> i32; opaque = false);
 op!(Top = x_top(b: B: Vec4i, h: H: i32) -> Vec4i; opaque = false);
 op!(And = x_and(a: A: Vec4i, b: B: Vec4i) -> Vec4i; opaque = false);
+op!(/// Three words as a vector (a backdrop's filter factors).
+    V3 = x_vecf(a: A: u32, b: B: u32, c: C: u32) -> Vec4u; opaque = false);
 op!(/// A signed value, clamped at zero, as a word (an interpolated opacity).
     I2U = x_u(a: A: i32) -> u32; opaque = false);
 op!(/// A word read as a signed value.

@@ -600,3 +600,34 @@ fn allocation_counter_detects_a_deliberate_allocation() {
         "positive control: allocator probe must detect an allocation"
     );
 }
+
+struct Overlapping(U);
+
+impl View for Overlapping {
+    fn block(&self) -> &U {
+        &self.0
+    }
+
+    fn view<S: Sink<Self>>(&self, sink: &mut S) {
+        for _ in 0..65 {
+            sink.row(|| {
+                (
+                    [Rect::new(0, 0, 32, 32)],
+                    Fill(Kc::<0xff11_2233>).on_hover(|_: &mut Self, _: &Ev| {}),
+                )
+            });
+        }
+    }
+}
+
+#[test]
+#[ignore = "TR1-09 open"]
+fn pointer_dispatch_does_not_allocate_past_64_overlaps() {
+    let mut view = Overlapping(U::default());
+    let mut world = World::<_, Soft>::new(32, 32, 0);
+    world.mount(&view);
+    let growth = allocations::count(|| {
+        std::hint::black_box(world.pointer(&mut view, 1, 1));
+    });
+    assert_eq!(growth, 0, "allocations during the first overlapping pick");
+}
