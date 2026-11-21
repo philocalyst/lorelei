@@ -128,7 +128,11 @@ def staged(out, cards, cell):
             return resize_boundary
         return "measurement failed" if any(l.startswith("measure_exit=") for l in lines) else "pending"
     records = [l.split(",") for l in lines if l.startswith(f"fx_{name},")]
-    draws = sum(int(r[15]) for r in records)
+    if any(len(r) != 20 or r[16] not in ("0", "1") for r in records):
+        return "unexpected staged sample schema"
+    draws = sum(int(r[16]) for r in records)
+    if records and draws != int(records[-1][18]):
+        return "staged draw count mismatch"
     if cell == "idle":
         return f"{draws} frames" if records else "missing samples"
     value = summarize([int(r[3]) for r in records], draws)

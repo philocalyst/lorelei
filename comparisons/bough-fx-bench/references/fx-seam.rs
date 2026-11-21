@@ -838,7 +838,8 @@ struct FrameOut {
 fn drive(f: &mut Fixture, u: &mut U, k: usize, ring: &mut Ring, pool: &Pool, overhead: u64, tiles: &mut Vec<u32>, candidates: &mut Vec<u32>) -> FrameOut {
     let a0 = perf::snap();
     let start = Instant::now();
-    if f.step(k, u) || k == 0 {
+    let reset = f.step(k, u) || k == 0;
+    if reset {
         ring.reset(f.scene.tx * f.scene.ty);
     }
     let fs = f.scene.update(u);
@@ -847,6 +848,11 @@ fn drive(f: &mut Fixture, u: &mut U, k: usize, ring: &mut Ring, pool: &Pool, ove
     f.scene.damage.clear();
     if f.st.mutant == Mutant::Damage && k >= 2 {
         tiles.clear();
+        if reset {
+            for lag in &mut ring.stale {
+                lag.fill(false);
+            }
+        }
     }
     let stride = f.st.w as usize;
     for (age, lag) in ring.stale.iter_mut().enumerate() {
@@ -1193,7 +1199,7 @@ fn run_check(o: &Opts) {
         assert_eq!(idle_work, 0, "idle frames did framework work");
         assert_eq!(first_sum, last_sum, "idle frame changed");
     } else {
-        assert_ne!(first_sum, last_sum, "frame checksum never changed");
+        assert!(changed > 0, "frame checksum never changed");
         assert!(changed >= o.steps / 4 || matches!(o.cell, Cell::One | Cell::Many | Cell::Video), "too few changing frames: {changed}");
     }
     assert!(probes_n > 0, "no independent constraint was evaluated");
