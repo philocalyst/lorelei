@@ -41,13 +41,15 @@ of state, and the refusal says so.
 ## Socket
 
 A Unix domain socket, length-framed JSON-RPC 2.0 (4-byte big-endian length, then the message). The first request
-on a connection must be `hello` (and a client naming another schema is refused); one connection at a time (a
-second is told so). Methods: `hello`, `methods`, `tree`, `node`, `find`, `pick`, `deps`, `why`, `counters`,
+on a connection must be `hello` with the supported schema. `methods` may be queried before negotiation. Up to
+eight same-user connections share the same world and their commands execute serially. An existing path is
+never removed at bind. Remove a known stale socket before reusing its address. Methods: `hello`, `methods`, `tree`, `node`, `find`, `pick`, `deps`, `why`, `counters`,
 `state`, `set`, `pointer`, `down`, `up`, `click`, `key`, `text`, `wheel`, `tick`, `resize`, `settle`, `reload`,
 `shot`, `diff`, `record_start`, `record_stop`, `replay`, `shutdown`.
 
 The server is pumped from the application's own thread (`Server::pump`) or run blocking for a headless app
-(`Server::serve`); a world's stores are pointers into its own allocations and are never moved across threads.
+(`Server::serve`). A world stays on its own thread. Network I/O is nonblocking and bounded per pump.
+Commands such as screenshots still execute synchronously on the application thread.
 
 ## Record and replay
 

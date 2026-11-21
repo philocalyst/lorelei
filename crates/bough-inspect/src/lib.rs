@@ -19,6 +19,8 @@
 //!
 //! Cost when unused: a binary that does not link this crate contains none of it (the crate is a separate
 //! artifact and `bough-x` is unchanged).
+#![feature(peer_credentials_unix_socket)]
+
 pub mod client;
 pub mod damage;
 pub mod frame;

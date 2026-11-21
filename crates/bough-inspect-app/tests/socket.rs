@@ -290,7 +290,7 @@ fn table_over_the_socket() {
 }
 
 #[test]
-fn handshake_is_enforced_and_a_second_client_is_refused() {
+fn handshake_is_enforced_independently_for_each_client() {
     let app = spawn("handshake", "rows", 100);
     // the first request must be hello
     {
@@ -326,27 +326,90 @@ fn handshake_is_enforced_and_a_second_client_is_refused() {
             Some(-32600)
         );
     }
-    // a live connection owns the world: a second one is told so
-    let mut c = Client::open(&app.path).expect("connect");
-    let _ = call(&mut c, "tree", J::obj());
-    {
-        use bough_inspect::socket::{read_frame, write_frame};
-        let mut s = std::os::unix::net::UnixStream::connect(&app.path).unwrap();
-        let req = J::obj()
-            .set("jsonrpc", "2.0")
-            .set("id", 1)
-            .set("method", "hello")
-            .set("params", J::obj());
-        // the server accepts only when it is pumped; ask the live client to make it pump
-        write_frame(&mut s, json::to_string(&req).as_bytes()).unwrap();
-        let _ = call(&mut c, "tree", J::obj());
-        let reply =
-            json::parse(std::str::from_utf8(&read_frame(&mut s).unwrap()).unwrap()).unwrap();
-        assert_eq!(
-            reply.get("error").unwrap().get("code").and_then(J::as_i64),
-            Some(-32600)
-        );
-    }
+    let mut c = Client::open(&app.path).expect("first client");
+    let mut second = Client::open(&app.path).expect("independent client alongside first");
+    assert_eq!(
+        call(&mut c, "tree", J::obj()).get("digest"),
+        call(&mut second, "tree", J::obj()).get("digest")
+    );
     call(&mut c, "shutdown", J::obj());
-    let _ = app;
+}
+
+#[test]
+fn incomplete_frames_and_slow_readers_do_not_hold_other_clients() {
+    use bough_inspect::socket::{read_frame, write_frame};
+    use std::{io::Write, os::unix::net::UnixStream};
+    let app = spawn("bounded-io", "rows", 100);
+    let mut slow = UnixStream::connect(&app.path).unwrap();
+    slow.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    write_frame(
+        &mut slow,
+        br#"{"jsonrpc":"2.0","id":1,"method":"hello","params":{"schema":1}}"#,
+    )
+    .unwrap();
+    read_frame(&mut slow).unwrap();
+    write_frame(&mut slow, br#"{"jsonrpc":"2.0","id":2,"method":"shot"}"#).unwrap();
+    // Wait for the response to start, then leave the multi-megabyte remainder unread.
+    let mut prefix = [0; 4];
+    std::io::Read::read_exact(&mut slow, &mut prefix).unwrap();
+    assert!(u32::from_be_bytes(prefix) > 1024 * 1024);
+    let mut incomplete = UnixStream::connect(&app.path).unwrap();
+    incomplete.write_all(&[0, 0]).unwrap();
+    let mut c = Client::open(&app.path).unwrap();
+    assert!(call(&mut c, "counters", J::obj()).get("records").is_some());
+    let mut malformed = UnixStream::connect(&app.path).unwrap();
+    malformed
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    write_frame(&mut malformed, b"{").unwrap();
+    let response =
+        json::parse(std::str::from_utf8(&read_frame(&mut malformed).unwrap()).unwrap()).unwrap();
+    assert_eq!(
+        response
+            .get("error")
+            .unwrap()
+            .get("code")
+            .and_then(J::as_i64),
+        Some(-32700)
+    );
+    malformed
+        .write_all(&((bough_inspect::socket::MAX_FRAME + 1) as u32).to_be_bytes())
+        .unwrap();
+    assert_eq!(
+        read_frame(&mut malformed).unwrap_err().kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
+    drop(incomplete);
+    drop(slow);
+    assert!(
+        call(&mut c, "tree", J::obj().set("limit", 1))
+            .get("digest")
+            .is_some()
+    );
+    call(&mut c, "shutdown", J::obj());
+}
+
+#[test]
+fn binding_preserves_existing_paths_and_cleans_up_only_its_socket() {
+    use bough_inspect::socket::Server;
+    use std::os::unix::fs::PermissionsExt;
+    let path = Client::short_path(std::env::temp_dir(), "ownership");
+    std::fs::write(&path, "keep me").unwrap();
+    assert!(Server::bind(&path).is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep me");
+    std::fs::remove_file(&path).unwrap();
+    let listener = Server::bind(&path).unwrap();
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert!(Server::bind(&path).is_err());
+    drop(listener);
+    assert!(!path.exists());
+    let listener = Server::bind(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    std::fs::write(&path, "replacement").unwrap();
+    drop(listener);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "replacement");
+    std::fs::remove_file(&path).unwrap();
 }

@@ -7,7 +7,8 @@ publish = false
 description = "The inspector, agent/test socket and schema over the typed core (bough-x) reflection: a versioned serialisable tree with source locations, typed operands and their staged expressions, layout, damage, focus/hover/press, accessibility, counters; validated mutation; record and replay; pixel diff; typed selectors for tests; an element-layer overlay"
 
 [dependencies]
-bough-x = { path = "../bough-x" }
+libc = "0.2"
+bough-x = { path = "../bough-x", features = ["inspect-metadata"] }
 bough-expr = { path = "../bough-expr" }
 bough-ax = { path = "../bough-ax" }
 
