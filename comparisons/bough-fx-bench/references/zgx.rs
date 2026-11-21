@@ -214,13 +214,44 @@ fn suite(cards: usize, cell: &str, frames: usize, check: bool) {
     }
     let video_sample = |k: usize| -> Arc<ImageData> {
         let mut rgba = Vec::with_capacity(256 * 144 * 4);
-        for y in 0..144u32 {
-            for x in 0..256u32 {
-                let t = k as u32;
+        // The staged paint fixture's deterministic NV12 source, sampled at the
+        // centre of each output pixel and converted before the RGBA upload.
+        let clamp = |x: i32, hi: i32| x.clamp(0, hi) as usize;
+        let bx = (3 * k + 41 * 7) % 256;
+        let by = (2 * k + 41 * 5) % 144;
+        let bar = |x| ((x + 2 * k) * 8 / 256 + 41) % 8;
+        let chroma = |x, y, cr: bool| {
+            let i = clamp(x, 127);
+            let j = clamp(y, 71);
+            if cr {
+                200 - bar(2 * i) * 18 + j * 2 * 12 / 144
+            } else {
+                64 + bar(2 * i) * 20
+            }
+        };
+        let rgba8 = |q: i32| ((q.clamp(0, 32768) * 255 + 16384) >> 15) as u8;
+        for j in 0..144usize {
+            for i in 0..256usize {
+                let y = if i.abs_diff(bx) < 32 && j.abs_diff(by) < 18 {
+                    235
+                } else {
+                    40 + bar(i) * 24 + j * 16 / 144
+                };
+                let y = ((y as i32 - 16) * 128 * 38304) >> 15;
+                let (x, row) = (i as i32 * 128 - 64, j as i32 * 128 - 64);
+                let interp = |cr| {
+                    let (p, q) = (x >> 8, row >> 8);
+                    let (dx, dy) = ((x & 255) as usize, (row & 255) as usize);
+                    let low = chroma(p, q, cr) * (256 - dx) + chroma(p + 1, q, cr) * dx;
+                    let high = chroma(p, q + 1, cr) * (256 - dx) + chroma(p + 1, q + 1, cr) * dx;
+                    ((((low * (256 - dy) + high * dy) >> 8) as i32) - 32768) >> 1
+                };
+                let cb = interp(false);
+                let cr = interp(true);
                 rgba.extend([
-                    (x + t * 17) as u8,
-                    (y * 3 + t * 11) as u8,
-                    (x ^ y ^ (t * 5)) as u8,
+                    rgba8(y + ((cr * 58975) >> 15)),
+                    rgba8(y - ((cb * 7015) >> 15) - ((cr * 17531) >> 15)),
+                    rgba8(y + ((cb * 69491) >> 15)),
                     255,
                 ]);
             }
@@ -362,7 +393,7 @@ fn suite(cards: usize, cell: &str, frames: usize, check: bool) {
             "video" => {
                 let (image, panel) = video.unwrap();
                 if step.is_multiple_of(4) {
-                    scene.set_image_frame(image, video_sample(step / 4 + 1));
+                    scene.set_leaf_kind(image, NodeKind::Image(video_sample(step / 4 + 1)));
                 }
                 scene.set_transform(
                     panel,

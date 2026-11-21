@@ -130,6 +130,8 @@ fn main() {
     let strip = cell == "scroll";
     let thematic = cell == "theme";
     let many = cell == "many";
+    let image_path = std::env::var("BOUGH_REFERENCE_TILE").ok();
+    let matched = image_path.is_some();
     let startup = Instant::now();
     let theme = RwSignal::new_local(false);
     let witness = gate.then(Witness::default);
@@ -141,9 +143,10 @@ fn main() {
         .layer { position: relative; width: 640px; height: 400px; }
         .card:hover { background: #f0b65dd4 !important; }
         .many-motion { width:55px !important; opacity:0.83; transform:translate(9px,-1px); }
-        .card { position: absolute; width: 60px; height: 36px; border-radius: 6px;
+        .card { position: absolute; box-sizing: border-box; width: 60px; height: 36px; border-radius: 6px;
                 border: 1px solid #69849dd4; box-shadow: 2px 5px 8px 1px #00000048, -2px 2px 3px #070c142c;
                 transition: transform 300ms ease-in-out, opacity 300ms ease-in-out, width 300ms ease-in-out; }
+        .chip { position: absolute; left: 7px; top: 9px; width:12px; height:12px; }
         .moving { transform: translateX(10px); }
         .pane { position: absolute; left: 455px; top: 298px; width: 112px; height: 76px;
                 border-radius: 12px; backdrop-filter: blur(6px); background-color: #568cd15c; }
@@ -165,7 +168,11 @@ fn main() {
                 let end = base ^ 0x3b2b18;
                 let css = move || {
                     let color = if thematic && theme.get() { base ^ 0x22105f } else { base };
-                    Some(format!("left:{x}px;top:{y}px;background:linear-gradient(124deg,#{color:06x}d4,#{end:06x}c7)"))
+                    if matched {
+                        Some(format!("left:{x}px;top:{y}px;background:#{color:06x}d4;box-shadow:none"))
+                    } else {
+                        Some(format!("left:{x}px;top:{y}px;background:linear-gradient(124deg,#{color:06x}d4,#{end:06x}c7)"))
+                    }
                 };
                 let mut card = zgui::elements::control().class("card");
                 card = if thematic { card.style_text(css) } else { card.style_text(css()) };
@@ -174,10 +181,19 @@ fn main() {
                 } else if many {
                     card = card.class_toggle(ClassName::new("many-motion"), move || moving.get());
                 }
+                if matched && i+1 < cards {
+                    card = card.child(zgui::elements::r#box().class("chip").style_text(Some(format!("background:#{base:06x}"))));
+                }
                 layer = layer.child(card);
+                if let Some(path) = image_path.as_ref().filter(|_| i.is_multiple_of(16)) {
+                    layer = layer.child(zgui::elements::image().src(Some(path.clone())).style_text(Some(format!(
+                        "position:absolute;left:{}px;top:{}px;width:12px;height:12px;pointer-events:none", x+34.0,y+12.0))));
+                }
             }
-            layer = layer.child(zgui::elements::control().class("pane"));
-            layer = layer.child(zgui::elements::control().class("sdf"));
+            if !matched {
+                layer = layer.child(zgui::elements::control().class("pane"));
+                layer = layer.child(zgui::elements::control().class("sdf"));
+            }
             if strip {
                 Box::new(zgui::elements::column().class("port").child(layer).into_view().build(cx))
             } else {
@@ -185,11 +201,34 @@ fn main() {
             }
         }).expect("runtime");
     let mut harness = Harness::new(handler);
+    if matched {
+        harness.platform().offscreens()[0].set_refresh_rate_millihertz(Some(120_000));
+    }
     harness.deliver_to_first(SurfaceEvent::Resized(Size::new(
         DevicePx(640.0),
         DevicePx(400.0),
     )));
     harness.settle(512);
+    if matched {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            harness.settle(64);
+            let report = harness.app_mut().windows_mut()[0].budget_report();
+            if report
+                .line(zgui::runtime::budget::CacheId::DecodedImages)
+                .report
+                .resident
+                > 0
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "required PNG never decoded");
+            std::thread::yield_now();
+        }
+        if let Some(ref witness) = witness {
+            witness.borrow_mut().clear();
+        }
+    }
     let baseline = harness.redraws_requested();
     if cell == "startup" {
         println!(
@@ -253,7 +292,7 @@ fn main() {
             }
             _ => {}
         }
-        harness.advance(Duration::from_nanos(8_333_333));
+        harness.advance(Duration::from_nanos(8_333_334));
         harness.pump();
         println!(
             "zgui_sample,{cards},{cell},{k},{},{}",
