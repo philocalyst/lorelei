@@ -13,6 +13,8 @@ use std::alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error};
 
 pub use crate::expr::Rect;
 
+pub mod fast;
+
 pub const TILE_SHIFT: u32 = 5;
 pub const TILE: i32 = 1 << TILE_SHIFT;
 
@@ -29,6 +31,12 @@ pub struct Tiles {
     /// Damage that is still to come: the boxes records in motion stay inside, and until when. A frame marks
     /// them; nothing is evaluated. At most one entry per column that has a record in motion.
     pub sweeps: Vec<Sweep>,
+    /// With [`Tiles::sweep_rects`] set: the boxes of the records in motion this frame, in screen space, for a
+    /// raster that takes rects. They are damage like the bits are; `clear` empties them.
+    pub swept: Vec<Rect>,
+    /// Hand the boxes of records in motion over as rects ([`Tiles::swept`], by [`Tiles::tick_rects`]) instead
+    /// of marking their tiles each frame: a frame with motion then costs a push per column in motion, whatever its box covers.
+    pub sweep_rects: bool,
 }
 
 /// Records of one column are in motion until `until` (a value of `Time`; `u32::MAX`: endlessly) and stay inside
@@ -81,6 +89,25 @@ impl Tiles {
             }
         }
     }
+    /// As [`Tiles::tick`], with the boxes handed over as rects ([`Tiles::swept`]) and no tile marked.
+    #[inline(never)]
+    pub fn tick_rects(&mut self, now: u32, u: &U) {
+        let mut i = 0;
+        while i < self.sweeps.len() {
+            let s = self.sweeps[i];
+            let r = s.rect.shift(s.space.origin(u)).and(s.space.clip);
+            #[cfg(not(any(feature = "mutant_sweep", feature = "mutant_swept")))]
+            if (r.x0 < r.x1) & (r.y0 < r.y1) {
+                self.swept.push(r);
+            }
+            let _ = r;
+            if !crate::expr::ahead(s.until, now) {
+                self.sweeps.swap_remove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
     pub fn new(w: i32, h: i32) -> Tiles {
         let cols = ((w + TILE - 1) >> TILE_SHIFT) as usize;
         let rows = ((h + TILE - 1) >> TILE_SHIFT) as usize;
@@ -94,6 +121,8 @@ impl Tiles {
             lo: usize::MAX,
             hi: 0,
             sweeps: Vec::new(),
+            swept: Vec::new(),
+            sweep_rects: false,
         }
     }
     /// Mark the tiles a screen rectangle touches.
@@ -152,10 +181,18 @@ impl Tiles {
             self.bits[self.lo * self.stride..self.hi * self.stride].fill(0);
         }
         (self.lo, self.hi) = (usize::MAX, 0);
+        self.swept.clear();
     }
     #[inline]
     pub fn any(&self) -> bool {
-        self.lo < self.hi
+        (self.lo < self.hi) | !self.swept.is_empty()
+    }
+    /// The rects handed over this frame, marked as tiles: what a raster that takes only tiles calls before it
+    /// reads them (and what the gate compares the two modes by).
+    pub fn settle_swept(&mut self) {
+        for r in core::mem::take(&mut self.swept) {
+            self.mark(r);
+        }
     }
     #[inline]
     pub fn count(&self) -> u32 {
@@ -338,6 +375,11 @@ pub trait Arch: Record {
     fn sweep(&self, r: Rect, _u: &U) -> Rect {
         r
     }
+    /// A keyed selection (`expr::Sel`): `(block word, index of the key among the record's words)`. See
+    /// [`fast`]: a change of only that word concerns the records keyed by its old and its new value.
+    const KEYED: Option<(usize, usize)> = None;
+    /// A bounded reader of the pointer (`expr::Near`): `(index of the centre's first word, reach)`.
+    const NEAR: Option<(usize, i32)> = None;
     /// The record holds words the core writes (a transition's start): see [`Arch::carry`].
     const STATE: bool = false;
     /// The same operands as `o`, state words aside. Only asked when `STATE`.
@@ -393,6 +435,38 @@ impl<'a, A> ColRef<'a, A> {
     pub fn each(&self, mut f: impl FnMut(Rect, &A)) {
         for (pi, pg) in self.pages.iter().enumerate() {
             let mut m = self.live.page(pi);
+            while m != 0 {
+                let i = m.trailing_zeros() as usize;
+                m &= m - 1;
+                f(pg.rect(i), pg.record(i));
+            }
+        }
+    }
+    /// Every live record whose rect meets `cut` (in the store's space), page by page, in the order of
+    /// [`ColRef::each`]. For a painter that draws nothing outside a record's rect and is cut to `cut`: the
+    /// records passed over are the ones it would have drawn nothing of. A page costs four compares a lane,
+    /// whatever the painter does with a record.
+    #[inline(always)]
+    pub fn each_in(&self, cut: Rect, mut f: impl FnMut(Rect, &A)) {
+        if (cut.x0 >= cut.x1) | (cut.y0 >= cut.y1) {
+            return;
+        }
+        for (pi, pg) in self.pages.iter().enumerate() {
+            let live = self.live.page(pi);
+            if live == 0 {
+                continue;
+            }
+            let mut b = [0u8; 64];
+            for i in 0..64 {
+                b[i] = ((pg.x0[i] < cut.x1)
+                    & (pg.x1[i] > cut.x0)
+                    & (pg.y0[i] < cut.y1)
+                    & (pg.y1[i] > cut.y0)) as u8;
+            }
+            #[cfg(not(feature = "mutant_each_in"))]
+            let mut m = pack(&b) & live;
+            #[cfg(feature = "mutant_each_in")]
+            let mut m = pack(&b) & live & 0x7fff_ffff_ffff_ffff;
             while m != 0 {
                 let i = m.trailing_zeros() as usize;
                 m &= m - 1;
@@ -494,6 +568,8 @@ pub struct Desc {
     active: ActiveFn,
     pub slots: fn(&mut dyn FnMut(Slot)),
     paint: unsafe fn(&RawCol, &StoreView, &U, *mut ()),
+    /// The bounded deltas the archetype admits ([`fast`]).
+    pub fast: fast::FastFns,
 }
 
 struct Holder<A, B>(core::marker::PhantomData<(A, B)>);
@@ -515,6 +591,7 @@ impl<A: Arch, B: Backend> Holder<A, B> {
         },
         slots: A::slots,
         paint: paint_col::<A, B>,
+        fast: fast::fns::<A>(),
     };
 }
 #[inline(always)]
@@ -1316,6 +1393,22 @@ pub fn changed_sparse<A: Arch>(pg: &Page<A>, mut live: u64, old: &U, new: &U) ->
     m
 }
 
+/// For an archetype of size zero: whether its records (all the same value, having no constants) show
+/// something else under `new` than under `old`. `None` when the column has no live record. One evaluation of
+/// `changed`, whatever the column holds; the contract is the one every delta relies on, that `changed` is a
+/// function of the record and the two blocks.
+#[inline(always)]
+fn uniform_changed<A: Arch>(pages: &[Page<A>], lv: &Live<'_>, old: &U, new: &U) -> Option<bool> {
+    let (pi, live) = (0..pages.len())
+        .map(|pi| (pi, lv.page(pi)))
+        .find(|&(_, live)| live != 0)?;
+    let a = pages[pi].record(live.trailing_zeros() as usize);
+    let c = a.changed(old, new) | (A::MOVES && a.offset(old) != a.offset(new));
+    #[cfg(feature = "mutant_uniform")]
+    let c = c & false;
+    Some(c)
+}
+
 unsafe fn delta_col<A: Arch>(e: &ColEnt, old: &U, new: &U, tiles: &mut Tiles) {
     // SAFETY: the caller instantiated this for the column's archetype and the entry is current: `pages` holds
     // `npages` pages of `A`, `space` is the column's store's.
@@ -1328,12 +1421,25 @@ unsafe fn delta_col<A: Arch>(e: &ColEnt, old: &U, new: &U, tiles: &mut Tiles) {
     };
     let org = space.origin(new);
     let clip = space.clip;
+    // A record with no constants of its own is the same record as every other of its column: the derivative
+    // is one question for the column, not one per record (`uniform_changed`). Answered `false`, no page is
+    // opened; answered `true`, every live record changed and none is asked again.
+    let uniform = if core::mem::size_of::<A>() == 0 && !A::STATE {
+        match uniform_changed::<A>(pages, &lv, old, new) {
+            Some(true) => true,
+            _ => return,
+        }
+    } else {
+        false
+    };
     for (pi, pg) in pages.iter().enumerate() {
         let live = lv.page(pi);
         if live == 0 {
             continue;
         }
-        let m = if live.count_ones() <= 12 {
+        let m = if uniform {
+            live
+        } else if live.count_ones() <= 12 {
             changed_sparse(pg, live, old, new)
         } else {
             changed_mask(pg, old, new) & live
