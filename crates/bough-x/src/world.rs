@@ -17,8 +17,9 @@ use core::sync::atomic::Ordering;
 #[derive(Clone, Copy)]
 struct Column {
     store: *const Store,
-    index: u32,
-    fast: u32,
+    kinds: u32,
+    index: u16,
+    fast: u16,
 }
 
 /// A `shape` no store tree has: structure revisions count up from 0 with a checked add.
@@ -365,6 +366,7 @@ impl<V: View, B: Backend> World<V, B> {
                 return;
             }
             self.shape = STALE;
+            self.cols.clear();
             *self.root = Store::new(1, self.root.space);
             self.tiles.sweeps.clear();
         }
@@ -389,6 +391,7 @@ impl<V: View, B: Backend> World<V, B> {
         };
         // A pass publishes a new table only after the view returns. An unwound pass leaves it unavailable.
         self.shape = STALE;
+        self.cols.clear();
         crate::el::track_inputs(&self.inputs, || {
             v.view(&mut Write::<V, B>::new(&mut self.root, &mut cx, true))
         });
@@ -434,7 +437,8 @@ impl<V: View, B: Backend> World<V, B> {
     fn retable(&mut self) {
         self.retables += 1;
         self.shape = STALE;
-        self.cols.clear();
+        let mut cols = core::mem::take(&mut self.cols);
+        cols.clear();
         self.spaces.clear();
         fn visit(
             owner: &StoreOwner,
@@ -450,8 +454,9 @@ impl<V: View, B: Backend> World<V, B> {
                 match *pass {
                     crate::store::Pass::Col(index) => cols.push(Column {
                         store,
-                        index,
-                        fast: u32::MAX,
+                        index: u16::try_from(index).expect("too many columns in a store"),
+                        fast: u16::MAX,
+                        kinds: 0,
                     }),
                     crate::store::Pass::Sub(child) => {
                         visit(owner.subs.owner(child as usize), cols, spaces)
@@ -459,23 +464,24 @@ impl<V: View, B: Backend> World<V, B> {
                 }
             }
         }
-        visit(&self.root, &mut self.cols, &mut self.spaces);
+        visit(&self.root, &mut cols, &mut self.spaces);
         self.handlers.clear();
         self.col_reads.clear();
         self.fast.clear();
-        for (k, route) in self.cols.iter_mut().enumerate() {
+        for (k, route) in cols.iter_mut().enumerate() {
             // SAFETY: the table is current, and no view pass can run while it is borrowed here.
             let st = unsafe { &*route.store };
             let c = &st.cols[route.index as usize];
             if let Some(o) = c.hover {
                 self.handlers.push((k as u32, o.kinds));
+                route.kinds = o.kinds;
             }
             self.col_reads.push(c.reads);
             let fns = c.desc.fast;
             if fns.key.is_some() || fns.near.is_some() {
                 #[cfg(not(feature = "mutant_fastcol"))]
                 {
-                    route.fast = self.fast.len() as u32;
+                    route.fast = u16::try_from(self.fast.len()).expect("too many fast columns");
                 }
                 self.fast.push(Fast {
                     fns,
@@ -489,16 +495,16 @@ impl<V: View, B: Backend> World<V, B> {
             }
         }
         assert!(
-            self.cols.len() <= 1 << (32 - PLACE_REC_BITS),
+            cols.len() <= 1 << (32 - PLACE_REC_BITS),
             "a place names one of at most 4,096 columns"
         );
         self.union_seen.clear();
-        self.union_seen.resize(self.cols.len(), 0);
+        self.union_seen.resize(cols.len(), 0);
         self.readers.clear();
         for w in 0..64 {
             self.by_word[w] = self.readers.len() as u32;
             self.readers.extend(
-                (0..self.cols.len())
+                (0..cols.len())
                     .filter(|&k| self.col_reads[k] >> w & 1 != 0)
                     .map(|k| k as u32),
             );
@@ -506,7 +512,7 @@ impl<V: View, B: Backend> World<V, B> {
         self.by_word[64] = self.readers.len() as u32;
         // The root view's fields the columns' lenses name. Two fields in one word cannot both be Frame state.
         self.slots.clear();
-        for route in &self.cols {
+        for route in &cols {
             // SAFETY: the table is current, and no view pass can run while it is borrowed here.
             let st = unsafe { &*route.store };
             let d = st.cols[route.index as usize].desc;
@@ -529,6 +535,7 @@ impl<V: View, B: Backend> World<V, B> {
             .spaces
             .iter()
             .fold(self.root.reads_all(), |m, s| m | s.0);
+        self.cols = cols;
         self.shape = self.root.structure_revision();
     }
 
@@ -628,7 +635,7 @@ impl<V: View, B: Backend> World<V, B> {
             }
             self.broad_last = Some(clip);
             self.fast_stats.broad_hits += 1;
-        } else if route.fast == u32::MAX
+        } else if route.fast == u16::MAX
             || !Self::delta_fast(
                 &mut self.fast[route.fast as usize],
                 &e,
@@ -788,6 +795,7 @@ impl<V: View, B: Backend> World<V, B> {
             };
             // as in `mount_pass`: stale while the view runs, as it was after it returns
             let shape = core::mem::replace(&mut self.shape, STALE);
+            let cols = core::mem::take(&mut self.cols);
             crate::el::track_inputs(&self.inputs, || {
                 v.view(&mut Patch::<V, B> {
                     st: &mut self.root,
@@ -797,6 +805,7 @@ impl<V: View, B: Backend> World<V, B> {
                 })
             });
             if shape == self.root.structure_revision() {
+                self.cols = cols;
                 self.shape = shape;
             }
             self.lists |= cx.lists;
@@ -838,10 +847,12 @@ impl<V: View, B: Backend> World<V, B> {
             scale: f32::from_bits(u.w[U_SCALE]),
         };
         let shape = core::mem::replace(&mut self.shape, STALE);
+        let cols = core::mem::take(&mut self.cols);
         crate::el::track_inputs(&self.inputs, || {
             v.view(&mut Write::<V, B>::new(&mut self.root, &mut cx, false))
         });
         if shape == self.root.structure_revision() {
+            self.cols = cols;
             self.shape = shape;
         }
         self.lists |= cx.lists;
@@ -857,6 +868,7 @@ impl<V: View, B: Backend> World<V, B> {
             // A fixed record moved over one of another column: the columns were grouped for an order that no
             // longer holds. The stores are made again from the view (cold: a description, as at mount).
             self.shape = STALE;
+            self.cols.clear();
             *self.root = Store::new(1, self.root.space);
             self.tiles.sweeps.clear();
             self.mount(v);
@@ -888,7 +900,7 @@ impl<V: View, B: Backend> World<V, B> {
         let st = st as *const Store;
         self.cols
             .iter()
-            .position(|entry| entry.index == col && core::ptr::eq(entry.store, st))
+            .position(|entry| u32::from(entry.index) == col && core::ptr::eq(entry.store, st))
             .map(|i| i as u32)
     }
     /// The store, column and record a place names (the column table holds the store: no walk).
@@ -897,23 +909,22 @@ impl<V: View, B: Backend> World<V, B> {
     /// nothing a handler does changes this world's store tree (only a settle does). The shape counter is
     /// process-wide, so another world growing must not make this one's places unreadable.
     pub fn at_place(&self, place: u32) -> Option<(&Store, u32, u32)> {
-        // A `&self` reader cannot rebuild the table: a stale one (a pass that panicked, a tree that grew since)
-        // names nothing (soundness review S03).
-        if self.shape == STALE {
-            return None;
-        }
+        // The vector is empty during a view pass and while waiting for a structural rebuild.
         let &Column {
             store, index: col, ..
         } = self.cols.get((place >> PLACE_REC_BITS) as usize)?;
-        // SAFETY: the revision check proves this table is current and no pass is running.
+        // SAFETY: an entry is available only in a published table. The world is shared-borrowed.
         let st = unsafe { &*store };
         let rec = place & ((1 << PLACE_REC_BITS) - 1);
         let c = st.cols.get(col as usize)?;
         // A store admits capacity one or a power-of-two ring. At capacity
         // one all records belong to row zero, including records on later pages.
         let row = rec & (st.cap - 1);
-        (rec < c.nrec && st.row_live[row as usize / 64] & (1u64 << (row % 64)) != 0)
-            .then_some((st, col, rec))
+        (rec < c.nrec && st.row_live[row as usize / 64] & (1u64 << (row % 64)) != 0).then_some((
+            st,
+            u32::from(col),
+            rec,
+        ))
     }
     /// The column table, current (cold when the tree changed shape).
     fn columns(&mut self) {
@@ -1178,10 +1189,9 @@ impl<V: View, B: Backend> World<V, B> {
         self.at_place(place)
             .map_or(NONE, |(st, _, rec)| row_of(st, rec))
     }
+    /// The handler mask of a hit from `chain_into`, which already admitted its record.
     fn kinds(&self, place: u32) -> u32 {
-        self.at_place(place)
-            .and_then(|(st, c, _)| st.cols[c as usize].hover)
-            .map_or(0, |o| o.kinds)
+        self.cols[(place >> PLACE_REC_BITS) as usize].kinds
     }
 
     /// A button went down at (x, y): focus moves to the nearest focusable record under it (or leaves, as the
