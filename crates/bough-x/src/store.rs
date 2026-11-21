@@ -536,9 +536,12 @@ pub struct ColEnt {
     pub npages: u32,
     pub nrec: u32,
     pub cap: u32,
+    /// Bit 0 ([`ColEnt::TIMED`]): its records read `Time`. Bit 1 ([`ColEnt::STATE`]): they hold core-written state.
     pub timed: u32,
 }
 impl ColEnt {
+    pub const TIMED: u32 = 1;
+    pub const STATE: u32 = 2;
     /// SAFETY: the entry is current (built since the store tree last changed shape).
     #[inline(always)]
     unsafe fn live(&self) -> Live<'_> {
@@ -564,6 +567,8 @@ pub struct Desc {
     pub moves: bool,
     /// Its records read `Time`.
     pub timed: bool,
+    /// Its records hold words the core writes when their target moves ([`Arch::STATE`]).
+    pub state: bool,
     delta: DeltaFn,
     active: ActiveFn,
     pub slots: fn(&mut dyn FnMut(Slot)),
@@ -583,6 +588,7 @@ impl<A: Arch, B: Backend> Holder<A, B> {
         reads: A::READS,
         moves: A::MOVES,
         timed: A::TIMED,
+        state: A::STATE,
         delta: delta_col::<A>,
         active: if A::TIMED {
             active_col::<A>
@@ -1083,7 +1089,7 @@ impl Store {
             npages: c.npages,
             nrec: c.nrec,
             cap: self.cap,
-            timed: c.desc.timed as u32,
+            timed: c.desc.timed as u32 | (c.desc.state as u32) << 1,
         }
     }
     /// Append this store's columns and those of the stores under it, in paint order; `cold` gets, per entry,

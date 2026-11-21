@@ -100,6 +100,10 @@ fn main() {
     let build = pmu::sample().since(&a);
     let build_ms = t.elapsed().as_secs_f64() * 1e3;
     let mut world = World::<_, Soft>::new(W, H, NWORDS);
+    if std::env::var("BROAD").is_ok() {
+        // the theme word declared broad (`World::broad`): its change damages spaces, evaluates no record
+        world.broad = 1 << <Theme as bough_x::expr::Lens>::SLOT;
+    }
     let t = std::time::Instant::now();
     let a = pmu::sample();
     world.mount(&sheet);
