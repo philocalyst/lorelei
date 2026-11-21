@@ -675,6 +675,14 @@ pub trait Expr: Record {
     const RESTS: bool = Self::READS >> U_TIME & 1 == 0;
     /// The value holds words the core writes (where a transition started from, and when): see [`Expr::carry`].
     const STATE: bool = false;
+    /// A keyed selection ([`Sel`]): `(block word, index of the key among this value's words)`. When only that
+    /// word of the block changes, the value changes for no record but those whose key is the old or the new
+    /// value of the word. A column of such records can be indexed by key; nothing else may be assumed.
+    const KEY: Option<(usize, usize)> = None;
+    /// A bounded reader of the pointer ([`Near`]): `(index of the centre's first word, reach)`. When only the
+    /// pointer words change, the value changes for no record but those whose centre is within `reach` of the
+    /// old or the new pointer, on both axes.
+    const NEAR: Option<(usize, i32)> = None;
     fn eval(&self, cx: &Cx) -> Self::Out;
 
     /// The bound of this expression in `Time`: the value of `Time` from which on the expression no longer
@@ -898,6 +906,10 @@ where
     const READS: u64 = A::READS;
     const RESTS: bool = A::RESTS;
     const STATE: bool = A::STATE;
+    // `Map` is transparent over its operand and a function of its value alone: where the operand cannot have
+    // changed, neither can the result.
+    const KEY: Option<(usize, usize)> = A::KEY;
+    const NEAR: Option<(usize, i32)> = A::NEAR;
     #[inline]
     fn slots(f: &mut dyn FnMut(Slot)) {
         A::slots(f)
@@ -928,6 +940,176 @@ where
     fn until(&self, cx: &Cx) -> u32 {
         self.0.until(cx)
     }
+}
+
+// ---- selection and reach: expressions whose change is bounded by a record constant --------------------------
+
+/// `word L == key ? on : off`: the selection form. The key is a record constant of one word, so "which record
+/// is the selected one" is a fact about the column, and a change of the word concerns two keys: the old value
+/// and the new one ([`Expr::KEY`]). Hover by id, the selected row, the focused field and the pressed button
+/// are all this.
+///
+/// The compare is of words (`Word::to_word`), so a key and a block word agree exactly when their bits do.
+#[repr(C)]
+pub struct Sel<L, K, A, B>(pub K, pub A, pub B, PhantomData<L>);
+impl<L, K: Copy, A: Copy, B: Copy> Clone for Sel<L, K, A, B> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<L, K: Copy, A: Copy, B: Copy> Copy for Sel<L, K, A, B> {}
+// SAFETY: `repr(C)` over `Words` operands (whole words at alignment 4, or zero-sized) and a zero-sized marker:
+// no padding, every bit pattern valid.
+unsafe impl<L: 'static, K: Words, A: Words, B: Words> Words for Sel<L, K, A, B> {}
+/// `un::<L>() == key ? on : off`, with the key declared (see [`Sel`]).
+#[inline(always)]
+pub fn sel<L: Lens, K: Expr<Out = L::T>, A: Expr, B: Expr<Out = A::Out>>(
+    key: K,
+    on: A,
+    off: B,
+) -> Sel<L, K, A, B> {
+    Sel(key, on, off, PhantomData)
+}
+impl<L: Lens, K: Expr<Out = L::T>, A: Expr, B: Expr<Out = A::Out>> Expr for Sel<L, K, A, B> {
+    type Out = A::Out;
+    type Stage = Turn;
+    const READS: u64 = 1 << L::SLOT | K::READS | A::READS | B::READS;
+    const RESTS: bool = A::RESTS & B::RESTS & K::RESTS;
+    const STATE: bool = A::STATE | B::STATE;
+    const CODE: &'static Code = &Code::Cpu(&[&Code::U(L::SLOT), K::CODE, A::CODE, B::CODE]);
+    // Declared only where it is certain: the key is one record word at the front of the record and reads
+    // nothing of the block (so it cannot itself change), and neither branch reads the selecting word.
+    const KEY: Option<(usize, usize)> = if K::READS == 0
+        && size_of::<K>() == 4
+        && align_of::<K>() == 4
+        && (A::READS | B::READS) >> L::SLOT & 1 == 0
+        && <Self as Record>::WORD_LAYOUT
+    {
+        Some((L::SLOT, 0))
+    } else {
+        None
+    };
+    #[inline]
+    fn slots(f: &mut dyn FnMut(Slot)) {
+        if let Some(s) = L::field() {
+            f(s)
+        }
+        K::slots(f);
+        A::slots(f);
+        B::slots(f)
+    }
+    #[inline(always)]
+    fn eq_ops(&self, o: &Self) -> bool {
+        self.0.eq_ops(&o.0) & self.1.eq_ops(&o.1) & self.2.eq_ops(&o.2)
+    }
+    #[inline(always)]
+    fn carry(&mut self, was: &Self, old: &Cx, new: &Cx) {
+        self.1.carry(&was.1, old, new);
+        self.2.carry(&was.2, old, new)
+    }
+    #[inline(always)]
+    fn eval(&self, cx: &Cx) -> A::Out {
+        if cx.u.w[L::SLOT] == self.0.eval(cx).to_word() {
+            self.1.eval(cx)
+        } else {
+            self.2.eval(cx)
+        }
+    }
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        latest(self.1.until(cx), self.2.until(cx), cx.u.w[U_TIME])
+    }
+}
+
+/// A reader of the pointer with a declared reach: `inside` (which may read the pointer words) while the pointer
+/// is within `R` of the record's `centre` on both axes, `outside` (which may not) everywhere else. The centre
+/// is a record constant in the coordinates of the pointer words. A pointer event then concerns the records it
+/// is near, before and after, and no other ([`Expr::NEAR`]).
+#[repr(C)]
+pub struct Near<const R: i32, C, I, O>(pub C, pub I, pub O);
+impl<const R: i32, C: Copy, I: Copy, O: Copy> Clone for Near<R, C, I, O> {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<const R: i32, C: Copy, I: Copy, O: Copy> Copy for Near<R, C, I, O> {}
+// SAFETY: `repr(C)` over `Words` operands: no padding, every bit pattern valid.
+unsafe impl<const R: i32, C: Words, I: Words, O: Words> Words for Near<R, C, I, O> {}
+/// See [`Near`].
+#[inline(always)]
+pub fn near<const R: i32, C: Expr<Out = [i32; 2]>, I: Expr, O: Expr<Out = I::Out>>(
+    centre: C,
+    inside: I,
+    outside: O,
+) -> Near<R, C, I, O> {
+    Near(centre, inside, outside)
+}
+const PTR_WORDS: u64 = 1 << U_PTR_X | 1 << U_PTR_Y;
+impl<const R: i32, C: Expr<Out = [i32; 2]>, I: Expr, O: Expr<Out = I::Out>> Expr
+    for Near<R, C, I, O>
+{
+    type Out = I::Out;
+    type Stage = Turn;
+    const READS: u64 = PTR_WORDS | C::READS | I::READS | O::READS;
+    const RESTS: bool = I::RESTS & O::RESTS;
+    const STATE: bool = I::STATE | O::STATE;
+    const CODE: &'static Code = &Code::Cpu(&[
+        &Code::U(U_PTR_X),
+        &Code::U(U_PTR_Y),
+        C::CODE,
+        I::CODE,
+        O::CODE,
+    ]);
+    // Declared only where it is certain: the centre is two record words at the front, constant under the
+    // block, the reach is a sane distance, and `outside` does not read the pointer.
+    const NEAR: Option<(usize, i32)> = if C::READS == 0
+        && size_of::<C>() == 8
+        && align_of::<C>() == 4
+        && O::READS & PTR_WORDS == 0
+        && R >= 0
+        && R < 1 << 20
+        && <Self as Record>::WORD_LAYOUT
+    {
+        Some((0, R))
+    } else {
+        None
+    };
+    #[inline]
+    fn slots(f: &mut dyn FnMut(Slot)) {
+        C::slots(f);
+        I::slots(f);
+        O::slots(f)
+    }
+    #[inline(always)]
+    fn eq_ops(&self, o: &Self) -> bool {
+        self.0.eq_ops(&o.0) & self.1.eq_ops(&o.1) & self.2.eq_ops(&o.2)
+    }
+    #[inline(always)]
+    fn carry(&mut self, was: &Self, old: &Cx, new: &Cx) {
+        self.1.carry(&was.1, old, new);
+        self.2.carry(&was.2, old, new)
+    }
+    #[inline(always)]
+    fn eval(&self, cx: &Cx) -> I::Out {
+        let [x, y] = self.0.eval(cx);
+        if within(cx.u.w[U_PTR_X] as i32, cx.u.w[U_PTR_Y] as i32, x, y, R) {
+            self.1.eval(cx)
+        } else {
+            self.2.eval(cx)
+        }
+    }
+    #[inline(always)]
+    fn until(&self, cx: &Cx) -> u32 {
+        latest(self.1.until(cx), self.2.until(cx), cx.u.w[U_TIME])
+    }
+}
+/// Whether (px, py) is within `r` of (x, y) on both axes. Widened: a pointer word may be any `i32`.
+#[inline(always)]
+pub const fn within(px: i32, py: i32, x: i32, y: i32, r: i32) -> bool {
+    let (dx, dy) = (px as i64 - x as i64, py as i64 - y as i64);
+    (dx <= r as i64) & (dx >= -(r as i64)) & (dy <= r as i64) & (dy >= -(r as i64))
 }
 
 // Tuples of operands, for a `map` of several arguments.
