@@ -611,11 +611,10 @@ impl<V: View, B: Backend> World<V, B> {
         // SAFETY: the table is current, and no view pass can run while it is borrowed here.
         let st = unsafe { &*route.store };
         let c = &st.cols[route.index as usize];
-        let e = st.ent(c);
-        if e.skip & ch != 0 {
+        if st.space.reads() & ch != 0 {
             return;
         }
-        if e.reads & ch & self.broad != 0 && e.timed & ColEnt::STATE == 0 && !self.no_fast {
+        if c.reads & ch & self.broad != 0 && !c.desc.state && !self.no_fast {
             let clip = st.space.clip;
             #[cfg(not(feature = "mutant_broad"))]
             if self.broad_last != Some(clip) {
@@ -623,23 +622,26 @@ impl<V: View, B: Backend> World<V, B> {
             }
             self.broad_last = Some(clip);
             self.fast_stats.broad_hits += 1;
-        } else if route.fast == u16::MAX
-            || !Self::delta_fast(
-                &mut self.fast[route.fast as usize],
-                &e,
-                &self.shown,
-                u,
-                ch,
-                &mut self.tiles,
-                &mut self.fast_stats,
-                self.wrote,
-                self.no_fast,
-            )
-        {
-            // SAFETY: the entry borrows the current column. Its kernel was instantiated for its archetype.
-            unsafe { (e.delta)(&e, &self.shown, u, &mut self.tiles) };
+        } else {
+            let e = st.ent(c);
+            if route.fast == u16::MAX
+                || !Self::delta_fast(
+                    &mut self.fast[route.fast as usize],
+                    &e,
+                    &self.shown,
+                    u,
+                    ch,
+                    &mut self.tiles,
+                    &mut self.fast_stats,
+                    self.wrote,
+                    self.no_fast,
+                )
+            {
+                // SAFETY: the entry borrows the current column. Its kernel was instantiated for its archetype.
+                unsafe { (e.delta)(&e, &self.shown, u, &mut self.tiles) };
+            }
         }
-        if e.timed & ColEnt::TIMED != 0 {
+        if c.desc.timed {
             st.resweep_col(c, u, &mut self.tiles);
         }
     }
@@ -758,6 +760,11 @@ impl<V: View, B: Backend> World<V, B> {
         if (ch == 0) & !journals {
             return;
         }
+        self.settle_changed(v, ch, journals);
+    }
+    // Re-learning can drive another description. Keep its stack frame off idle settles.
+    #[inline(never)]
+    fn settle_changed(&mut self, v: &V, ch: u64, journals: bool) {
         if self.changed(v, ch, journals) {
             self.learn(v);
         }
