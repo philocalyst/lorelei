@@ -1114,7 +1114,11 @@ fn list_reset(st: &mut Store, cx: &mut Cx<'_>, window: u32) {
 #[inline(never)]
 fn list_new(parent: &mut Store, l: &List<'_>) {
     let space = parent.space;
-    let rows = (space.clip.y1 - space.clip.y0) / l.row_h + 2;
+    let rows = if l.n == 0 {
+        0
+    } else {
+        (space.clip.y1 - space.clip.y0) / l.row_h + 2
+    };
     let mut st = Store::new((rows as u32).next_power_of_two().max(64), space);
     st.structure = parent.structure.clone();
     st.column_count = parent.column_count.clone();
