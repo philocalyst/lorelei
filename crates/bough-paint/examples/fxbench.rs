@@ -374,6 +374,8 @@ struct Row {
     ran: [u32; 3],
     /// Layer repair that left its words as they were (CPU executor).
     same: bough_paint::tile::Stats,
+    /// The resident plan's ranks and slots (Metal).
+    shape: (u32, usize),
 }
 fn med<T: Copy + PartialOrd>(v: &[T]) -> Option<T> {
     let mut v = v.to_vec();
@@ -405,6 +407,11 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
     // SAFETY: as the executor below.
     let mut mixed = if exec == Exec::Mixed { Some(unsafe { bough_paint::mixed::Mixed::new(&w.s, FW as usize) }.expect("no Metal device")) } else { None };
     let mut gpu = if exec == Exec::Metal { Some(unsafe { Gpu::new(&w.s, words, 256) }.expect("no Metal device")) } else { None };
+    // Metal: the resident plan (the GPU decides what the events reach); `EAGER=1`: the staged frame from the
+    // CPU's conservative schedule (slices 1 to 6)
+    let eager = std::env::var("EAGER").is_ok();
+    w.s.route_off = gpu.is_some() && !eager;
+    let mut era = 0u32;
     let mut out = vec![0u32; words];
     let mut u = U::default();
     let mut tiles = Vec::new();
@@ -429,7 +436,7 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
             fs
         } else {
             let (j0, _) = pmu::instructions_cycles();
-            let mut fs = if gpu.is_some() { w.s.update_eager(&u) } else { w.s.update(&u) };
+            let mut fs = if gpu.is_some() && eager { w.s.update_eager(&u) } else { w.s.update(&u) };
             let (j1, _) = pmu::instructions_cycles();
             if f >= warm {
                 row.turn.push(j1 - j0);
@@ -449,7 +456,16 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
                 Some(g) => {
                     w.s.damage.tiles(&mut tiles);
                     w.s.damage.clear();
-                    gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu;
+                    if eager {
+                        gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu;
+                    } else if !tiles.is_empty() || w.s.owes_layers() {
+                        let (t, e) = g.resident(&mut w.s, &u, &tiles, Some(era), FW as usize);
+                        (gs, era) = (t.gpu, e);
+                        if f == warm {
+                            let (ranks, slots) = g.resident_shape();
+                            row.shape = (ranks, slots);
+                        }
+                    }
                 }
             }
             fs
@@ -461,15 +477,24 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
         }
         let wall = t0.elapsed().as_secs_f64();
         let (i1, _) = pmu::instructions_cycles();
+        let (fs_prefix, fs_blocks);
         w.s.media.reclaim();
         if f >= warm {
+            if let Some(g) = gpu.as_ref().filter(|_| !eager && gs > 0.0) {
+                // read after the measured span: what the GPU decided to run
+                let st = g.resident_stats();
+                (fs_prefix, fs_blocks) = (st[0], st[1]);
+                tiles.resize(st[2] as usize, 0);
+            } else {
+                (fs_prefix, fs_blocks) = (fs.prefix_tiles, fs.blocks);
+            }
             row.instr.push(i1 - i0);
             row.wall.push(wall);
             row.gpu.push(gs);
             row.tiles += tiles.len() as u64;
             row.recs += fs.recs_visited as u64;
-            row.prefix += fs.prefix_tiles as u64;
-            row.blocks += fs.blocks as u64;
+            row.prefix += fs_prefix as u64;
+            row.blocks += fs_blocks as u64;
             row.layer_px += fs.layer_px;
             row.frames += 1;
         }
@@ -517,7 +542,7 @@ fn main() {
     println!("# fxbench {scene} {n}{}; {FW}x{FH}; reps {reps}; load at start: {}", if dense { " dense" } else { "" }, load());
     println!("# scene: {} records in {} columns, {} layers, {} glass / {} dots / {} videos; media pool {} slots", w.s.records(), w.s.cols().len(), w.s.layers.list.len(), w.g_rect.len(), w.d_rect.len(), w.v_rect.len(), w.s.media.stats().0);
     drop(w);
-    println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch\tturn_med\tran_idle/cpu/gpu\tprefix_same/prefix\tblocks_same/blocks by level 1..5");
+    println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch\tturn_med\tran_idle/cpu/gpu\tprefix_same/prefix\tblocks_same/blocks by level 1..5\tranks/slots");
     if scene == "media" {
         // T3: what the pacer costs per tile per refresh
         let mut sink = NullSink::new(Spec::STEREO_48K, 480, |_: &mut Block| {});
@@ -541,7 +566,7 @@ fn main() {
             bad_total += bad;
             let f = r.frames.max(1) as f64;
             println!(
-                "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{}/{}\t{}",
+                "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{}/{}\t{}\t{}/{}",
                 if dense { "d" } else { "" },
                 cell.name(),
                 r.tiles as f64 / f,
@@ -563,6 +588,8 @@ fn main() {
                 r.same.prefix_same,
                 r.same.prefix,
                 (1..6).map(|k| format!("{}/{}", r.same.blk_same[k], r.same.blk[k])).collect::<Vec<_>>().join(" "),
+                r.shape.0,
+                r.shape.1,
             );
         }
     }

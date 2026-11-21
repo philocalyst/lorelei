@@ -218,6 +218,12 @@ pub struct Layers {
     pub pool: PoolMem,
     /// Bumped when the table changed (the GPU re-uploads it).
     pub epoch: u64,
+    /// Bumped when some layer's storage changed (mount, new storage, repack): slots made from the storage
+    /// are stale.
+    pub alloc_epoch: u64,
+    /// Layers whose row of the table changed since `take_moved` (empty and `moved_all`: assume all).
+    moved: Vec<u32>,
+    moved_all: bool,
     dirty: [Blocks; LEVELS],
 }
 pub const NONE: u32 = u32::MAX;
@@ -247,6 +253,34 @@ impl PoolMem {
 }
 
 impl Layers {
+    /// The layers whose table row changed since the last call (`None`: assume every one).
+    pub fn take_moved(&mut self) -> Option<Vec<u32>> {
+        let m = std::mem::take(&mut self.moved);
+        if std::mem::take(&mut self.moved_all) { None } else { Some(m) }
+    }
+    /// A stage order: a layer's rank is above the rank of every layer beneath it whose level 0 shares a
+    /// tile with its own, so layers of one rank touch disjoint tiles and can be repaired in one dispatch.
+    pub fn ranks(&self, tx: usize, ty: usize) -> Vec<u32> {
+        let mut grid = vec![0u32; tx * ty];
+        let mut out = Vec::with_capacity(self.list.len());
+        for l in &self.list {
+            let r = l.lv[0].r;
+            let (x0, y0, x1, y1) = ((r[0] >> 5).max(0) as usize, (r[1] >> 5).max(0) as usize, (((r[2] + 31) >> 5).max(0) as usize).min(tx), (((r[3] + 31) >> 5).max(0) as usize).min(ty));
+            let mut k = 0;
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    k = k.max(grid[y * tx + x]);
+                }
+            }
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    grid[y * tx + x] = k + 1;
+                }
+            }
+            out.push(k);
+        }
+        out
+    }
     pub fn any(&self) -> bool {
         !self.list.is_empty()
     }
@@ -262,6 +296,7 @@ impl Layers {
         self.of[z as usize] = self.list.len() as u32;
         self.list.push(Layer { z, fresh: true, ..Default::default() });
         self.epoch += 1;
+        self.alloc_epoch += 1;
     }
     /// Bring layer `lid` to its record's backdrop command under the current block: new level windows; the
     /// storage is kept when the windows still fit (a move), re-allocated otherwise.
@@ -283,6 +318,16 @@ impl Layers {
             return;
         }
         self.epoch += 1;
+        if self.moved.len() >= self.list.len() {
+            (self.moved_all, self.moved) = (true, Vec::new());
+        }
+        if !self.moved_all {
+            self.moved.push(lid);
+        }
+        if !fits {
+            self.alloc_epoch += 1;
+        }
+        let l = &mut self.list[lid as usize];
         if fits {
             for k in 0..LEVELS {
                 let (o, n) = (l.lv[k].r, lv[k].r);
@@ -335,6 +380,7 @@ impl Layers {
         }
         self.live = self.used;
         self.epoch += 1;
+        self.alloc_epoch += 1;
         true
     }
     /// Every layer's whole repair, in paint order: what a broad change schedules, enumerated only by the
@@ -373,17 +419,27 @@ impl Layers {
         }
         plan
     }
-    /// The table as the GPU reads it: per layer `ROW` words.
+    /// The table as the GPU reads it: per layer `ROW` words (key, levels read, per level its window, storage
+    /// size and first word, then the record's ink window).
     pub fn table(&self, out: &mut Vec<u32>) {
         out.clear();
-        for l in &self.list {
-            out.extend([l.z, l.lvl, l.frac, l.top]);
-            for v in &l.lv {
-                let p = |a: i32, b: i32| (a as u16 as u32) | (b as u16 as u32) << 16;
-                out.extend([p(v.r[0], v.r[1]), p(v.r[2], v.r[3]), v.cw | v.ch << 16, v.base]);
-            }
-            out.resize(out.len().div_ceil(ROW) * ROW, 0);
+        let mut row = Vec::new();
+        for lid in 0..self.list.len() as u32 {
+            self.row(lid, &mut row);
+            out.extend_from_slice(&row);
         }
+    }
+    /// One layer's row of the table.
+    pub fn row(&self, lid: u32, out: &mut Vec<u32>) {
+        out.clear();
+        let l = &self.list[lid as usize];
+        let p = |a: i32, b: i32| (a as u16 as u32) | (b as u16 as u32) << 16;
+        out.extend([l.z, l.lvl, l.frac, l.top]);
+        for v in &l.lv {
+            out.extend([p(v.r[0], v.r[1]), p(v.r[2], v.r[3]), v.cw | v.ch << 16, v.base]);
+        }
+        out.extend([p(l.win[0], l.win[1]), p(l.win[2], l.win[3])]);
+        out.resize(ROW, 0);
     }
 
     /// Turn what reached layer `lid` this frame (its pending tiles, the pixels that entered its windows)
@@ -531,7 +587,7 @@ pub fn up_px(r: [i32; 4]) -> [i32; 4] {
 /// The frame pixels of layer `l`'s record whose read at level `k` reaches the level's pixel rect `r`, cut
 /// to the record's window (empty: none).
 pub fn reach_px(l: &Layer, k: u32, r: [i32; 4]) -> [i32; 4] {
-    let lo = |p: i32| (((((p - 1) << (k + 1)) + (1 << k) - 1) + 1)) >> 1;
+    let lo = |p: i32| ((((p - 1) << (k + 1)) + (1 << k) - 1) + 1) >> 1;
     let hi = |p: i32| (((p << (k + 1)) + (1 << k) - 1) + 1) >> 1;
     cut([lo(r[0]), lo(r[1]), hi(r[2]), hi(r[3])], l.win)
 }

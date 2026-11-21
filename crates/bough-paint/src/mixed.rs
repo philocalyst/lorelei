@@ -30,9 +30,11 @@ pub enum Ran {
 /// entry of a tile is 1, a blurred shadow 24). From the cost model's own calibration (a flat entry about
 /// 0.3 us of one core).
 pub const CPU_INSTR_PER_WEIGHT: u64 = 3_000;
-/// Frame-thread instructions of a staged Metal frame whatever it draws: the command buffer (measured:
-/// 180 K to 200 K for a whole-frame theme dispatch, `bench/results/fx/slice4.txt`).
-pub const GPU_FRAME_INSTR: u64 = 190_000;
+/// Frame-thread instructions of a resident Metal frame whatever it draws: the command buffer, and each
+/// dispatch encoded in it (the plan's dispatches are the same every frame: seven per rank of layers). Measured
+/// (`bench/results/fx/slice7.txt`): about 2.5 K per dispatch.
+pub const GPU_FRAME_INSTR: u64 = 70_000;
+pub const GPU_DISPATCH_INSTR: u64 = 2_600;
 
 pub struct Mixed {
     pub gpu: Gpu,
@@ -42,6 +44,8 @@ pub struct Mixed {
     /// What the last frame's prediction was (weight units), and its GPU seconds (0 on the CPU), for reports.
     pub last_weight: u64,
     pub last_gpu: f64,
+    /// The resident plan's generation the surface last showed.
+    era: u32,
 }
 impl Mixed {
     /// # Safety
@@ -50,7 +54,7 @@ impl Mixed {
         let words = stride * scene.fh as usize;
         // SAFETY: the caller's contract is `Gpu::new`'s.
         let gpu = unsafe { Gpu::new(scene, words, 256) }?;
-        Some(Mixed { gpu, words, stride, tiles: Vec::new(), last_weight: 0, last_gpu: 0.0 })
+        Some(Mixed { gpu, words, stride, tiles: Vec::new(), last_weight: 0, last_gpu: 0.0, era: 0 })
     }
     /// The surface (the GPU's buffer, which the CPU kernel also draws into).
     pub fn out(&self) -> &[u32] {
@@ -58,11 +62,14 @@ impl Mixed {
     }
     /// One frame: update, choose, draw. `force`: `None` lets the chooser decide.
     pub fn frame(&mut self, scene: &mut Scene, u: &U, pool: &Pool, force: Option<Ran>) -> (FrameStats, Ran) {
+        // the events are routed to the layers only if the CPU is chosen: the GPU's plan finds them itself
+        scene.route_off = true;
         let mut fs = scene.update(u);
         let mut tiles = std::mem::take(&mut self.tiles);
         scene.damage.tiles(&mut tiles);
-        let due = scene.due_weight(GPU_FRAME_INSTR / CPU_INSTR_PER_WEIGHT);
-        let idle = tiles.is_empty() && !scene.plan.full && due == 0;
+        let limit = (GPU_FRAME_INSTR + GPU_DISPATCH_INSTR * self.gpu.resident_dispatches() as u64) / CPU_INSTR_PER_WEIGHT;
+        let due = scene.event_weight(limit);
+        let idle = tiles.is_empty() && !scene.owes_layers();
         let ran = if idle {
             Ran::Idle
         } else if let Some(r) = force {
@@ -73,7 +80,6 @@ impl Mixed {
         } else {
             // the damage's weight before any repair: the layer tiles that are due and the tiles to shade,
             // summed only until the CPU's side of the comparison is lost (the sum is then not needed)
-            let limit = GPU_FRAME_INSTR / CPU_INSTR_PER_WEIGHT;
             let mut w = due;
             for &t in &tiles {
                 if w > limit {
@@ -84,16 +90,11 @@ impl Mixed {
             self.last_weight = w;
             if w <= limit { Ran::Cpu } else { Ran::Gpu }
         };
-        // the CPU kernel repairs the layers first and lets damage stop where nothing changed; Metal needs
-        // the whole schedule before it runs. Either way the output damage is complete only now.
-        match ran {
-            Ran::Idle => {}
-            Ran::Cpu => {
-                scene.prepare(u);
-            }
-            Ran::Gpu => {
-                scene.plan_eager();
-            }
+        // the CPU kernel repairs the layers first and lets damage stop where nothing changed (its output
+        // damage is complete only then); Metal's resident plan finds what the events reach by itself
+        if ran == Ran::Cpu {
+            scene.route_events();
+            scene.prepare(u);
         }
         scene.damage.tiles(&mut tiles);
         scene.damage.clear();
@@ -106,7 +107,9 @@ impl Mixed {
                 fs.raster = scene.shade(u, &tiles, self.gpu.out_mut(words), stride, pool, 0);
             }
             Ran::Gpu => {
-                self.last_gpu = self.gpu.staged(scene, u, &tiles, self.stride).gpu;
+                let (t, era) = self.gpu.resident(scene, u, &tiles, Some(self.era), self.stride);
+                (self.last_gpu, self.era) = (t.gpu, era);
+                fs.tiles = self.gpu.resident_stats()[2];
             }
         }
         self.tiles = tiles;

@@ -477,6 +477,7 @@ pub struct Bins {
     ty: usize,
     /// Tiles whose list or cut changed since `take_changed` (an executor that mirrors the bins).
     changed: Vec<u32>,
+    chg_mark: Vec<bool>,
     /// Tiles edited since the last `recut_touched`, and a flag per tile for it.
     touched: Vec<u32>,
     mark: Vec<bool>,
@@ -519,13 +520,16 @@ impl Bins {
         &self.lay[t]
     }
     /// The certificate: the least key above `z` in tile `t` whose opaque cover holds all of window `w`
-    /// inside the tile (`u32::MAX`: none). Whatever is stored for this tile above that record cannot depend
+    /// inside the tile, among the keys beneath `below` (`u32::MAX`: none). Whatever is stored for this tile above that record cannot depend
     /// on a change of record `z` confined to `w`: every pixel of the change is under an opaque pixel.
-    pub fn cover_above(&self, t: usize, z: u32, w: [i32; 4], cover: &[[i16; 4]]) -> u32 {
+    pub fn cover_above(&self, t: usize, z: u32, w: [i32; 4], cover: &[[i16; 4]], below: u32) -> u32 {
         let (ox, oy) = ((t % self.tx) as i32 * 32, (t / self.tx) as i32 * 32);
         let r = [w[0].max(ox), w[1].max(oy), w[2].min(ox + 32), w[3].min(oy + 32)];
         let l = &self.lists[t];
         for &k in &l[l.partition_point(|&k| k <= z)..] {
+            if k >= below {
+                break;
+            }
             let c = cover[k as usize];
             let holds = c[0] as i32 <= r[0] && c[1] as i32 <= r[1] && c[2] as i32 >= r[2] && c[3] as i32 >= r[3];
             let meets = (c[0] as i32) < r[2] && (c[1] as i32) < r[3] && c[2] as i32 > r[0] && c[3] as i32 > r[1];
@@ -559,7 +563,10 @@ impl Bins {
             }
         }
         (self.start[t], self.floor[t]) = (start, floor);
-        self.changed.push(t as u32);
+        if !self.chg_mark[t] {
+            self.chg_mark[t] = true;
+            self.changed.push(t as u32);
+        }
     }
     /// From nothing: every record, in paint order.
     pub fn build(&mut self, l: &Lanes, tx: usize, ty: usize) {
@@ -593,6 +600,8 @@ impl Bins {
             }
         }
         self.changed.clear();
+        self.chg_mark.clear();
+        self.chg_mark.resize(nt, false);
         for t in 0..nt {
             self.recut(t, l);
         }
@@ -672,6 +681,9 @@ impl Bins {
     }
     /// Forget which tiles changed (after an executor mirrored them).
     pub fn take_changed(&mut self) -> Vec<u32> {
+        for &t in &self.changed {
+            self.chg_mark[t as usize] = false;
+        }
         std::mem::take(&mut self.changed)
     }
 }
@@ -763,6 +775,14 @@ pub struct Scene {
     keys: Vec<Option<Keyed>>,
     /// Bumped when the bins were rebuilt (an executor that mirrors them re-reads them).
     pub bins_epoch: u64,
+    /// Keys whose window, halo or cover lane changed since `take_lane_dirty` (each once), and "all of
+    /// them" (the first frame): what an executor that mirrors the lanes rewrites.
+    lane_dirty: Vec<u32>,
+    lane_mark: Vec<bool>,
+    lane_all: bool,
+    /// The executor finds the layers an event reaches itself (`metal::Gpu::resident`): `update` does not
+    /// route events to layers. The CPU's `prepare` must not be used while this is set.
+    pub route_off: bool,
     /// Measurement switch, never a result's configuration: every layer is recomputed whole on every
     /// frame and no tile restarts from a stored prefix (what a compositor that redraws its layers does).
     pub fx_nocache: bool,
@@ -847,6 +867,10 @@ impl Scene {
             scrolls: Vec::new(),
             keys: Vec::new(),
             bins_epoch: 0,
+            lane_dirty: Vec::new(),
+            lane_mark: Vec::new(),
+            lane_all: true,
+            route_off: false,
             fx_nocache: std::env::var("BOUGH_FX_NOCACHE").is_ok(),
             broad: 0,
             media: crate::media::Pool::new(0),
@@ -1228,6 +1252,16 @@ impl Scene {
             relaid |= self.layers.repack();
             self.layers.pool.ensure(self.layers.used);
         }
+        if first {
+            self.lane_all = true;
+        }
+        self.lane_mark.resize(self.order.len(), false);
+        for &z in &rebin {
+            if !self.lane_mark[z as usize] {
+                self.lane_mark[z as usize] = true;
+                self.lane_dirty.push(z);
+            }
+        }
         if moved {
             let lanes = Lanes { win: &self.win, cover: &self.cover, halo: &self.halo, lay: &self.layers.of, cut: self.cut };
             // edits pay per moved record and tile; when a good part of the scene moved (a pan) one pass over
@@ -1262,7 +1296,7 @@ impl Scene {
                 self.lay_todo.extend(0..self.layers.list.len() as u32);
             }
             self.lay_todo.extend(regeo.iter().map(|&z| self.layers.lid(z)));
-            for &(w, z) in &events {
+            for &(w, z) in events.iter().filter(|_| !self.route_off) {
                 Self::route(&self.bins, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
             }
         }
@@ -1283,7 +1317,7 @@ impl Scene {
                 if from == ls.len() {
                     continue;
                 }
-                let stop = bins.cover_above(t, z, w, cover);
+                let stop = bins.cover_above(t, z, w, cover, *ls.last().unwrap());
                 for &lz in &ls[from..] {
                     if lz > stop {
                         break;
@@ -1333,6 +1367,65 @@ impl Scene {
             }
         }
         w
+    }
+    /// The windows that changed this frame with their records' keys (the events the layers answer).
+    pub fn events(&self) -> &[([i32; 4], u32)] {
+        &self.events
+    }
+    /// Route the last `update`'s events to the layers now (for a scene with `route_off`, when the CPU is to
+    /// repair this frame after all).
+    pub fn route_events(&mut self) {
+        let events = std::mem::take(&mut self.events);
+        if self.layers.any() && !self.plan.full {
+            for &(w, z) in &events {
+                Self::route(&self.bins, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
+            }
+        }
+        self.events = events;
+    }
+    /// An estimate of the layer work the last `update`'s events cause, before any routing: per tile an
+    /// event touches, the tile's weight for every layer listed there above the event (plus what is due by
+    /// rule). O(event tiles), cut short once it passes `enough`.
+    pub fn event_weight(&self, enough: u64) -> u64 {
+        let mut w = self.due_weight(enough);
+        if !self.layers.any() {
+            return w;
+        }
+        for &(r, z) in &self.events {
+            for y in (r[1] >> 5).max(0)..((r[3] + 31) >> 5).min(self.ty as i32) {
+                for x in (r[0] >> 5).max(0)..((r[2] + 31) >> 5).min(self.tx as i32) {
+                    if w > enough {
+                        return w;
+                    }
+                    let t = y as usize * self.tx + x as usize;
+                    let ls = self.bins.layers(t);
+                    let n = ls.len() - ls.partition_point(|&k| k <= z);
+                    if n > 0 {
+                        w += self.tile_weight(t as u32) as u64 * n as u64;
+                    }
+                }
+            }
+        }
+        w
+    }
+    /// The last `update` left something for the layers: an event, a layer due by rule, or a broad change.
+    /// (With no output damage either, the frame is idle and no executor need be called.)
+    pub fn owes_layers(&self) -> bool {
+        self.plan.full || !self.lay_todo.is_empty() || (self.layers.any() && !self.events.is_empty())
+    }
+    /// The keys whose lanes changed since the last call, or `None` for "every key".
+    pub fn take_lane_dirty(&mut self) -> Option<Vec<u32>> {
+        for &z in &self.lane_dirty {
+            self.lane_mark[z as usize] = false;
+        }
+        let d = std::mem::take(&mut self.lane_dirty);
+        if std::mem::take(&mut self.lane_all) { None } else { Some(d) }
+    }
+    /// What is due in the layers by rule (fresh storage, pixels that entered a window), taken out: for an
+    /// executor that repairs them itself. Nothing is left scheduled.
+    pub fn take_dues(&mut self) -> Vec<(u32, layer::Due)> {
+        let todo = std::mem::take(&mut self.lay_todo);
+        todo.into_iter().map(|lid| (lid, self.layers.take_due(lid))).collect()
     }
     /// `update`, then `plan_eager`: for an executor that needs the whole schedule up front.
     pub fn update_eager(&mut self, u: &U) -> FrameStats {
