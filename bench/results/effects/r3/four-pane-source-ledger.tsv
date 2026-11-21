@@ -1,0 +1,7 @@
+# Source-derived allocation at first update, 640x400, four 112x76 panels, sigma 6. Excludes Vec capacity rounding and metadata.
+panel	x	y	level0_px	pyramid_px	logical_bytes	reserved_bytes
+0	2	1	20480	5119	102396	147328
+1	186	114	30720	7831	154204	208160
+2	246	160	30720	7831	154204	208160
+3	528	324	17920	5119	92156	135040
+total					502960	698688
