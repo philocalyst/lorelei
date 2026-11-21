@@ -524,3 +524,23 @@ fn screenshots_refuse_missing_nodes_and_raw_is_rgba() {
     }
     call(&mut client, "shutdown", J::obj());
 }
+
+#[test]
+fn frame_barrier_reports_idle_rows_and_moving_spinner() {
+    let rows = spawn("idle-rows", "rows", 100);
+    let mut client = Client::open(&rows.path).unwrap();
+    let first = call(&mut client, "wait_for_idle", J::obj());
+    assert_eq!(first.get("idle").and_then(J::as_bool), Some(true));
+    call(&mut client, "pointer", J::obj().set("x", 10).set("y", 90));
+    let next = call(&mut client, "wait_for_idle", J::obj());
+    assert_ne!(next.get("pixels"), first.get("pixels"));
+    assert!(next.get("frames").and_then(J::as_u32) > first.get("frames").and_then(J::as_u32));
+    call(&mut client, "shutdown", J::obj());
+    let spinner = spawn("idle-spinner", "spinner", 10);
+    let mut moving = Client::open(&spinner.path).unwrap();
+    call(&mut moving, "tick", J::obj().set("ms", 16));
+    let pending = call(&mut moving, "wait_for_idle", J::obj());
+    assert_eq!(pending.get("idle").and_then(J::as_bool), Some(false));
+    assert!(pending.get("moving_columns").and_then(J::as_u32).unwrap() > 0);
+    call(&mut moving, "shutdown", J::obj());
+}

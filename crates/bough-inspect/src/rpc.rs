@@ -124,6 +124,7 @@ pub const METHODS: &[&str] = &[
     "tick",
     "resize",
     "settle",
+    "wait_for_idle",
     "reload",
     "shot",
     "diff",
@@ -246,6 +247,20 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
             }
             let o = s.run(&c);
             ok(record::outcome_json(&o))
+        }
+        "wait_for_idle" => {
+            // The headless barrier paints at the current clock. A moving column still
+            // needs another tick, and a host outside this session may have its own work.
+            let frame = s.shot();
+            let counters = s.counters();
+            let moving_columns = s.app().world().tiles.sweeps.len();
+            ok(J::obj()
+                .set("idle", moving_columns == 0)
+                .set("moving_columns", moving_columns)
+                .set("revision", counters.revision)
+                .set("frames", counters.frames)
+                .set("damage", s.damage().tiles)
+                .set("pixels", format!("{:016x}", frame.digest())))
         }
         "reload" => {
             if s.recording() {

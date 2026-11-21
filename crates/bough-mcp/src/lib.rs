@@ -327,17 +327,7 @@ impl Mcp {
                 let p = J::obj().set("log", a.get("log").cloned().ok_or("-32602: log")?);
                 Ok((j(self.call("replay", &p)?), None))
             }
-            "wait_for_idle" => {
-                // the inspector is synchronous: a command returns after its turn. Report the state that shows.
-                let v = self.call("counters", &J::obj())?;
-                Ok((
-                    j(J::obj()
-                        .set("idle", true)
-                        .set("revision", v.get("revision").cloned().unwrap_or(J::Null))
-                        .set("damage", v.get("damage_tiles").cloned().unwrap_or(J::Null))),
-                    None,
-                ))
-            }
+            "wait_for_idle" => Ok((j(self.call("wait_for_idle", &J::obj())?), None)),
             "quit" => {
                 self.client = None;
                 self.closed = true;
@@ -690,7 +680,7 @@ pub fn tools() -> Vec<J> {
         ),
         tool(
             "wait_for_idle",
-            "The inspector answers after each command's turn; reports that nothing is pending and the current revision and damage.",
+            "Finish a headless frame at the current clock. Reports its revision, pixel digest and whether motion needs another tick.",
             no(),
         ),
     ]

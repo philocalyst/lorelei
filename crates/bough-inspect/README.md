@@ -44,12 +44,14 @@ A Unix domain socket, length-framed JSON-RPC 2.0 (4-byte big-endian length, then
 on a connection must be `hello` with the supported schema. `methods` may be queried before negotiation. Up to
 eight same-user connections share the same world and their commands execute serially. An existing path is
 never removed at bind. Remove a known stale socket before reusing its address. Methods: `hello`, `methods`, `tree`, `node`, `find`, `pick`, `deps`, `why`, `counters`,
-`state`, `set`, `pointer`, `down`, `up`, `click`, `key`, `text`, `wheel`, `tick`, `resize`, `settle`, `reload`,
+`state`, `set`, `pointer`, `down`, `up`, `click`, `key`, `text`, `wheel`, `tick`, `resize`, `settle`, `wait_for_idle`, `reload`,
 `shot`, `diff`, `record_start`, `record_stop`, `replay`, `shutdown`.
 
 The server is pumped from the application's own thread (`Server::pump`) or run blocking for a headless app
 (`Server::serve`). A world stays on its own thread. Network I/O is nonblocking and bounded per pump.
-Commands such as screenshots still execute synchronously on the application thread.
+Commands such as screenshots still execute synchronously on the application thread. `wait_for_idle`
+paints at the current clock and reports the frame and pending animation. It reports only work owned
+by the headless session.
 
 ## Record and replay
 
