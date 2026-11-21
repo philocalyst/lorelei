@@ -1,0 +1,37 @@
+ 4:18  up 4 days,  7:11, 5 users, load averages: 20.37 15.72 16.22
+case --scenario search --rows 10000 --op filter --repeats 24
+mount instructions=434196052 ns=30379542 rss=68861952 footprint=59736784 records=50011 rows=10000
+
+thread 'main' panicked at crates/bough-mem/src/lib.rs:251:9:
+bough-mem: column `glyph_x` is full (capacity 524288, need 524304); raise it in the region layout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+ 4:18  up 4 days,  7:11, 5 users, load averages: 20.37 15.72 16.22
+case --scenario typing --rows 10000 --op typing --repeats 24
+mount instructions=430011479 ns=30122208 rss=70713344 footprint=61620992 records=50011 rows=10000
+result op=typing repeats=24 render=false gate=false ring=4 instructions=715861351 rss=71335936 footprint=62178048 frames=49 surfaces=[13, 12, 12, 12]
+exit=0
+ 4:18  up 4 days,  7:11, 5 users, load averages: 20.37 15.72 16.22
+case --scenario rows --rows 10000 --op scroll --repeats 24
+mount instructions=370989700 ns=24094875 rss=64176128 footprint=55280384 records=50002 rows=10000
+result op=scroll repeats=24 render=false gate=false ring=4 instructions=2906698051 rss=66551808 footprint=57508608 frames=49 surfaces=[13, 12, 12, 12]
+exit=0
+ 4:18  up 4 days,  7:11, 5 users, load averages: 20.37 15.72 16.22
+case --scenario table --rows 10000 --variant coarse --op clear --repeats 1
+mount instructions=372152684 ns=26800083 rss=69320704 footprint=60277456 records=50007 rows=10000
+
+thread 'main' panicked at crates/bough-mem/src/lib.rs:251:9:
+bough-mem: column `glyph_x` is full (capacity 524288, need 524320); raise it in the region layout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+ 4:18  up 4 days,  7:11, 5 users, load averages: 20.37 15.72 16.22
+case --scenario spinner --rows 10000 --op spinner --repeats 24
+mount instructions=384636671 ns=25307792 rss=66633728 footprint=57049880 records=50009 rows=10000
+result op=spinner repeats=24 render=false gate=false ring=4 instructions=770709220 rss=69844992 footprint=60162840 frames=49 surfaces=[13, 12, 12, 12]
+exit=0
+ 4:18  up 4 days,  7:11, 5 users, load averages: 20.37 15.72 16.22
+case --scenario ticker --rows 10000 --variant coarse --op ticker --repeats 24
+mount instructions=375846415 ns=27998875 rss=73023488 footprint=63980240 records=50007 rows=10000
+result op=ticker repeats=24 render=false gate=false ring=4 instructions=1097412867 rss=75939840 footprint=66781904 frames=49 surfaces=[13, 12, 12, 12]
+exit=0
+ 4:18  up 4 days,  7:11, 5 users, load averages: 20.37 15.72 16.22
