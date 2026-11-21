@@ -1,0 +1,32 @@
+ 4:07  up 4 days, 7 hrs, 5 users, load averages: 18.50 22.30 18.70
+# rows=10000 cells=100000 reps=128 window=2560x1600 device px
+scene	phase	steps	instr_p50	instr_p95	cycles_p50	tiles_p50
+# model built in 0.10 ms (1570019 instructions): the data, not the UI
+# mounted: 764 records in 32 pages, 43776 bytes of columns, 58.5 us wall
+sheet_x	mount	1	403826	403826	207905	4000
+sheet_x	floor	128	0	0	4	0
+sheet_x	idle	128	76	76	25	0
+sheet_x	hover	128	13504	13504	2370	329
+sheet_x	hover_move	128	14908	15047	2737	705
+sheet_x	theme	128	42286	42286	8509	4000
+sheet_x	edit_exposed	128	2902	2912	547	32
+sheet_x	edit_unexposed	128	2379	2384	412	16
+sheet_x	part_model_edit	128	58	58	42	0
+sheet_x	part_total_word	128	891	896	189	16
+sheet_x	part_delta_total	128	623	628	138	16
+sheet_x	part_diff_only	128	162	162	41	0
+sheet_x	part_journal_only	128	1774	1774	277	0
+sheet_x	part_mark_cell	128	59	63	12	16
+sheet_x	part_pointer_same	128	438	438	85	0
+sheet_x	select	128	990	990	180	0
+sheet_x	frame_in_motion	8	184	184	79	135
+sheet_x	frame_at_rest	128	10	10	4	0
+sheet_x	scroll_3_rows	128	7012	7012	1123	3600
+sheet_x	scroll_6px	128	1587	1587	311	3600
+sheet_x	scroll_page	128	34486	34486	5303	3600
+sheet_x	insert_row	128	88522	92480	28440	2150
+sheet_x	remove_row	128	88765	92587	28298	2150
+sheet_x	redescribe_idle	128	17788	17788	2621	0
+sheet_x	redescribe_edit	128	18563	18573	2830	32
+# at the end: 764 records in 32 pages, 43776 bytes of columns
+ 4:07  up 4 days, 7 hrs, 5 users, load averages: 18.50 22.30 18.70

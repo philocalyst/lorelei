@@ -1319,22 +1319,32 @@ pub fn pack(b: &[u8; 64]) -> u64 {
 /// The derivative of one page: which of its records show something else under `new` than under `old`.
 #[inline(always)]
 pub fn changed_mask<A: Arch>(pg: &Page<A>, old: &U, new: &U) -> u64 {
-    let mut b = [0u8; 64];
-    for i in 0..64 {
-        if pg.initialized & (1 << i) == 0 {
-            continue;
-        }
-        b[i] = pg.record(i).changed(old, new) as u8;
+    let initialized = pg.initialized;
+    if initialized == 0 {
+        return 0;
+    }
+    let first = initialized.trailing_zeros() as usize;
+    let span = initialized >> first;
+    let len = span.trailing_ones() as usize;
+    if len != span.count_ones() as usize {
+        return changed_sparse(pg, initialized, old, new);
+    }
+
+    let cells = &pg.rec[first..first + len];
+    // SAFETY: the mask certifies every slot in this contiguous span was
+    // initialized with a typed write. UnsafeCell and MaybeUninit preserve A's
+    // layout and alignment. The shared borrow ends before any transition write.
+    let records = unsafe { core::slice::from_raw_parts(cells.as_ptr().cast::<A>(), len) };
+    let mut changed = [0u8; 64];
+    for (a, dst) in records.iter().zip(&mut changed) {
+        *dst = a.changed(old, new) as u8;
     }
     if A::MOVES {
-        for i in 0..64 {
-            if pg.initialized & (1 << i) == 0 {
-                continue;
-            }
-            b[i] |= (pg.record(i).offset(old) != pg.record(i).offset(new)) as u8;
+        for (a, dst) in records.iter().zip(&mut changed) {
+            *dst |= (a.offset(old) != a.offset(new)) as u8;
         }
     }
-    pack(&b)
+    pack(&changed) << first
 }
 
 /// The same for a page with few live records: only those are evaluated.
@@ -1618,5 +1628,41 @@ unsafe fn paint_col<A: Arch, B: Backend>(col: &RawCol, sv: &StoreView, u: &U, b:
             },
             u,
         )
+    }
+}
+
+#[cfg(test)]
+mod page_delta_tests {
+    use super::*;
+    use crate::{
+        expr::{self, Expr},
+        kinds::Fill,
+    };
+
+    #[test]
+    fn checked_spans_and_gaps_equal_scalar_page_delta() {
+        let old = U::default();
+        let mut new = old;
+        new.w[expr::U_PICK] = 1;
+        for mask in [0, 1, 1 << 63, 0xffff << 17, u64::MAX, 0x5555_5555_5555_5555] {
+            let fill = Fill(expr::un::<expr::Pick>().map(|v| expr::Color(v)));
+            let mut pg = Page {
+                x0: [0; 64],
+                y0: [0; 64],
+                x1: [0; 64],
+                y1: [0; 64],
+                rec: [const { UnsafeCell::new(MaybeUninit::uninit()) }; 64],
+                initialized: 0,
+            };
+            for i in (0..64).filter(|&i| mask & (1 << i) != 0) {
+                pg.set_record(i, fill);
+            }
+            assert_eq!(changed_mask(&pg, &old, &new), mask);
+            assert_eq!(
+                changed_mask(&pg, &old, &new),
+                changed_sparse(&pg, mask, &old, &new)
+            );
+            assert_eq!(changed_mask(&pg, &old, &old), 0);
+        }
     }
 }

@@ -192,8 +192,13 @@ impl TextCx<'_> {
         clip: crate::store::Rect,
         f: impl FnMut(i32, i32, &[u8]),
     ) {
-        let face = &self.faces[run.face()];
         let (slot, x) = self.glyphs.of(run);
+        if slot.is_empty() {
+            return;
+        }
+        let Some(face) = self.faces.get(run.face()) else {
+            return;
+        };
         face.spans(
             slot,
             x,
@@ -214,7 +219,9 @@ impl TextCx<'_> {
         clip: crate::store::Rect,
         f: impl FnMut(i32, i32, &[u8]),
     ) {
-        let face = &self.faces[0];
+        let Some(face) = self.faces.first() else {
+            return;
+        };
         let Some(cell) = face.cell() else { return };
         bough_face::num::Num::new(v, d as u32, pad as u32).spans(
             face,

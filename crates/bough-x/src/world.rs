@@ -169,9 +169,8 @@ pub struct World<V, B> {
     handlers: Vec<(u32, u32)>,
     /// Publication revision: grows whenever a pass stored records with other words or rects, or moved a list.
     revision: u32,
-    /// The view type this world was mounted with: handlers were instantiated for it, so events must come with
-    /// it (checked at admission, once per event).
-    view: Option<core::any::TypeId>,
+    /// A typed world may dispatch only after mounting its view.
+    mounted: bool,
     /// The row each hovered place showed when it was entered (a list's slot shows another row after a scroll).
     hov_what: Vec<u32>,
     /// Scratch for the event path, reserved once: an event allocates nothing.
@@ -220,7 +219,7 @@ impl<V: View, B: Backend> World<V, B> {
             clock: 0,
             ptr: None,
             revision: 0,
-            view: None,
+            mounted: false,
             slots: Vec::new(),
             hov_what: Vec::with_capacity(64),
             hov: Vec::with_capacity(64),
@@ -351,7 +350,7 @@ impl<V: View, B: Backend> World<V, B> {
     fn mount_pass(&mut self, v: &V) {
         self.wrote += 1;
         self.root.world = Some(self.id);
-        self.view = Some(crate::sink::tid::<V>());
+        self.mounted = true;
         self.shown = self.block(v);
         self.tiles.mark_all();
         self.root.row_live[0] = 1;
@@ -506,6 +505,18 @@ impl<V: View, B: Backend> World<V, B> {
                 }
             }
         }
+        if ch.is_power_of_two() {
+            // A single reader list contains each column at most once.
+            let word = ch.trailing_zeros() as usize;
+            let start = self.by_word[word] as usize;
+            let end = self.by_word[word + 1] as usize;
+            self.delta_stats.visited_incidences = end - start;
+            for i in start..end {
+                self.delta_one(self.readers[i] as usize, u, ch);
+            }
+            return;
+        }
+
         let mut words = ch;
         let mut incidences = 0usize;
         while words != 0 {
@@ -669,10 +680,7 @@ impl<V: View, B: Backend> World<V, B> {
     /// edited or a word that scrolls a list changed.
     #[inline]
     pub fn settle(&mut self, v: &V) {
-        assert!(
-            self.view == Some(crate::sink::tid::<V>()),
-            "a view of another type than the world was mounted with"
-        );
+        assert!(self.mounted, "the world has not been mounted");
         let mut scratch = U::default();
         let ch = self
             .shown
@@ -682,11 +690,12 @@ impl<V: View, B: Backend> World<V, B> {
         if (ch == 0) & (epoch == self.epoch) {
             return;
         }
-        self.changed(v, ch, epoch);
-        self.learn(v);
+        if self.changed(v, ch, epoch) {
+            self.learn(v);
+        }
     }
     #[inline(never)]
-    fn changed(&mut self, v: &V, ch: u64, epoch: u32) {
+    fn changed(&mut self, v: &V, ch: u64, epoch: u32) -> bool {
         let u = &self.block(v);
         if ch != 0 {
             self.delta(u, ch);
@@ -719,18 +728,21 @@ impl<V: View, B: Backend> World<V, B> {
             }
             // windows may have moved: the focused row's place (or that it has none)
             self.refocus();
-        } else if ch != 0 {
-            self.shown = *u;
+            // Only a description can change the set of observed relations or
+            // the descriptors. Uniform-only delta stages neither.
+            true
+        } else {
+            if ch != 0 {
+                self.shown = *u;
+            }
+            false
         }
     }
 
     /// Re-describing mode: the state is opaque, so the whole exposed view is described again and compared
     /// with the columns as it goes. The same `view` code as mount.
     pub fn redescribe(&mut self, v: &V) {
-        assert!(
-            self.view == Some(crate::sink::tid::<V>()),
-            "a view of another type than the world was mounted with"
-        );
+        assert!(self.mounted, "the world has not been mounted");
         let u = &self.block(v);
         let ch = self.shown.diff(u, self.nwords) & !HOT;
         if ch != 0 {
@@ -807,12 +819,10 @@ impl<V: View, B: Backend> World<V, B> {
         let st = unsafe { &*st };
         let rec = place & ((1 << PLACE_REC_BITS) - 1);
         let c = st.cols.get(col as usize)?;
-        let live = crate::store::Live {
-            cap: st.cap,
-            rows: &st.row_live,
-            nrec: c.nrec,
-        };
-        (rec < c.nrec && live.page((rec / 64) as usize) & (1u64 << (rec % 64)) != 0)
+        // A store admits capacity one or a power-of-two ring. At capacity
+        // one all records belong to row zero, including records on later pages.
+        let row = rec & (st.cap - 1);
+        (rec < c.nrec && st.row_live[row as usize / 64] & (1u64 << (row % 64)) != 0)
             .then_some((st, col, rec))
     }
     /// The column table, current (cold when the tree changed shape).
@@ -888,12 +898,8 @@ impl<V: View, B: Backend> World<V, B> {
 
     /// Run the handler of `place` that hears `e`, if it has one.
     fn call(&self, v: &mut V, place: u32, e: &Event) -> bool {
-        // the handlers were instantiated for the view this world was mounted with: another type is refused here,
-        // once per handler call, before any pointer is cast
-        assert!(
-            self.view == Some(core::any::TypeId::of::<V>()),
-            "an event for a view of another type than the world was mounted with"
-        );
+        // V is invariant on World and Sink<V> instantiates these handlers.
+        assert!(self.mounted, "the world has not been mounted");
         let Some((st, col, rec)) = self.at_place(place) else {
             return false;
         };

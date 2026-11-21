@@ -133,6 +133,16 @@ impl Journal {
             .get_or_init(|| std::sync::Arc::new(AtomicU32::new(self.ver)))
             .clone()
     }
+    // Once a list is following this journal, its Arc already owns the revision counter.
+    // Rebind only when the source journal changes.
+    fn follow(&self, current: &mut Option<std::sync::Arc<AtomicU32>>) {
+        if let (Some(watch), Some(current)) = (self.watch.get(), current.as_ref())
+            && std::sync::Arc::ptr_eq(watch, current)
+        {
+            return;
+        }
+        *current = Some(self.watch());
+    }
     #[inline(always)]
     pub fn push(&mut self, e: Edit) {
         self.log[self.ver as usize & 7] = e;
@@ -710,16 +720,16 @@ pub fn exposed(l: &List<'_>, org: (i32, i32), clip: Rect) -> (u32, u32) {
     let Some(ext) = bough_lay::Uniform::new(l.n, l.row_h) else {
         return (0, 0);
     };
-    let top = clip.y0 as i64 - org.1 as i64 - l.y as i64;
-    let h = clip.y1 - clip.y0;
+    let origin = i64::from(org.1) + i64::from(l.y);
+    let top = i64::from(clip.y0) - origin;
+    let bottom = i64::from(clip.y1) - origin;
     if top >= ext.total() {
         return (l.n, l.n);
     }
-    if h <= 0 || top + h as i64 <= 0 {
+    if bottom <= top || bottom <= 0 || l.n == 0 {
         return (0, 0);
     }
-    let (lo, hi, _) = ext.window(top, h);
-    (lo, hi)
+    (ext.row_at(top), ext.row_at(bottom - 1) + 1)
 }
 
 /// A list as described: rows of a positive height (review L03: a height of 0 divided where the list was
@@ -1114,7 +1124,11 @@ fn list_reset(st: &mut Store, cx: &mut Cx<'_>, window: u32) {
 #[inline(never)]
 fn list_new(parent: &mut Store, l: &List<'_>) {
     let space = parent.space;
-    let rows = (space.clip.y1 - space.clip.y0) / l.row_h + 2;
+    let rows = if l.n == 0 {
+        0
+    } else {
+        (space.clip.y1 - space.clip.y0) / l.row_h + 2
+    };
     let mut st = Store::new((rows as u32).next_power_of_two().max(64), space);
     st.structure = parent.structure.clone();
     st.column_count = parent.column_count.clone();
@@ -1123,6 +1137,16 @@ fn list_new(parent: &mut Store, l: &List<'_>) {
     parent.order.push(Pass::Sub(parent.subs.len() as u32));
     parent.subs.push(st);
     parent.bump_structure();
+}
+
+#[inline(always)]
+fn same_template(kept: &[Rect], current: &[Rect]) -> bool {
+    kept.len() == current.len()
+        && kept.iter().zip(current).all(|(a, b)| {
+            let a = [a.x0, a.y0, a.x1, a.y1];
+            let b = [b.x0, b.y0, b.x1, b.y1];
+            a == b
+        })
 }
 
 /// Decide what a list pass does, and do everything that does not need the row's type: replay the relation's
@@ -1141,14 +1165,13 @@ fn list_plan(
     leaves: usize,
     src: crate::store::RowSrc,
 ) -> Mk {
-    st.journal = Some(l.edits.watch());
+    l.edits.follow(&mut st.journal);
     let (from, upd, nupd) = l.edits.since(st.seen);
     // inserts and removes since the last pass, for whoever holds a row by its index (focus, a press)
     st.moved_ok = l.edits.moves_since(st.seen, &mut st.moved);
     st.moved_from = st.seen;
     #[cfg(feature = "mutant_journal")]
     let (from, nupd) = (u32::MAX, 0 * nupd);
-    st.journal = Some(l.edits.watch());
     st.seen = l.edits.ver;
     st.space = space;
     st.n = l.n;
@@ -1182,11 +1205,10 @@ fn list_plan(
         }
         .and(space.clip)
     };
-    // The layout is the same if it is the same slice (the usual case: one layout per shape, kept by whoever
-    // computed it); only a different slice is compared by content.
-    // The layout is compared by content: a slice kept by its owner may have been written in place.
+    // The owner may mutate the template in place. Compare whole rects even
+    // if the template still lives at the address used on the last pass.
     st.tmpl_at = l.shape.as_ptr() as usize;
-    if st.geo != geo || st.tmpl != l.shape {
+    if st.geo != geo || !same_template(&st.tmpl, l.shape) {
         // the layout of the rows changed: every exposed row is laid out again
         st.geo = geo;
         st.tmpl.clear();
@@ -1242,4 +1264,29 @@ fn list_plan(
         st.row_live[s as usize >> 6] |= 1 << (s & 63);
     }
     mk
+}
+
+#[cfg(test)]
+mod journal_watch_tests {
+    use super::*;
+
+    #[test]
+    fn follow_keeps_existing_watch_and_rebinds_to_new_journal() {
+        let mut first = Journal::new();
+        let mut second = Journal::new();
+        let mut followed = None;
+        first.follow(&mut followed);
+        let old = followed.as_ref().unwrap().clone();
+        first.follow(&mut followed);
+        assert!(std::sync::Arc::ptr_eq(followed.as_ref().unwrap(), &old));
+        first.push(Edit::Update(0));
+        assert_eq!(followed.as_ref().unwrap().load(Ordering::Relaxed), 1);
+
+        second.follow(&mut followed);
+        assert!(!std::sync::Arc::ptr_eq(followed.as_ref().unwrap(), &old));
+        first.push(Edit::Update(0));
+        assert_eq!(followed.as_ref().unwrap().load(Ordering::Relaxed), 0);
+        second.push(Edit::Update(0));
+        assert_eq!(followed.as_ref().unwrap().load(Ordering::Relaxed), 1);
+    }
 }

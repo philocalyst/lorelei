@@ -301,6 +301,7 @@ fn the_glyph_memo_is_collected_and_frames_stay_exact() {
             );
         }
     }
+    eprintln!("{collections} collections, peak retained {worst} bytes, budget {BUDGET} bytes");
     assert!(
         collections >= 5,
         "{collections} collections in 20,000 keys under a {BUDGET}-byte budget"
