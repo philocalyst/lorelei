@@ -1420,7 +1420,27 @@ pub fn changed_mask<A: Arch>(pg: &Page<A>, old: &U, new: &U) -> u64 {
     let span = initialized >> first;
     let len = span.trailing_ones() as usize;
     if len != span.count_ones() as usize {
-        return changed_sparse(pg, initialized, old, new);
+        // gapped: every slot is read only if its bit says it was initialized (checked, as before the span path)
+        let mut b = [0u8; 64];
+        for i in 0..64 {
+            if initialized & (1 << i) == 0 {
+                continue;
+            }
+            #[cfg(feature = "mutant_gap")]
+            if i == 0 {
+                continue;
+            }
+            b[i] = pg.record(i).changed(old, new) as u8;
+        }
+        if A::MOVES {
+            for i in 0..64 {
+                if initialized & (1 << i) == 0 {
+                    continue;
+                }
+                b[i] |= (pg.record(i).offset(old) != pg.record(i).offset(new)) as u8;
+            }
+        }
+        return pack(&b);
     }
 
     let cells = &pg.rec[first..first + len];
