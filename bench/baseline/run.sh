@@ -6,6 +6,8 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 LOCK=${BENCH_LOCK:-$HOME/work/locks/bench.lock}
 mkdir -p "$(dirname "$LOCK")" && touch "$LOCK"
-export PATH=/opt/homebrew/opt/rustup/bin:$PATH
+if command -v brew >/dev/null 2>&1 && prefix=$(brew --prefix rustup 2>/dev/null) && [ -x "$prefix/bin/rustc" ]; then
+    export PATH="$prefix/bin:$PATH"
+fi
 export RUSTC_WRAPPER=
 exec lockf -k "$LOCK" python3 "$ROOT/bench/baseline/run.py" "$@"

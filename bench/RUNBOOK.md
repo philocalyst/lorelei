@@ -3,13 +3,13 @@
 Written for an agent or person with no context. Every job is one command, fails closed, and writes
 self-describing results. Do not invent a number: if a job did not run here, it is not measured.
 
-Machine: the owner's Apple M3 Ultra (`h16003`), macOS, headless. Work happens in a git worktree
+Use a headless Apple Silicon macOS host. Work happens in a git worktree
 under `$HOME/work/lorelei-wt/<name>` with its own `CARGO_TARGET_DIR` under `$HOME/work/targets/<name>`.
-Put **rustup's proxy first** on `PATH` (`/opt/homebrew/opt/rustup/bin`); Homebrew's `cargo` is a
-different, stable toolchain and the workspace pins `nightly-2026-10-17`.
+Put the **rustup proxies first** on `PATH`. The workspace pins `nightly-2026-10-17`.
 
 ```sh
-export PATH=/opt/homebrew/opt/rustup/bin:$PATH RUSTC_WRAPPER= CARGO_TARGET_DIR=$HOME/work/targets/<name>
+export PATH="$(brew --prefix rustup)/bin:$PATH" RUSTC_WRAPPER=
+export CARGO_TARGET_DIR="$HOME/work/targets/measurement"
 ```
 
 ## 0. What each number is
@@ -17,7 +17,7 @@ export PATH=/opt/homebrew/opt/rustup/bin:$PATH RUSTC_WRAPPER= CARGO_TARGET_DIR=$
 | job | host | renderer | timing | comparable with |
 |---|---|---|---|---|
 | `bench/vm/run.sh` | Linux aarch64 VM (Apple Virtualization, 10 vCPU) | lavapipe (software Vulkan) for Vulkan apps; bough's CPU executor into `wl_shm` | fakeland's fixed 60 Hz display | only itself, same VM and pinned CPUs |
-| `bench/baseline/run.sh` | this Mac, native | CPU work only; the bough-x examples count their own PMU | instructions retired per whole process | only itself on this Mac |
+| `bench/baseline/run.sh` | native macOS | CPU typed core, software façade effects, offscreen Metal in `pbench` | retired instructions at each fixture's stated scope | same host and workload parameters |
 | `bench/asm/asm.py` | this Mac | none | static instruction counts of named symbols | same commit, same toolchain, same profile |
 
 A VM number is never pooled with a macOS number. A "fixed 60 Hz" interactive cell contains the
@@ -81,24 +81,16 @@ the reflection export).
 ## 3. Reproducible macOS baselines and the regression gate
 
 ```sh
-bench/baseline/run.sh --name 71ee3be --worktree "$HOME/work/lorelei-wt/baseline" --reps 3
-bench/baseline/compare.sh bench/baselines/macos-71ee3be/71ee3be.json NEW.json
+bench/baseline/run.sh --name base --worktree "$BASE_WORKTREE" --reps 3
+bench/baseline/run.sh --name head --worktree "$HEAD_WORKTREE" --reps 3
+bench/baseline/compare.sh runtime/baseline/base/base.json runtime/baseline/head/head.json
 ```
 
-`run.sh` takes the lock and calls `bench/baseline/run.py`. It refuses to time anything it could not
-build, records the commit (dirty flag), rustc, host, load before/after, binary sha256 and `__text`
-bytes, and runs every cell in three deterministically shuffled rounds. Cells: `sheet_x` at 1,000 and
-10,000 rows, `events_x`, `text_x`, `anim_x`, `pbench canvas`, and the façade's headless cells
-(mount, hover, typing, filter at 1,000 rows). Output: `bench/baselines/macos-<name>/<name>.json` and
-`.md`, with `slots` naming the scenes other agents are still building.
+Set `BASE_WORKTREE` and `HEAD_WORKTREE` to the checkouts being compared. Omit `--worktree` to use the harness checkout. Use `--cells sheet_x/rows10000` to run the sheet alone or `--cells sheet_x/rows10000/hover` with `compare.sh` to isolate the hover counter. Use the same face override `BOUGH_FONT` in both runs when measuring façade or effects workloads.
 
-Thresholds per cell (median): instructions ≤ 1.02×, wall ≤ 1.10×, RSS ≤ 1.05×. A wall comparison is
-suppressed when the baseline itself spread more than the threshold; `--thresholds limits.json`
-overrides per cell. A cell missing from the head run fails unless `--allow-missing`. A head run above
-load 2.0 is marked `loaded`; `--require-quiet` makes that a failure.
+`run.sh` takes the lock around the build and replay. The native gate compares named per-operation counters emitted by `sheet_x`, `events_x`, `text_x`, `anim_x`, `ops_x`, and the effects adapters. The current matrix includes near/swept animation variants and retained-pixel correctness checks for effects. The JSON also keeps whole-process instructions, wall time and RSS as separate metrics. Results default to `runtime/baseline/<name>/`, with raw logs in `raw/`. `--no-build` requires matching source, toolchain and binary fingerprints.
 
-To add a cell for a new scene, add it to `cells()` in `bench/baseline/run.py` with an argv, env and
-parser, and fill its slot in `SLOTS`. Never add a cache or shortcut the framework does not have.
+Default limits are 2% for instructions, 10% for wall time and 5% for process RSS. Wall and RSS are unqualified above the load ceiling. Wall is also unqualified if either input spreads more than the tolerance. See [native measurement scope and threshold overrides](baseline/README.md).
 
 ## 4. The repo's older headless jobs (still valid, macOS)
 
