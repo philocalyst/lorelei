@@ -44,12 +44,22 @@ TARGET = Path(os.environ.get("CARGO_TARGET_DIR", str(ROOT / "target" / "asm")))
 
 
 def entries():
-    out = []
-    for line in MANIFEST.read_text().splitlines():
+    out, seen = [], set()
+    for no, line in enumerate(MANIFEST.read_text().splitlines(), 1):
         if not line.strip() or line.startswith("#"):
             continue
-        name, package, kind, artifact, match = line.split("\t")
+        f = line.split("\t")
+        if len(f) != 5 or not all(x.strip() for x in f):
+            raise SystemExit(f"asm: manifest.tsv:{no}: want 5 non-empty tab-separated fields, got {len(f)}")
+        name, package, kind, artifact, match = f
+        if kind not in ("bin", "example", "lib"):
+            raise SystemExit(f"asm: manifest.tsv:{no}: artifact kind {kind!r} is not bin|example|lib")
+        if name in seen:
+            raise SystemExit(f"asm: manifest.tsv:{no}: duplicate entry name {name!r}")
+        seen.add(name)
         out.append(dict(name=name, package=package, kind=kind, artifact=artifact, match=match))
+    if not out:
+        raise SystemExit("asm: manifest.tsv has no entries")
     return out
 
 
@@ -163,6 +173,8 @@ def emit(out, only=None, dev=False, codegen=None, rustflags=None, features=None,
                 body.append(s + ":")
                 body.extend(b)
                 n, br, ca, pa, bo = stats(s, b)
+                if n == 0:
+                    raise SystemExit(f"asm: {e['name']}: symbol {s!r} has no instructions (listing format changed?)")
                 rows.append([e["name"], package, s, n, br, ca, pa, bo, len("\n".join(b))])
             (out / "fn" / f"{e['name']}.s").write_text("\n".join(body) + "\n")
     (out / "stats.tsv").write_text(
@@ -170,9 +182,11 @@ def emit(out, only=None, dev=False, codegen=None, rustflags=None, features=None,
         + "".join("\t".join(map(str, r)) + "\n" for r in rows))
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     rustc = subprocess.run([os.environ.get("RUSTC", "rustc"), "-V"], capture_output=True, text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT,
+                                capture_output=True, text=True).stdout.strip())
     load = os.getloadavg()
     (out / "MANIFEST.txt").write_text(
-        f"commit {commit}\nrustc {rustc}\nprofile {'dev' if dev else 'release'}\n"
+        f"commit {commit}\ndirty {'yes' if dirty else 'no'}\nfeatures {' '.join(features or []) or 'none'}\nmutant {'yes' if mutant else 'no'}\nrustc {rustc}\nprofile {'dev' if dev else 'release'}\n"
         f"codegen {' '.join(codegen) or 'none'}\nrustflags {rustflags or 'none'}\nhost {os.uname().machine} macOS {os.uname().release}\n"
         f"date {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\nload {load[0]:.2f} {load[1]:.2f} {load[2]:.2f}\n"
         f"target {TARGET}\n")
@@ -188,18 +202,62 @@ def emit(out, only=None, dev=False, codegen=None, rustflags=None, features=None,
 
 
 def read_stats(d):
+    """Parse DIR/stats.tsv; any missing, empty or malformed input exits non-zero (fail closed)."""
+    f = Path(d) / "stats.tsv"
+    if not f.is_file():
+        raise SystemExit(f"asm: {f} does not exist (not an emitted directory)")
     rows = {}
-    for line in (Path(d) / "stats.tsv").read_text().splitlines():
+    for no, line in enumerate(f.read_text().splitlines(), 1):
         if not line or line.startswith("#"):
             continue
         p = line.split("\t")
-        rows.setdefault(p[0], []).append(dict(symbol=p[2], instructions=int(p[3]), branches=int(p[4]),
-                                              calls=int(p[5]), panics=int(p[6]), bounds=int(p[7])))
+        try:
+            if len(p) != 9:
+                raise ValueError(f"{len(p)} fields, want 9")
+            vals = [int(x) for x in p[3:]]
+            if min(vals) < 0:
+                raise ValueError("negative count")
+        except ValueError as ex:
+            raise SystemExit(f"asm: {f}:{no}: malformed row ({ex})")
+        rows.setdefault(p[0], []).append(dict(symbol=p[2], instructions=vals[0], branches=vals[1],
+                                              calls=vals[2], panics=vals[3], bounds=vals[4]))
+    if not rows:
+        raise SystemExit(f"asm: {f} has no rows (an empty emit is not a measurement)")
     return rows
 
 
+# MANIFEST.txt keys that must agree for two emitted directories to be comparable.
+CONTEXT = ("rustc", "profile", "codegen", "rustflags", "host", "features", "mutant")
+
+
+def read_context(d):
+    f = Path(d) / "MANIFEST.txt"
+    if not f.is_file():
+        raise SystemExit(f"asm: {f} does not exist (cannot prove the two builds are comparable)")
+    ctx = {}
+    for line in f.read_text().splitlines():
+        k, _, v = line.partition(" ")
+        ctx[k] = v
+    return ctx
+
+
 def diff(base, head, threshold):
+    if not threshold >= 0:
+        raise SystemExit("asm: --threshold must be >= 0")
     b, h = read_stats(base), read_stats(head)
+    cb, ch = read_context(base), read_context(head)
+    mism = [f"{k}: base {cb.get(k)!r} vs head {ch.get(k)!r}" for k in CONTEXT
+            if k in cb or k in ch if cb.get(k) != ch.get(k)]
+    if mism:
+        print("asm: the two directories are not comparable (same profile, toolchain, flags and host required):")
+        for m in mism:
+            print("  " + m)
+        return 2
+    want = {e["name"] for e in entries()}
+    gone = sorted(want - (set(b) & set(h)))
+    if gone:
+        print(f"asm: manifest entries absent from base or head (partial emit): {', '.join(gone)}")
+        return 2
     names = sorted(set(b) | set(h))
     bad = []
     print(f"{'entry':<22}{'base':>12}{'head':>12}{'delta':>10}{'pct':>9}  verdict")
@@ -213,7 +271,10 @@ def diff(base, head, threshold):
         d = hi - bi
         pct = (d / bi) if bi else (0.0 if hi == 0 else float("inf"))
         verdict = "ok"
-        if d > 16 and pct > threshold:
+        if bi == 0:
+            verdict = "INVALID"      # an entry with zero instructions in the base is not a baseline
+            bad.append(n)
+        elif d > 16 and pct > threshold:
             verdict = "REGRESSED"
             bad.append(n)
         print(f"{n:<22}{bi:>12,}{hi:>12,}{d:>+10,}{pct*100:>8.2f}%  {verdict}")
@@ -236,8 +297,10 @@ def graph_crates(out):
     for p in meta["packages"]:
         for d in p["dependencies"]:
             path = d.get("path") or ""
-            if path.startswith(str(ROOT)):
+            if path.startswith(str(ROOT)) or path.startswith(str(ROOT.resolve())):
                 lines.append(f'  "{esc(p["name"])}" -> "{esc(d["name"])}";')
+    if len(lines) == 2:
+        raise SystemExit("asm: graph crates found no workspace-internal dependency edges")
     lines.append("}")
     dot(out, lines)
 
@@ -263,8 +326,15 @@ def graph_expr(out):
     for line in p.stdout.splitlines():
         if not line or line.startswith("#"):
             continue
-        store, col, kind, stage, reads, ops, ty = line.split("\t")
-        cols.append((store, col, kind, stage, int(reads, 16), ops, ty))
+        f = line.split("\t")
+        try:
+            if len(f) != 7:
+                raise ValueError(f"{len(f)} fields, want 7")
+            cols.append((f[0], f[1], f[2], f[3], int(f[4], 16), f[5], f[6]))
+        except ValueError as ex:
+            raise SystemExit(f"asm: reflect printed a malformed line ({ex}): {line[:120]!r}")
+    if not cols:
+        raise SystemExit("asm: reflect printed no columns (an empty graph is not evidence)")
     words = sorted({b for c in cols for b in range(64) if c[4] >> b & 1})
     for w in words:
         lines.append(f'  "w{w}" [label="w{w}"];')
@@ -284,6 +354,8 @@ def graph_expr(out):
 
 def graph_calls(out, emitted, depth):
     emitted = Path(emitted)
+    if not any((emitted / "fn").glob("*.s")):
+        raise SystemExit(f"asm: {emitted}/fn has no emitted symbols (run `emit --out {emitted}` first)")
     manifest = {e["name"]: e["match"] for e in entries()}
     edges, nodes = set(), set()
     for f in sorted((emitted / "fn").glob("*.s")):
@@ -302,6 +374,8 @@ def graph_calls(out, emitted, depth):
             nodes.add(name)
             nodes.add(label)
             edges.add((name, label))
+    if not edges:
+        raise SystemExit("asm: no call edges in the emitted symbols (an empty graph is not evidence)")
     lines = ["digraph calls {", '  rankdir=LR; node [shape=box, fontname="Helvetica", fontsize=8];']
     for n in sorted(nodes):
         style = ",style=filled,fillcolor=lightyellow" if n in manifest else ""
@@ -333,8 +407,12 @@ def check_mutants(out):
         return 1
     print(f"{'entry':<22}{'release':>12}{'mutant':>12}{'mutant+extra':>14}  verdict")
     for n in watched:
-        ri = sum(x["instructions"] for x in r.get(n, []))
-        mi = sum(x["instructions"] for x in m.get(n, [])) + extra
+        if n not in r or n not in m:
+            print(f"{n:<22}  MISSING from the {'release' if n not in r else 'mutant'} build")
+            ok = False
+            continue
+        ri = sum(x["instructions"] for x in r[n])
+        mi = sum(x["instructions"] for x in m[n]) + extra
         good = mi > ri + 8
         ok &= good
         print(f"{n:<22}{ri:>12,}{mi - extra:>12,}{mi:>14,}  {'ok' if good else 'MUTANT NOT DETECTED'}")

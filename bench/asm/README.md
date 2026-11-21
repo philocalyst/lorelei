@@ -60,7 +60,10 @@ python3 bench/asm/asm.py check                              # the negative contr
 `emit` runs `cargo asm --everything` once per artifact and slices each entry's symbols; `stats.tsv`
 has one row per matched symbol with instructions, branches, calls, panic-call references and
 bounds-check/`brk` sites. `diff` sums an entry's symbols and fails above `--threshold` (2 %) and 16
-instructions. `graph expr` uses only the public reflection API (`bough_x::reflect`): it prints one
+instructions. It exits 2 (not comparable) unless both directories'
+`MANIFEST.txt` agree on rustc, profile, codegen, rustflags, host, features and mutant, and unless both
+contain every manifest entry; missing, empty or malformed `stats.tsv`, a zero-instruction base entry and
+a negative threshold also fail. Exit codes: 0 pass, 1 regressed, 2 invalid comparison/input. `graph expr` uses only the public reflection API (`bough_x::reflect`): it prints one
 line per learned column (store, column, kind, stage, the 64-bit word mask it reads, operands, record
 type) and renders word → column edges; that is the staged-expression dependency graph and the reader
 lists, as the core itself knows them.
@@ -84,3 +87,8 @@ builds of the same manifest.
   functions are inspected as CPU code through `kernel_shade`.
 * The expression dump is the *rows* scene; add a scene by adding a binary next to
   `harness/src/bin/reflect.rs`.
+
+## Fast tests
+
+`python3 bench/asm/test_asm.py` exercises the fail-closed paths (mismatched context, empty or
+malformed stats, partial emits, empty graphs, bad manifests) without cargo.
