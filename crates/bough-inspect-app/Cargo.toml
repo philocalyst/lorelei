@@ -13,6 +13,9 @@ bough-host = { path = "../bough-host" }
 bough-guibench-x = { path = "../../comparisons/bough-guibench-x" }
 bough-inspect = { path = "../bough-inspect", optional = true }
 
+[dev-dependencies]
+bough-mcp = { path = "../bough-mcp" }
+
 [features]
 default = ["inspect"]
 inspect = ["dep:bough-inspect"]

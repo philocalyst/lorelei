@@ -423,6 +423,7 @@ impl<P: Program> Session<P> {
             },
             other => other,
         })?;
+        self.last_command = "set".to_owned();
         self.commit();
         let after = get(self.app.view());
         if after != expected {

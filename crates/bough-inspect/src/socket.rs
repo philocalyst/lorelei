@@ -120,46 +120,48 @@ impl Server {
     pub fn path(&self) -> &Path {
         &self.path
     }
-    /// Accept one pending connection (non-blocking). A second connection replaces a dead one and is refused while
-    /// one is live (one agent at a time: two would interleave commands on one world).
+    /// Accept every pending connection (non-blocking). The first becomes the session's; any other is refused at
+    /// once (one agent at a time: two would interleave commands on one world).
     pub fn accept(&mut self) -> io::Result<bool> {
-        match self.listener.accept() {
-            Ok((stream, _)) => {
-                if self.conn.is_some() {
-                    let mut s = stream;
-                    let _ = write_frame(
-                        &mut s,
-                        json::to_string(
-                            &J::obj()
-                                .set("jsonrpc", "2.0")
-                                .set("id", J::Null)
-                                .set(
-                                    "error",
-                                    RpcError::new(INVALID_REQUEST, "a connection is already open")
-                                        .to_json(),
-                                ),
-                        )
-                        .as_bytes(),
-                    );
-                    return Ok(false);
+        let mut any = false;
+        loop {
+            match self.listener.accept() {
+                Ok((stream, _)) => {
+                    any = true;
+                    if self.conn.is_some() {
+                        let mut s = stream;
+                        let _ = write_frame(
+                            &mut s,
+                            json::to_string(
+                                &J::obj()
+                                    .set("jsonrpc", "2.0")
+                                    .set("id", J::Null)
+                                    .set(
+                                        "error",
+                                        RpcError::new(INVALID_REQUEST, "a connection is already open")
+                                            .to_json(),
+                                    ),
+                            )
+                            .as_bytes(),
+                        );
+                        continue;
+                    }
+                    stream.set_nonblocking(true)?;
+                    self.conn = Some(Conn {
+                        stream,
+                        buf: Vec::new(),
+                        handshaken: false,
+                    });
                 }
-                stream.set_nonblocking(true)?;
-                self.conn = Some(Conn {
-                    stream,
-                    buf: Vec::new(),
-                    handshaken: false,
-                });
-                Ok(true)
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e),
             }
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => Ok(false),
-            Err(e) => Err(e),
         }
+        Ok(any)
     }
     /// Service every complete request that has arrived, without blocking. Returns how many were answered.
     pub fn pump<P: Program>(&mut self, s: &mut Session<P>) -> io::Result<usize> {
-        if self.conn.is_none() {
-            self.accept()?;
-        }
+        self.accept()?;
         if self.conn.is_none() {
             return Ok(0);
         }
@@ -245,64 +247,16 @@ impl Server {
     pub fn shutdown(&self) -> bool {
         self.shut
     }
-    /// Accept and serve, blocking, until a `shutdown` request or the client leaves.
+    /// Serve until a `shutdown` request: accept, answer what has arrived, sleep a millisecond when there is
+    /// nothing to do. A client that leaves may reconnect; the world stays as it is.
     pub fn serve<P: Program>(&mut self, s: &mut Session<P>) -> io::Result<()> {
-        loop {
-            if self.conn.is_none() {
-                match self.listener.accept() {
-                    Ok((stream, _)) => {
-                        stream.set_nonblocking(false)?;
-                        self.conn = Some(Conn {
-                            stream,
-                            buf: Vec::new(),
-                            handshaken: false,
-                        });
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(std::time::Duration::from_millis(2));
-                        continue;
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-            // a blocking read of exactly one frame, then dispatch
-            let read = {
-                let c = self.conn.as_mut().expect("a connection");
-                read_frame(&mut c.stream)
-            };
-            let frame = match read {
-                Ok(f) => f,
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    self.conn = None;
-                    continue;
-                }
-                Err(e) => return Err(e),
-            };
-            let (out, shut) = {
-                let c = self.conn.as_mut().expect("a connection");
-                match json::parse(core::str::from_utf8(&frame).unwrap_or("")) {
-                    Ok(v) => answer(s, &v, &mut c.handshaken),
-                    Err(e) => (
-                        J::obj()
-                            .set("jsonrpc", "2.0")
-                            .set("id", J::Null)
-                            .set("error", RpcError::new(PARSE_ERROR, format!("{e}")).to_json()),
-                        false,
-                    ),
-                }
-            };
-            let write = {
-                let c = self.conn.as_mut().expect("a connection");
-                write_frame(&mut c.stream, json::to_string(&out).as_bytes())
-            };
-            if write.is_err() {
-                self.conn = None;
-            }
-            if shut {
-                self.shut = true;
-                return Ok(());
+        while !self.shut {
+            let n = self.pump(s)?;
+            if n == 0 {
+                std::thread::sleep(std::time::Duration::from_millis(1));
             }
         }
+        Ok(())
     }
 }
 impl Drop for Server {

@@ -178,6 +178,18 @@ impl Txt {
         let b = unsafe { core::slice::from_raw_parts(self.0.as_ptr() as *const u8, 12) };
         &b[..b.iter().position(|&c| c == 0).unwrap_or(12)]
     }
+    /// Up to twelve bytes of `b`, cut at a character boundary: what reflection can hold of a longer text.
+    pub fn from_bytes(b: &[u8]) -> Txt {
+        let mut n = b.len().min(12);
+        while n > 0 && core::str::from_utf8(&b[..n]).is_err() {
+            n -= 1;
+        }
+        let mut t = [0u32; 3];
+        for i in 0..n {
+            t[i / 4] |= (b[i] as u32) << (8 * (i % 4));
+        }
+        Txt(t)
+    }
     /// The bytes and how many of them are text.
     pub fn bytes(&self) -> ([u8; 12], usize) {
         let mut b = [0u8; 12];

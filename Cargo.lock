@@ -258,6 +258,7 @@ dependencies = [
  "bough-guibench-x",
  "bough-host",
  "bough-inspect",
+ "bough-mcp",
  "bough-span",
  "bough-x",
 ]
