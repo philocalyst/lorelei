@@ -1,0 +1,2037 @@
+{
+  "format": 1,
+  "name": "71ee3be",
+  "commit": "71ee3be0aa39d37c0fb3bc32997d4aed631e2cc2",
+  "dirty": false,
+  "rustc": "rustc 1.101.0-nightly (5d8fec066 2026-10-16)",
+  "profile": "release for apps; dist for the bough-x/bough-paint examples",
+  "features": "default",
+  "host": {
+    "os": "26.7.3",
+    "machine": "arm64",
+    "cpu": "Apple M3 Ultra",
+    "cpus": 32
+  },
+  "load": {
+    "before": [
+      17.794921875,
+      15.90478515625,
+      16.93896484375
+    ],
+    "after": [
+      18.19140625,
+      16.087890625,
+      16.98583984375
+    ],
+    "ceiling": 2.0,
+    "ok": false
+  },
+  "binaries": {
+    "sheet_x": {
+      "path": "dist/examples/sheet_x",
+      "sha256": "784de0ecc3808e9526b4a753acefd51cb7a5785fed8e50d7d019506690878b35",
+      "bytes": 720320,
+      "text_bytes": 430056
+    },
+    "events_x": {
+      "path": "dist/examples/events_x",
+      "sha256": "f8840a5ba3f429fb8d745f7203c5b64a209f5327188c375c39b82a5e04d8c809",
+      "bytes": 567024,
+      "text_bytes": 290740
+    },
+    "text_x": {
+      "path": "dist/examples/text_x",
+      "sha256": "00cbb3deebcbc13c950d7ff15e35df8163c6eeb4d05c7d27893fab3c6f4c99c6",
+      "bytes": 775952,
+      "text_bytes": 438448
+    },
+    "anim_x": {
+      "path": "dist/examples/anim_x",
+      "sha256": "5b5e221ee6735822488019036eeadaa2eb25740a557ddd264e3b2ba3a0437074",
+      "bytes": 545760,
+      "text_bytes": 276136
+    },
+    "pbench": {
+      "path": "dist/examples/pbench",
+      "sha256": "09717fa682f02ff9cec1dee217c75946b54e3b641704d93292f783999823316c",
+      "bytes": 1265104,
+      "text_bytes": 768252
+    },
+    "bough-x-bench": {
+      "path": "release/bough-bench",
+      "sha256": "e88ac991044d6ccb78b080278ac351861336c59c6026e6043fe3a140ba3cfbf5",
+      "bytes": 461576,
+      "text_bytes": 210092
+    },
+    "headless": {
+      "path": "release/headless",
+      "sha256": "aea29babea242586018b8e6e5fab80a10839c2d3ec34f6af0cbc3e4ad7e857c2",
+      "bytes": 7371960,
+      "text_bytes": 4030624
+    }
+  },
+  "cells": {
+    "sheet_x/rows1000": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 10.416,
+          "time_real_s": 0.0,
+          "instructions": 21676829,
+          "rss_bytes": 2473984,
+          "stdout": "# rows=1000 cells=10000 reps=16 window=2560x1600 device px\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\n# model built in 0.01 ms (173809 instructions): the data, not the UI\n# mounted: 764 records in 32 pages, 43776 bytes of columns, 52.4 us wall\nsheet_x\tmount\t1\t356740\t356740\t185911\t4000\nsheet_x\tfloor\t16\t0\t1\t0\t0\nsheet_x\tidle\t16\t76\t76\t16\t0\nsheet_x\thover\t16\t13504\t13504\t2381\t329\nsheet_x\thover_move\t16\t14908\t15047\t2872\t705\nsheet_x\ttheme\t16\t42286\t42286\t8634\t4000\nsheet_x\tedit_exposed\t16\t2902\t2912\t655\t32\nsheet_x\tedit_unexposed\t16\t2379\t2384\t432\t16\nsheet_x\tpart_model_edit\t16\t58\t58\t41\t0\nsheet_x\tpart_total_word\t16\t891\t896\t199\t16\nsheet_x\tpart_delta_total\t16\t623\t628\t151\t16\nsheet_x\tpart_diff_only\t16\t162\t162\t39\t0\nsheet_x\tpart_journal_only\t16\t1774\t1774\t280\t0\nsheet_x\tpart_mark_cell\t16\t59\t5855\t10\t16\nsheet_x\tpart_pointer_same\t16\t438\t657\t91\t0\nsheet_x\tselect\t16\t990\t12792\t178\t0\nsheet_x\tframe_in_motion\t8\t262\t262\t84\t924\nsheet_x\tframe_at_rest\t16\t10\t10\t0\t0\nsheet_x\tscroll_3_rows\t16\t7012\t7012\t1200\t3600\nsheet_x\tscroll_6px\t16\t1587\t1587\t331\t3600\nsheet_x\tscroll_page\t16\t34486\t34486\t5456\t3600\nsheet_x\tinsert_row\t16\t21473\t24574\t4154\t2390\nsheet_x\tremove_row\t16\t21522\t24369\t3959\t2390\nsheet_x\tredescribe_idle\t16\t17788\t17789\t2708\t0\nsheet_x\tredescribe_edit\t16\t18563\t18573\t2953\t28\n# at the end: 764 records in 32 pages, 43776 bytes of columns\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2473984  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 354  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  17  involuntary context switches\n            21676829  instructions retired\n             9531564  cycles elapsed\n             1737016  peak memory footprint\n",
+          "fields": {
+            "sheet_x/185911": 4000,
+            "sheet_x/0": 0,
+            "sheet_x/16": 0,
+            "sheet_x/2381": 329,
+            "sheet_x/2872": 705,
+            "sheet_x/8634": 4000,
+            "sheet_x/655": 32,
+            "sheet_x/432": 16,
+            "sheet_x/41": 0,
+            "sheet_x/199": 16,
+            "sheet_x/151": 16,
+            "sheet_x/39": 0,
+            "sheet_x/280": 0,
+            "sheet_x/10": 16,
+            "sheet_x/91": 0,
+            "sheet_x/178": 0,
+            "sheet_x/84": 924,
+            "sheet_x/1200": 3600,
+            "sheet_x/331": 3600,
+            "sheet_x/5456": 3600,
+            "sheet_x/4154": 2390,
+            "sheet_x/3959": 2390,
+            "sheet_x/2708": 0,
+            "sheet_x/2953": 28
+          },
+          "rep": 2,
+          "load": 17.794921875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 8.203,
+          "time_real_s": 0.0,
+          "instructions": 21451083,
+          "rss_bytes": 2473984,
+          "stdout": "# rows=1000 cells=10000 reps=16 window=2560x1600 device px\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\n# model built in 0.01 ms (173893 instructions): the data, not the UI\n# mounted: 764 records in 32 pages, 43776 bytes of columns, 45.9 us wall\nsheet_x\tmount\t1\t357822\t357822\t162693\t4000\nsheet_x\tfloor\t16\t0\t0\t0\t0\nsheet_x\tidle\t16\t76\t76\t18\t0\nsheet_x\thover\t16\t13504\t13504\t2379\t329\nsheet_x\thover_move\t16\t14908\t15047\t2849\t705\nsheet_x\ttheme\t16\t42286\t42287\t8525\t4000\nsheet_x\tedit_exposed\t16\t2902\t2912\t641\t32\nsheet_x\tedit_unexposed\t16\t2379\t2384\t423\t16\nsheet_x\tpart_model_edit\t16\t58\t58\t40\t0\nsheet_x\tpart_total_word\t16\t891\t896\t201\t16\nsheet_x\tpart_delta_total\t16\t623\t628\t155\t16\nsheet_x\tpart_diff_only\t16\t162\t162\t55\t0\nsheet_x\tpart_journal_only\t16\t1774\t1774\t283\t0\nsheet_x\tpart_mark_cell\t16\t59\t5855\t8\t16\nsheet_x\tpart_pointer_same\t16\t438\t657\t86\t0\nsheet_x\tselect\t16\t990\t12792\t187\t0\nsheet_x\tframe_in_motion\t8\t262\t262\t79\t924\nsheet_x\tframe_at_rest\t16\t10\t10\t0\t0\nsheet_x\tscroll_3_rows\t16\t7012\t7012\t1318\t3600\nsheet_x\tscroll_6px\t16\t1587\t1587\t316\t3600\nsheet_x\tscroll_page\t16\t34486\t34486\t5526\t3600\nsheet_x\tinsert_row\t16\t21473\t24696\t4261\t2390\nsheet_x\tremove_row\t16\t21522\t24369\t4040\t2390\nsheet_x\tredescribe_idle\t16\t17788\t17788\t2744\t0\nsheet_x\tredescribe_edit\t16\t18563\t18573\t3043\t28\n# at the end: 764 records in 32 pages, 43776 bytes of columns\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2473984  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 354  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n            21451083  instructions retired\n             8052654  cycles elapsed\n             1737016  peak memory footprint\n",
+          "fields": {
+            "sheet_x/162693": 4000,
+            "sheet_x/0": 0,
+            "sheet_x/18": 0,
+            "sheet_x/2379": 329,
+            "sheet_x/2849": 705,
+            "sheet_x/8525": 4000,
+            "sheet_x/641": 32,
+            "sheet_x/423": 16,
+            "sheet_x/40": 0,
+            "sheet_x/201": 16,
+            "sheet_x/155": 16,
+            "sheet_x/55": 0,
+            "sheet_x/283": 0,
+            "sheet_x/8": 16,
+            "sheet_x/86": 0,
+            "sheet_x/187": 0,
+            "sheet_x/79": 924,
+            "sheet_x/1318": 3600,
+            "sheet_x/316": 3600,
+            "sheet_x/5526": 3600,
+            "sheet_x/4261": 2390,
+            "sheet_x/4040": 2390,
+            "sheet_x/2744": 0,
+            "sheet_x/3043": 28
+          },
+          "rep": 1,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 9.623,
+          "time_real_s": 0.0,
+          "instructions": 21493610,
+          "rss_bytes": 2473984,
+          "stdout": "# rows=1000 cells=10000 reps=16 window=2560x1600 device px\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\n# model built in 0.01 ms (173819 instructions): the data, not the UI\n# mounted: 764 records in 32 pages, 43776 bytes of columns, 47.2 us wall\nsheet_x\tmount\t1\t356873\t356873\t167069\t4000\nsheet_x\tfloor\t16\t0\t0\t2\t0\nsheet_x\tidle\t16\t76\t76\t17\t0\nsheet_x\thover\t16\t13504\t13504\t2394\t329\nsheet_x\thover_move\t16\t14908\t15047\t2855\t705\nsheet_x\ttheme\t16\t42286\t42286\t8554\t4000\nsheet_x\tedit_exposed\t16\t2902\t2912\t640\t32\nsheet_x\tedit_unexposed\t16\t2379\t2384\t424\t16\nsheet_x\tpart_model_edit\t16\t58\t58\t39\t0\nsheet_x\tpart_total_word\t16\t891\t896\t203\t16\nsheet_x\tpart_delta_total\t16\t623\t628\t157\t16\nsheet_x\tpart_diff_only\t16\t162\t162\t37\t0\nsheet_x\tpart_journal_only\t16\t1774\t1774\t288\t0\nsheet_x\tpart_mark_cell\t16\t59\t5855\t13\t16\nsheet_x\tpart_pointer_same\t16\t438\t657\t91\t0\nsheet_x\tselect\t16\t990\t12792\t178\t0\nsheet_x\tframe_in_motion\t8\t262\t262\t84\t924\nsheet_x\tframe_at_rest\t16\t10\t10\t1\t0\nsheet_x\tscroll_3_rows\t16\t7012\t7012\t1278\t3600\nsheet_x\tscroll_6px\t16\t1587\t1587\t308\t3600\nsheet_x\tscroll_page\t16\t34486\t34486\t5541\t3600\nsheet_x\tinsert_row\t16\t21473\t24614\t4260\t2390\nsheet_x\tremove_row\t16\t21522\t24369\t4048\t2390\nsheet_x\tredescribe_idle\t16\t17788\t17788\t2809\t0\nsheet_x\tredescribe_edit\t16\t18563\t18573\t3051\t28\n# at the end: 764 records in 32 pages, 43776 bytes of columns\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2473984  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 354  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n            21493610  instructions retired\n             9144443  cycles elapsed\n             1737016  peak memory footprint\n",
+          "fields": {
+            "sheet_x/167069": 4000,
+            "sheet_x/2": 0,
+            "sheet_x/17": 0,
+            "sheet_x/2394": 329,
+            "sheet_x/2855": 705,
+            "sheet_x/8554": 4000,
+            "sheet_x/640": 32,
+            "sheet_x/424": 16,
+            "sheet_x/39": 0,
+            "sheet_x/203": 16,
+            "sheet_x/157": 16,
+            "sheet_x/37": 0,
+            "sheet_x/288": 0,
+            "sheet_x/13": 16,
+            "sheet_x/91": 0,
+            "sheet_x/178": 0,
+            "sheet_x/84": 924,
+            "sheet_x/1": 0,
+            "sheet_x/1278": 3600,
+            "sheet_x/308": 3600,
+            "sheet_x/5541": 3600,
+            "sheet_x/4260": 2390,
+            "sheet_x/4048": 2390,
+            "sheet_x/2809": 0,
+            "sheet_x/3051": 28
+          },
+          "rep": 0,
+          "load": 18.0341796875
+        }
+      ],
+      "instructions": {
+        "median": 21493610,
+        "min": 21451083,
+        "max": 21676829,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 9.623,
+        "min": 8.203,
+        "max": 10.416,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 2473984,
+        "min": 2473984,
+        "max": 2473984,
+        "n": 3
+      },
+      "fields": {
+        "sheet_x/0": [
+          0,
+          0,
+          null
+        ],
+        "sheet_x/1": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/10": [
+          16,
+          null,
+          null
+        ],
+        "sheet_x/1200": [
+          3600,
+          null,
+          null
+        ],
+        "sheet_x/1278": [
+          null,
+          null,
+          3600
+        ],
+        "sheet_x/13": [
+          null,
+          null,
+          16
+        ],
+        "sheet_x/1318": [
+          null,
+          3600,
+          null
+        ],
+        "sheet_x/151": [
+          16,
+          null,
+          null
+        ],
+        "sheet_x/155": [
+          null,
+          16,
+          null
+        ],
+        "sheet_x/157": [
+          null,
+          null,
+          16
+        ],
+        "sheet_x/16": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/162693": [
+          null,
+          4000,
+          null
+        ],
+        "sheet_x/167069": [
+          null,
+          null,
+          4000
+        ],
+        "sheet_x/17": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/178": [
+          0,
+          null,
+          0
+        ],
+        "sheet_x/18": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/185911": [
+          4000,
+          null,
+          null
+        ],
+        "sheet_x/187": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/199": [
+          16,
+          null,
+          null
+        ],
+        "sheet_x/2": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/201": [
+          null,
+          16,
+          null
+        ],
+        "sheet_x/203": [
+          null,
+          null,
+          16
+        ],
+        "sheet_x/2379": [
+          null,
+          329,
+          null
+        ],
+        "sheet_x/2381": [
+          329,
+          null,
+          null
+        ],
+        "sheet_x/2394": [
+          null,
+          null,
+          329
+        ],
+        "sheet_x/2708": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/2744": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/280": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/2809": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/283": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/2849": [
+          null,
+          705,
+          null
+        ],
+        "sheet_x/2855": [
+          null,
+          null,
+          705
+        ],
+        "sheet_x/2872": [
+          705,
+          null,
+          null
+        ],
+        "sheet_x/288": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/2953": [
+          28,
+          null,
+          null
+        ],
+        "sheet_x/3043": [
+          null,
+          28,
+          null
+        ],
+        "sheet_x/3051": [
+          null,
+          null,
+          28
+        ],
+        "sheet_x/308": [
+          null,
+          null,
+          3600
+        ],
+        "sheet_x/316": [
+          null,
+          3600,
+          null
+        ],
+        "sheet_x/331": [
+          3600,
+          null,
+          null
+        ],
+        "sheet_x/37": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/39": [
+          0,
+          null,
+          0
+        ],
+        "sheet_x/3959": [
+          2390,
+          null,
+          null
+        ],
+        "sheet_x/40": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/4040": [
+          null,
+          2390,
+          null
+        ],
+        "sheet_x/4048": [
+          null,
+          null,
+          2390
+        ],
+        "sheet_x/41": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/4154": [
+          2390,
+          null,
+          null
+        ],
+        "sheet_x/423": [
+          null,
+          16,
+          null
+        ],
+        "sheet_x/424": [
+          null,
+          null,
+          16
+        ],
+        "sheet_x/4260": [
+          null,
+          null,
+          2390
+        ],
+        "sheet_x/4261": [
+          null,
+          2390,
+          null
+        ],
+        "sheet_x/432": [
+          16,
+          null,
+          null
+        ],
+        "sheet_x/5456": [
+          3600,
+          null,
+          null
+        ],
+        "sheet_x/55": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/5526": [
+          null,
+          3600,
+          null
+        ],
+        "sheet_x/5541": [
+          null,
+          null,
+          3600
+        ],
+        "sheet_x/640": [
+          null,
+          null,
+          32
+        ],
+        "sheet_x/641": [
+          null,
+          32,
+          null
+        ],
+        "sheet_x/655": [
+          32,
+          null,
+          null
+        ],
+        "sheet_x/79": [
+          null,
+          924,
+          null
+        ],
+        "sheet_x/8": [
+          null,
+          16,
+          null
+        ],
+        "sheet_x/84": [
+          924,
+          null,
+          924
+        ],
+        "sheet_x/8525": [
+          null,
+          4000,
+          null
+        ],
+        "sheet_x/8554": [
+          null,
+          null,
+          4000
+        ],
+        "sheet_x/86": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/8634": [
+          4000,
+          null,
+          null
+        ],
+        "sheet_x/91": [
+          0,
+          null,
+          0
+        ]
+      }
+    },
+    "sheet_x/rows10000": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 9.105,
+          "time_real_s": 0.0,
+          "instructions": 24995740,
+          "rss_bytes": 2834432,
+          "stdout": "# rows=10000 cells=100000 reps=16 window=2560x1600 device px\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\n# model built in 0.10 ms (1570156 instructions): the data, not the UI\n# mounted: 764 records in 32 pages, 43776 bytes of columns, 48.8 us wall\nsheet_x\tmount\t1\t357568\t357568\t173163\t4000\nsheet_x\tfloor\t16\t0\t0\t2\t0\nsheet_x\tidle\t16\t76\t76\t17\t0\nsheet_x\thover\t16\t13504\t13504\t2378\t329\nsheet_x\thover_move\t16\t14908\t15047\t2828\t705\nsheet_x\ttheme\t16\t42286\t42287\t8547\t4000\nsheet_x\tedit_exposed\t16\t2902\t2912\t623\t32\nsheet_x\tedit_unexposed\t16\t2379\t2384\t419\t16\nsheet_x\tpart_model_edit\t16\t58\t58\t39\t0\nsheet_x\tpart_total_word\t16\t891\t896\t203\t16\nsheet_x\tpart_delta_total\t16\t623\t628\t150\t16\nsheet_x\tpart_diff_only\t16\t162\t162\t34\t0\nsheet_x\tpart_journal_only\t16\t1774\t1774\t285\t0\nsheet_x\tpart_mark_cell\t16\t59\t5855\t10\t16\nsheet_x\tpart_pointer_same\t16\t438\t657\t87\t0\nsheet_x\tselect\t16\t990\t12792\t174\t0\nsheet_x\tframe_in_motion\t8\t262\t262\t81\t924\nsheet_x\tframe_at_rest\t16\t10\t11\t1\t0\nsheet_x\tscroll_3_rows\t16\t7012\t7012\t1161\t3600\nsheet_x\tscroll_6px\t16\t1587\t1587\t303\t3600\nsheet_x\tscroll_page\t16\t34486\t34486\t5440\t3600\nsheet_x\tinsert_row\t16\t88973\t92393\t28636\t2390\nsheet_x\tremove_row\t16\t89022\t91869\t28370\t2390\nsheet_x\tredescribe_idle\t16\t17788\t17789\t2676\t0\nsheet_x\tredescribe_edit\t16\t18563\t18573\t2995\t28\n# at the end: 764 records in 32 pages, 43776 bytes of columns\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2834432  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 376  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   8  involuntary context switches\n            24995740  instructions retired\n            10028638  cycles elapsed\n             2097464  peak memory footprint\n",
+          "fields": {
+            "sheet_x/173163": 4000,
+            "sheet_x/2": 0,
+            "sheet_x/17": 0,
+            "sheet_x/2378": 329,
+            "sheet_x/2828": 705,
+            "sheet_x/8547": 4000,
+            "sheet_x/623": 32,
+            "sheet_x/419": 16,
+            "sheet_x/39": 0,
+            "sheet_x/203": 16,
+            "sheet_x/150": 16,
+            "sheet_x/34": 0,
+            "sheet_x/285": 0,
+            "sheet_x/10": 16,
+            "sheet_x/87": 0,
+            "sheet_x/174": 0,
+            "sheet_x/81": 924,
+            "sheet_x/1": 0,
+            "sheet_x/1161": 3600,
+            "sheet_x/303": 3600,
+            "sheet_x/5440": 3600,
+            "sheet_x/28636": 2390,
+            "sheet_x/28370": 2390,
+            "sheet_x/2676": 0,
+            "sheet_x/2995": 28
+          },
+          "rep": 2,
+          "load": 17.794921875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 8.731,
+          "time_real_s": 0.0,
+          "instructions": 25014250,
+          "rss_bytes": 2818048,
+          "stdout": "# rows=10000 cells=100000 reps=16 window=2560x1600 device px\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\n# model built in 0.10 ms (1570154 instructions): the data, not the UI\n# mounted: 764 records in 32 pages, 43776 bytes of columns, 46.0 us wall\nsheet_x\tmount\t1\t357278\t357278\t163388\t4000\nsheet_x\tfloor\t16\t0\t0\t1\t0\nsheet_x\tidle\t16\t76\t77\t17\t0\nsheet_x\thover\t16\t13504\t13505\t2378\t329\nsheet_x\thover_move\t16\t14908\t15047\t2853\t705\nsheet_x\ttheme\t16\t42286\t42287\t8538\t4000\nsheet_x\tedit_exposed\t16\t2902\t2912\t648\t32\nsheet_x\tedit_unexposed\t16\t2379\t2384\t421\t16\nsheet_x\tpart_model_edit\t16\t58\t58\t41\t0\nsheet_x\tpart_total_word\t16\t891\t896\t206\t16\nsheet_x\tpart_delta_total\t16\t623\t628\t158\t16\nsheet_x\tpart_diff_only\t16\t162\t162\t38\t0\nsheet_x\tpart_journal_only\t16\t1774\t1774\t279\t0\nsheet_x\tpart_mark_cell\t16\t59\t5855\t12\t16\nsheet_x\tpart_pointer_same\t16\t438\t657\t90\t0\nsheet_x\tselect\t16\t990\t12792\t179\t0\nsheet_x\tframe_in_motion\t8\t262\t262\t81\t924\nsheet_x\tframe_at_rest\t16\t10\t10\t0\t0\nsheet_x\tscroll_3_rows\t16\t7012\t7012\t1167\t3600\nsheet_x\tscroll_6px\t16\t1587\t1587\t314\t3600\nsheet_x\tscroll_page\t16\t34486\t34486\t5428\t3600\nsheet_x\tinsert_row\t16\t88973\t92312\t28540\t2390\nsheet_x\tremove_row\t16\t89022\t91869\t28132\t2390\nsheet_x\tredescribe_idle\t16\t17788\t17789\t2719\t0\nsheet_x\tredescribe_edit\t16\t18563\t18573\t2933\t28\n# at the end: 764 records in 32 pages, 43776 bytes of columns\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2818048  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 375  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n            25014250  instructions retired\n             9507305  cycles elapsed\n             2081080  peak memory footprint\n",
+          "fields": {
+            "sheet_x/163388": 4000,
+            "sheet_x/1": 0,
+            "sheet_x/17": 0,
+            "sheet_x/2378": 329,
+            "sheet_x/2853": 705,
+            "sheet_x/8538": 4000,
+            "sheet_x/648": 32,
+            "sheet_x/421": 16,
+            "sheet_x/41": 0,
+            "sheet_x/206": 16,
+            "sheet_x/158": 16,
+            "sheet_x/38": 0,
+            "sheet_x/279": 0,
+            "sheet_x/12": 16,
+            "sheet_x/90": 0,
+            "sheet_x/179": 0,
+            "sheet_x/81": 924,
+            "sheet_x/0": 0,
+            "sheet_x/1167": 3600,
+            "sheet_x/314": 3600,
+            "sheet_x/5428": 3600,
+            "sheet_x/28540": 2390,
+            "sheet_x/28132": 2390,
+            "sheet_x/2719": 0,
+            "sheet_x/2933": 28
+          },
+          "rep": 1,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 9.49,
+          "time_real_s": 0.0,
+          "instructions": 24943127,
+          "rss_bytes": 2834432,
+          "stdout": "# rows=10000 cells=100000 reps=16 window=2560x1600 device px\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\n# model built in 0.10 ms (1569621 instructions): the data, not the UI\n# mounted: 764 records in 32 pages, 43776 bytes of columns, 45.8 us wall\nsheet_x\tmount\t1\t356167\t356167\t162069\t4000\nsheet_x\tfloor\t16\t0\t0\t0\t0\nsheet_x\tidle\t16\t76\t76\t24\t0\nsheet_x\thover\t16\t13504\t13504\t2388\t329\nsheet_x\thover_move\t16\t14908\t15047\t2869\t705\nsheet_x\ttheme\t16\t42286\t42286\t8579\t4000\nsheet_x\tedit_exposed\t16\t2902\t2912\t654\t32\nsheet_x\tedit_unexposed\t16\t2379\t2384\t420\t16\nsheet_x\tpart_model_edit\t16\t58\t58\t40\t0\nsheet_x\tpart_total_word\t16\t891\t896\t204\t16\nsheet_x\tpart_delta_total\t16\t623\t628\t157\t16\nsheet_x\tpart_diff_only\t16\t162\t162\t37\t0\nsheet_x\tpart_journal_only\t16\t1774\t1774\t275\t0\nsheet_x\tpart_mark_cell\t16\t59\t5855\t11\t16\nsheet_x\tpart_pointer_same\t16\t438\t657\t91\t0\nsheet_x\tselect\t16\t990\t12792\t173\t0\nsheet_x\tframe_in_motion\t8\t262\t262\t80\t924\nsheet_x\tframe_at_rest\t16\t10\t10\t0\t0\nsheet_x\tscroll_3_rows\t16\t7012\t7012\t1163\t3600\nsheet_x\tscroll_6px\t16\t1587\t1587\t305\t3600\nsheet_x\tscroll_page\t16\t34486\t34486\t5417\t3600\nsheet_x\tinsert_row\t16\t88973\t92286\t27932\t2390\nsheet_x\tremove_row\t16\t89022\t91869\t27905\t2390\nsheet_x\tredescribe_idle\t16\t17788\t17789\t2686\t0\nsheet_x\tredescribe_edit\t16\t18563\t18573\t2958\t28\n# at the end: 764 records in 32 pages, 43776 bytes of columns\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2834432  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 376  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   8  involuntary context switches\n            24943127  instructions retired\n             9922032  cycles elapsed\n             2097464  peak memory footprint\n",
+          "fields": {
+            "sheet_x/162069": 4000,
+            "sheet_x/0": 0,
+            "sheet_x/24": 0,
+            "sheet_x/2388": 329,
+            "sheet_x/2869": 705,
+            "sheet_x/8579": 4000,
+            "sheet_x/654": 32,
+            "sheet_x/420": 16,
+            "sheet_x/40": 0,
+            "sheet_x/204": 16,
+            "sheet_x/157": 16,
+            "sheet_x/37": 0,
+            "sheet_x/275": 0,
+            "sheet_x/11": 16,
+            "sheet_x/91": 0,
+            "sheet_x/173": 0,
+            "sheet_x/80": 924,
+            "sheet_x/1163": 3600,
+            "sheet_x/305": 3600,
+            "sheet_x/5417": 3600,
+            "sheet_x/27932": 2390,
+            "sheet_x/27905": 2390,
+            "sheet_x/2686": 0,
+            "sheet_x/2958": 28
+          },
+          "rep": 0,
+          "load": 18.0341796875
+        }
+      ],
+      "instructions": {
+        "median": 24995740,
+        "min": 24943127,
+        "max": 25014250,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 9.105,
+        "min": 8.731,
+        "max": 9.49,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 2834432,
+        "min": 2818048,
+        "max": 2834432,
+        "n": 3
+      },
+      "fields": {
+        "sheet_x/0": [
+          null,
+          0,
+          0
+        ],
+        "sheet_x/1": [
+          0,
+          0,
+          null
+        ],
+        "sheet_x/10": [
+          16,
+          null,
+          null
+        ],
+        "sheet_x/11": [
+          null,
+          null,
+          16
+        ],
+        "sheet_x/1161": [
+          3600,
+          null,
+          null
+        ],
+        "sheet_x/1163": [
+          null,
+          null,
+          3600
+        ],
+        "sheet_x/1167": [
+          null,
+          3600,
+          null
+        ],
+        "sheet_x/12": [
+          null,
+          16,
+          null
+        ],
+        "sheet_x/150": [
+          16,
+          null,
+          null
+        ],
+        "sheet_x/157": [
+          null,
+          null,
+          16
+        ],
+        "sheet_x/158": [
+          null,
+          16,
+          null
+        ],
+        "sheet_x/162069": [
+          null,
+          null,
+          4000
+        ],
+        "sheet_x/163388": [
+          null,
+          4000,
+          null
+        ],
+        "sheet_x/17": [
+          0,
+          0,
+          null
+        ],
+        "sheet_x/173": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/173163": [
+          4000,
+          null,
+          null
+        ],
+        "sheet_x/174": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/179": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/2": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/203": [
+          16,
+          null,
+          null
+        ],
+        "sheet_x/204": [
+          null,
+          null,
+          16
+        ],
+        "sheet_x/206": [
+          null,
+          16,
+          null
+        ],
+        "sheet_x/2378": [
+          329,
+          329,
+          null
+        ],
+        "sheet_x/2388": [
+          null,
+          null,
+          329
+        ],
+        "sheet_x/24": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/2676": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/2686": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/2719": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/275": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/279": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/27905": [
+          null,
+          null,
+          2390
+        ],
+        "sheet_x/27932": [
+          null,
+          null,
+          2390
+        ],
+        "sheet_x/28132": [
+          null,
+          2390,
+          null
+        ],
+        "sheet_x/2828": [
+          705,
+          null,
+          null
+        ],
+        "sheet_x/28370": [
+          2390,
+          null,
+          null
+        ],
+        "sheet_x/285": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/2853": [
+          null,
+          705,
+          null
+        ],
+        "sheet_x/28540": [
+          null,
+          2390,
+          null
+        ],
+        "sheet_x/28636": [
+          2390,
+          null,
+          null
+        ],
+        "sheet_x/2869": [
+          null,
+          null,
+          705
+        ],
+        "sheet_x/2933": [
+          null,
+          28,
+          null
+        ],
+        "sheet_x/2958": [
+          null,
+          null,
+          28
+        ],
+        "sheet_x/2995": [
+          28,
+          null,
+          null
+        ],
+        "sheet_x/303": [
+          3600,
+          null,
+          null
+        ],
+        "sheet_x/305": [
+          null,
+          null,
+          3600
+        ],
+        "sheet_x/314": [
+          null,
+          3600,
+          null
+        ],
+        "sheet_x/34": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/37": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/38": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/39": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/40": [
+          null,
+          null,
+          0
+        ],
+        "sheet_x/41": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/419": [
+          16,
+          null,
+          null
+        ],
+        "sheet_x/420": [
+          null,
+          null,
+          16
+        ],
+        "sheet_x/421": [
+          null,
+          16,
+          null
+        ],
+        "sheet_x/5417": [
+          null,
+          null,
+          3600
+        ],
+        "sheet_x/5428": [
+          null,
+          3600,
+          null
+        ],
+        "sheet_x/5440": [
+          3600,
+          null,
+          null
+        ],
+        "sheet_x/623": [
+          32,
+          null,
+          null
+        ],
+        "sheet_x/648": [
+          null,
+          32,
+          null
+        ],
+        "sheet_x/654": [
+          null,
+          null,
+          32
+        ],
+        "sheet_x/80": [
+          null,
+          null,
+          924
+        ],
+        "sheet_x/81": [
+          924,
+          924,
+          null
+        ],
+        "sheet_x/8538": [
+          null,
+          4000,
+          null
+        ],
+        "sheet_x/8547": [
+          4000,
+          null,
+          null
+        ],
+        "sheet_x/8579": [
+          null,
+          null,
+          4000
+        ],
+        "sheet_x/87": [
+          0,
+          null,
+          null
+        ],
+        "sheet_x/90": [
+          null,
+          0,
+          null
+        ],
+        "sheet_x/91": [
+          null,
+          null,
+          0
+        ]
+      }
+    },
+    "events_x/rows10000": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 194.961,
+          "time_real_s": 0.19,
+          "instructions": 2322738204,
+          "rss_bytes": 69255168,
+          "stdout": "rows\tstep\tdispatch_allocs\tdispatch_instr\tstep_instr\tstep_cycles_warm\tstep_cycles_cold\tcold_minus_warm\n10000\tpointer_onto_row\t0\t1422\t3137\t572\t2658\t2086\n10000\tpointer_same_row\t0\t1014\t1112\t181\t1920\t1739\n10000\tclick_row\t0\t4005\t5757\t1081\t4009\t2928\n10000\tkey_unfocused\t0\t160\t613\t131\t1910\t1779\n10000\ttext_focused_field\t0\t273\t1484\t281\t2526\t2245\n# rows=10000: 69 records, 6720 bytes of columns\n",
+          "stderr": "        0.19 real         0.18 user         0.00 sys\n            69255168  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4430  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  14  involuntary context switches\n          2322738204  instructions retired\n           671048205  cycles elapsed\n            68682088  peak memory footprint\n",
+          "fields": {
+            "10000/2658": 2086,
+            "10000/1920": 1739,
+            "10000/4009": 2928,
+            "10000/1910": 1779,
+            "10000/2526": 2245
+          },
+          "rep": 2,
+          "load": 17.794921875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 193.27,
+          "time_real_s": 0.18,
+          "instructions": 2323117669,
+          "rss_bytes": 69287936,
+          "stdout": "rows\tstep\tdispatch_allocs\tdispatch_instr\tstep_instr\tstep_cycles_warm\tstep_cycles_cold\tcold_minus_warm\n10000\tpointer_onto_row\t0\t1422\t3137\t568\t2767\t2199\n10000\tpointer_same_row\t0\t1014\t1112\t211\t1643\t1432\n10000\tclick_row\t0\t4005\t5757\t1104\t3785\t2681\n10000\tkey_unfocused\t0\t160\t613\t129\t1747\t1618\n10000\ttext_focused_field\t0\t273\t1484\t273\t2073\t1800\n# rows=10000: 69 records, 6720 bytes of columns\n",
+          "stderr": "        0.18 real         0.18 user         0.00 sys\n            69287936  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4432  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n          2323117669  instructions retired\n           668166891  cycles elapsed\n            68714856  peak memory footprint\n",
+          "fields": {
+            "10000/2767": 2199,
+            "10000/1643": 1432,
+            "10000/3785": 2681,
+            "10000/1747": 1618,
+            "10000/2073": 1800
+          },
+          "rep": 1,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 192.449,
+          "time_real_s": 0.18,
+          "instructions": 2322982727,
+          "rss_bytes": 69222400,
+          "stdout": "rows\tstep\tdispatch_allocs\tdispatch_instr\tstep_instr\tstep_cycles_warm\tstep_cycles_cold\tcold_minus_warm\n10000\tpointer_onto_row\t0\t1422\t3137\t573\t2278\t1705\n10000\tpointer_same_row\t0\t1014\t1112\t185\t1571\t1386\n10000\tclick_row\t0\t4005\t5757\t1107\t4132\t3025\n10000\tkey_unfocused\t0\t160\t613\t131\t1335\t1204\n10000\ttext_focused_field\t0\t273\t1484\t278\t2574\t2296\n# rows=10000: 69 records, 6720 bytes of columns\n",
+          "stderr": "        0.18 real         0.18 user         0.00 sys\n            69222400  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                4428  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  11  involuntary context switches\n          2322982727  instructions retired\n           660547099  cycles elapsed\n            68649320  peak memory footprint\n",
+          "fields": {
+            "10000/2278": 1705,
+            "10000/1571": 1386,
+            "10000/4132": 3025,
+            "10000/1335": 1204,
+            "10000/2574": 2296
+          },
+          "rep": 0,
+          "load": 18.0341796875
+        }
+      ],
+      "instructions": {
+        "median": 2322982727,
+        "min": 2322738204,
+        "max": 2323117669,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 193.27,
+        "min": 192.449,
+        "max": 194.961,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 69255168,
+        "min": 69222400,
+        "max": 69287936,
+        "n": 3
+      },
+      "fields": {
+        "10000/1335": [
+          null,
+          null,
+          1204
+        ],
+        "10000/1571": [
+          null,
+          null,
+          1386
+        ],
+        "10000/1643": [
+          null,
+          1432,
+          null
+        ],
+        "10000/1747": [
+          null,
+          1618,
+          null
+        ],
+        "10000/1910": [
+          1779,
+          null,
+          null
+        ],
+        "10000/1920": [
+          1739,
+          null,
+          null
+        ],
+        "10000/2073": [
+          null,
+          1800,
+          null
+        ],
+        "10000/2278": [
+          null,
+          null,
+          1705
+        ],
+        "10000/2526": [
+          2245,
+          null,
+          null
+        ],
+        "10000/2574": [
+          null,
+          null,
+          2296
+        ],
+        "10000/2658": [
+          2086,
+          null,
+          null
+        ],
+        "10000/2767": [
+          null,
+          2199,
+          null
+        ],
+        "10000/3785": [
+          null,
+          2681,
+          null
+        ],
+        "10000/4009": [
+          2928,
+          null,
+          null
+        ],
+        "10000/4132": [
+          null,
+          null,
+          3025
+        ]
+      }
+    },
+    "text_x": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 24.283,
+          "time_real_s": 0.01,
+          "instructions": 231773191,
+          "rss_bytes": 6406144,
+          "stdout": "# rows=3000 reps=64 cold=false window=1280x800 device px, DejaVu Sans 14 px from the prepared face\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\nrows\tmount\t16\t115411\t166022\t30170\t0\n# rows mount: 14 lines shaped, 37 found again, 6912 bytes of glyph state\nrows\tidle\t64\t65\t65\t15\t0\nrows\thover\t64\t4434\t4434\t733\t120\nrows\ttint (text colour alone, every line)\t64\t2323\t2323\t427\t341\nrows\tscroll 3 rows\t64\t4989\t5004\t843\t960\nrows\tscroll a page (24 rows enter)\t64\t19395\t19395\t2911\t960\nrows\tlabel edit (toggle a suffix on an exposed row)\t64\t2709\t4244\t575\t28\nrows\tvalue edit (an exposed row's number)\t64\t1914\t1918\t332\t12\nrows\tremove a row then insert one\t64\t33289\t33300\t6517\t766\nrows\tcollect the glyph memo (clear, re-describe what is exposed)\t64\t43081\t43081\t6251\t389\n# rows end: 922 lines shaped, 9177 found again, 9728 bytes of glyph state\ntyping\ttype a character (event, handler, settle)\t64\t3012\t4175\t500\t26\ntyping\tcaret move\t64\t1630\t1759\t312\t1\n# typing: 4000 keys grew the memo by 3584 bytes: a 256 KiB budget is reached every 292571 keys\n# typing end: 51 lines shaped, 8109 found again, 15360 bytes of glyph state\nsearch\ttype a character (event, handler, settle)\t64\t833319\t833561\t215205\t26\nsearch\tcaret move\t64\t1630\t1759\t316\t1\nsearch\tnarrow by a key, widen by a backspace (24 rows re-enter)\t64\t199679\t199679\t32786\t976\n# search re-entry: 1 lines shaped during the phase\n# search end: 33 lines shaped, 1107 found again, 12288 bytes of glyph state\n",
+          "stderr": "        0.01 real         0.01 user         0.00 sys\n             6406144  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 594  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  13  involuntary context switches\n           231773191  instructions retired\n            53452461  cycles elapsed\n             5652816  peak memory footprint\n",
+          "fields": {
+            "rows/30170": 0,
+            "rows/15": 0,
+            "rows/733": 120,
+            "rows/427": 341,
+            "rows/843": 960,
+            "rows/2911": 960,
+            "rows/575": 28,
+            "rows/332": 12,
+            "rows/6517": 766,
+            "rows/6251": 389,
+            "typing/500": 26,
+            "typing/312": 1,
+            "search/215205": 26,
+            "search/316": 1,
+            "search/32786": 976
+          },
+          "rep": 2,
+          "load": 17.794921875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 22.335,
+          "time_real_s": 0.01,
+          "instructions": 231472290,
+          "rss_bytes": 6389760,
+          "stdout": "# rows=3000 reps=64 cold=false window=1280x800 device px, DejaVu Sans 14 px from the prepared face\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\nrows\tmount\t16\t116103\t166157\t31145\t0\n# rows mount: 14 lines shaped, 37 found again, 6912 bytes of glyph state\nrows\tidle\t64\t65\t65\t15\t0\nrows\thover\t64\t4434\t4434\t739\t120\nrows\ttint (text colour alone, every line)\t64\t2323\t2323\t426\t341\nrows\tscroll 3 rows\t64\t4990\t5004\t916\t960\nrows\tscroll a page (24 rows enter)\t64\t19395\t19395\t2978\t960\nrows\tlabel edit (toggle a suffix on an exposed row)\t64\t2497\t4244\t533\t28\nrows\tvalue edit (an exposed row's number)\t64\t1914\t1918\t334\t12\nrows\tremove a row then insert one\t64\t33289\t33300\t6615\t766\nrows\tcollect the glyph memo (clear, re-describe what is exposed)\t64\t43081\t43081\t6388\t389\n# rows end: 922 lines shaped, 9177 found again, 9728 bytes of glyph state\ntyping\ttype a character (event, handler, settle)\t64\t3012\t4175\t505\t26\ntyping\tcaret move\t64\t1630\t1759\t395\t1\n# typing: 4000 keys grew the memo by 3584 bytes: a 256 KiB budget is reached every 292571 keys\n# typing end: 51 lines shaped, 8109 found again, 15360 bytes of glyph state\nsearch\ttype a character (event, handler, settle)\t64\t833230\t833230\t215194\t26\nsearch\tcaret move\t64\t1630\t1759\t312\t1\nsearch\tnarrow by a key, widen by a backspace (24 rows re-enter)\t64\t199796\t199796\t32274\t976\n# search re-entry: 1 lines shaped during the phase\n# search end: 33 lines shaped, 1107 found again, 12288 bytes of glyph state\n",
+          "stderr": "        0.01 real         0.01 user         0.00 sys\n             6389760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 593  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n           231472290  instructions retired\n            52369004  cycles elapsed\n             5636432  peak memory footprint\n",
+          "fields": {
+            "rows/31145": 0,
+            "rows/15": 0,
+            "rows/739": 120,
+            "rows/426": 341,
+            "rows/916": 960,
+            "rows/2978": 960,
+            "rows/533": 28,
+            "rows/334": 12,
+            "rows/6615": 766,
+            "rows/6388": 389,
+            "typing/505": 26,
+            "typing/395": 1,
+            "search/215194": 26,
+            "search/312": 1,
+            "search/32274": 976
+          },
+          "rep": 1,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 23.158,
+          "time_real_s": 0.01,
+          "instructions": 231528535,
+          "rss_bytes": 6373376,
+          "stdout": "# rows=3000 reps=64 cold=false window=1280x800 device px, DejaVu Sans 14 px from the prepared face\nscene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\nrows\tmount\t16\t115633\t165588\t30686\t0\n# rows mount: 14 lines shaped, 37 found again, 6912 bytes of glyph state\nrows\tidle\t64\t65\t65\t15\t0\nrows\thover\t64\t4434\t4434\t734\t120\nrows\ttint (text colour alone, every line)\t64\t2323\t2323\t429\t341\nrows\tscroll 3 rows\t64\t4990\t5004\t840\t960\nrows\tscroll a page (24 rows enter)\t64\t19395\t19395\t2970\t960\nrows\tlabel edit (toggle a suffix on an exposed row)\t64\t2496\t4244\t537\t28\nrows\tvalue edit (an exposed row's number)\t64\t1914\t1918\t332\t12\nrows\tremove a row then insert one\t64\t33289\t33299\t6609\t766\nrows\tcollect the glyph memo (clear, re-describe what is exposed)\t64\t43081\t43081\t6265\t389\n# rows end: 922 lines shaped, 9177 found again, 9728 bytes of glyph state\ntyping\ttype a character (event, handler, settle)\t64\t3012\t4173\t511\t26\ntyping\tcaret move\t64\t1630\t1759\t309\t1\n# typing: 4000 keys grew the memo by 3584 bytes: a 256 KiB budget is reached every 292571 keys\n# typing end: 51 lines shaped, 8109 found again, 15360 bytes of glyph state\nsearch\ttype a character (event, handler, settle)\t64\t832918\t832919\t215228\t26\nsearch\tcaret move\t64\t1630\t1759\t314\t1\nsearch\tnarrow by a key, widen by a backspace (24 rows re-enter)\t64\t199484\t199485\t32036\t976\n# search re-entry: 1 lines shaped during the phase\n# search end: 33 lines shaped, 1107 found again, 12288 bytes of glyph state\n",
+          "stderr": "        0.01 real         0.01 user         0.00 sys\n             6373376  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 592  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  11  involuntary context switches\n           231528535  instructions retired\n            52151093  cycles elapsed\n             5620048  peak memory footprint\n",
+          "fields": {
+            "rows/30686": 0,
+            "rows/15": 0,
+            "rows/734": 120,
+            "rows/429": 341,
+            "rows/840": 960,
+            "rows/2970": 960,
+            "rows/537": 28,
+            "rows/332": 12,
+            "rows/6609": 766,
+            "rows/6265": 389,
+            "typing/511": 26,
+            "typing/309": 1,
+            "search/215228": 26,
+            "search/314": 1,
+            "search/32036": 976
+          },
+          "rep": 0,
+          "load": 18.0341796875
+        }
+      ],
+      "instructions": {
+        "median": 231528535,
+        "min": 231472290,
+        "max": 231773191,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 23.158,
+        "min": 22.335,
+        "max": 24.283,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 6389760,
+        "min": 6373376,
+        "max": 6406144,
+        "n": 3
+      },
+      "fields": {
+        "rows/15": [
+          0,
+          0,
+          0
+        ],
+        "rows/2911": [
+          960,
+          null,
+          null
+        ],
+        "rows/2970": [
+          null,
+          null,
+          960
+        ],
+        "rows/2978": [
+          null,
+          960,
+          null
+        ],
+        "rows/30170": [
+          0,
+          null,
+          null
+        ],
+        "rows/30686": [
+          null,
+          null,
+          0
+        ],
+        "rows/31145": [
+          null,
+          0,
+          null
+        ],
+        "rows/332": [
+          12,
+          null,
+          12
+        ],
+        "rows/334": [
+          null,
+          12,
+          null
+        ],
+        "rows/426": [
+          null,
+          341,
+          null
+        ],
+        "rows/427": [
+          341,
+          null,
+          null
+        ],
+        "rows/429": [
+          null,
+          null,
+          341
+        ],
+        "rows/533": [
+          null,
+          28,
+          null
+        ],
+        "rows/537": [
+          null,
+          null,
+          28
+        ],
+        "rows/575": [
+          28,
+          null,
+          null
+        ],
+        "rows/6251": [
+          389,
+          null,
+          null
+        ],
+        "rows/6265": [
+          null,
+          null,
+          389
+        ],
+        "rows/6388": [
+          null,
+          389,
+          null
+        ],
+        "rows/6517": [
+          766,
+          null,
+          null
+        ],
+        "rows/6609": [
+          null,
+          null,
+          766
+        ],
+        "rows/6615": [
+          null,
+          766,
+          null
+        ],
+        "rows/733": [
+          120,
+          null,
+          null
+        ],
+        "rows/734": [
+          null,
+          null,
+          120
+        ],
+        "rows/739": [
+          null,
+          120,
+          null
+        ],
+        "rows/840": [
+          null,
+          null,
+          960
+        ],
+        "rows/843": [
+          960,
+          null,
+          null
+        ],
+        "rows/916": [
+          null,
+          960,
+          null
+        ],
+        "search/215194": [
+          null,
+          26,
+          null
+        ],
+        "search/215205": [
+          26,
+          null,
+          null
+        ],
+        "search/215228": [
+          null,
+          null,
+          26
+        ],
+        "search/312": [
+          null,
+          1,
+          null
+        ],
+        "search/314": [
+          null,
+          null,
+          1
+        ],
+        "search/316": [
+          1,
+          null,
+          null
+        ],
+        "search/32036": [
+          null,
+          null,
+          976
+        ],
+        "search/32274": [
+          null,
+          976,
+          null
+        ],
+        "search/32786": [
+          976,
+          null,
+          null
+        ],
+        "typing/309": [
+          null,
+          null,
+          1
+        ],
+        "typing/312": [
+          1,
+          null,
+          null
+        ],
+        "typing/395": [
+          null,
+          1,
+          null
+        ],
+        "typing/500": [
+          26,
+          null,
+          null
+        ],
+        "typing/505": [
+          null,
+          26,
+          null
+        ],
+        "typing/511": [
+          null,
+          null,
+          26
+        ]
+      }
+    },
+    "anim_x/208": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 11.009,
+          "time_real_s": 0.0,
+          "instructions": 18115259,
+          "rss_bytes": 2146304,
+          "stdout": "# H=208: 65 records in 17 pages; sweeps 1\nscene\tphase\tsteps\tinstr_p50\tcycles_p50\ttiles_p50\nanim_x\tframe_endless\t64\t169\t51\t192\nanim_x\tframe_endless_and_fade\t64\t278\t62\t224\nanim_x\tfade_start_turn\t64\t820\t153\t0\nanim_x\tpointer_words\t64\t4215\t935\t82\nanim_x\tscroll_3_rows\t64\t3870\t621\t192\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2146304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 334  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  13  involuntary context switches\n            18115259  instructions retired\n             9342604  cycles elapsed\n             1556792  peak memory footprint\n",
+          "fields": {
+            "anim_x/51": 192,
+            "anim_x/62": 224,
+            "anim_x/153": 0,
+            "anim_x/935": 82,
+            "anim_x/621": 192
+          },
+          "rep": 2,
+          "load": 17.794921875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 9.599,
+          "time_real_s": 0.0,
+          "instructions": 17943022,
+          "rss_bytes": 2146304,
+          "stdout": "# H=208: 65 records in 17 pages; sweeps 1\nscene\tphase\tsteps\tinstr_p50\tcycles_p50\ttiles_p50\nanim_x\tframe_endless\t64\t169\t51\t192\nanim_x\tframe_endless_and_fade\t64\t278\t125\t224\nanim_x\tfade_start_turn\t64\t820\t191\t0\nanim_x\tpointer_words\t64\t4216\t865\t82\nanim_x\tscroll_3_rows\t64\t3870\t615\t192\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2146304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 334  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n            17943022  instructions retired\n             8693147  cycles elapsed\n             1556792  peak memory footprint\n",
+          "fields": {
+            "anim_x/51": 192,
+            "anim_x/125": 224,
+            "anim_x/191": 0,
+            "anim_x/865": 82,
+            "anim_x/615": 192
+          },
+          "rep": 1,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 9.908,
+          "time_real_s": 0.0,
+          "instructions": 17870053,
+          "rss_bytes": 2146304,
+          "stdout": "# H=208: 65 records in 17 pages; sweeps 1\nscene\tphase\tsteps\tinstr_p50\tcycles_p50\ttiles_p50\nanim_x\tframe_endless\t64\t169\t50\t192\nanim_x\tframe_endless_and_fade\t64\t278\t123\t224\nanim_x\tfade_start_turn\t64\t820\t160\t0\nanim_x\tpointer_words\t64\t4215\t1012\t82\nanim_x\tscroll_3_rows\t64\t3870\t598\t192\n",
+          "stderr": "        0.00 real         0.00 user         0.00 sys\n             2146304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 334  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  10  involuntary context switches\n            17870053  instructions retired\n             8350173  cycles elapsed\n             1556792  peak memory footprint\n",
+          "fields": {
+            "anim_x/50": 192,
+            "anim_x/123": 224,
+            "anim_x/160": 0,
+            "anim_x/1012": 82,
+            "anim_x/598": 192
+          },
+          "rep": 0,
+          "load": 18.0341796875
+        }
+      ],
+      "instructions": {
+        "median": 17943022,
+        "min": 17870053,
+        "max": 18115259,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 9.908,
+        "min": 9.599,
+        "max": 11.009,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 2146304,
+        "min": 2146304,
+        "max": 2146304,
+        "n": 3
+      },
+      "fields": {
+        "anim_x/1012": [
+          null,
+          null,
+          82
+        ],
+        "anim_x/123": [
+          null,
+          null,
+          224
+        ],
+        "anim_x/125": [
+          null,
+          224,
+          null
+        ],
+        "anim_x/153": [
+          0,
+          null,
+          null
+        ],
+        "anim_x/160": [
+          null,
+          null,
+          0
+        ],
+        "anim_x/191": [
+          null,
+          0,
+          null
+        ],
+        "anim_x/50": [
+          null,
+          null,
+          192
+        ],
+        "anim_x/51": [
+          192,
+          192,
+          null
+        ],
+        "anim_x/598": [
+          null,
+          null,
+          192
+        ],
+        "anim_x/615": [
+          null,
+          192,
+          null
+        ],
+        "anim_x/62": [
+          224,
+          null,
+          null
+        ],
+        "anim_x/621": [
+          192,
+          null,
+          null
+        ],
+        "anim_x/865": [
+          null,
+          82,
+          null
+        ],
+        "anim_x/935": [
+          82,
+          null,
+          null
+        ]
+      }
+    },
+    "pbench/canvas1": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 4871.008,
+          "time_real_s": 4.86,
+          "instructions": 101897192594,
+          "rss_bytes": 273416192,
+          "stdout": "# pbench canvas Some(1); reps 8; workers 5; load at start: 17.79 15.90 16.94\nplan: canvas (const PLAN)\n   k  exec      cost     words layers  reads      moves on   cover pick  paint\n   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>\n   1  GpuSdf    Wide         7      2  0,1        0,1        true  false  Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,Ki<2048>,Pmo<...\n   2  GpuSdf    Wide        12      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,P...\n   3  GpuSdf    Wide        18      3  0,1        0,1        true  false  Clip<Clip<Over<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<...\n   4  GpuSdf    Wide        15      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<...\n   5  GpuSdf    PerPixel     9      1  0,1        0,1        true  false  Clip<Clip<Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<2252...\n   6  CpuSpans  Edge         8      1  0,1        0,1        true  false  Clip<Clip<Border<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<...\n   7  CpuSpans  Flat         6      1  0,1        0,1        false false  Clip<Clip<Glyph<Off<Lane,Un<PanX>,Un<PanY>>,Rec,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<522240>,K<409600>>>\n   8  GpuSdf    Wide        16      2  0,1,2,62   0,1        true  true  Hit<Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Border<Off<Lane,Un<PanX>,Un<PanY>>,I<R...\n   9  CpuSpans  Edge         8      1  0,1,63     0,1        false false  Clip<Clip<RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw<63>,Rec,Rec>>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K...\n  10  CpuSpans  Edge        14      1  0,1,63     0,1,63     false false  Clip<Clip<RRect<MixR<Off<Lane,Un<PanX>,Un<PanY>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>,Smooth<Tri<Uw<63>,Rec,Rec>>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw...\n  11  CpuSpans  Edge         9      1  0,1,3,4,5  0,1,3,4,5  true  true  Hit<Clip<Clip<RRect<Off<Off<Lane,Un<PanX>,Un<PanY>>,SelI<Eq<Un<Sel>,Rec>,Un<DragX>,Ki<0>>,SelI<Eq<Un<Sel>,Rec>,Un<DragY>,Ki<0>>>,I<Rec>,Pmo<Rec>>,Off<...\n  12  CpuSpans  Flat         4      1  2,62       -          true  true  Hit<Clip<Solid<Lane,SelV<Eq<Uw<62>,Rec>,MixV<Pm<K<4285217791>>,Pm<K<4283294207>>,Un<Theme>>,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>>,RectW<K<0>,K<22528>,K<...\n  13  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>\n  whole: gpu pipeline true; block words {0,1,2,3,4,5,62,63}; bin pass on {0,1,3,4,5,63}; cut true; pick true; one CPU core up to 8 damaged tiles; 131 record words over 14 archetypes\n  dependents by block word (archetype bits): 0->0b111111111110 1->0b111111111110 2->0b11000100000001 3->0b100000000000 4->0b100000000000 5->0b100000000000 62->0b1000100000000 63->0b11000000000\n# corner tables: 78 keys, 1182146 entries (2315 KiB), filled on the GPU in 0.61 ms of GPU time, 10.61 ms wall\n# scene: 2560x1600 px, 4000 tiles, 8359 records in 14 columns, 110848 column words (433 KiB); mount 2.6 ms\n# start-up: whole-scene plan from the mounted columns 0.8 us (gpu true), source assembly 0.82 ms (189629 bytes, of which leaves 63943), Metal compile + 5+14 pipelines 446 ms\n# generic kernel: Metal compile 70 ms (49679 bytes of MSL)\n# generic kernel: restaging every record costs 0.15 ms for 6535 commands (not charged to K rows)\nphase\texecutor\ttiles\twall_min_us\twall_med_us\tgpu_med_us\tthread_Kinstr\tthread_Kcycles\tproc_Kinstr\tnote\ncanvas.full\tA1 archetype cpu 1 core\t4000\t9770\t9960\t-\t209198.2\t35365.0\t0.0\tpick + window pass + bins + shade\ncanvas.full\tA  window pass + bins\t4000\t150\t152\t-\t2246.2\t543.6\t0.0\tthe per-record part of A1 / AP\ncanvas.full\tAP archetype cpu 5+1\t4000\t1729\t1791\t-\t34486.2\t6309.1\t0.0\tshade only\ncanvas.full\tAG archetype gpu resident\t4000\t4110\t5272\t4516\t138.7\t266.3\t0.0\tblock write + encode + wait\ncanvas.full\tAD driver, the plan's choice\t4000\t4242\t5880\t-\t140.6\t214.7\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.full\tK  generic bin\t4000\t102\t103\t-\t1613.4\t368.3\t0.0\t2.9 entries per tile after the cut\ncanvas.full\tK1 generic cpu 1 core\t4000\t70749\t70973\t-\t1198975.7\t253068.1\t0.0\traster only; restage free, bin above\ncanvas.full\tKP generic cpu 5+1\t4000\t13530\t13641\t-\t183830.9\t38851.6\t0.0\traster only\ncanvas.full\tKG generic gpu\t4000\t1988\t2574\t1724\t971.0\t510.9\t0.0\tupload + tile kernel + wait\ncanvas.hover\tA1 archetype cpu 1 core\t62\t2613\t2640\t-\t56965.0\t9452.8\t0.0\tpick + window pass + bins + shade\ncanvas.hover\tA  window pass + bins\t62\t4\t4\t-\t50.9\t15.5\t0.0\tthe per-record part of A1 / AP\ncanvas.hover\tAP archetype cpu 5+1\t62\t1146\t1160\t-\t27045.5\t4163.2\t0.0\tshade only\ncanvas.hover\tAG archetype gpu resident\t62\t1037\t1709\t930\t74.3\t184.4\t0.0\tblock write + encode + wait\ncanvas.hover\tAD driver, the plan's choice\t62\t970\t1145\t-\t153.0\t146.7\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.hover\tK  generic bin\t62\t81\t91\t-\t971.4\t326.3\t0.0\t39.6 entries per tile after the cut\ncanvas.hover\tK1 generic cpu 1 core\t62\t33042\t33103\t-\t562613.3\t118388.8\t0.0\traster only; restage free, bin above\ncanvas.hover\tKP generic cpu 5+1\t62\t6841\t6860\t-\t103221.3\t21741.1\t0.0\traster only\ncanvas.hover\tKG generic gpu\t62\t1436\t2086\t1211\t545.1\t405.3\t0.0\tupload + tile kernel + wait\ncanvas.hover1\tA1 archetype cpu 1 core\t30\t25\t30\t-\t290.4\t108.3\t0.0\tpick + window pass + bins + shade\ncanvas.hover1\tA  window pass + bins\t30\t2\t3\t-\t48.1\t10.7\t0.0\tthe per-record part of A1 / AP\ncanvas.hover1\tAP archetype cpu 5+1\t30\t23\t33\t-\t218.8\t100.4\t0.0\tshade only\ncanvas.hover1\tAG archetype gpu resident\t30\t436\t871\t136\t72.5\t172.4\t0.0\tblock write + encode + wait\ncanvas.hover1\tAD driver, the plan's choice\t30\t26\t29\t-\t293.0\t100.8\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.hover1\tK  generic bin\t30\t32\t33\t-\t679.1\t119.0\t0.0\t3.2 entries per tile after the cut\ncanvas.hover1\tK1 generic cpu 1 core\t30\t24\t25\t-\t302.9\t90.9\t0.0\traster only; restage free, bin above\ncanvas.hover1\tKP generic cpu 5+1\t30\t28\t32\t-\t321.6\t104.9\t0.0\traster only\ncanvas.hover1\tKG generic gpu\t30\t343\t762\t50\t520.9\t268.5\t0.0\tupload + tile kernel + wait\ncanvas.theme\tA1 archetype cpu 1 core\t3983\t8866\t8923\t-\t189188.4\t32134.8\t0.0\tpick + window pass + bins + shade\ncanvas.theme\tA  window pass + bins\t3983\t50\t51\t-\t867.4\t182.2\t0.0\tthe per-record part of A1 / AP\ncanvas.theme\tAP archetype cpu 5+1\t3983\t1583\t1605\t-\t31026.2\t5724.2\t0.0\tshade only\ncanvas.theme\tAG archetype gpu resident\t3983\t3337\t4792\t4079\t75.2\t216.3\t0.0\tblock write + encode + wait\ncanvas.theme\tAD driver, the plan's choice\t3983\t2955\t4076\t-\t76.4\t152.8\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.theme\tK  generic bin\t3983\t118\t120\t-\t1730.3\t431.0\t0.0\t2.8 entries per tile after the cut\ncanvas.theme\tK1 generic cpu 1 core\t3983\t67201\t67308\t-\t1140186.3\t240601.4\t0.0\traster only; restage free, bin above\ncanvas.theme\tKP generic cpu 5+1\t3983\t13106\t13131\t-\t177414.3\t37467.8\t0.0\traster only\ncanvas.theme\tKG generic gpu\t3983\t1722\t2472\t1662\t990.8\t582.7\t0.0\tupload + tile kernel + wait\ncanvas.pan\tA1 archetype cpu 1 core\t146\t1880\t5208\t-\t113369.9\t18625.2\t0.0\tpick + window pass + bins + shade\ncanvas.pan\tA  window pass + bins\t146\t68\t99\t-\t1399.2\t354.6\t0.0\tthe per-record part of A1 / AP\ncanvas.pan\tAP archetype cpu 5+1\t146\t476\t1014\t-\t17309.0\t3002.0\t0.0\tshade only\ncanvas.pan\tAG archetype gpu resident\t146\t2780\t3613\t2892\t92.4\t192.4\t0.0\tblock write + encode + wait\ncanvas.pan\tAD driver, the plan's choice\t146\t656\t3608\t-\t1600.6\t586.9\t0.0\t1 frames on one core, 7 on the GPU\ncanvas.pan\tK  generic bin\t146\t41\t73\t-\t971.5\t262.8\t0.0\t26.0 entries per tile after the cut\ncanvas.pan\tK1 generic cpu 1 core\t146\t13098\t40917\t-\t694663.8\t146232.3\t0.0\traster only; restage free, bin above\ncanvas.pan\tKP generic cpu 5+1\t146\t6212\t8838\t-\t142243.4\t29928.0\t0.0\traster only\ncanvas.pan\tKG generic gpu\t146\t1130\t1913\t1047\t575.0\t414.9\t0.0\tupload + tile kernel + wait\ncanvas.drag\tA1 archetype cpu 1 core\t0\t3\t4\t-\t7.0\t17.3\t0.0\tpick + window pass + bins + shade\ncanvas.drag\tA  window pass + bins\t0\t0\t1\t-\t3.6\t3.2\t0.0\tthe per-record part of A1 / AP\ncanvas.drag\tAP archetype cpu 5+1\t0\t0\t1\t-\t5.2\t3.4\t0.0\tshade only\ncanvas.drag\tAG archetype gpu resident\t0\t300\t747\t48\t74.5\t161.0\t0.0\tblock write + encode + wait\ncanvas.drag\tAD driver, the plan's choice\t0\t2\t3\t-\t8.0\t11.2\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.drag\tK  generic bin\t0\t31\t36\t-\t652.8\t128.0\t0.0\t0.0 entries per tile after the cut\ncanvas.drag\tK1 generic cpu 1 core\t0\t5\t5\t-\t72.3\t19.0\t0.0\traster only; restage free, bin above\ncanvas.drag\tKP generic cpu 5+1\t0\t5\t5\t-\t73.2\t19.5\t0.0\traster only\ncanvas.drag\tKG generic gpu\t0\t97\t119\t0\t500.1\t237.8\t0.0\tupload + tile kernel + wait\ncanvas.time\tA1 archetype cpu 1 core\t24\t1508\t1525\t-\t31850.7\t5442.7\t0.0\tpick + window pass + bins + shade\ncanvas.time\tA  window pass + bins\t24\t55\t57\t-\t1042.8\t203.3\t0.0\tthe per-record part of A1 / AP\ncanvas.time\tAP archetype cpu 5+1\t24\t866\t989\t-\t10381.2\t1736.0\t0.0\tshade only\ncanvas.time\tAG archetype gpu resident\t24\t3666\t3849\t3137\t73.3\t199.5\t0.0\tblock write + encode + wait\ncanvas.time\tAD driver, the plan's choice\t24\t1480\t1507\t-\t31863.1\t5389.3\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.time\tK  generic bin\t24\t66\t70\t-\t831.0\t253.0\t0.0\t48.5 entries per tile after the cut\ncanvas.time\tK1 generic cpu 1 core\t24\t10173\t11058\t-\t186616.8\t39587.2\t0.0\traster only; restage free, bin above\ncanvas.time\tKP generic cpu 5+1\t24\t3807\t3896\t-\t40420.9\t8627.0\t0.0\traster only\ncanvas.time\tKG generic gpu\t24\t1880\t2297\t1513\t519.8\t379.8\t0.0\tupload + tile kernel + wait\n# cross-check failures: 0; load at end: 18.21 16.02 16.97\n",
+          "stderr": "        4.86 real         5.84 user         0.09 sys\n           273416192  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               21197  page reclaims\n                  36  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   2  voluntary context switches\n                1922  involuntary context switches\n        101897192594  instructions retired\n         21200354194  cycles elapsed\n           693060328  peak memory footprint\n",
+          "fields": {},
+          "rep": 2,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 4325.178,
+          "time_real_s": 4.32,
+          "instructions": 101897391608,
+          "rss_bytes": 273596416,
+          "stdout": "# pbench canvas Some(1); reps 8; workers 5; load at start: 18.21 16.02 16.97\nplan: canvas (const PLAN)\n   k  exec      cost     words layers  reads      moves on   cover pick  paint\n   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>\n   1  GpuSdf    Wide         7      2  0,1        0,1        true  false  Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,Ki<2048>,Pmo<...\n   2  GpuSdf    Wide        12      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,P...\n   3  GpuSdf    Wide        18      3  0,1        0,1        true  false  Clip<Clip<Over<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<...\n   4  GpuSdf    Wide        15      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<...\n   5  GpuSdf    PerPixel     9      1  0,1        0,1        true  false  Clip<Clip<Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<2252...\n   6  CpuSpans  Edge         8      1  0,1        0,1        true  false  Clip<Clip<Border<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<...\n   7  CpuSpans  Flat         6      1  0,1        0,1        false false  Clip<Clip<Glyph<Off<Lane,Un<PanX>,Un<PanY>>,Rec,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<522240>,K<409600>>>\n   8  GpuSdf    Wide        16      2  0,1,2,62   0,1        true  true  Hit<Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Border<Off<Lane,Un<PanX>,Un<PanY>>,I<R...\n   9  CpuSpans  Edge         8      1  0,1,63     0,1        false false  Clip<Clip<RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw<63>,Rec,Rec>>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K...\n  10  CpuSpans  Edge        14      1  0,1,63     0,1,63     false false  Clip<Clip<RRect<MixR<Off<Lane,Un<PanX>,Un<PanY>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>,Smooth<Tri<Uw<63>,Rec,Rec>>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw...\n  11  CpuSpans  Edge         9      1  0,1,3,4,5  0,1,3,4,5  true  true  Hit<Clip<Clip<RRect<Off<Off<Lane,Un<PanX>,Un<PanY>>,SelI<Eq<Un<Sel>,Rec>,Un<DragX>,Ki<0>>,SelI<Eq<Un<Sel>,Rec>,Un<DragY>,Ki<0>>>,I<Rec>,Pmo<Rec>>,Off<...\n  12  CpuSpans  Flat         4      1  2,62       -          true  true  Hit<Clip<Solid<Lane,SelV<Eq<Uw<62>,Rec>,MixV<Pm<K<4285217791>>,Pm<K<4283294207>>,Un<Theme>>,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>>,RectW<K<0>,K<22528>,K<...\n  13  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>\n  whole: gpu pipeline true; block words {0,1,2,3,4,5,62,63}; bin pass on {0,1,3,4,5,63}; cut true; pick true; one CPU core up to 8 damaged tiles; 131 record words over 14 archetypes\n  dependents by block word (archetype bits): 0->0b111111111110 1->0b111111111110 2->0b11000100000001 3->0b100000000000 4->0b100000000000 5->0b100000000000 62->0b1000100000000 63->0b11000000000\n# corner tables: 78 keys, 1182146 entries (2315 KiB), filled on the GPU in 0.49 ms of GPU time, 10.38 ms wall\n# scene: 2560x1600 px, 4000 tiles, 8359 records in 14 columns, 110848 column words (433 KiB); mount 2.7 ms\n# start-up: whole-scene plan from the mounted columns 0.8 us (gpu true), source assembly 0.84 ms (189629 bytes, of which leaves 63943), Metal compile + 5+14 pipelines 4 ms\n# generic kernel: Metal compile 1 ms (49679 bytes of MSL)\n# generic kernel: restaging every record costs 0.14 ms for 6535 commands (not charged to K rows)\nphase\texecutor\ttiles\twall_min_us\twall_med_us\tgpu_med_us\tthread_Kinstr\tthread_Kcycles\tproc_Kinstr\tnote\ncanvas.full\tA1 archetype cpu 1 core\t4000\t9809\t9893\t-\t209198.5\t35324.0\t0.0\tpick + window pass + bins + shade\ncanvas.full\tA  window pass + bins\t4000\t148\t153\t-\t2246.2\t541.4\t0.0\tthe per-record part of A1 / AP\ncanvas.full\tAP archetype cpu 5+1\t4000\t1725\t1765\t-\t33969.9\t6297.7\t0.0\tshade only\ncanvas.full\tAG archetype gpu resident\t4000\t4499\t5273\t4400\t138.9\t250.2\t0.0\tblock write + encode + wait\ncanvas.full\tAD driver, the plan's choice\t4000\t4745\t5005\t-\t138.8\t222.6\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.full\tK  generic bin\t4000\t105\t107\t-\t1613.4\t382.7\t0.0\t2.9 entries per tile after the cut\ncanvas.full\tK1 generic cpu 1 core\t4000\t70679\t70878\t-\t1198980.0\t252991.0\t0.0\traster only; restage free, bin above\ncanvas.full\tKP generic cpu 5+1\t4000\t13533\t13603\t-\t183833.9\t38873.2\t0.0\traster only\ncanvas.full\tKG generic gpu\t4000\t1718\t2720\t1817\t971.2\t515.8\t0.0\tupload + tile kernel + wait\ncanvas.hover\tA1 archetype cpu 1 core\t62\t2597\t2627\t-\t56965.0\t9389.8\t0.0\tpick + window pass + bins + shade\ncanvas.hover\tA  window pass + bins\t62\t4\t4\t-\t50.9\t15.2\t0.0\tthe per-record part of A1 / AP\ncanvas.hover\tAP archetype cpu 5+1\t62\t1150\t1161\t-\t27044.2\t4158.1\t0.0\tshade only\ncanvas.hover\tAG archetype gpu resident\t62\t1508\t1955\t1224\t74.1\t176.1\t0.0\tblock write + encode + wait\ncanvas.hover\tAD driver, the plan's choice\t62\t1010\t1550\t-\t153.2\t164.3\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.hover\tK  generic bin\t62\t88\t92\t-\t971.4\t331.1\t0.0\t39.6 entries per tile after the cut\ncanvas.hover\tK1 generic cpu 1 core\t62\t33097\t33163\t-\t562613.4\t118404.5\t0.0\traster only; restage free, bin above\ncanvas.hover\tKP generic cpu 5+1\t62\t6846\t6860\t-\t103222.4\t21746.2\t0.0\traster only\ncanvas.hover\tKG generic gpu\t62\t1870\t2409\t1603\t545.7\t409.9\t0.0\tupload + tile kernel + wait\ncanvas.hover1\tA1 archetype cpu 1 core\t30\t28\t29\t-\t290.4\t106.5\t0.0\tpick + window pass + bins + shade\ncanvas.hover1\tA  window pass + bins\t30\t3\t3\t-\t48.1\t11.2\t0.0\tthe per-record part of A1 / AP\ncanvas.hover1\tAP archetype cpu 5+1\t30\t23\t29\t-\t214.8\t103.2\t0.0\tshade only\ncanvas.hover1\tAG archetype gpu resident\t30\t793\t860\t108\t75.2\t160.4\t0.0\tblock write + encode + wait\ncanvas.hover1\tAD driver, the plan's choice\t30\t25\t28\t-\t293.0\t100.2\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.hover1\tK  generic bin\t30\t32\t37\t-\t679.1\t134.4\t0.0\t3.2 entries per tile after the cut\ncanvas.hover1\tK1 generic cpu 1 core\t30\t24\t27\t-\t302.9\t95.6\t0.0\traster only; restage free, bin above\ncanvas.hover1\tKP generic cpu 5+1\t30\t26\t36\t-\t222.4\t106.4\t0.0\traster only\ncanvas.hover1\tKG generic gpu\t30\t791\t836\t38\t521.6\t292.0\t0.0\tupload + tile kernel + wait\ncanvas.theme\tA1 archetype cpu 1 core\t3983\t8907\t8992\t-\t189192.1\t32079.0\t0.0\tpick + window pass + bins + shade\ncanvas.theme\tA  window pass + bins\t3983\t50\t51\t-\t867.4\t183.3\t0.0\tthe per-record part of A1 / AP\ncanvas.theme\tAP archetype cpu 5+1\t3983\t1597\t1625\t-\t31889.8\t5761.9\t0.0\tshade only\ncanvas.theme\tAG archetype gpu resident\t3983\t3159\t4757\t3904\t76.1\t221.5\t0.0\tblock write + encode + wait\ncanvas.theme\tAD driver, the plan's choice\t3983\t2874\t4101\t-\t76.9\t166.0\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.theme\tK  generic bin\t3983\t119\t125\t-\t1730.3\t438.9\t0.0\t2.8 entries per tile after the cut\ncanvas.theme\tK1 generic cpu 1 core\t3983\t67264\t67672\t-\t1140199.4\t240610.9\t0.0\traster only; restage free, bin above\ncanvas.theme\tKP generic cpu 5+1\t3983\t13121\t13153\t-\t177412.8\t37465.6\t0.0\traster only\ncanvas.theme\tKG generic gpu\t3983\t2132\t2460\t1618\t969.2\t525.4\t0.0\tupload + tile kernel + wait\ncanvas.pan\tA1 archetype cpu 1 core\t146\t1857\t5216\t-\t113369.9\t18652.1\t0.0\tpick + window pass + bins + shade\ncanvas.pan\tA  window pass + bins\t146\t67\t101\t-\t1399.3\t360.4\t0.0\tthe per-record part of A1 / AP\ncanvas.pan\tAP archetype cpu 5+1\t146\t479\t1008\t-\t17320.3\t2990.8\t0.0\tshade only\ncanvas.pan\tAG archetype gpu resident\t146\t3231\t3952\t3235\t92.2\t206.2\t0.0\tblock write + encode + wait\ncanvas.pan\tAD driver, the plan's choice\t146\t615\t3606\t-\t1596.1\t572.4\t0.0\t1 frames on one core, 7 on the GPU\ncanvas.pan\tK  generic bin\t146\t40\t69\t-\t971.6\t247.8\t0.0\t26.0 entries per tile after the cut\ncanvas.pan\tK1 generic cpu 1 core\t146\t13101\t41154\t-\t694677.3\t146361.8\t0.0\traster only; restage free, bin above\ncanvas.pan\tKP generic cpu 5+1\t146\t6195\t8829\t-\t142355.2\t30042.7\t0.0\traster only\ncanvas.pan\tKG generic gpu\t146\t1594\t1923\t1123\t661.5\t485.5\t0.0\tupload + tile kernel + wait\ncanvas.drag\tA1 archetype cpu 1 core\t0\t4\t4\t-\t7.0\t17.2\t0.0\tpick + window pass + bins + shade\ncanvas.drag\tA  window pass + bins\t0\t1\t1\t-\t3.6\t3.4\t0.0\tthe per-record part of A1 / AP\ncanvas.drag\tAP archetype cpu 5+1\t0\t0\t1\t-\t5.2\t2.8\t0.0\tshade only\ncanvas.drag\tAG archetype gpu resident\t0\t434\t812\t45\t74.4\t161.5\t0.0\tblock write + encode + wait\ncanvas.drag\tAD driver, the plan's choice\t0\t3\t3\t-\t8.0\t12.7\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.drag\tK  generic bin\t0\t31\t31\t-\t652.8\t112.4\t0.0\t0.0 entries per tile after the cut\ncanvas.drag\tK1 generic cpu 1 core\t0\t5\t5\t-\t72.3\t19.5\t0.0\traster only; restage free, bin above\ncanvas.drag\tKP generic cpu 5+1\t0\t5\t5\t-\t73.2\t20.2\t0.0\traster only\ncanvas.drag\tKG generic gpu\t0\t99\t119\t0\t498.2\t257.5\t0.0\tupload + tile kernel + wait\ncanvas.time\tA1 archetype cpu 1 core\t24\t1454\t1521\t-\t31850.7\t5441.2\t0.0\tpick + window pass + bins + shade\ncanvas.time\tA  window pass + bins\t24\t52\t57\t-\t1042.8\t203.6\t0.0\tthe per-record part of A1 / AP\ncanvas.time\tAP archetype cpu 5+1\t24\t879\t988\t-\t10387.7\t1795.4\t0.0\tshade only\ncanvas.time\tAG archetype gpu resident\t24\t2642\t2917\t2116\t73.5\t193.8\t0.0\tblock write + encode + wait\ncanvas.time\tAD driver, the plan's choice\t24\t1436\t1646\t-\t31878.1\t5522.1\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.time\tK  generic bin\t24\t63\t68\t-\t831.0\t239.5\t0.0\t48.5 entries per tile after the cut\ncanvas.time\tK1 generic cpu 1 core\t24\t10150\t11060\t-\t186616.9\t39565.7\t0.0\traster only; restage free, bin above\ncanvas.time\tKP generic cpu 5+1\t24\t3835\t3897\t-\t40416.5\t8651.5\t0.0\traster only\ncanvas.time\tKG generic gpu\t24\t1634\t1775\t929\t520.1\t391.9\t0.0\tupload + tile kernel + wait\n# cross-check failures: 0; load at end: 18.03 16.02 16.97\n",
+          "stderr": "        4.32 real         5.80 user         0.09 sys\n           273596416  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               21180  page reclaims\n                   2  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   2  voluntary context switches\n                1898  involuntary context switches\n        101897391608  instructions retired\n         21065776147  cycles elapsed\n           693322496  peak memory footprint\n",
+          "fields": {},
+          "rep": 1,
+          "load": 18.0341796875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 4382.146,
+          "time_real_s": 4.37,
+          "instructions": 101903041433,
+          "rss_bytes": 274661376,
+          "stdout": "# pbench canvas Some(1); reps 8; workers 5; load at start: 18.03 16.02 16.97\nplan: canvas (const PLAN)\n   k  exec      cost     words layers  reads      moves on   cover pick  paint\n   0  CpuSpans  Flat         2      1  2          -          true  false  Solid<Lane,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>\n   1  GpuSdf    Wide         7      2  0,1        0,1        true  false  Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,Ki<2048>,Pmo<...\n   2  GpuSdf    Wide        12      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,P...\n   3  GpuSdf    Wide        18      3  0,1        0,1        true  false  Clip<Clip<Over<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<...\n   4  GpuSdf    Wide        15      2  0,1        0,1        true  false  Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<...\n   5  GpuSdf    PerPixel     9      1  0,1        0,1        true  false  Clip<Clip<Grad<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<2252...\n   6  CpuSpans  Edge         8      1  0,1        0,1        true  false  Clip<Clip<Border<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,I<Rec>,Pm<Rec>,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<...\n   7  CpuSpans  Flat         6      1  0,1        0,1        false false  Clip<Clip<Glyph<Off<Lane,Un<PanX>,Un<PanY>>,Rec,Pm<Rec>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K<22528>,K<522240>,K<409600>>>\n   8  GpuSdf    Wide        16      2  0,1,2,62   0,1        true  true  Hit<Clip<Clip<Over<Shadow<Off<Grow<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>>,Ki<0>,I<Rec>>,I<Rec>,I<Rec>,Pm<Rec>,Tab>,Border<Off<Lane,Un<PanX>,Un<PanY>>,I<R...\n   9  CpuSpans  Edge         8      1  0,1,63     0,1        false false  Clip<Clip<RRect<Off<Lane,Un<PanX>,Un<PanY>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw<63>,Rec,Rec>>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>>,RectW<K<122880>,K...\n  10  CpuSpans  Edge        14      1  0,1,63     0,1,63     false false  Clip<Clip<RRect<MixR<Off<Lane,Un<PanX>,Un<PanY>>,Off<RectW<Rec,Rec,Rec,Rec>,Un<PanX>,Un<PanY>>,Smooth<Tri<Uw<63>,Rec,Rec>>>,I<Rec>,Fade<Pm<Rec>,Tri<Uw...\n  11  CpuSpans  Edge         9      1  0,1,3,4,5  0,1,3,4,5  true  true  Hit<Clip<Clip<RRect<Off<Off<Lane,Un<PanX>,Un<PanY>>,SelI<Eq<Un<Sel>,Rec>,Un<DragX>,Ki<0>>,SelI<Eq<Un<Sel>,Rec>,Un<DragY>,Ki<0>>>,I<Rec>,Pmo<Rec>>,Off<...\n  12  CpuSpans  Flat         4      1  2,62       -          true  true  Hit<Clip<Solid<Lane,SelV<Eq<Uw<62>,Rec>,MixV<Pm<K<4285217791>>,Pm<K<4283294207>>,Un<Theme>>,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>>,RectW<K<0>,K<22528>,K<...\n  13  CpuSpans  Flat         3      1  2          -          false false  Glyph<Lane,Rec,MixV<Pmo<Rec>,Pmo<Rec>,Un<Theme>>>\n  whole: gpu pipeline true; block words {0,1,2,3,4,5,62,63}; bin pass on {0,1,3,4,5,63}; cut true; pick true; one CPU core up to 8 damaged tiles; 131 record words over 14 archetypes\n  dependents by block word (archetype bits): 0->0b111111111110 1->0b111111111110 2->0b11000100000001 3->0b100000000000 4->0b100000000000 5->0b100000000000 62->0b1000100000000 63->0b11000000000\n# corner tables: 78 keys, 1182146 entries (2315 KiB), filled on the GPU in 0.61 ms of GPU time, 11.19 ms wall\n# scene: 2560x1600 px, 4000 tiles, 8359 records in 14 columns, 110848 column words (433 KiB); mount 2.7 ms\n# start-up: whole-scene plan from the mounted columns 1.0 us (gpu true), source assembly 0.82 ms (189629 bytes, of which leaves 63943), Metal compile + 5+14 pipelines 12 ms\n# generic kernel: Metal compile 1 ms (49679 bytes of MSL)\n# generic kernel: restaging every record costs 0.13 ms for 6535 commands (not charged to K rows)\nphase\texecutor\ttiles\twall_min_us\twall_med_us\tgpu_med_us\tthread_Kinstr\tthread_Kcycles\tproc_Kinstr\tnote\ncanvas.full\tA1 archetype cpu 1 core\t4000\t9795\t9910\t-\t209197.5\t35418.1\t0.0\tpick + window pass + bins + shade\ncanvas.full\tA  window pass + bins\t4000\t147\t151\t-\t2246.2\t542.0\t0.0\tthe per-record part of A1 / AP\ncanvas.full\tAP archetype cpu 5+1\t4000\t1716\t1755\t-\t35004.7\t6228.4\t0.0\tshade only\ncanvas.full\tAG archetype gpu resident\t4000\t4767\t5255\t4523\t137.7\t263.1\t0.0\tblock write + encode + wait\ncanvas.full\tAD driver, the plan's choice\t4000\t4766\t5105\t-\t139.8\t213.1\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.full\tK  generic bin\t4000\t102\t107\t-\t1613.4\t384.7\t0.0\t2.9 entries per tile after the cut\ncanvas.full\tK1 generic cpu 1 core\t4000\t70726\t70745\t-\t1198971.7\t252904.2\t0.0\traster only; restage free, bin above\ncanvas.full\tKP generic cpu 5+1\t4000\t13530\t13558\t-\t183823.3\t38799.4\t0.0\traster only\ncanvas.full\tKG generic gpu\t4000\t2334\t2734\t1955\t1017.8\t598.3\t0.0\tupload + tile kernel + wait\ncanvas.hover\tA1 archetype cpu 1 core\t62\t2610\t2632\t-\t56965.0\t9408.4\t0.0\tpick + window pass + bins + shade\ncanvas.hover\tA  window pass + bins\t62\t4\t4\t-\t50.9\t15.4\t0.0\tthe per-record part of A1 / AP\ncanvas.hover\tAP archetype cpu 5+1\t62\t1151\t1161\t-\t27043.8\t4164.6\t0.0\tshade only\ncanvas.hover\tAG archetype gpu resident\t62\t1496\t1967\t1230\t74.2\t174.8\t0.0\tblock write + encode + wait\ncanvas.hover\tAD driver, the plan's choice\t62\t1018\t1521\t-\t154.1\t154.0\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.hover\tK  generic bin\t62\t89\t93\t-\t971.4\t332.0\t0.0\t39.6 entries per tile after the cut\ncanvas.hover\tK1 generic cpu 1 core\t62\t33022\t33086\t-\t562611.8\t118371.5\t0.0\traster only; restage free, bin above\ncanvas.hover\tKP generic cpu 5+1\t62\t6837\t6853\t-\t103220.8\t21726.5\t0.0\traster only\ncanvas.hover\tKG generic gpu\t62\t1766\t2375\t1602\t545.7\t388.8\t0.0\tupload + tile kernel + wait\ncanvas.hover1\tA1 archetype cpu 1 core\t30\t27\t31\t-\t290.5\t111.4\t0.0\tpick + window pass + bins + shade\ncanvas.hover1\tA  window pass + bins\t30\t3\t3\t-\t48.1\t11.0\t0.0\tthe per-record part of A1 / AP\ncanvas.hover1\tAP archetype cpu 5+1\t30\t21\t34\t-\t226.5\t108.5\t0.0\tshade only\ncanvas.hover1\tAG archetype gpu resident\t30\t819\t906\t112\t74.3\t180.8\t0.0\tblock write + encode + wait\ncanvas.hover1\tAD driver, the plan's choice\t30\t24\t29\t-\t293.0\t104.3\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.hover1\tK  generic bin\t30\t32\t37\t-\t679.1\t132.7\t0.0\t3.2 entries per tile after the cut\ncanvas.hover1\tK1 generic cpu 1 core\t30\t24\t26\t-\t302.9\t93.3\t0.0\traster only; restage free, bin above\ncanvas.hover1\tKP generic cpu 5+1\t30\t28\t33\t-\t221.5\t99.7\t0.0\traster only\ncanvas.hover1\tKG generic gpu\t30\t359\t825\t37\t523.5\t285.7\t0.0\tupload + tile kernel + wait\ncanvas.theme\tA1 archetype cpu 1 core\t3983\t8916\t9018\t-\t189188.5\t32005.0\t0.0\tpick + window pass + bins + shade\ncanvas.theme\tA  window pass + bins\t3983\t50\t51\t-\t867.4\t183.0\t0.0\tthe per-record part of A1 / AP\ncanvas.theme\tAP archetype cpu 5+1\t3983\t1614\t1640\t-\t32697.4\t5847.1\t0.0\tshade only\ncanvas.theme\tAG archetype gpu resident\t3983\t3184\t3462\t2835\t75.3\t211.2\t0.0\tblock write + encode + wait\ncanvas.theme\tAD driver, the plan's choice\t3983\t2696\t3074\t-\t77.8\t151.1\t0.0\t0 frames on one core, 8 on the GPU\ncanvas.theme\tK  generic bin\t3983\t119\t123\t-\t1730.3\t440.8\t0.0\t2.8 entries per tile after the cut\ncanvas.theme\tK1 generic cpu 1 core\t3983\t67245\t67445\t-\t1140208.3\t240627.7\t0.0\traster only; restage free, bin above\ncanvas.theme\tKP generic cpu 5+1\t3983\t13115\t13135\t-\t177417.1\t37480.5\t0.0\traster only\ncanvas.theme\tKG generic gpu\t3983\t2069\t2401\t1659\t970.7\t531.6\t0.0\tupload + tile kernel + wait\ncanvas.pan\tA1 archetype cpu 1 core\t146\t1864\t5179\t-\t113376.1\t18524.4\t0.0\tpick + window pass + bins + shade\ncanvas.pan\tA  window pass + bins\t146\t67\t96\t-\t1393.4\t345.9\t0.0\tthe per-record part of A1 / AP\ncanvas.pan\tAP archetype cpu 5+1\t146\t482\t1050\t-\t20811.5\t3732.9\t0.0\tshade only\ncanvas.pan\tAG archetype gpu resident\t146\t3048\t4051\t3338\t92.6\t221.5\t0.0\tblock write + encode + wait\ncanvas.pan\tAD driver, the plan's choice\t146\t616\t4162\t-\t1597.7\t602.4\t0.0\t1 frames on one core, 7 on the GPU\ncanvas.pan\tK  generic bin\t146\t40\t68\t-\t971.6\t244.0\t0.0\t26.0 entries per tile after the cut\ncanvas.pan\tK1 generic cpu 1 core\t146\t13083\t41373\t-\t694670.5\t146159.5\t0.0\traster only; restage free, bin above\ncanvas.pan\tKP generic cpu 5+1\t146\t6191\t8883\t-\t142248.4\t30020.7\t0.0\traster only\ncanvas.pan\tKG generic gpu\t146\t1223\t2078\t1213\t575.1\t433.2\t0.0\tupload + tile kernel + wait\ncanvas.drag\tA1 archetype cpu 1 core\t0\t2\t4\t-\t7.2\t14.3\t0.0\tpick + window pass + bins + shade\ncanvas.drag\tA  window pass + bins\t0\t0\t0\t-\t3.6\t2.6\t0.0\tthe per-record part of A1 / AP\ncanvas.drag\tAP archetype cpu 5+1\t0\t0\t0\t-\t5.6\t2.1\t0.0\tshade only\ncanvas.drag\tAG archetype gpu resident\t0\t266\t719\t48\t72.8\t120.8\t0.0\tblock write + encode + wait\ncanvas.drag\tAD driver, the plan's choice\t0\t2\t3\t-\t8.1\t9.7\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.drag\tK  generic bin\t0\t30\t31\t-\t652.8\t112.1\t0.0\t0.0 entries per tile after the cut\ncanvas.drag\tK1 generic cpu 1 core\t0\t5\t5\t-\t72.3\t19.3\t0.0\traster only; restage free, bin above\ncanvas.drag\tKP generic cpu 5+1\t0\t5\t5\t-\t73.2\t19.0\t0.0\traster only\ncanvas.drag\tKG generic gpu\t0\t70\t88\t0\t496.9\t204.3\t0.0\tupload + tile kernel + wait\ncanvas.time\tA1 archetype cpu 1 core\t24\t1468\t1545\t-\t31861.6\t5467.9\t0.0\tpick + window pass + bins + shade\ncanvas.time\tA  window pass + bins\t24\t53\t56\t-\t1042.8\t202.0\t0.0\tthe per-record part of A1 / AP\ncanvas.time\tAP archetype cpu 5+1\t24\t839\t979\t-\t10390.6\t1936.8\t0.0\tshade only\ncanvas.time\tAG archetype gpu resident\t24\t2601\t3879\t3160\t72.6\t155.9\t0.0\tblock write + encode + wait\ncanvas.time\tAD driver, the plan's choice\t24\t1446\t1577\t-\t31863.6\t5365.7\t0.0\t8 frames on one core, 0 on the GPU\ncanvas.time\tK  generic bin\t24\t65\t69\t-\t831.0\t239.4\t0.0\t48.5 entries per tile after the cut\ncanvas.time\tK1 generic cpu 1 core\t24\t10165\t11637\t-\t186619.3\t39536.0\t0.0\traster only; restage free, bin above\ncanvas.time\tKP generic cpu 5+1\t24\t3861\t3950\t-\t40417.4\t8613.8\t0.0\traster only\ncanvas.time\tKG generic gpu\t24\t1673\t2270\t1514\t519.2\t329.7\t0.0\tupload + tile kernel + wait\n# cross-check failures: 0; load at end: 18.19 16.09 16.99\n",
+          "stderr": "        4.37 real         5.86 user         0.09 sys\n           274661376  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               21065  page reclaims\n                   2  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   3  voluntary context switches\n                1901  involuntary context switches\n        101903041433  instructions retired\n         21242420928  cycles elapsed\n           694387456  peak memory footprint\n",
+          "fields": {},
+          "rep": 0,
+          "load": 18.19140625
+        }
+      ],
+      "instructions": {
+        "median": 101897391608,
+        "min": 101897192594,
+        "max": 101903041433,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 4382.146,
+        "min": 4325.178,
+        "max": 4871.008,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 273596416,
+        "min": 273416192,
+        "max": 274661376,
+        "n": 3
+      },
+      "fields": {}
+    },
+    "guibench/rows-1000-mount": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 31.32,
+          "time_real_s": 0.02,
+          "instructions": 86910154,
+          "rss_bytes": 20086784,
+          "stdout": "result op=mount repeats=0 render=false gate=false ring=4 instructions=1574 rss=19988480 footprint=10977976 frames=1 surfaces=[1, 0, 0, 0]\n",
+          "stderr": "mount instructions=43793698 ns=3570875 rss=19922944 footprint=10977976 records=5002 rows=1000\n        0.02 real         0.00 user         0.00 sys\n            20086784  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1477  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  19  involuntary context switches\n            86910154  instructions retired\n            31152193  cycles elapsed\n            10977976  peak memory footprint\n",
+          "fields": {},
+          "rep": 2,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 25.872,
+          "time_real_s": 0.02,
+          "instructions": 85733173,
+          "rss_bytes": 20070400,
+          "stdout": "result op=mount repeats=0 render=false gate=false ring=4 instructions=1574 rss=19972096 footprint=10961592 frames=1 surfaces=[1, 0, 0, 0]\n",
+          "stderr": "mount instructions=43756331 ns=3358958 rss=19906560 footprint=10961592 records=5002 rows=1000\n        0.02 real         0.00 user         0.00 sys\n            20070400  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1476  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  11  involuntary context switches\n            85733173  instructions retired\n            29676010  cycles elapsed\n            10961592  peak memory footprint\n",
+          "fields": {},
+          "rep": 1,
+          "load": 18.0341796875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 29.478,
+          "time_real_s": 0.02,
+          "instructions": 85740499,
+          "rss_bytes": 20135936,
+          "stdout": "result op=mount repeats=0 render=false gate=false ring=4 instructions=1574 rss=20037632 footprint=11027128 frames=1 surfaces=[1, 0, 0, 0]\n",
+          "stderr": "mount instructions=43790496 ns=3190375 rss=19972096 footprint=11027128 records=5002 rows=1000\n        0.02 real         0.00 user         0.00 sys\n            20135936  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1480  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  10  involuntary context switches\n            85740499  instructions retired\n            28235473  cycles elapsed\n            11027128  peak memory footprint\n",
+          "fields": {},
+          "rep": 0,
+          "load": 18.19140625
+        }
+      ],
+      "instructions": {
+        "median": 85740499,
+        "min": 85733173,
+        "max": 86910154,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 29.478,
+        "min": 25.872,
+        "max": 31.32,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 20086784,
+        "min": 20070400,
+        "max": 20135936,
+        "n": 3
+      },
+      "fields": {}
+    },
+    "guibench/rows-1000-hover": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 30.457,
+          "time_real_s": 0.02,
+          "instructions": 247533451,
+          "rss_bytes": 20185088,
+          "stdout": "perop op=hover render=false med=3040220 lo=3039859 hi=3077069 records=5002 frames=53\n",
+          "stderr": "mount instructions=43770186 ns=3433708 rss=19939328 footprint=10994360 records=5002 rows=1000\n        0.02 real         0.01 user         0.00 sys\n            20185088  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1483  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  10  involuntary context switches\n           247533451  instructions retired\n            58416262  cycles elapsed\n            11027128  peak memory footprint\n",
+          "fields": {},
+          "rep": 2,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 30.56,
+          "time_real_s": 0.02,
+          "instructions": 245679930,
+          "rss_bytes": 20217856,
+          "stdout": "perop op=hover render=false med=3033596 lo=3033235 hi=3070448 records=5002 frames=53\n",
+          "stderr": "mount instructions=43501928 ns=3421250 rss=19988480 footprint=11027104 records=5002 rows=1000\n        0.02 real         0.01 user         0.00 sys\n            20217856  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1486  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  13  involuntary context switches\n           245679930  instructions retired\n            58491837  cycles elapsed\n            11043488  peak memory footprint\n",
+          "fields": {},
+          "rep": 1,
+          "load": 18.0341796875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 35.051,
+          "time_real_s": 0.03,
+          "instructions": 246073991,
+          "rss_bytes": 20217856,
+          "stdout": "perop op=hover render=false med=3033595 lo=3033235 hi=3070451 records=5002 frames=53\n",
+          "stderr": "mount instructions=43512612 ns=3150292 rss=19988480 footprint=11043512 records=5002 rows=1000\n        0.03 real         0.01 user         0.00 sys\n            20217856  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1485  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  11  involuntary context switches\n           246073991  instructions retired\n            55854898  cycles elapsed\n            11059896  peak memory footprint\n",
+          "fields": {},
+          "rep": 0,
+          "load": 18.19140625
+        }
+      ],
+      "instructions": {
+        "median": 246073991,
+        "min": 245679930,
+        "max": 247533451,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 30.56,
+        "min": 30.457,
+        "max": 35.051,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 20217856,
+        "min": 20185088,
+        "max": 20217856,
+        "n": 3
+      },
+      "fields": {}
+    },
+    "guibench/rows-1000-typing": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 26.641,
+          "time_real_s": 0.02,
+          "instructions": 177385685,
+          "rss_bytes": 20905984,
+          "stdout": "perop op=typing render=false med=1546633 lo=1509196 hi=1697649 records=5011 frames=53\n",
+          "stderr": "mount instructions=49785451 ns=3991708 rss=20725760 footprint=11584208 records=5011 rows=1000\n        0.02 real         0.01 user         0.00 sys\n            20905984  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1527  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n           177385685  instructions retired\n            46748753  cycles elapsed\n            11616976  peak memory footprint\n",
+          "fields": {},
+          "rep": 2,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 26.63,
+          "time_real_s": 0.02,
+          "instructions": 176333802,
+          "rss_bytes": 20922368,
+          "stdout": "perop op=typing render=false med=1546857 lo=1509192 hi=1697924 records=5011 frames=53\n",
+          "stderr": "mount instructions=49748786 ns=4147416 rss=20742144 footprint=11551368 records=5011 rows=1000\n        0.02 real         0.01 user         0.00 sys\n            20922368  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1528  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n           176333802  instructions retired\n            47941460  cycles elapsed\n            11584136  peak memory footprint\n",
+          "fields": {},
+          "rep": 1,
+          "load": 18.0341796875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 30.722,
+          "time_real_s": 0.02,
+          "instructions": 176995353,
+          "rss_bytes": 20856832,
+          "stdout": "perop op=typing render=false med=1545073 lo=1496860 hi=1713754 records=5011 frames=53\n",
+          "stderr": "mount instructions=49742275 ns=3831000 rss=20676608 footprint=11518648 records=5011 rows=1000\n        0.02 real         0.00 user         0.00 sys\n            20856832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1524  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  10  involuntary context switches\n           176995353  instructions retired\n            44387695  cycles elapsed\n            11551416  peak memory footprint\n",
+          "fields": {},
+          "rep": 0,
+          "load": 18.19140625
+        }
+      ],
+      "instructions": {
+        "median": 176995353,
+        "min": 176333802,
+        "max": 177385685,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 26.641,
+        "min": 26.63,
+        "max": 30.722,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 20905984,
+        "min": 20856832,
+        "max": 20922368,
+        "n": 3
+      },
+      "fields": {}
+    },
+    "guibench/search-100-filter": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 24.235,
+          "time_real_s": 0.02,
+          "instructions": 133042317,
+          "rss_bytes": 19038208,
+          "stdout": "perop op=filter render=false med=1921719 lo=1920010 hi=1926894 records=511 frames=41\n",
+          "stderr": "mount instructions=12308279 ns=1547334 rss=15745024 footprint=6603472 records=511 rows=100\n        0.02 real         0.00 user         0.00 sys\n            19038208  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1413  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  10  involuntary context switches\n           133042317  instructions retired\n            38493251  cycles elapsed\n             9749200  peak memory footprint\n",
+          "fields": {},
+          "rep": 2,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 24.955,
+          "time_real_s": 0.02,
+          "instructions": 132199571,
+          "rss_bytes": 19054592,
+          "stdout": "perop op=filter render=false med=1918429 lo=1917953 hi=1923922 records=511 frames=41\n",
+          "stderr": "mount instructions=12352153 ns=1798208 rss=15843328 footprint=6668960 records=511 rows=100\n        0.02 real         0.00 user         0.00 sys\n            19054592  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1414  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  11  involuntary context switches\n           132199571  instructions retired\n            39925536  cycles elapsed\n             9732768  peak memory footprint\n",
+          "fields": {},
+          "rep": 1,
+          "load": 18.0341796875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 29.436,
+          "time_real_s": 0.02,
+          "instructions": 132757753,
+          "rss_bytes": 19005440,
+          "stdout": "perop op=filter render=false med=1925671 lo=1922799 hi=1926116 records=511 frames=41\n",
+          "stderr": "mount instructions=12280051 ns=1569250 rss=15712256 footprint=6554296 records=511 rows=100\n        0.02 real         0.00 user         0.00 sys\n            19005440  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1411  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n           132757753  instructions retired\n            36758417  cycles elapsed\n             9700024  peak memory footprint\n",
+          "fields": {},
+          "rep": 0,
+          "load": 18.19140625
+        }
+      ],
+      "instructions": {
+        "median": 132757753,
+        "min": 132199571,
+        "max": 133042317,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 24.955,
+        "min": 24.235,
+        "max": 29.436,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 19038208,
+        "min": 19005440,
+        "max": 19054592,
+        "n": 3
+      },
+      "fields": {}
+    },
+    "guibench/search-1000-filter-nochange": {
+      "runs": [
+        {
+          "exit": 0,
+          "wall_ms": 23.826,
+          "time_real_s": 0.02,
+          "instructions": 137808575,
+          "rss_bytes": 20971520,
+          "stdout": "perop op=filter-nochange render=false med=906300 lo=872683 hi=1070934 records=11 frames=42\n",
+          "stderr": "mount instructions=50049071 ns=3885958 rss=20676608 footprint=11502240 records=5011 rows=1000\n        0.02 real         0.00 user         0.00 sys\n            20971520  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1531  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   7  involuntary context switches\n           137808575  instructions retired\n            39544223  cycles elapsed\n            11649696  peak memory footprint\n",
+          "fields": {},
+          "rep": 2,
+          "load": 18.21142578125
+        },
+        {
+          "exit": 0,
+          "wall_ms": 30.087,
+          "time_real_s": 0.02,
+          "instructions": 136938318,
+          "rss_bytes": 20905984,
+          "stdout": "perop op=filter-nochange render=false med=910662 lo=856023 hi=1070563 records=11 frames=42\n",
+          "stderr": "mount instructions=49832289 ns=4093417 rss=20660224 footprint=11502264 records=5011 rows=1000\n        0.02 real         0.00 user         0.00 sys\n            20905984  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1527  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n           136938318  instructions retired\n            41120051  cycles elapsed\n            11600568  peak memory footprint\n",
+          "fields": {},
+          "rep": 1,
+          "load": 18.0341796875
+        },
+        {
+          "exit": 0,
+          "wall_ms": 27.92,
+          "time_real_s": 0.02,
+          "instructions": 137184464,
+          "rss_bytes": 21037056,
+          "stdout": "perop op=filter-nochange render=false med=906406 lo=872768 hi=1070922 records=11 frames=42\n",
+          "stderr": "mount instructions=49809810 ns=3852750 rss=20742144 footprint=11584184 records=5011 rows=1000\n        0.02 real         0.00 user         0.00 sys\n            21037056  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1535  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                   9  involuntary context switches\n           137184464  instructions retired\n            38426379  cycles elapsed\n            11731640  peak memory footprint\n",
+          "fields": {},
+          "rep": 0,
+          "load": 18.19140625
+        }
+      ],
+      "instructions": {
+        "median": 137184464,
+        "min": 136938318,
+        "max": 137808575,
+        "n": 3
+      },
+      "wall_ms": {
+        "median": 27.92,
+        "min": 23.826,
+        "max": 30.087,
+        "n": 3
+      },
+      "rss_bytes": {
+        "median": 20971520,
+        "min": 20905984,
+        "max": 21037056,
+        "n": 3
+      },
+      "fields": {}
+    }
+  },
+  "errors": [],
+  "slots": {
+    "rows": "bough-guibench headless, rows (measured below as guibench/rows-*)",
+    "virtual": "not yet available: bough's virtual list cells are gui-bench's `virtual` scenario on Linux",
+    "table": "bough-guibench headless table cells (measured below as guibench/table-*)",
+    "typing": "bough-guibench headless typing (measured below)",
+    "search": "bough-guibench headless filter (measured below)",
+    "spinner": "not yet available: needs the output-paced animation driver (REPORT 4.8)",
+    "ticker": "not yet available: same clock as spinner",
+    "resize": "not yet available on the new core; the fa\u00e7ade's resize is the gui-bench VM cell",
+    "sheet": "bough-x sheet_x example (measured below)",
+    "chat": "not yet available: the element-layer chat scene (REPORT 4.1)",
+    "ide": "not yet available: the element-layer ide scene (REPORT 4.1)",
+    "dashboard": "not yet available: the element-layer dashboard scene (REPORT 4.1)",
+    "canvas": "bough-paint pbench canvas (measured below)",
+    "effects": "not yet available: the effects/motion lane's scene (slot reserved)",
+    "media": "not yet available: the video/image scene (slot reserved)"
+  },
+  "known_failures": [
+    "guibench search --rows 1000 --op filter: panics after ~40 filter steps in bough-mem's region layout: column `glyph_x` is full (capacity 524288, need 524304). The 100-row filter and the 1000-row filter-nochange cells are measured instead."
+  ],
+  "log": [
+    "worktree /Users/rmccrar6/work/lorelei-wt/baseline",
+    "commit 71ee3be0aa39d37c0fb3bc32997d4aed631e2cc2",
+    "dirty False",
+    "rustc rustc 1.101.0-nightly (5d8fec066 2026-10-16)",
+    "target /Users/rmccrar6/work/targets/bench/baseline/71ee3be-71ee3be0aa",
+    "load-before 17.79 15.90 16.94",
+    "binaries {\"anim_x\": {\"bytes\": 545760, \"path\": \"dist/examples/anim_x\", \"sha256\": \"5b5e221ee6735822488019036eeadaa2eb25740a557ddd264e3b2ba3a0437074\", \"text_bytes\": 276136}, \"bough-x-bench\": {\"bytes\": 461576, \"path\": \"release/bough-bench\", \"sha256\": \"e88ac991044d6ccb78b080278ac351861336c59c6026e6043fe3a140ba3cfbf5\", \"text_bytes\": 210092}, \"events_x\": {\"bytes\": 567024, \"path\": \"dist/examples/events_x\", \"sha256\": \"f8840a5ba3f429fb8d745f7203c5b64a209f5327188c375c39b82a5e04d8c809\", \"text_bytes\": 290740}, \"headless\": {\"bytes\": 7371960, \"path\": \"release/headless\", \"sha256\": \"aea29babea242586018b8e6e5fab80a10839c2d3ec34f6af0cbc3e4ad7e857c2\", \"text_bytes\": 4030624}, \"pbench\": {\"bytes\": 1265104, \"path\": \"dist/examples/pbench\", \"sha256\": \"09717fa682f02ff9cec1dee217c75946b54e3b641704d93292f783999823316c\", \"text_bytes\": 768252}, \"sheet_x\": {\"bytes\": 720320, \"path\": \"dist/examples/sheet_x\", \"sha256\": \"784de0ecc3808e9526b4a753acefd51cb7a5785fed8e50d7d019506690878b35\", \"text_bytes\": 430056}, \"text_x\": {\"bytes\": 775952, \"path\": \"dist/examples/text_x\", \"sha256\": \"00cbb3deebcbc13c950d7ff15e35df8163c6eeb4d05c7d27893fab3c6f4c99c6\", \"text_bytes\": 438448}}"
+  ],
+  "date": "2026-11-21T09:45:37Z"
+}

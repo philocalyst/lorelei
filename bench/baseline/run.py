@@ -37,6 +37,15 @@ ROOT = HERE.parent.parent
 DEFAULT_TARGET = Path(os.environ.get("BENCH_BASELINE_TARGET", str(Path.home() / "work/targets/bench/baseline")))
 RUSTUP_BIN = "/opt/homebrew/opt/rustup/bin"
 
+# Cells that fail for a reason in the framework, not the harness. They are not measured (a failing
+# cell is not a number) and are stated in every baseline document so nobody reads their absence as a
+# zero. `bench/baselines/macos-71ee3be` recorded the first one.
+KNOWN_FAILURES = [
+    "guibench search --rows 1000 --op filter: panics after ~40 filter steps in bough-mem's region "
+    "layout: column `glyph_x` is full (capacity 524288, need 524304). The 100-row filter and the "
+    "1000-row filter-nochange cells are measured instead.",
+]
+
 # The scenes other agents are building. A baseline names them, empty, so no later reader mistakes
 # a missing scene for a measured zero.
 SLOTS = {
@@ -111,7 +120,8 @@ def cells(bins):
         ("guibench/rows-1000-mount", [h, "--scenario", "rows", "--rows", "1000", "--op", "mount", "--repeats", "0"], {}, "guibench"),
         ("guibench/rows-1000-hover", [h, "--scenario", "rows", "--rows", "1000", "--op", "hover", "--repeats", "8", "--blocks", "3"], {}, "guibench"),
         ("guibench/rows-1000-typing", [h, "--scenario", "typing", "--rows", "1000", "--op", "typing", "--repeats", "8", "--blocks", "3"], {}, "guibench"),
-        ("guibench/rows-1000-filter", [h, "--scenario", "search", "--rows", "1000", "--op", "filter", "--repeats", "6", "--blocks", "3"], {}, "guibench"),
+        ("guibench/search-100-filter", [h, "--scenario", "search", "--rows", "100", "--op", "filter", "--repeats", "6", "--blocks", "3"], {}, "guibench"),
+        ("guibench/search-1000-filter-nochange", [h, "--scenario", "search", "--rows", "1000", "--op", "filter-nochange", "--repeats", "6", "--blocks", "3"], {}, "guibench"),
     ]
 
 
@@ -176,6 +186,7 @@ def main():
     ap.add_argument("--cells", default="")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--no-build", action="store_true", help="reuse the target directory's binaries (a quiet re-measure)")
     a = ap.parse_args()
     wt = Path(a.worktree).resolve()
     commit = sh(["git", "rev-parse", "HEAD"], cwd=wt).stdout.strip()
@@ -188,7 +199,9 @@ def main():
     load = os.getloadavg()
     log.append(f"load-before {load[0]:.2f} {load[1]:.2f} {load[2]:.2f}")
 
-    bins = build(wt, target, log)
+    bins = {k: target / v for k, v in {"sheet_x": "dist/examples/sheet_x", "events_x": "dist/examples/events_x", "text_x": "dist/examples/text_x", "anim_x": "dist/examples/anim_x", "pbench": "dist/examples/pbench", "bough-x-bench": "release/bough-bench", "headless": "release/headless"}.items()}
+    if not a.no_build:
+        bins = build(wt, target, log)
     manifest = {}
     for label, p in bins.items():
         if p.exists():
@@ -246,6 +259,7 @@ def main():
         "cells": cells_out,
         "errors": errors,
         "slots": SLOTS,
+        "known_failures": KNOWN_FAILURES,
         "log": log,
         "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
@@ -261,6 +275,8 @@ def main():
         md.append(f"| {cid} | {fmt(i, ',')} | {fmt(w, '.1f')} | {rss} |")
     md += ["", "## Slots (scenes other agents are building)", ""]
     md += [f"* `{k}`: {v}" for k, v in SLOTS.items()]
+    md += ["", "## Known failures (not cells)", ""]
+    md += [f"* {x}" for x in KNOWN_FAILURES]
     (outdir / f"{a.name}.md").write_text("\n".join(md) + "\n")
     print(f"baseline: wrote {jp} and {jp.with_suffix('.md')}")
     if errors:

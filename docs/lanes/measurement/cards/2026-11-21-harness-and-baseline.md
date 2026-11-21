@@ -50,3 +50,22 @@ stop conditions: A VM route that cannot build fakeland or the runner after the d
                  silently dropped.
 do not revisit:  Nothing in docs/SETTLED.md is touched. No benchmark-specific code path, no cache the framework does
                  not provide, no estimate ranked with measurements.
+
+## Amendments (after measurement started; the original stays)
+
+1. **The asm negative control.** As written it was `-C opt-level=0` against release. It was run and
+   is not usable as a gate: a different inlining regime changes which symbols exist at all, so
+   `column_paint` (1,806 → 340), `state_compare` (756 → 337), `turn_after` (910 → 14) shrank and the
+   control reported "MUTANT NOT DETECTED". Replaced before any gate was claimed with a same-profile
+   source mutant: `--features asm_mutant` makes three control wrappers (`turn_settle`, `turn_paint`,
+   `kernel_shade_wrap`) call an `#[inline(never)]` 64-iteration black-boxed body, and the check
+   requires each to grow. It passes (`10→12`, `35→37`, `52→54`, each plus the extra body). The dev
+   comparison is now printed as information only. Reason recorded here, not fitted to a result.
+2. **The baseline host was loaded.** The first baseline at `71ee3be` was taken at load 11.0-18.2
+   (other sessions building). Instruction counts are the primary column and their spreads are under
+   1 %; wall and RSS are recorded but the run is marked `loaded` and wall comparisons suppress
+   themselves when the baseline spread exceeds the threshold. A quiet re-run is the next card.
+3. **The compare gate's non-zero case** was exercised with a synthetic mutation of the recorded JSON
+   (one cell ×1.5) because no second, genuinely different build could be measured on this host
+   today. The gate returns 1 with `REGRESSED: instructions 1.500x > 1.02`; the positive case returns
+   0. A real different-build control remains owed.
