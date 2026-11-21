@@ -1722,76 +1722,18 @@ fn list_plan(
         cx.moved += 1;
         (olo, ohi) = (0, 0);
     }
-    // Inserts and removes as rigid moves. A row that stays exposed across an insert or a remove elsewhere is
-    // the same records at another index (and another y): its records are not described again. The window is
-    // replayed through the edits in the order they happened: an edit before the window moves every index
-    // (the bias moves the other way, so every row keeps its slot); an edit inside it moves the indices on
-    // one side, and the rows of the other side, the fewer, are the ones written again. `dirty` is that side,
-    // in the indices as they are now. Anything this does not follow exactly (a second edit inside the
-    // window, an edit after one) writes every exposed row again, which is always right.
-    let mut from = from;
-    let mut dirty = (0u32, 0u32);
-    let mut rigid = false;
-    if (how.by_item | l.edits.by_item)
+    let rigid = (how.by_item | l.edits.by_item)
         && from != u32::MAX
         && st.moved_ok
         && ohi > olo
-        && !st.moved.is_empty()
-    {
-        rigid = true;
-        let mut lost = false;
-        for i in 0..st.moved.len() {
-            if dirty.1 > dirty.0 {
-                lost = true;
-                break;
-            }
-            match st.moved[i] {
-                Edit::Insert(at) if at <= olo => {
-                    st.bias = st.bias.wrapping_sub(1);
-                    (olo, ohi) = (olo + 1, ohi + 1);
-                    shift_rows(st, leaves, (olo, ohi), l.row_h);
-                }
-                Edit::Insert(at) if at < ohi => {
-                    if at - olo <= ohi - at {
-                        // the rows above are the fewer: the rows from `at` on keep their slots
-                        st.bias = st.bias.wrapping_sub(1);
-                        shift_rows(st, leaves, (at + 1, ohi + 1), l.row_h);
-                        dirty = (olo, at + 1);
-                    } else {
-                        dirty = (at, ohi + 1);
-                    }
-                    ohi += 1;
-                }
-                Edit::Remove(at) if at < olo => {
-                    st.bias = st.bias.wrapping_add(1);
-                    (olo, ohi) = (olo - 1, ohi - 1);
-                    shift_rows(st, leaves, (olo, ohi), -l.row_h);
-                }
-                Edit::Remove(at) if at < ohi => {
-                    if at - olo <= ohi - at - 1 {
-                        st.bias = st.bias.wrapping_add(1);
-                        shift_rows(st, leaves, (at, ohi - 1), -l.row_h);
-                        dirty = (olo, at);
-                    } else {
-                        dirty = (at, ohi - 1);
-                    }
-                    ohi -= 1;
-                }
-                // past the window: nothing exposed moved
-                Edit::Insert(_) | Edit::Remove(_) => {}
-                Edit::Update(_) | Edit::Shift(_) => {
-                    unreachable!("`moves_since` keeps inserts and removes")
-                }
-            }
-        }
-        if lost {
-            (olo, ohi) = (0, 0);
-            dirty = (0, 0);
-        }
-        // everything from the first edit on is somewhere else on screen
-        cx.tiles.mark(space.clip);
-        from = u32::MAX;
-    }
+        && !st.moved.is_empty();
+    let (from, dirty) = if rigid {
+        let (old, dirty) = replay_rigid(st, cx.tiles, leaves, (olo, ohi), l.row_h);
+        (olo, ohi) = old;
+        (u32::MAX, dirty)
+    } else {
+        (from, (0, 0))
+    };
     // A changed window or rigid edit moves what a reader sees. Ordinary updates
     // count only where the record patch stores a value.
     if (lo != olo) | (hi != ohi) | (from != u32::MAX) | rigid {
@@ -1853,6 +1795,76 @@ fn list_plan(
     let slot = st.slot_of(lo) as usize;
     publish_window(&mut st.row_live, slot, (hi - lo) as usize);
     mk
+}
+
+// Inserts and removes as rigid moves. A row that stays exposed across an insert or a remove elsewhere is
+// the same records at another index (and another y): its records are not described again. The window is
+// replayed through the edits in the order they happened: an edit before the window moves every index
+// (the bias moves the other way, so every row keeps its slot); an edit inside it moves the indices on
+// one side, and the rows of the other side, the fewer, are the ones written again. `dirty` is that side,
+// in the indices as they are now. Anything this does not follow exactly (a second edit inside the
+// window, an edit after one) writes every exposed row again, which is always right.
+#[inline(never)]
+fn replay_rigid(
+    st: &mut Store,
+    tiles: &mut Tiles,
+    leaves: usize,
+    (mut olo, mut ohi): (u32, u32),
+    row_h: i32,
+) -> ((u32, u32), (u32, u32)) {
+    let mut dirty = (0, 0);
+    let mut lost = false;
+    for i in 0..st.moved.len() {
+        if dirty.1 > dirty.0 {
+            lost = true;
+            break;
+        }
+        match st.moved[i] {
+            Edit::Insert(at) if at <= olo => {
+                st.bias = st.bias.wrapping_sub(1);
+                (olo, ohi) = (olo + 1, ohi + 1);
+                shift_rows(st, leaves, (olo, ohi), row_h);
+            }
+            Edit::Insert(at) if at < ohi => {
+                if at - olo <= ohi - at {
+                    // the rows above are the fewer: the rows from `at` on keep their slots
+                    st.bias = st.bias.wrapping_sub(1);
+                    shift_rows(st, leaves, (at + 1, ohi + 1), row_h);
+                    dirty = (olo, at + 1);
+                } else {
+                    dirty = (at, ohi + 1);
+                }
+                ohi += 1;
+            }
+            Edit::Remove(at) if at < olo => {
+                st.bias = st.bias.wrapping_add(1);
+                (olo, ohi) = (olo - 1, ohi - 1);
+                shift_rows(st, leaves, (olo, ohi), -row_h);
+            }
+            Edit::Remove(at) if at < ohi => {
+                if at - olo <= ohi - at - 1 {
+                    st.bias = st.bias.wrapping_add(1);
+                    shift_rows(st, leaves, (at, ohi - 1), -row_h);
+                    dirty = (olo, at);
+                } else {
+                    dirty = (at, ohi - 1);
+                }
+                ohi -= 1;
+            }
+            // past the window: nothing exposed moved
+            Edit::Insert(_) | Edit::Remove(_) => {}
+            Edit::Update(_) | Edit::Shift(_) => {
+                unreachable!("`moves_since` keeps inserts and removes")
+            }
+        }
+    }
+    if lost {
+        (olo, ohi) = (0, 0);
+        dirty = (0, 0);
+    }
+    // everything from the first edit on is somewhere else on screen
+    tiles.mark(st.space.clip);
+    ((olo, ohi), dirty)
 }
 
 /// A token identifies its slot as well as its generation, so all slots replaced
