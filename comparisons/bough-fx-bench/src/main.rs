@@ -176,10 +176,23 @@ fn gate(n: usize, cell: &str, ring: usize, font: &[u8], mutant: bool) -> u64 {
         fresh.frame();
         fresh.wait_presented();
     }
-    assert!(
-        a.presented_pixels() == fresh.presented_pixels(),
-        "fresh mount differs at rest"
-    );
+    let actual = a.presented_pixels();
+    let expected = fresh.presented_pixels();
+    assert_eq!(actual.len(), expected.len());
+    let mut differences = actual
+        .chunks_exact(4)
+        .zip(expected.chunks_exact(4))
+        .enumerate()
+        .filter(|(_, (a, b))| a != b);
+    if let Some((pixel, (actual, expected))) = differences.next() {
+        let width = size_at(cell, last_step).0 as usize;
+        panic!(
+            "fresh mount differs at rest, {} pixels, first at ({}, {}): {actual:?} versus {expected:?}",
+            differences.count() + 1,
+            pixel % width,
+            pixel / width
+        );
+    }
     witness
 }
 
@@ -253,7 +266,9 @@ fn measure(n: usize, cell: &str, ring: usize, samples: usize, font: &[u8]) {
         footprint = footprint.max(a1.footprint);
         let f = if drawn {
             draws += 1;
-            if cell == "startup" {
+            if cell == "resize" {
+                f64::NAN
+            } else if cell == "startup" {
                 1.0
             } else {
                 damage(app.as_ref().unwrap(), size_at(cell, Some(i)))
