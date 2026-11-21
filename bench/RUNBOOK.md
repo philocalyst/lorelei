@@ -97,16 +97,45 @@ Run `bench/fx/run.sh` for the standalone staged paint replay. It writes the eigh
 
 ## 4. The older headless jobs on macOS
 
+Use a `zgx` reference clone that contains `06debe9d`, the revision selected by `bench/zgx/build.sh`.
+Keep `BOUGH_REF` pointed at the reference tree with the DejaVu Sans font. The build script stages
+three drivers in this worktree's `target/zgx-headless/`. The separate build in its disposable clone
+adds the heavy and micro examples.
+
 ```sh
-cargo build --profile dist -p bough-heavy -p bough-scenes -p bough-vlist
+export BOUGH_REF="$HOME/work/reactivity/ref"
+export ZGX="$HOME/work/ref-extra/zgx-full"
+export ZGX_COPY="$CARGO_TARGET_DIR/zgxcopy"
+export ZGX_HEADLESS="$PWD/target/zgx-headless"
+export ZGX_DIST="$ZGX_COPY/target/dist/examples"
 export BOUGH_DIST="$CARGO_TARGET_DIR/dist"
-bench/results/fusion/run_slopes.sh
-python3 bench/integrate/micro.py 3
-bench/r8/lay_compile.sh
-bench/gate.sh
+
+nice -n 15 cargo build -j 3 --profile dist -p bough-heavy -p bough-scenes -p bough-vlist
+env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=3 nice -n 15 bench/zgx/build.sh
+(cd "$ZGX_COPY" && env -u CARGO_TARGET_DIR nice -n 15 cargo build -j 3 --profile dist \
+    -p zgx-desktop --example heavy_headless --example micro_bench)
 ```
 
-The slope and micro jobs also require the corresponding `zgx` binaries. Point `BOUGH_REF` or `ZGX` at the reference sources and `ZGX_HEADLESS` at the staged headless drivers. `bench/zgx/build.sh` builds the workload, animation and vlist drivers. The heavy and micro example binaries come from the separate `zgx` release or dist build. A missing driver exits nonzero. Run the compile probe on a quiet host when comparing compile times. The code gate runs checks and tests, including controls that must fail.
+For the instruction slopes, record the host load and run the replay directly. Missing or failed
+binaries exit nonzero. Bough idle work is below this slope method's resolution. Keep the spread
+with each result since even instruction slopes vary across launches.
+
+```sh
+uptime
+bench/results/fusion/run_slopes.sh
+```
+
+`micro.py` reports CPU time. Use the shared timing lock for this replay. The layout compile probe
+reports code size and compile CPU time. Run it unlocked and qualify the time only on a quiet host.
+Set `BASE_COMMIT` to the frozen comparison revision for the code gate.
+
+```sh
+bench_lock="$HOME/work/locks/bench.lock"
+mkdir -p "$(dirname "$bench_lock")"
+lockf -k "$bench_lock" python3 bench/integrate/micro.py 3
+bench/r8/lay_compile.sh
+bench/gate.sh --base "$BASE_COMMIT"
+```
 
 ## 5. Validity rules (fail closed)
 
