@@ -909,33 +909,46 @@ impl Scene {
     fn fx<'a>(&'a self, pool: &'a [u32]) -> Fx<'a> {
         Fx { layers: &self.layers.list, of: &self.layers.of, pool, media: self.media.words(), fw: self.fw, fh: self.fh }
     }
+    /// The part of tile `ti`'s list a job runs: entries `from..to`, started from the stored prefix of layer
+    /// `init` (`layer::NONE`: from nothing). `upto`: the layer whose prefix the job computes (its entries
+    /// beneath that layer's record), or `layer::NONE` for an output tile (all of them). The job starts at
+    /// the topmost layer record in its range whose window holds the whole tile: inside its window that
+    /// record flattened every pixel, so its stored prefix is the accumulator there. The last value: some
+    /// layer record is in the range.
+    pub fn seg(&self, ti: u32, upto: u32) -> (usize, usize, u32, bool) {
+        let (ox, oy) = ((ti as usize % self.tx) as i32 * 32, (ti as usize / self.tx) as i32 * 32);
+        let (cols, nrows) = ((self.fw as usize - ox as usize).min(32), (self.fh as usize - oy as usize).min(32));
+        let list = self.bins.tile(ti as usize);
+        let (mut from, mut to, mut init, mut marked) = (0, list.len(), layer::NONE, false);
+        if self.layers.any() {
+            if upto != layer::NONE {
+                let zb = self.layers.list[upto as usize].z;
+                to = list.partition_point(|&z| z < zb);
+            }
+            for j in (0..to).rev() {
+                let lid = self.layers.lid(list[j]);
+                if lid == layer::NONE {
+                    continue;
+                }
+                marked = true;
+                let (r, h) = (self.layers.list[lid as usize].win, self.layers.list[lid as usize].lv[0].r);
+                let holds = |r: [i32; 4]| r[0] <= ox && r[1] <= oy && r[2] >= ox + cols as i32 && r[3] >= oy + nrows as i32;
+                if !self.fx_nocache && holds(r) && holds(h) {
+                    (from, init) = (j, lid);
+                    break;
+                }
+            }
+        }
+        (from, to, init, marked)
+    }
     /// The tile program of tile `ti` into `t`'s accumulator: its entries beneath layer `upto`'s record (a
     /// prefix job), or all of them (`layer::NONE`: an output tile). It starts from the stored prefix of
     /// the topmost layer beneath whose record's window holds the whole tile, when there is one.
     fn run_tile(&self, u: &U, ti: u32, t: &mut Tile, pool: &[u32], upto: u32) {
         let (ox, oy) = ((ti as usize % self.tx) as i32 * 32, (ti as usize / self.tx) as i32 * 32);
         let (cols, nrows) = ((self.fw as usize - ox as usize).min(32), (self.fh as usize - oy as usize).min(32));
-        let mut list = self.bins.tile(ti as usize);
-        let (mut marked, mut init) = (false, layer::NONE);
-        if self.layers.any() {
-            if upto != layer::NONE {
-                let zb = self.layers.list[upto as usize].z;
-                list = &list[..list.partition_point(|&z| z < zb)];
-            }
-            for j in (0..list.len()).rev() {
-                let lid = self.layers.lid(list[j]);
-                if lid == layer::NONE {
-                    continue;
-                }
-                marked = true;
-                // (inside the record's window every pixel was flattened: the stored prefix is the accumulator)
-                let (r, h) = (self.layers.list[lid as usize].win, self.layers.list[lid as usize].lv[0].r);
-                if !self.fx_nocache && h[0] <= ox && h[1] <= oy && h[2] >= ox + cols as i32 && h[3] >= oy + nrows as i32 && r[0] <= ox && r[1] <= oy && r[2] >= ox + cols as i32 && r[3] >= oy + nrows as i32 {
-                    (list, init) = (&list[j..], lid);
-                    break;
-                }
-            }
-        }
+        let (from, to, init, marked) = self.seg(ti, upto);
+        let list = &self.bins.tile(ti as usize)[from..to];
         let flat = self.flat && !marked && upto == layer::NONE;
         t.begin(ox, oy, cols, nrows, flat);
         if flat {

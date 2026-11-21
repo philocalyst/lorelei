@@ -464,3 +464,164 @@ fn a_change_at_a_block_edge_reaches_the_next_block() {
     eprintln!("block edges: {cases} cases, {bad} failing");
     assert_eq!(bad, 0);
 }
+
+/// A glass pane whose window begins exactly on a tile corner, half a pixel inside it: the tiles along its
+/// edge lie wholly inside its window, so they restart from the stored prefix, and their edge pixels are
+/// partly covered, so the prefix shows there. (Where a backdrop covers a pixel fully the prefix is replaced,
+/// which is why the random scenes alone do not pin the restart.)
+fn aligned_pane(fw: u32, fh: u32) -> Scene {
+    type ABack = Grad<Lane, Ki<0>, I<Rec>, I<Rec>, Pmo<Rec>, Pm<Rec>>;
+    type APane = Over<Backdrop<Lane, I<Rec>, I<Rec>, Filt<K<256>, K<300>, K<256>>>, RRect<Lane, I<Rec>, Pm<Rec>>>;
+    type ATop = RRect<Lane, Ki<1024>, SelV<Eq<Uw<2>, Rec>, Pm<Rec>, Pm<Rec>>>;
+    let mut s = Scene::new(fw, fh, 1 << 16);
+    let (back, pane, top) = (s.column::<ABack>(1), s.column::<APane>(2), s.column::<ATop>(2));
+    s.push(back, [0, 0, q(fw as f32), q(fh as f32)], Grad { b: Lane, r: Ki, dx: ri(180_000), dy: ri(90_000), c: Pmo { c: Rec(0xff10_80f0) }, c2: pm(0xfff0_e010) });
+    for (x, blur) in [(32.5f32, 7.0f32), (64.5, 0.0)] {
+        let rect = [q(x), q(32.5), q(x + 150.0), q(190.5)];
+        s.push(pane, rect, Over(Backdrop { b: Lane, r: ri(q(14.0)), blur: ri(q(blur)), f: V3 { a: K, b: K, c: K } }, RRect { b: Lane, r: ri(q(14.0)), c: pm(0x30ff_ffff) }));
+    }
+    s.push(top, [q(70.0), q(70.0), q(110.0), q(100.0)], RRect { b: Lane, r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(1) }, a: pm(0xc0ff_4000), b: pm(0x8000_40ff) } });
+    s
+}
+
+/// The stored prefix changes time, never pixels: with and without it (the measurement switch that redraws
+/// every layer and restarts nowhere) the frames are the specification's, and a change above the panes
+/// touches no layer.
+#[test]
+fn the_stored_prefix_never_changes_pixels() {
+    let (fw, fh) = (256u32, 224u32);
+    let pool = Pool::new(1);
+    let mut frames = Vec::new();
+    for nocache in [false, true] {
+        let mut s = aligned_pane(fw, fh);
+        s.fx_nocache = nocache;
+        let mut px = vec![0u32; (fw * fh) as usize];
+        let mut u = U::default();
+        s.frame(&u, &mut px, fw as usize, &pool, 0);
+        u.w[2] = 1;
+        let fs = s.frame(&u, &mut px, fw as usize, &pool, 0);
+        if !nocache {
+            assert_eq!((fs.prefix_tiles, fs.blocks), (0, 0), "a change above the panes reached their layers");
+            assert!(fs.tiles > 0 && fs.raster.entries <= 3 * fs.tiles as u64, "the tiles above the panes did not restart from the prefix: {} entries in {} tiles", fs.raster.entries, fs.tiles);
+        }
+        let mut spec = vec![0u32; (fw * fh) as usize];
+        s.spec(&u, &mut spec, fw as usize);
+        assert_eq!(diff(&px, &spec), 0, "nocache {nocache}");
+        frames.push(px);
+    }
+    assert_eq!(diff(&frames[0], &frames[1]), 0);
+}
+
+/// G3: the Metal executor's staged frame (the CPU's schedule, run as dispatches over the scene's records,
+/// with its own retained layer pool) writes the words the CPU kernel writes, retained across the steps.
+/// Then source mutations of the layer and media glue, each of which must be seen.
+#[cfg(target_os = "macos")]
+#[test]
+fn gpu_staged_frame_equals_the_cpu() {
+    use bough_paint::metal::{Gpu, source_fx};
+    let (fw, fh) = (320u32, 250u32);
+    let stride = fw as usize + 3;
+    let words = stride * fh as usize;
+    let pool = Pool::new(2);
+    // Every `unsafe { Gpu::.. }` below: the scene is declared before the executor and outlives it; the arena
+    // and the media pool are written only between the executor's calls, each of which waits for the GPU.
+    let run = |seed: u64, src: Option<&dyn Fn(&str) -> String>| -> Option<(usize, usize, [u32; 4])> {
+        let mut wd = world(seed, fw, fh);
+        let mut b = build(&wd, fw, fh);
+        let mut gpu = match src {
+            None => unsafe { Gpu::new(&b.s, words, 256) }?,
+            Some(f) => {
+                let descs: Vec<&bough_paint::scene::Desc> = b.s.cols().iter().map(|c| c.desc).collect();
+                let lays: Vec<(usize, usize)> = b.s.cols().iter().map(|c| (c.base, c.desc.words)).collect();
+                let good = source_fx(&descs, &lays, b.s.tab_region().0, (fw, fh), b.s.media.words().len());
+                let bad = f(&good);
+                assert!(bad != good, "the mutation did not apply");
+                unsafe { Gpu::with_source(&b.s, words, 256, &bad) }?
+            }
+        };
+        let mut g = Rng(seed * 131 + 7);
+        let mut u = block(&mut g);
+        let mut kept = vec![0u32; words];
+        let (mut bad, mut d_all, mut ran) = (0, 0, [0u32; 4]);
+        for k in 0..STEPS {
+            let name = if k == 0 { "mount" } else { step(&mut g, k, &mut u, &mut wd, &mut b) };
+            b.s.update(&u);
+            b.s.prepare(&u);
+            let mut tiles = Vec::new();
+            b.s.damage.tiles(&mut tiles);
+            b.s.damage.clear();
+            b.s.shade(&u, &tiles, &mut kept, stride, &pool, 0);
+            gpu.staged(&b.s, &u, &tiles, stride);
+            b.s.media.reclaim();
+            for (a, n) in ran.iter_mut().zip(gpu.staged_stats) {
+                *a += n;
+            }
+            let d = diff(gpu.out(words), &kept);
+            if d != 0 && src.is_none() {
+                eprintln!("seed {seed} step {k} ({name}): gpu differs from cpu in {d} words");
+            }
+            bad += (d != 0) as usize;
+            d_all += d;
+        }
+        Some((bad, d_all, ran))
+    };
+    let (mut bad, mut ran) = (0, [0u32; 4]);
+    for seed in 0..seeds() {
+        let Some((b, _, r)) = run(seed, None) else {
+            eprintln!("no Metal device: skipped");
+            return;
+        };
+        bad += b;
+        ran.iter_mut().zip(r).for_each(|(a, n)| *a += n);
+    }
+    eprintln!("fx gpu exact: {} scenes x {STEPS} steps; ran {} prefix jobs, {} pyramid blocks, {} output tiles in {} dispatches; {bad} failing steps", seeds(), ran[0], ran[1], ran[2], ran[3]);
+    assert!(ran[0] > 0 && ran[1] > 0);
+    assert_eq!(bad, 0);
+    let mutants: [(&str, &dyn Fn(&str) -> String); 6] = [
+        ("pyramid taps shifted", &|s| s.replacen("2 * y - 1 + j", "2 * y + j", 1)),
+        ("no flatten under a backdrop", &|s| s.replacen("return p_bdrop(x_flat(a), c, x, y, bl);", "return p_bdrop(a, c, x, y, bl);", 1)),
+        ("prefix not stored", &|s| s.replace("if (x_in(r, x, y)) { POOL[fx_at(LT, dest, 0u, x, y)] = x_store(a0); }", "")),
+        ("no restart from the stored prefix", &|s| s.replace("a0 = x_unstore(POOL[fx_at(LT, init, 0u, x, y)]);", "")),
+        ("chroma planes swapped", &|s| s.replacen("return vd_rgb(y, cb, cr);", "return vd_rgb(y, cr, cb);", 1)),
+        ("coarser level never mixed", &|s| s.replacen("if (c_frac(c) != 0u) {", "if (false) {", 1)),
+    ];
+    // the aligned pane: tiles that restart from a stored prefix which shows through partial coverage
+    let aligned = |src: Option<&dyn Fn(&str) -> String>| -> usize {
+        let (fw, fh) = (256u32, 224u32);
+        let words = (fw * fh) as usize;
+        let mut s = aligned_pane(fw, fh);
+        let mut gpu = match src {
+            None => unsafe { Gpu::new(&s, words, 64) }.unwrap(),
+            Some(f) => {
+                let descs: Vec<&bough_paint::scene::Desc> = s.cols().iter().map(|c| c.desc).collect();
+                let lays: Vec<(usize, usize)> = s.cols().iter().map(|c| (c.base, c.desc.words)).collect();
+                unsafe { Gpu::with_source(&s, words, 64, &f(&source_fx(&descs, &lays, s.tab_region().0, (fw, fh), s.media.words().len()))) }.unwrap()
+            }
+        };
+        let (mut kept, mut u, mut d) = (vec![0u32; words], U::default(), 0);
+        for hover in [0, 1, 0] {
+            u.w[2] = hover;
+            s.update(&u);
+            s.prepare(&u);
+            let mut tiles = Vec::new();
+            s.damage.tiles(&mut tiles);
+            s.damage.clear();
+            s.shade(&u, &tiles, &mut kept, fw as usize, &pool, 0);
+            gpu.staged(&s, &u, &tiles, fw as usize);
+            d += diff(gpu.out(words), &kept);
+        }
+        d
+    };
+    assert_eq!(aligned(None), 0, "the aligned pane differs between the executors");
+    for (name, f) in mutants {
+        if name.starts_with("no restart") {
+            let d = aligned(Some(f));
+            eprintln!("fx gpu mutant {name}: {d} differing words on the aligned pane");
+            assert!(d > 0, "{name} was not caught");
+            continue;
+        }
+        let (b, d, _) = run(2, Some(f)).unwrap();
+        eprintln!("fx gpu mutant {name}: {d} differing words in {b} of {STEPS} steps");
+        assert!(d > 0, "{name} was not caught");
+    }
+}

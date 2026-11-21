@@ -410,7 +410,7 @@ pub mod ops {
     pub const BD_SIGMA: i32 = 330i32;
 
     /// Three words as a vector (a backdrop's filter factors).
-    pub fn x_vec3(a: u32, b: u32, c: u32) -> Vec4u {
+    pub fn x_vecf(a: u32, b: u32, c: u32) -> Vec4u {
         vec4u(a, b, c, 0u32)
     }
     pub fn x_bytes(w: u32) -> Vec4u {
@@ -695,6 +695,22 @@ pub mod ops {
         to + mulq16(mulq16(a, x_cos(ph)) + mulq16(b, x_sin(ph)), env)
     }
 
+    /// A backdrop's finer level and the weight of the next; a video's slot and plane size (for the glue).
+    pub fn c_lvl(c: Cmd) -> u32 {
+        c.rad.y() as u32
+    }
+    pub fn c_frac(c: Cmd) -> u32 {
+        c.rad.z() as u32
+    }
+    pub fn c_slot(c: Cmd) -> u32 {
+        c.par.z()
+    }
+    pub fn c_vw(c: Cmd) -> i32 {
+        c.pm.y() as i32
+    }
+    pub fn c_vh(c: Cmd) -> i32 {
+        c.pm.z() as i32
+    }
     pub fn c_win(c: Cmd) -> Vec4i {
         c.win
     }

@@ -199,7 +199,7 @@ op!(MixI = x_mixi(a: A: i32, b: B: i32, t: T: u32) -> i32; opaque = false);
 op!(Top = x_top(b: B: Vec4i, h: H: i32) -> Vec4i; opaque = false);
 op!(And = x_and(a: A: Vec4i, b: B: Vec4i) -> Vec4i; opaque = false);
 op!(/// Three words as a vector (a backdrop's filter factors).
-    V3 = x_vec3(a: A: u32, b: B: u32, c: C: u32) -> Vec4u; opaque = false);
+    V3 = x_vecf(a: A: u32, b: B: u32, c: C: u32) -> Vec4u; opaque = false);
 op!(/// A signed value, clamped at zero, as a word (an interpolated opacity).
     I2U = x_u(a: A: i32) -> u32; opaque = false);
 op!(/// A word read as a signed value.
