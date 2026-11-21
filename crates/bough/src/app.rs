@@ -310,6 +310,10 @@ impl<V: View> App<V> {
     /// Mount `view`. `gpu`: create the fused presenter (its shared buffer is the region); otherwise the
     /// region is heap memory and `frame` stops after the tile list (the RENDER=0 shape).
     pub fn new(view: V, cfg: Config, gpu: bool) -> App<V> {
+        crate::lower::provenance::count(|c| {
+            c.rt_new += 1;
+            c.rt_mount += 1;
+        });
         let t_mount = std::time::Instant::now();
         let i_mount = bough_sys::perf::thread_instructions();
         let (win_w, win_h) = ((cfg.width_pt * cfg.scale).round() as i32, (cfg.height_pt * cfg.scale).round() as i32);
@@ -689,6 +693,7 @@ impl<V: View> App<V> {
     /// One turn: run the handler, settle the wires it queued (text patches and marks happen inside the
     /// wires), lay out what changed.
     pub fn turn(&mut self, f: impl FnOnce(&mut V)) {
+        crate::lower::provenance::count(|c| c.rt_settle += 1);
         self.sync();
         if self.reclaiming() {
             self.rt.reclaim(RECLAIM_BUDGET);
@@ -1030,6 +1035,7 @@ impl<V: View> App<V> {
 
     /// The publication policy is chosen by the turn's source at compile time (`PACED`), never per frame.
     pub fn frame_as<const PACED: bool>(&mut self) -> bool {
+        crate::lower::provenance::count(|c| c.rt_frame += 1);
         crate::kernel_backend::kprof::start();
         // frames reach the window in order: one the GPU is still drawing is presented before the next is picked
         #[cfg(target_os = "linux")]

@@ -487,14 +487,28 @@ fn min_content_width<K: Kids>(sp: &Spec, kids: &K, cx: &mut Cx, known: [Option<V
 #[inline(never)]
 fn flex<K: Kids>(st: &mut K::St, m: usize, inner: V, gaps: f32, growing: bool) {
     let mut buf = [const { MaybeUninit::<Item>::uninit() }; CAP];
+    // A container of more than `CAP` items (a heap tree: `heap.rs`) spills to the heap; a fixed shape never does
+    // (its `Kids::st` refuses more), so its path allocates nothing.
+    let mut spill: Vec<Item> = Vec::new();
     let mut n = 0;
     K::each(st, &mut |it: &Item| {
-        assert!(n < CAP, "a flex container has at most 32 children; a longer run is a list");
-        buf[n] = MaybeUninit::new(*it);
+        if n < CAP {
+            buf[n] = MaybeUninit::new(*it);
+        } else {
+            if n == CAP {
+                // SAFETY: the first `CAP` entries were written by the branch above.
+                spill.extend((0..CAP).map(|i| unsafe { buf[i].assume_init() }));
+            }
+            spill.push(*it);
+        }
         n += 1;
     });
-    // SAFETY: the first `n` entries were written just above.
-    let items = unsafe { core::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut Item, n) };
+    let items = if n <= CAP {
+        // SAFETY: the first `n` entries were written just above.
+        unsafe { core::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut Item, n) }
+    } else {
+        &mut spill[..]
+    };
     resolve(items, m, inner, gaps, growing);
     let mut i = 0;
     K::each_mut(st, &mut |it: &mut Item| {

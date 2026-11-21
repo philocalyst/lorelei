@@ -18,6 +18,7 @@ pub mod draw;
 pub mod el;
 pub mod event;
 pub mod kinds;
+pub mod prim;
 pub mod reflect;
 pub mod sink;
 pub mod soft;

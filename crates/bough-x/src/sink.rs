@@ -98,6 +98,15 @@ pub trait Sink<V>: Sized + for<'r> ScopeOf<'r, V> {
     /// The rows of a relation, one under another. Only exposed rows are asked for.
     #[track_caller]
     fn list<R: Row<V>, F: FnMut(usize) -> R>(&mut self, l: &List<'_>, f: F);
+    /// Free rows: `n` rows of one record each, every one with its own rect (`f(i)` is row `i` and where it is,
+    /// in the space of this sink). Rows come and go between passes: a pass with fewer rows releases the rest, a
+    /// pass with more writes them, and a row whose record or rect differs from what its slot holds is stored
+    /// and damaged. Rows are painted in index order. This is where a description that is data lives
+    /// ([`free_sync`]).
+    #[track_caller]
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, _n: u32, _f: F) {
+        unimplemented!("this sink does not take free rows")
+    }
 }
 
 // ---- relations ---------------------------------------------------------------------------------------------
@@ -610,6 +619,12 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
         list_sync::<V, R, F, B>(self.st, q, self.cx, l, f, core::panic::Location::caller());
     }
     #[inline(always)]
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, n: u32, f: F) {
+        let q = self.sub as usize;
+        self.sub += 1;
+        free_sync::<V, R, F, B>(self.st, q, self.cx, n, f);
+    }
+    #[inline(always)]
     fn env(&self) -> Env<'_> {
         Env {
             scale: self.cx.scale,
@@ -681,6 +696,11 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Patch<'w, 'c, V, B> {
     }
     #[inline(always)]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, _: F) {}
+    /// Free rows read no block word: a pass after a turn has nothing to bring up to date in them.
+    #[inline(always)]
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, _: u32, _: F) {
+        self.sub += 1;
+    }
     #[inline(always)]
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(&mut self, _: Space, f: F) {
         let q = self.sub as usize;
@@ -814,6 +834,96 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
     st.plan = plan;
     if st.timed {
         // rows came, went or were rewritten: which records are in motion, and where, is to be said again
+        st.resweep(cx.u, cx.tiles);
+    }
+}
+
+/// Free rows (Integration Card 3, decision D2): store `q` of `parent` holds `n` rows of one record each, row `i`
+/// in slot `i`, each with its own rect. Brought up to date by comparing: a row past the old count is written
+/// and damaged, a row past the new count is released and damaged, a row whose rect moved is damaged where it
+/// was and where it is, and a row whose record differs is stored and damaged (`Row::patch`).
+///
+/// Identity is positional. A row inserted in the middle therefore re-stores every row after it (each is
+/// compared and found to be another record); that is correct and costs the tail, not the world. Keyed rows are
+/// the relation's job (`list_sync`).
+///
+/// One record per row: columns are painted whole, so rows of several records in several columns would not
+/// paint in row order. A row of one record is one column, painted in slot order, which is index order.
+pub fn free_sync<V, R: Row<V>, F: FnMut(usize) -> (Rect, R), B: Backend>(
+    parent: &mut Store,
+    q: usize,
+    cx: &mut Cx<'_>,
+    n: u32,
+    mut f: F,
+) {
+    const { assert!(R::LEAVES == 1, "a free row is one record") };
+    let space = parent.space;
+    let cap_for = |n: u32| (n.max(1)).next_power_of_two().max(64);
+    if q == parent.subs.len() {
+        let mut st = Store::new(cap_for(n), space);
+        st.structure = parent.structure.clone();
+        st.column_count = parent.column_count.clone();
+        parent.order.push(Pass::Sub(q as u32));
+        parent.subs.push(st);
+        parent.bump_structure();
+    }
+    let st = &mut parent.subs[q];
+    if st.space != space {
+        // the enclosing space moved or was cut otherwise: what the rows showed and what they show
+        cx.tiles.mark(st.space.clip);
+        cx.tiles.mark(space.clip);
+        st.space = space;
+    }
+    if n > st.cap {
+        // more rows than slots: the columns again, larger; every row is written as new
+        list_reset(st, cx, n);
+        st.n = 0;
+    }
+    let mk = Mk {
+        org: space.origin(cx.u),
+        clip: space.clip,
+    };
+    let old = st.n;
+    for i in 0..n {
+        let (rect, row) = f(i as usize);
+        if st.rows.is_empty() {
+            row_new::<V, R, B>(st, core::slice::from_ref(&rect), &row);
+        }
+        let site = &st.sites[0];
+        // SAFETY: the site was discovered from a row of type `R` (`row_new`, and `R::LEAVES == 1`); `i` is
+        // under the store's capacity (`n <= cap`, checked or made so above); site pointers are current
+        // (`discover` ends with `fix_sites`, `list_reset` drops the sites).
+        unsafe {
+            if i < old {
+                let was = site.rect(i);
+                if was != rect {
+                    cx.tiles.mark(was.shift(mk.org).and(mk.clip));
+                    cx.tiles.mark(rect.shift(mk.org).and(mk.clip));
+                    site.set_rect(i, rect);
+                    cx.changed += 1;
+                }
+                row.patch(site, i, &mk, cx);
+            } else {
+                site.set_rect(i, rect);
+                row.write(site, i);
+                st.row_live[(i >> 6) as usize] |= 1 << (i & 63);
+                #[cfg(not(feature = "mutant_free_enter"))]
+                cx.tiles.mark(rect.shift(mk.org).and(mk.clip));
+                cx.changed += 1;
+            }
+        }
+    }
+    for i in n..old {
+        // SAFETY: slot `i` was live (under the old count), so the site exists and holds it.
+        let was = unsafe { st.sites[0].rect(i) };
+        #[cfg(not(feature = "mutant_free_leave"))]
+        cx.tiles.mark(was.shift(mk.org).and(mk.clip));
+        let _ = was;
+        st.row_live[(i >> 6) as usize] &= !(1 << (i & 63));
+        cx.changed += 1;
+    }
+    (st.n, st.lo, st.hi) = (n, 0, n);
+    if st.timed {
         st.resweep(cx.u, cx.tiles);
     }
 }

@@ -29,5 +29,10 @@ mutant_line = []
 # reflection takes a list record's ring slot for its row (tests/reflect.rs must fail)
 mutant_reflect = []
 
+# a free row that enters is not damaged (bough's lowered pixel gates must fail)
+mutant_free_enter = []
+# a free row that leaves is not damaged
+mutant_free_leave = []
+
 # Drops the second changed word from the sparse reader union.
 mutant_sparse_union = []

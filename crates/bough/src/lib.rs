@@ -21,6 +21,7 @@ pub mod lay_deep;
 pub mod layout;
 pub mod ledger;
 pub mod list;
+pub mod lower;
 pub mod listview;
 pub mod ltemplate;
 pub mod mlist;

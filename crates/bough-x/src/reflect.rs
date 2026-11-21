@@ -299,6 +299,12 @@ impl<'a, V> Sink<V> for Learn<'a> {
         }
     }
 
+    /// Free rows are not reflected yet (the inspector's hook): the position is taken so the walk stays in step.
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, _: u32, _: F) {
+        let q = self.sub;
+        self.sub += 1;
+        self.out.seq.push(Part::Sub(q));
+    }
     #[track_caller]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, f: F) {
         let loc = Location::caller();
@@ -825,6 +831,9 @@ impl<'r, 'a, V> ScopeOf<'r, V> for Detach<'a> {
     type Scope = Detach<'r>;
 }
 impl<'a, V> Sink<V> for Detach<'a> {
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, _: u32, _: F) {
+        let _ = self.next();
+    }
     #[track_caller]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, _: F) {}
     #[track_caller]

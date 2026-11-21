@@ -117,6 +117,8 @@ pub struct World<V, B> {
     shape: u64,
     relations: Vec<(std::sync::Arc<core::sync::atomic::AtomicU32>, u32)>,
     pub retables: usize,
+    mounts: u32,
+    resizes: u32,
     /// The fields of the root view the block's words are gathered from, when the view keeps its Frame state
     /// as its own fields (learned from the columns' lenses; empty for a view that declares a block).
     pub(crate) slots: Vec<Slot>,
@@ -175,6 +177,8 @@ impl<V: View, B: Backend> World<V, B> {
             shape: u64::MAX,
             relations: Vec::new(),
             retables: 0,
+            mounts: 0,
+            resizes: 0,
             clock: 0,
             ptr: None,
             revision: 0,
@@ -265,6 +269,69 @@ impl<V: View, B: Backend> World<V, B> {
             None => self.root.delta(old, new, ch, &mut self.tiles),
         }
     }
+    /// The window is `w` x `h` device pixels now. The world is kept: stores, focus, a held press and hover stay
+    /// what they were (no remount); the damage plane is made for the new size and marked whole, and the caller
+    /// re-describes (`redescribe`), which stores the records whose rects the new size moved.
+    pub fn resize(&mut self, w: i32, h: i32) {
+        let sweeps = core::mem::take(&mut self.tiles.sweeps);
+        self.tiles = Tiles::new(w, h);
+        self.tiles.sweeps = sweeps;
+        self.tiles.mark_all();
+        let was = self.root.space;
+        self.root.space = Space {
+            clip: crate::store::Rect {
+                x0: 0,
+                y0: 0,
+                x1: w,
+                y1: h,
+            },
+            ..was
+        };
+        self.resizes += 1;
+    }
+    /// Store one free row again (`Sink::free`): row `slot` of the free rows under scope `scope` of the root.
+    /// Compared with what the slot holds; stored and damaged if it differs. This is a change of one record
+    /// without a description (a hover paint). Returns whether the record differed. Refused (a panic) if there
+    /// is no such row or its record is of another type.
+    pub fn free_set<R: crate::sink::Row<V>>(&mut self, scope: usize, slot: u32, row: R) -> bool {
+        const { assert!(R::LEAVES == 1, "a free row is one record") };
+        let st = self
+            .root
+            .subs
+            .get_mut(scope)
+            .and_then(|s| s.subs.get_mut(0))
+            .expect("no such scope of free rows");
+        assert!(
+            st.rows.first().map(|r| r.0) == Some(crate::sink::tid::<R>()),
+            "free rows of another record type"
+        );
+        assert!(slot < st.n, "no such free row");
+        let mk = crate::sink::Mk {
+            org: st.space.origin(&self.shown),
+            clip: st.space.clip,
+        };
+        let mut cx = Cx {
+            tiles: &mut self.tiles,
+            u: &self.shown,
+            all: false,
+            lists: 0,
+            regroup: false,
+            changed: 0,
+            scale: f32::from_bits(self.shown.w[U_SCALE]),
+        };
+        // SAFETY: the store's one site was discovered from a row of type `R` (checked just above against the
+        // type its rows were made for), `slot` is a live row of it, and site pointers are current (they are
+        // fixed whenever a column grows).
+        unsafe { row.patch(&st.sites[0], slot, &mk, &mut cx) };
+        let changed = cx.changed;
+        self.revision = self.revision.wrapping_add(changed);
+        changed != 0
+    }
+    /// How many times the world was resized in place, and how many times it mounted (count bands for the gates:
+    /// a resize is not a mount).
+    pub fn lifecycle(&self) -> (u32, u32) {
+        (self.mounts, self.resizes)
+    }
     /// Device pixels per point. Set before the first mount; a change afterwards is a re-description.
     pub fn set_scale(&mut self, scale: f32) {
         self.shown.w[U_SCALE] = scale.to_bits();
@@ -290,6 +357,7 @@ impl<V: View, B: Backend> World<V, B> {
     /// block is described once). Again rather than settled from zero: a transition must not run from a value
     /// that was never shown.
     pub fn mount(&mut self, v: &V) {
+        self.mounts += 1;
         for _ in 0..8 {
             self.mount_pass(v);
             let mut scratch = U::default();

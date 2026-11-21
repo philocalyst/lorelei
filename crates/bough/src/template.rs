@@ -442,6 +442,31 @@ impl<'a, V, Bg, Ch> ScrollBox<'a, V, Bg, Ch> {
 }
 
 impl<'a, V: 'static, Bg: crate::elem::IntoProp<Color, V>, Ch: Element<V>> Element<V> for ScrollBox<'a, V, Bg, Ch> {
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>) {
+        let n = l.core.next();
+        self.port.lower(l);
+        let (at, off, line, owner) = (*self.sig.get(), self.sig.off as usize, self.line, l.owner());
+        let content = self.content;
+        let doc = l.core.sub(|c| content.lower(&mut crate::lower::Lower::<V>::new(c)));
+        let node = l.core.node(n);
+        node.solid = true;
+        node.scroll = Some(crate::lower::Scroll {
+            doc,
+            at,
+            line,
+            owner,
+            set: Box::new(move |o: &mut dyn std::any::Any, v: f32| {
+                if let Some(o) = o.downcast_mut::<V>() {
+                    // SAFETY: `off` is the offset of a `Wired<'_, f32, V>`, which only `sig!` makes: it is
+                    // `offset_of!(V, path)` for a struct field path whose type the macro pins to `Signal<f32>`
+                    // (`signal.rs`, "Soundness of wires"). `o` is an exclusive borrow of that `V`, so the field
+                    // is in bounds, initialised, and nothing else borrows it.
+                    let sig = unsafe { &mut *(o as *mut V as *mut u8).add(off).cast::<crate::signal::Signal<f32>>() };
+                    sig.set(v);
+                }
+            }),
+        });
+    }
     fn mount(self, m: &mut Mounter<'_, V>) {
         let s = m.rt.scale;
         let before = m.recs.len();
