@@ -817,8 +817,8 @@ pub fn serve_stream<R: BufRead, W: Write>(
     mut input: R,
     mut out: W,
 ) -> io::Result<()> {
-    pump_stream(mcp, &mut input, |bytes| {
-        out.write_all(bytes)?;
+    pump_stream(mcp, &mut input, |reply| {
+        writeln!(out, "{}", json::to_string(&reply))?;
         out.flush()
     })
 }
@@ -831,19 +831,32 @@ pub fn serve_stream_owned<R: BufRead + Send + 'static, W: Write + Send + 'static
     mut input: R,
     out: W,
 ) -> io::Result<()> {
+    #[cfg(feature = "mutant-inline-writer")]
+    return serve_stream(mcp, input, out);
+
+    #[cfg(not(feature = "mutant-inline-writer"))]
+    serve_stream_worker(mcp, &mut input, out)
+}
+
+#[cfg(not(feature = "mutant-inline-writer"))]
+fn serve_stream_worker<R: BufRead, W: Write + Send + 'static>(
+    mcp: &mut Mcp,
+    input: &mut R,
+    out: W,
+) -> io::Result<()> {
     use std::sync::mpsc;
     const OUT_QUEUE: usize = 64;
-    let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(OUT_QUEUE);
+    let (tx, rx) = mpsc::sync_channel::<J>(OUT_QUEUE);
     let writer = std::thread::spawn(move || -> io::Result<()> {
         let mut out = out;
-        for bytes in rx {
-            out.write_all(&bytes)?;
+        for reply in rx {
+            writeln!(out, "{}", json::to_string(&reply))?;
             out.flush()?;
         }
         Ok(())
     });
-    let result = pump_stream(mcp, &mut input, |bytes| {
-        tx.send(bytes.to_vec())
+    let result = pump_stream(mcp, input, |reply| {
+        tx.send(reply)
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "the writer stopped"))
     });
     drop(tx);
@@ -859,7 +872,7 @@ pub fn serve_stream_owned<R: BufRead + Send + 'static, W: Write + Send + 'static
 
 /// The protocol loop over newline-delimited JSON, with the emit step supplied by the transport (so a
 /// transport can hand serialized bytes to its own writer).
-fn pump_stream<R: BufRead, F: FnMut(&[u8]) -> io::Result<()>>(
+fn pump_stream<R: BufRead, F: FnMut(J) -> io::Result<()>>(
     mcp: &mut Mcp,
     input: &mut R,
     mut emit: F,
@@ -893,7 +906,7 @@ fn pump_stream<R: BufRead, F: FnMut(&[u8]) -> io::Result<()>>(
                     "error",
                     J::obj().set("code", -32700).set("message", format!("{e}")),
                 );
-                emit(format!("{}\n", json::to_string(&reply)).as_bytes())?;
+                emit(reply)?;
                 continue;
             }
         };
@@ -906,12 +919,12 @@ fn pump_stream<R: BufRead, F: FnMut(&[u8]) -> io::Result<()>>(
                     }
                 }
                 if !replies.is_empty() {
-                    emit(format!("{}\n", json::to_string(&J::Arr(replies))).as_bytes())?;
+                    emit(J::Arr(replies))?;
                 }
             }
             m => {
                 if let Some(r) = mcp.handle(&m) {
-                    emit(format!("{}\n", json::to_string(&r)).as_bytes())?;
+                    emit(r)?;
                 }
             }
         }
@@ -1056,19 +1069,14 @@ fn one_http(mcp: &mut Mcp, mut s: TcpStream) -> io::Result<()> {
     };
     // The reply is already a value: its write to this client runs on its own thread, so a reader that
     // takes one byte per tick cannot hold up the accept loop or another client.
-    respond_async(
-        s,
-        200,
-        "application/json",
-        json::to_string(&reply).into_bytes(),
-    )
+    respond_async(s, 200, "application/json", reply)
 }
 
 /// Slow readers in flight. The bound keeps a stalled set of connections from growing without limit.
 static SLOW_WRITERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 const MAX_SLOW_WRITERS: usize = 64;
 
-fn respond_async(mut s: TcpStream, code: u16, mime: &'static str, body: Vec<u8>) -> io::Result<()> {
+fn respond_async(mut s: TcpStream, code: u16, mime: &'static str, body: J) -> io::Result<()> {
     use std::sync::atomic::Ordering;
     if SLOW_WRITERS.fetch_add(1, Ordering::AcqRel) >= MAX_SLOW_WRITERS {
         SLOW_WRITERS.fetch_sub(1, Ordering::AcqRel);
@@ -1082,7 +1090,8 @@ fn respond_async(mut s: TcpStream, code: u16, mime: &'static str, body: Vec<u8>)
             }
         }
         let _done = Done;
-        let _ = respond(&mut s, code, mime, &body);
+        let body = json::to_string(&body);
+        let _ = respond(&mut s, code, mime, body.as_bytes());
     });
     Ok(())
 }
@@ -1102,6 +1111,7 @@ fn respond(s: &mut TcpStream, code: u16, mime: &str, body: &[u8]) -> io::Result<
         411 => "Length Required",
         413 => "Content Too Large",
         431 => "Request Header Fields Too Large",
+        503 => "Service Unavailable",
         _ => "OK",
     };
     let head = format!(

@@ -198,6 +198,7 @@ dependencies = [
  "bough-inspect",
  "bough-mcp",
  "bough-x",
+ "libc",
 ]
 
 [[package]]

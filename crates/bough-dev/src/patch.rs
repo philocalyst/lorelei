@@ -1,6 +1,6 @@
 //! Building and applying one view patch.
 //!
-//! A patch is a `cdylib` built by `rustc` from a source file that exports `hot_text` and `hot_state_token`.
+//! Cargo builds a patch `cdylib` from source exporting `hot_text` and `HOT_STATE_TOKEN`.
 //! [`build`] compiles it; [`apply`] asks the running application to load it through its inspector socket (the
 //! load itself happens in the application's process, at its hot-call boundary). A refusal is a value: the loop
 //! then takes the existing state-preserving restart path.
@@ -39,44 +39,90 @@ impl std::fmt::Display for Outcome {
     }
 }
 
-/// Compile one patch source into a shared library. `rustc` is the toolchain in `PATH`; the patch is plain
-/// `extern "C"` code with no dependency on the application's crates, so it links against the C runtime.
+/// Compile trusted patch source using an isolated Cargo manifest and publish the artifact at `out`.
 pub fn build(source: &Path, out: &Path) -> Result<(), String> {
-    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-    let tmp = out.with_extension("rlib.tmp");
-    let status = Command::new(&rustc)
-        .arg("--crate-type")
-        .arg("cdylib")
-        .arg("--edition")
-        .arg("2021")
-        .arg("-O")
-        .arg("-C")
-        .arg("panic=abort")
-        .arg("-o")
-        .arg(out)
-        .arg(source)
+    let source = source.canonicalize().map_err(|e| e.to_string())?;
+    let source = source.to_str().ok_or("patch source path must be UTF-8")?;
+    let parent = out.parent().ok_or("patch destination must have a parent")?;
+    let stage = parent.join(format!(
+        ".cargo-patch-{}-{}",
+        std::process::id(),
+        next_patch()
+    ));
+    std::fs::create_dir(&stage).map_err(|e| e.to_string())?;
+    struct Stage(PathBuf);
+    impl Drop for Stage {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let stage = Stage(stage);
+    let manifest = stage.0.join("Cargo.toml");
+    let source = bough_inspect::json::to_string(&J::from(source));
+    std::fs::write(&manifest, format!("[workspace]\n[package]\nname = \"bough_view_patch\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[lib]\npath = {source}\ncrate-type = [\"cdylib\"]\n[profile.release]\npanic = \"abort\"\n"))
+        .map_err(|e| e.to_string())?;
+    let target = stage.0.join("target");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let result = Command::new(&cargo)
+        .args(["build", "--offline", "--release", "--manifest-path"])
+        .arg(&manifest)
+        .arg("--target-dir")
+        .arg(&target)
         .output()
-        .map_err(|e| format!("cannot run {}: {e}", PathBuf::from(&rustc).display()))?;
-    let _ = std::fs::remove_file(tmp);
-    if !status.status.success() {
+        .map_err(|e| format!("cannot run Cargo: {e}"))?;
+    if !result.status.success() {
         return Err(format!(
-            "the patch did not compile:\n{}",
-            String::from_utf8_lossy(&status.stderr)
+            "Cargo patch build failed:\n{}",
+            String::from_utf8_lossy(&result.stderr)
         ));
     }
-    Ok(())
+    let artifact = target.join("release").join(format!(
+        "{}bough_view_patch{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    ));
+    std::fs::rename(artifact, out).map_err(|e| format!("publish patch artifact: {e}"))
 }
 
-/// Build one source file beside itself and apply it: the developer loop's whole patch step for a view whose
-/// text crosses the hot-call boundary.
+fn next_patch() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Build one source file and load its newly linked artifact. Every build gets a distinct loader path.
 pub fn patch_source(client: &mut Client, source: &Path) -> Result<Outcome, String> {
-    let out = source.with_extension("patch.dylib");
-    build(source, &out)?;
+    let source = source.canonicalize().map_err(|e| e.to_string())?;
+    let out = source.with_extension(format!(
+        "patch-{}-{}{}",
+        std::process::id(),
+        next_patch(),
+        std::env::consts::DLL_SUFFIX
+    ));
+    build(&source, &out)?;
     Ok(apply(client, &out))
 }
 
+/// Apply a patch to a managed app, restoring its registered fields through a restart on refusal.
+pub fn patch_or_restart(
+    running: &mut crate::hot::Running,
+    spec: &crate::hot::AppSpec,
+    source: &Path,
+    timeout: std::time::Duration,
+) -> Result<(Outcome, Option<crate::hot::RestartReport>), String> {
+    let outcome = patch_source(running.client()?, source)?;
+    let restart = if matches!(outcome, Outcome::Refused(_)) {
+        Some(crate::hot::restart_preserving_state(
+            spec, running, timeout,
+        )?)
+    } else {
+        None
+    };
+    Ok((outcome, restart))
+}
+
 /// Ask the running application to load `dylib` and re-describe. The application checks the patch's state token
-/// before any of its code runs.
+/// before installing the boundary function.
 pub fn apply(client: &mut Client, dylib: &Path) -> Outcome {
     let p = J::obj().set("path", dylib.to_string_lossy().as_ref());
     match client.request("hotpatch", &p) {

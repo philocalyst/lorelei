@@ -1,155 +1,153 @@
-//! The in-process view patch: a string literal in the demo view's source changes on disk, the dev loop builds a
-//! patch dylib, the running application loads it and re-describes in the same process, world and state. A patch
-//! compiled against another state type is refused and the loop falls back to the restart path
-//! (`restart_preserving_state`, covered by `tests/dev.rs` and exercised again here as a plain restart).
+//! A trusted Cargo-built patch changes live view code and rejects a real state declaration change.
+#![cfg(feature = "hot-view")]
 use bough_dev::hot::{AppSpec, Running};
-use bough_dev::{hotview, patch};
+use bough_dev::patch::{self, Outcome};
 use bough_inspect::client::Client;
 use bough_inspect::json::Value as J;
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::os::unix::fs::DirBuilderExt;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-fn target_dir() -> PathBuf {
-    let exe = std::env::current_exe().unwrap();
-    for a in exe.ancestors().skip(1).take(8) {
-        if a.join("hotdemo").is_file() {
-            return a.to_path_buf();
-        }
+struct Scratch(PathBuf);
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
-    panic!("cannot find the target directory from {}", exe.display());
 }
 
-fn write_patch(dir: &std::path::Path, name: &str, text: &str, token: u64) -> PathBuf {
-    let src = dir.join(format!("{name}.rs"));
-    let source = format!(
-        "#[no_mangle]\npub extern \"C\" fn hot_state_token() -> u64 {{ {token:#x} }}\n\
-         #[no_mangle]\npub extern \"C\" fn hot_text(out: *mut u8, cap: u32) -> u32 {{\n\
-         let s = b\"{text}\";\n\
-         let n = s.len().min(cap as usize);\n\
-         unsafe {{ core::ptr::copy_nonoverlapping(s.as_ptr(), out, n) }};\n\
-         n as u32\n\
-         }}\n"
-    );
-    std::fs::write(&src, source).unwrap();
-    src
+fn write_patch(source: &Path, text: &str, level: &str) {
+    let declaration = include_str!("../fixtures/demo_state.rs");
+    std::fs::write(
+        source,
+        format!(
+            r#"{declaration}
+        demo_state!({level});
+        #[unsafe(no_mangle)]
+        pub static HOT_STATE_TOKEN: u64 = STATE_TOKEN;
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn hot_text(out: *mut u8, cap: u32) -> u32 {{
+            let bytes = b"{text}";
+            let len = bytes.len().min(cap as usize);
+            // SAFETY: the hot-call contract grants access to cap writable bytes.
+            unsafe {{ core::ptr::copy_nonoverlapping(bytes.as_ptr(), out, len) }};
+            len as u32
+        }}
+    "#
+        ),
+    )
+    .unwrap();
 }
 
-fn tree(c: &mut Client) -> J {
-    bough_inspect::client::call(c, "tree", &J::obj().set("limit", 16)).expect("tree")
+fn request(client: &mut Client, method: &str, params: J) -> J {
+    client.request(method, &params).unwrap().unwrap()
 }
 
-fn view_text(t: &J) -> String {
-    t.get("nodes")
-        .map(J::arr)
-        .unwrap_or(&[])
+fn tree(client: &mut Client) -> J {
+    request(client, "tree", J::obj().set("limit", 16))
+}
+
+fn shows(tree: &J, text: &str) -> bool {
+    tree.get("nodes")
+        .unwrap()
+        .arr()
         .iter()
-        .filter_map(|n| n.get("text").and_then(J::as_str))
-        .find(|s| s.starts_with("Demo "))
-        .unwrap_or("(no text)")
-        .to_owned()
+        .any(|node| node.get("text").and_then(J::as_str) == Some(text))
 }
 
-fn world(t: &J) -> i64 {
-    t.get("app")
+fn world(tree: &J) -> i64 {
+    tree.get("app")
         .unwrap()
         .get("world")
         .and_then(J::as_i64)
-        .unwrap_or(-1)
+        .unwrap()
 }
 
-struct App {
-    child: Child,
-    socket: PathBuf,
-    path: PathBuf,
-}
-impl Drop for App {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        let _ = std::fs::remove_file(&self.socket);
-    }
-}
-
-fn start(dir: &std::path::Path) -> App {
-    let socket = dir.join(format!("hot-{}.sock", std::process::id()));
-    let _ = std::fs::remove_file(&socket);
-    let path = target_dir().join("hotdemo");
-    let mut child = Command::new(&path)
-        .args(["--socket", socket.to_str().unwrap()])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("start the demo");
-    let out = child.stdout.take().unwrap();
-    let mut lines = BufReader::new(out).lines();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        assert!(Instant::now() < deadline, "the demo did not become ready");
-        if let Some(Ok(l)) = lines.next()
-            && l.starts_with("ready ")
-        {
-            break;
-        }
-    }
-    App {
-        child,
-        socket,
-        path,
-    }
+fn pixels(client: &mut Client) -> String {
+    request(client, "shot", J::obj())
+        .get("digest")
+        .and_then(J::as_str)
+        .unwrap()
+        .to_owned()
 }
 
 #[test]
 fn a_view_patch_changes_the_text_in_the_same_process_and_world() {
-    let dir = std::env::temp_dir().join(format!("bm-hot-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let app = start(&dir);
-    let pid = app.child.id();
-    let mut c = Client::open(&app.socket).unwrap();
-    let before = tree(&mut c);
-    assert_eq!(view_text(&before), "Demo A", "the built-in text");
-    let w0 = world(&before);
-
-    let v2 = write_patch(&dir, "v2", "Demo B", hotview::STATE_TOKEN);
-    let outcome = patch::patch_source(&mut c, &v2).expect("the dev loop builds the patch");
-    assert!(
-        matches!(outcome, patch::Outcome::Patched { .. }),
-        "{outcome}"
+    let dir = Scratch(std::env::temp_dir().join(format!("bi-hot-{}", std::process::id())));
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&dir.0)
+        .unwrap();
+    let mut spec = AppSpec::new(env!("CARGO_BIN_EXE_hotdemo"), dir.0.join("app.sock"));
+    spec.args = vec!["--patch-dir".into(), dir.0.display().to_string()];
+    let timeout = Duration::from_secs(10);
+    let mut running = Running::start(&spec, timeout).unwrap();
+    let pid = running.child.id();
+    let client = running.client().unwrap();
+    request(
+        client,
+        "set",
+        J::obj()
+            .set("field", "level")
+            .set("value", J::obj().set("kind", "int").set("value", 27)),
     );
-    let after = tree(&mut c);
-    assert_eq!(
-        view_text(&after),
-        "Demo B",
+    let before = tree(client);
+    let world_before = world(&before);
+    assert!(shows(&before, "Demo A") && shows(&before, "Level 27"));
+    let pixels_before = pixels(client);
+    let source = dir.0.join("view.rs");
+    write_patch(&source, "Demo B", "i32");
+    let (patch, restart) = patch::patch_or_restart(&mut running, &spec, &source, timeout).unwrap();
+    assert!(
+        matches!(patch, Outcome::Patched { .. }) && restart.is_none(),
+        "{patch}"
+    );
+    assert_eq!(running.child.id(), pid);
+    assert!(running.child.try_wait().unwrap().is_none());
+    let client = running.client().unwrap();
+    let after = tree(client);
+    assert!(
+        shows(&after, "Demo B"),
         "the running view shows the new literal"
     );
-    assert_eq!(world(&after), w0, "the world is the same");
-    assert_eq!(app.child.id(), pid, "the process is the same");
-    assert!(!outcome.needs_restart());
+    assert!(shows(&after, "Level 27"));
+    assert_eq!(world(&after), world_before);
+    assert_ne!(pixels(client), pixels_before);
 
-    // A patch compiled against another state type is refused before any of its code runs.
-    let bad = write_patch(&dir, "bad", "Demo C", hotview::STATE_TOKEN ^ 0x1000);
-    let refused = patch::patch_source(&mut c, &bad).expect("the dev loop builds the patch");
-    assert!(matches!(refused, patch::Outcome::Refused(_)), "{refused}");
-    let text = refused.to_string();
-    assert!(text.contains("state type"), "{text}");
-    assert!(refused.needs_restart(), "the loop takes the restart path");
-    let still = tree(&mut c);
-    assert_eq!(view_text(&still), "Demo B", "a refusal changes nothing");
-    assert_eq!(world(&still), w0);
-    assert_eq!(app.child.id(), pid);
+    // Build a second artifact from the same edited file. A loader cache keyed by pathname fails this check.
+    write_patch(&source, "Demo C", "i32");
+    let second = patch::patch_source(client, &source).unwrap();
+    assert!(matches!(second, Outcome::Patched { .. }));
+    let second_tree = tree(client);
+    assert!(shows(&second_tree, "Demo C") && shows(&second_tree, "Level 27"));
+    assert_eq!(world(&second_tree), world_before);
 
-    // The fallback really is a restart: a new process starts with the source's built-in text.
-    let spec = AppSpec::new(&app.path, dir.join("restart.sock"));
-    c.request("shutdown", &J::obj()).ok();
-    let mut running = Running::start(&spec, Duration::from_secs(10)).expect("restart");
+    // Change the actual type of the patch's field, preserving its size and alignment.
+    write_patch(&source, "Demo D", "u32");
+    let refused = patch::patch_source(client, &source).unwrap();
+    assert!(
+        matches!(&refused, Outcome::Refused(reason) if reason.contains("state type changed")),
+        "{refused}"
+    );
+    assert!(shows(&tree(client), "Demo C"));
+    let (refused, restart) =
+        patch::patch_or_restart(&mut running, &spec, &source, timeout).unwrap();
+    assert!(refused.needs_restart());
+    let restarted = restart.expect("the fallback actually restarts the managed app");
+    assert_eq!((restarted.restored, restarted.fields), (1, 1));
+    assert!(restarted.refusals.is_empty());
     let new_pid = running.child.id();
-    assert_ne!(new_pid, pid, "the fallback is a new process");
-    let mut c2 = running.client().expect("the restarted app");
-    let fresh = tree(&mut c2);
-    assert_eq!(view_text(&fresh), "Demo A");
-    running.stop();
-    drop(app);
-    let _ = std::fs::remove_file(spec.socket);
-    let _ = std::fs::remove_dir_all(&dir);
+    assert_ne!(new_pid, pid);
+    let fresh = tree(running.client().unwrap());
+    assert!(shows(&fresh, "Demo A") && shows(&fresh, "Level 27"));
+    assert_eq!(
+        std::fs::read_dir(&dir.0)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|x| x == "dylib"))
+            .count(),
+        4
+    );
+    println!(
+        "Cargo patched PID {pid}, World {world_before}, level 27. After a state type refusal the new PID {new_pid} restored 1/1 fields."
+    );
 }

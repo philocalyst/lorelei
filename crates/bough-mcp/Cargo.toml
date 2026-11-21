@@ -24,3 +24,6 @@ serde_json = "1"
 [[bin]]
 name = "bough-mcp"
 path = "src/main.rs"
+
+[features]
+mutant-inline-writer = []

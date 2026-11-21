@@ -72,30 +72,13 @@ pub fn row<C>(kids: C) -> LBox<(), C> {
 #[cfg_attr(feature = "inspect-metadata", track_caller)]
 #[inline(always)]
 pub fn div() -> LBox<(), ()> {
-    LBox {
-        spec: Spec::new(true),
-        paint: (),
-        kids: (),
-        #[cfg(feature = "inspect-metadata")]
-        loc: core::panic::Location::caller(),
-        _h: PhantomData,
-    }
+    column(())
 }
 /// A leaf rectangle of `w` x `h` points.
 #[cfg_attr(feature = "inspect-metadata", track_caller)]
 #[inline(always)]
 pub fn block(w: f32, h: f32) -> LBox<(), (), HFixed> {
-    let mut spec = Spec::new(true);
-    spec.w = Dim::Pt(w);
-    spec.h = Dim::Pt(h);
-    LBox {
-        spec,
-        paint: (),
-        kids: (),
-        #[cfg(feature = "inspect-metadata")]
-        loc: core::panic::Location::caller(),
-        _h: PhantomData,
-    }
+    div().w(w).h(h)
 }
 
 /// A flex layout recipe; every method is `const`, so a recipe can be a `const` item.

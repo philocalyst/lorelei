@@ -26,22 +26,18 @@ See `NOTICE` for the upstream repository and commit.
 - **MCP**: `bough-dev mcp --socket …` serves MCP over stdio, or `--http ADDR` at `POST /mcp`. `run --http` starts
   it beside the watched application.
 
-- **In-process view patching (the smallest real version).** A view whose variable text crosses the hot-call
-  boundary (`bough_dev::hotview`) can be patched without a new process: `bough_dev::patch::build` compiles a
-  small `cdylib` exporting `hot_text` and `hot_state_token`, the running application loads it through the
-  inspector's `hotpatch` method, and the view is re-described in the same `World`. The demo is
-  `cargo run -p bough-dev --bin hotdemo -- --socket /tmp/hot.sock`; `tests/hotpatch.rs` changes a string
-  literal on disk and asserts the new text, the same PID and the same world. A patch whose state token differs
-  is refused before any of its code runs.
+- **In-process view patching.** `--features hot-view` enables a trusted local text-function boundary. Cargo
+  compiles the changed source to a `cdylib` exporting `hot_text` and an immutable `HOT_STATE_TOKEN`. The demo
+  requires an explicitly configured private `--patch-dir`. The app loads the new function and re-describes the
+  same `World`. The test edits one file twice, then changes the fixture's actual field type and verifies that
+  `patch_or_restart` restores the non-default registered field after a refusal.
 
-## What is not
+## Scope
 
-- **Not a general function patcher.** There is no Subsecond dependency, no jump table and no executable-memory
-  write. Only the one hot-call boundary is patched; any other Rust change still takes the state-preserving
-  restart. The source watcher does not yet choose between `hotpatch` and a rebuild by itself, and only
-  macOS/aarch64 was exercised. The state token is a compile-time constant the demo and the patch source must
-  agree on; it is not derived from the real state type. (The owner's brief allows the hot path to refuse as
-  long as the state-preserving fallback exists; this is that boundary, stated.)
+- The demo tag is derived from its one-field state declaration, size and alignment. A trusted library's load
+  can run initializers before admission. The tag checks compatibility and cannot sandbox native code.
+- The single text boundary ships independently of general Subsecond patching. The source watcher still takes
+  its existing restart path, and the opt-in patch command reports a refusal to its caller.
 - No cross-compilation, Windows, web or mobile.
 - The watcher does not follow changes into a local path dependency outside the roots unless that root is passed
   with `--watch`.

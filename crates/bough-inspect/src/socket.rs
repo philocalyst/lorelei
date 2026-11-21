@@ -13,6 +13,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 /// The largest request or response frame accepted (a screenshot PNG fits well inside).
@@ -48,16 +49,18 @@ pub fn read_frame(r: &mut impl Read) -> io::Result<Vec<u8>> {
 }
 
 /// Answer one JSON-RPC message. `handshaken` is the connection's state.
-fn answer<P: Program>(s: &mut Session<P>, req: &J, handshaken: &mut bool) -> (J, bool) {
+fn answer<P: Program>(s: &mut Session<P>, req: &J, handshaken: &mut bool) -> (Response, bool) {
     let request = match Request::from_json(req) {
         Ok(r) => r,
         Err(e) => {
             let id = req.get("id").cloned().unwrap_or(J::Null);
             return (
-                J::obj()
-                    .set("jsonrpc", "2.0")
-                    .set("id", id)
-                    .set("error", e.to_json()),
+                Response::Json(
+                    J::obj()
+                        .set("jsonrpc", "2.0")
+                        .set("id", id)
+                        .set("error", e.to_json()),
+                ),
                 false,
             );
         }
@@ -67,7 +70,7 @@ fn answer<P: Program>(s: &mut Session<P>, req: &J, handshaken: &mut bool) -> (J,
             INVALID_REQUEST,
             "the first request on a connection must be hello",
         );
-        return (request.error(&e), false);
+        return (Response::Json(request.error(&e)), false);
     }
     if request.method == "hello" {
         if (!*handshaken || request.params.get("schema").is_some())
@@ -77,16 +80,22 @@ fn answer<P: Program>(s: &mut Session<P>, req: &J, handshaken: &mut bool) -> (J,
                 INVALID_REQUEST,
                 format!("hello requires schema {SCHEMA_VERSION}"),
             );
-            return (request.error(&e), false);
+            return (Response::Json(request.error(&e)), false);
         }
         *handshaken = true;
     }
+    if request.method == "shot" {
+        return match rpc::prepare_shot(s, &request.params) {
+            Ok((frame, raw)) => (Response::Shot(request, frame, raw), false),
+            Err(e) => (Response::Json(request.error(&e)), false),
+        };
+    }
     let reply = rpc::handle(s, &request.method, &request.params);
     (
-        match reply.result {
+        Response::Json(match reply.result {
             Ok(v) => request.result(v),
             Err(e) => request.error(&e),
-        },
+        }),
         reply.shutdown,
     )
 }
@@ -97,12 +106,75 @@ const MAX_CLIENTS: usize = 8;
 const IO_QUANTUM: usize = 64 * 1024;
 const FRAME_TIMEOUT: Duration = Duration::from_secs(30);
 
+enum Response {
+    Json(J),
+    Shot(Request, crate::Frame, bool),
+    #[cfg(test)]
+    Thread(mpsc::SyncSender<std::thread::ThreadId>),
+}
+
+impl Response {
+    fn bytes(self) -> io::Result<Vec<u8>> {
+        let value = match self {
+            Self::Json(value) => value,
+            Self::Shot(request, frame, raw) => request.result(rpc::encode_shot(frame, raw)),
+            #[cfg(test)]
+            Self::Thread(sender) => {
+                let _ = sender.send(std::thread::current().id());
+                J::Null
+            }
+        };
+        let text = json::to_string(&value);
+        let mut framed = Vec::new();
+        write_frame(&mut framed, text.as_bytes())?;
+        Ok(framed)
+    }
+}
+
+type EncodeResult = io::Result<Vec<u8>>;
+type EncodeJob = (Response, mpsc::SyncSender<EncodeResult>);
+
+struct Encoders(mpsc::SyncSender<EncodeJob>);
+
+impl Encoders {
+    fn new() -> io::Result<Self> {
+        let (send, recv) = mpsc::sync_channel::<EncodeJob>(MAX_CLIENTS);
+        let recv = Arc::new(Mutex::new(recv));
+        for _ in 0..2 {
+            let recv = Arc::clone(&recv);
+            std::thread::Builder::new()
+                .name("bough-inspector-encode".into())
+                .spawn(move || {
+                    loop {
+                        let job = recv.lock().unwrap().recv();
+                        let Ok((reply, done)) = job else { break };
+                        let _ = done.send(reply.bytes());
+                    }
+                })?;
+        }
+        Ok(Self(send))
+    }
+
+    fn submit(&self, reply: Response) -> Option<mpsc::Receiver<EncodeResult>> {
+        let (send, recv) = mpsc::sync_channel(1);
+        #[cfg(not(feature = "mutant-inline-reply"))]
+        self.0.try_send((reply, send)).ok()?;
+        #[cfg(feature = "mutant-inline-reply")]
+        {
+            let _ = &self.0;
+            send.send(reply.bytes()).ok()?;
+        }
+        Some(recv)
+    }
+}
+
 /// A bound local socket. State lives on the application thread and commands execute serially.
 pub struct Server {
     listener: UnixListener,
     path: PathBuf,
     identity: (u64, u64),
     connections: Vec<Conn>,
+    encoders: Encoders,
     shut: bool,
 }
 
@@ -110,6 +182,7 @@ struct Conn {
     stream: UnixStream,
     input: Vec<u8>,
     output: Vec<u8>,
+    encoding: Option<mpsc::Receiver<EncodeResult>>,
     written: usize,
     handshaken: bool,
     shutdown_after_reply: bool,
@@ -122,6 +195,7 @@ impl Conn {
             stream,
             input: Vec::new(),
             output: Vec::new(),
+            encoding: None,
             written: 0,
             handshaken: false,
             shutdown_after_reply: false,
@@ -130,7 +204,10 @@ impl Conn {
     }
 
     fn timed_out(&self) -> bool {
-        (!self.handshaken || !self.input.is_empty() || !self.output.is_empty())
+        (!self.handshaken
+            || !self.input.is_empty()
+            || !self.output.is_empty()
+            || self.encoding.is_some())
             && self.progress.elapsed() >= FRAME_TIMEOUT
     }
 
@@ -205,6 +282,7 @@ impl Server {
         let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
         let path = parent.join(name);
         reclaim_stale(&path)?;
+        let encoders = Encoders::new()?;
         let listener = UnixListener::bind(&path)?;
         let identity = socket_identity(&path)?;
         let server = Server {
@@ -212,6 +290,7 @@ impl Server {
             path,
             identity,
             connections: Vec::new(),
+            encoders,
             shut: false,
         };
         std::fs::set_permissions(&server.path, std::fs::Permissions::from_mode(0o600))?;
@@ -244,7 +323,7 @@ impl Server {
     }
 
     /// Service up to one complete request per connection. I/O never waits on the peer.
-    /// Command execution, including screenshots, runs synchronously on the caller's thread.
+    /// Command execution and painting stay on the caller thread. Workers encode owned pixels and replies.
     pub fn pump<P: Program>(&mut self, s: &mut Session<P>) -> io::Result<usize> {
         if self.shut {
             return Ok(0);
@@ -255,6 +334,20 @@ impl Server {
             if self.shut || connection.timed_out() {
                 self.shut |= connection.shutdown_after_reply;
                 return false;
+            }
+            if let Some(encoding) = &connection.encoding {
+                match encoding.try_recv() {
+                    Ok(Ok(output)) => {
+                        connection.encoding = None;
+                        connection.output = output;
+                        connection.progress = Instant::now();
+                    }
+                    Err(mpsc::TryRecvError::Empty) => return true,
+                    _ => {
+                        self.shut |= connection.shutdown_after_reply;
+                        return false;
+                    }
+                }
             }
             if !connection.output.is_empty() {
                 return match connection.flush_reply() {
@@ -276,30 +369,22 @@ impl Server {
             {
                 Ok(value) => answer(s, &value, &mut connection.handshaken),
                 Err(e) => (
-                    J::obj().set("jsonrpc", "2.0").set("id", J::Null).set(
+                    Response::Json(J::obj().set("jsonrpc", "2.0").set("id", J::Null).set(
                         "error",
                         RpcError::new(PARSE_ERROR, format!("{e}")).to_json(),
-                    ),
+                    )),
                     false,
                 ),
             };
             answered += 1;
             connection.shutdown_after_reply = shutdown;
-            let text = json::to_string(&out);
-            if write_frame(&mut connection.output, text.as_bytes()).is_err() {
+            connection.encoding = self.encoders.submit(out);
+            connection.progress = Instant::now();
+            if connection.encoding.is_none() {
                 self.shut |= shutdown;
                 return false;
             }
-            connection.progress = Instant::now();
-            match connection.flush_reply() {
-                Ok(false) => true,
-                Ok(true) | Err(_) if shutdown => {
-                    self.shut = true;
-                    false
-                }
-                Ok(true) => true,
-                Err(_) => false,
-            }
+            true
         });
         Ok(answered)
     }
@@ -347,7 +432,10 @@ fn reclaim_stale(path: &Path) -> io::Result<()> {
                     io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
                 ) =>
         {
-            // nobody is listening: the owner's previous process is gone
+            // Another starter may already have replaced the stale inode.
+            if socket_identity(path)? != (meta.dev(), meta.ino()) {
+                return Err(io::ErrorKind::AddrInUse.into());
+            }
             match std::fs::remove_file(path) {
                 Ok(()) => Ok(()),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -382,5 +470,24 @@ impl Drop for Server {
         if socket_identity(&self.path).is_ok_and(|identity| identity == self.identity) {
             let _ = std::fs::remove_file(&self.path);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reply_serialization_runs_on_a_worker() {
+        let encoders = Encoders::new().unwrap();
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let reply = encoders.submit(Response::Thread(sender)).unwrap();
+        let worker = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_ne!(
+            worker,
+            std::thread::current().id(),
+            "reply serialized on the app thread"
+        );
+        assert!(reply.recv_timeout(Duration::from_secs(5)).unwrap().is_ok());
     }
 }

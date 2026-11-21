@@ -207,6 +207,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 Err(format!("{} refused", bad.len()))
             }
         }
+        #[cfg(feature = "hot-view")]
         "hotpatch" => {
             let socket = socket_of(&o)?;
             let source = o

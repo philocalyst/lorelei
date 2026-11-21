@@ -290,7 +290,20 @@ fn a_stale_socket_is_reclaimed_and_a_live_one_is_not() {
     let l = UnixListener::bind(&path).unwrap();
     drop(l);
     assert!(path.exists(), "the stale file is still there");
-    let server = Server::bind(&path).expect("a stale socket is reclaimed");
+    // Another test may fork while this listener closes. Wait for any inherited
+    // descriptor to close at exec before treating the socket as stale.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let server = loop {
+        match Server::bind(&path) {
+            Ok(server) => break server,
+            Err(error)
+                if error.kind() == std::io::ErrorKind::AddrInUse && Instant::now() < deadline =>
+            {
+                std::thread::yield_now();
+            }
+            Err(error) => panic!("a stale socket is reclaimed: {error}"),
+        }
+    };
     let live = Server::bind(&path);
     assert!(live.is_err(), "a live socket is not stolen");
     let client = UnixStream::connect(&path);

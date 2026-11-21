@@ -276,6 +276,9 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                 .set("digest", J::Str(format!("{:016x}", snap.digest()))))
         }
         "hotpatch" => {
+            if s.recording() {
+                return fail(RpcError::params("stop recording before applying a patch"));
+            }
             let path = params
                 .get("path")
                 .and_then(J::as_str)
@@ -291,6 +294,7 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                     let snap = s.snapshot();
                     ok(J::obj()
                         .set("patched", true)
+                        .set("pid", std::process::id())
                         .set("revision", snap.app.revision)
                         .set("digest", J::Str(format!("{:016x}", snap.digest()))))
                 }
@@ -756,6 +760,14 @@ fn why<P: Program>(s: &mut Session<P>) -> J {
 }
 
 fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
+    let (frame, raw) = prepare_shot(s, p)?;
+    Ok(encode_shot(frame, raw))
+}
+
+pub(crate) fn prepare_shot<P: Program>(
+    s: &mut Session<P>,
+    p: &J,
+) -> Result<(crate::Frame, bool), RpcError> {
     let crop = if let Some(node) = p.get("node") {
         let index = node
             .as_usize()
@@ -792,6 +804,10 @@ fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
     } else {
         full
     };
+    Ok((f, flag(p, "raw", false)))
+}
+
+pub(crate) fn encode_shot(f: crate::Frame, raw_pixels: bool) -> J {
     let png = f.png();
     let mut o = J::obj()
         .set("w", f.w)
@@ -799,7 +815,7 @@ fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
         .set("digest", J::Str(format!("{:016x}", f.digest())))
         .set("png", json::base64_encode(&png))
         .set("bytes", png.len());
-    if flag(p, "raw", false) {
+    if raw_pixels {
         let mut raw = Vec::with_capacity(f.px.len() * 4);
         for c in &f.px {
             let [a, r, g, b] = c.to_be_bytes();
@@ -809,7 +825,7 @@ fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
             .set("raw", json::base64_encode(&raw))
             .set("format", "rgba8-le");
     }
-    Ok(o)
+    o
 }
 
 fn diff<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {

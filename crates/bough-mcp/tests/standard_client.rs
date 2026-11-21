@@ -321,19 +321,13 @@ fn a_standard_client_drives_every_tool_and_resource_over_stdio() {
 #[test]
 fn the_http_transport_accepts_the_same_client() {
     use rmcp::transport::StreamableHttpClientTransport;
-    use std::net::TcpListener;
     let app = start_app("table");
-    // pick a free port, then start the HTTP server on it
-    let port = {
-        let l = TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
     let mut child = Command::new(env!("CARGO_BIN_EXE_bough-mcp"))
         .args([
             "--socket",
             app.socket.to_str().unwrap(),
             "--http",
-            &format!("127.0.0.1:{port}"),
+            "127.0.0.1:0",
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -341,31 +335,68 @@ fn the_http_transport_accepts_the_same_client() {
         .expect("start the HTTP server");
     let out = child.stdout.take().unwrap();
     let mut lines = BufReader::new(out).lines();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        assert!(Instant::now() < deadline, "the HTTP server did not listen");
-        if let Some(Ok(l)) = lines.next()
-            && l.starts_with("listening ")
-        {
-            break;
-        }
-    }
+    let ready = lines.next().expect("HTTP readiness line").unwrap();
+    let address = ready
+        .strip_prefix("listening ")
+        .expect("HTTP listener address")
+        .to_owned();
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async move {
-        let transport =
-            StreamableHttpClientTransport::from_uri(format!("http://127.0.0.1:{port}/mcp"));
+        let transport = StreamableHttpClientTransport::from_uri(format!("http://{address}/mcp"));
         let client = ().serve(transport).await.expect("HTTP initialize");
         let tools = client.list_all_tools().await.expect("HTTP tools/list");
         assert!(tools.len() >= 26);
-        let r = client
-            .call_tool(
-                CallToolRequestParams::new("tree")
-                    .with_arguments(json!({"limit": 32}).as_object().unwrap().clone()),
-            )
+        let mut log = None;
+        let mut golden = None;
+        let mut fails = Vec::new();
+        for t in &tools {
+            let args = tool_args(&t.name, &mut log, &mut golden);
+            match client
+                .call_tool(CallToolRequestParams::new(t.name.to_string()).with_arguments(args))
+                .await
+            {
+                Ok(r) => {
+                    if r.is_error == Some(true) {
+                        let text = text_of(&r);
+                        // record/replay need a pristine application; this session has already run tools.
+                        let expected =
+                            matches!(t.name.as_ref(), "record_start" | "record_stop" | "replay")
+                                && (text.contains("fresh, replayable")
+                                    || text.contains("no recording is active")
+                                    || text.ends_with(": log"));
+                        if !expected {
+                            fails.push(format!("{}: {}", t.name, text));
+                        }
+                    }
+                    match t.name.as_ref() {
+                        "record_stop" => {
+                            if let Ok(v) = serde_json::from_str::<Value>(&text_of(&r)) {
+                                log = Some(v);
+                            }
+                        }
+                        "screenshot" => {
+                            golden = image_of(&r);
+                        }
+                        _ => {}
+                    }
+                }
+                Err(e) => fails.push(format!("{}: {e}", t.name)),
+            }
+        }
+        assert!(fails.is_empty(), "{fails:#?}");
+
+        let resources = client
+            .list_all_resources()
             .await
-            .expect("HTTP tree");
-        let body: Value = serde_json::from_str(&text_of(&r)).expect("tree is JSON");
-        assert!(body.get("nodes").is_some(), "{body}");
+            .expect("HTTP resources/list");
+        assert_eq!(resources.len(), 3);
+        for resource in resources {
+            let read = client
+                .read_resource(rmcp::model::ReadResourceRequestParams::new(resource.uri))
+                .await
+                .unwrap();
+            assert!(!read.contents.is_empty());
+        }
         client.cancel().await.ok();
     });
     let _ = child.kill();

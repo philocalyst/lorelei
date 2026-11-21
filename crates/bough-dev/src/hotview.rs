@@ -1,19 +1,8 @@
-//! The hot-call boundary a patched lorelei view goes through.
-//!
-//! A view's *variable text* is not state: it is code. Here that code is one function pointer, called on every
-//! description. A patch is a small `cdylib` exporting two C symbols — `hot_text` (fill a buffer, return its
-//! length) and `hot_state_token` (the state layout the code was compiled against). Loading one swaps the
-//! pointer in the running process after checking the token; a different token is refused before anything runs.
-//!
-//! This is the smallest real version of the gpui-ce/Dioxus Subsecond route: one boundary, one dylib, no jump
-//! table and no executable-memory writes. Everything else keeps the state-preserving restart path.
-use std::ffi::{CString, c_char, c_void};
+//! Opt-in hot-call boundary for a trusted developer-built text patch.
+use std::ffi::{CString, c_void};
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicPtr, Ordering};
-
-/// The ABI of the state the patch was compiled against. A patch source that exports another value is refused
-/// (`hot_state_token`), which is the "changing the state type needs a restart" rule.
-pub const STATE_TOKEN: u64 = 0x4465_6d6f_5374_0001; // "DemoSt" + 1
 
 type TextFn = unsafe extern "C" fn(*mut u8, u32) -> u32;
 
@@ -33,7 +22,9 @@ pub fn text_into(out: &mut [u8]) -> usize {
     // SAFETY: the stored value is either `builtin` or a `hot_text` symbol of the same C signature, and the
     // buffer is valid for its length.
     let f: TextFn = unsafe { core::mem::transmute::<*mut (), TextFn>(f) };
-    let n = unsafe { f(out.as_mut_ptr(), out.len() as u32) };
+    let cap = u32::try_from(out.len()).unwrap_or(u32::MAX);
+    // SAFETY: `f` implements the boundary ABI, and `cap` bytes of `out` are exclusively borrowed.
+    let n = unsafe { f(out.as_mut_ptr(), cap) };
     (n as usize).min(out.len())
 }
 
@@ -44,14 +35,14 @@ pub fn text() -> String {
     String::from_utf8_lossy(&b[..n]).into_owned()
 }
 
-const RTLD_NOW: i32 = 2;
-const RTLD_LOCAL: i32 = 4;
+use libc::{dlclose, dlerror, dlopen, dlsym};
 
-unsafe extern "C" {
-    fn dlopen(path: *const c_char, mode: i32) -> *mut c_void;
-    fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
-    fn dlerror() -> *const c_char;
-    fn dlclose(handle: *mut c_void) -> i32;
+struct Library(*mut c_void);
+impl Drop for Library {
+    fn drop(&mut self) {
+        // SAFETY: this is the non-null handle obtained from dlopen, still owned by this guard.
+        unsafe { dlclose(self.0) };
+    }
 }
 
 fn dlerr() -> String {
@@ -66,48 +57,48 @@ fn dlerr() -> String {
     }
 }
 
-/// Load a patch and install its `hot_text`. Refused, before any of its code runs, when its state token is not
-/// the one this process was built with. The library stays loaded for the process's life (the installed pointer
-/// points into it).
-pub fn install(path: &Path, expected_state: u64) -> Result<(), String> {
-    let c = CString::new(path.as_os_str().to_string_lossy().as_bytes())
+/// Load a patch and install its `hot_text` when its exported state-layout tag matches.
+///
+/// # Safety
+/// The library must be trusted native code built for this process and implement both documented C symbols
+/// with the declared layouts and buffer bounds. The tag detects compatible-build mistakes. `dlopen` may
+/// run initializers before tag inspection. The installed code must remain mapped for calls already in flight.
+pub unsafe fn install(path: &Path, expected_state: u64) -> Result<(), String> {
+    let path_c = CString::new(path.as_os_str().as_bytes())
         .map_err(|_| "the patch path contains a NUL".to_owned())?;
-    // SAFETY: a NUL-terminated path and a valid mode.
-    let handle = unsafe { dlopen(c.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
+    // SAFETY: the path is NUL-terminated and the caller supplies a trusted library.
+    let handle = unsafe { dlopen(path_c.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
     if handle.is_null() {
         return Err(format!("dlopen {}: {}", path.display(), dlerr()));
     }
-    let token_sym = c"hot_state_token";
-    // SAFETY: a loaded handle and a NUL-terminated symbol name.
-    let token = unsafe { dlsym(handle, token_sym.as_ptr()) };
+    let library = Library(handle);
+    // SAFETY: the handle is live, the names are NUL-terminated, and the ABI is the caller's contract.
+    let token = unsafe { dlsym(library.0, c"HOT_STATE_TOKEN".as_ptr()) }.cast::<u64>();
     if token.is_null() {
-        // SAFETY: the handle came from dlopen above and is not used afterwards.
-        unsafe { dlclose(handle) };
         return Err(format!(
-            "{} exports no hot_state_token: {}",
+            "{} exports no HOT_STATE_TOKEN: {}",
             path.display(),
             dlerr()
         ));
     }
-    // SAFETY: the symbol has the declared C signature (the patch's contract).
-    let token: unsafe extern "C" fn() -> u64 = unsafe { core::mem::transmute(token) };
-    let got = unsafe { token() };
+    // SAFETY: HOT_STATE_TOKEN is an aligned immutable u64 in the trusted library ABI.
+    let got = unsafe { token.read() };
     if got != expected_state {
-        unsafe { dlclose(handle) };
         return Err(format!(
-            "the patch was compiled against another state type (token {got:#x}, this process has {expected_state:#x}): a restart is needed"
+            "the patch state type changed (tag {got:#x}, current {expected_state:#x})"
         ));
     }
-    let text_sym = c"hot_text";
-    let f = unsafe { dlsym(handle, text_sym.as_ptr()) };
-    if f.is_null() {
-        unsafe { dlclose(handle) };
+    // SAFETY: the caller guarantees the declared C function signature and the guard owns its mapping.
+    let text = unsafe { dlsym(library.0, c"hot_text".as_ptr()) };
+    if text.is_null() {
         return Err(format!(
             "{} exports no hot_text: {}",
             path.display(),
             dlerr()
         ));
     }
-    TEXT.store(f as *mut (), Ordering::Release);
+    // Keep old mappings as an in-flight reader may still hold the previous function pointer.
+    std::mem::forget(library);
+    TEXT.store(text.cast(), Ordering::Release);
     Ok(())
 }

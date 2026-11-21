@@ -31,6 +31,9 @@ fn rows(n: usize) -> Session<Lab<Rows>> {
 fn one_source_two_slots_and_the_inspector_caption() {
     let mut exact = rows(2_000);
     let mut coarse = rows(2_000);
+    // Start with the other slot hot so one write must update both slots.
+    exact.set("hot", &PropValue::Int(7)).unwrap();
+    coarse.set("hot", &PropValue::Int(7)).unwrap();
     let old_snapshot: Snapshot = exact.snapshot().clone();
     let left_key = old_snapshot
         .nodes
@@ -52,7 +55,9 @@ fn one_source_two_slots_and_the_inspector_caption() {
     };
     let before_left = colour(&mut exact, left_key).unwrap();
     let before_right = colour(&mut exact, right_key).unwrap();
-    assert_eq!(before_right, before_left);
+    assert_ne!(before_right, before_left);
+    let before_commands = old_snapshot.counters.commands;
+    let before_retables = old_snapshot.counters.retables;
 
     // exact: the inspector's typed admission
     exact.set("hot", &PropValue::Int(3)).unwrap();
@@ -84,13 +89,16 @@ fn one_source_two_slots_and_the_inspector_caption() {
 
     let a = exact.snapshot().clone();
     let b = coarse.snapshot().clone();
-    // both slots read the same word: one changed, the other did not (it was already this row's colour)
     let new_left = colour(&mut exact, left_key).unwrap();
-    assert_ne!(new_left, before_left, "the selected slot changed");
+    assert_eq!(new_left, before_right, "the first slot becomes hot");
     assert_eq!(
         colour(&mut exact, right_key).unwrap(),
-        a.find_key(&right_key).unwrap().prop("color").unwrap().value
+        before_left,
+        "the old hot slot clears"
     );
+    assert_eq!(a.counters.commands, before_commands + 1);
+    assert_eq!(a.counters.retables, before_retables);
+    assert!(a.damage.tiles > 0);
     // the two write paths describe the same world and paint the same pixels. (The whole description also
     // carries the pointer's own words, which only the coarse path had: the records are the comparison here,
     // the analogue of GPUI zeroing every node's `target`.)
@@ -118,25 +126,28 @@ fn one_source_two_slots_and_the_inspector_caption() {
     let (fa, fb) = (exact.shot(), coarse.shot());
     assert!(fa.px == fb.px, "exact and coarse pixels agree");
 
-    // the inspector rebuilt from the new snapshot shows the new colour in its caption
-    let mut insp = Inspector::new(a);
-    let line = insp
-        .details()
+    let mut insp = Inspector::new(old_snapshot);
+    let left = insp
+        .snap
+        .nodes
         .iter()
-        .map(|d| d.label.clone())
-        .collect::<Vec<_>>();
-    insp.select(
-        insp.snap
-            .nodes
-            .iter()
-            .position(|n| n.key == left_key)
-            .unwrap(),
-    );
+        .position(|n| n.key == left_key)
+        .unwrap();
+    insp.select(left);
+    assert!(insp.details().iter().any(|d| {
+        d.label
+            .starts_with(&format!("color = {}", before_left.text()))
+    }));
+    insp.set_snapshot(a);
     assert!(
-        insp.details().iter().any(|d| d.label.contains("color")),
-        "the selected slot's properties are the caption"
+        insp.details()
+            .iter()
+            .any(|d| d.label.starts_with(&format!("color = {}", new_left.text())))
     );
-    let _ = line;
+    assert!(!insp.details().iter().any(|d| {
+        d.label
+            .starts_with(&format!("color = {}", before_left.text()))
+    }));
 }
 
 /// Port of `reactivity/crates/gpui/tests/semantic_metadata.rs`, the cases that have an analogue:
@@ -231,11 +242,42 @@ fn semantic_publication_is_not_relabelled_by_an_unrelated_turn() {
 
     // A repeated identical write is a no-op turn: no command and no new snapshot.
     let commands = after_visual.counters.commands;
-    let _ = s.set("hot", &PropValue::Int(3));
-    let same = s.snapshot().clone();
-    assert!(
-        s.snapshot().counters.commands >= commands,
-        "the write completed"
+    let revision = after_visual.app.revision;
+    assert_eq!(
+        s.set("hot", &PropValue::Int(3)).unwrap_err().code(),
+        "rejected"
     );
-    assert_eq!(find_ax(&same).name, published.name);
+    let same = s.snapshot();
+    assert_eq!(same.counters.commands, commands);
+    assert_eq!(same.app.revision, revision);
+    assert_eq!(find_ax(same).name, published.name);
+}
+
+/// The exposed list projection shares the current count and parent. Retained snapshots keep
+/// their own exposure information after a scroll. Explicit published candidates need host ACKs.
+#[test]
+fn exposed_ax_rows_keep_list_count_and_parent_after_scroll() {
+    let mut s = rows(1000);
+    let old = s.snapshot().clone();
+    let check = |snapshot: &Snapshot| {
+        let ax = &snapshot.ax.as_ref().unwrap().nodes;
+        let rows: Vec<_> = ax
+            .iter()
+            .filter_map(|node| {
+                let index = node.row_index?;
+                let parent = node.parent?;
+                assert_eq!(node.row_count, Some(1000));
+                assert!(index < 1000);
+                assert_eq!(ax[parent].role, "list");
+                Some(index)
+            })
+            .collect();
+        assert!(!rows.is_empty());
+        rows
+    };
+    let before = check(&old);
+    s.set("scroll", &PropValue::Int(64 * 32)).unwrap();
+    let after = check(s.snapshot());
+    assert!(after.iter().min() > before.iter().min());
+    assert_eq!(check(&old), before);
 }
