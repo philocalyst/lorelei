@@ -1587,12 +1587,28 @@ fn list_new(parent: &mut Store, l: &List<'_>) {
 
 #[inline(always)]
 fn same_template(kept: &[Rect], current: &[Rect]) -> bool {
-    kept.len() == current.len()
-        && kept.iter().zip(current).all(|(a, b)| {
-            let a = [a.x0, a.y0, a.x1, a.y1];
-            let b = [b.x0, b.y0, b.x1, b.y1];
-            a == b
-        })
+    fn lanes(rects: &[Rect]) -> &[[i32; 4]] {
+        const {
+            assert!(size_of::<Rect>() == size_of::<[i32; 4]>());
+            assert!(align_of::<Rect>() == align_of::<i32>());
+        }
+        // SAFETY: Rect is repr(C) and consists of four initialized i32s with no
+        // padding. The source slice bounds and shared borrow cover the new slice.
+        unsafe { core::slice::from_raw_parts(rects.as_ptr().cast(), rects.len()) }
+    }
+    lanes(kept).as_flattened() == lanes(current).as_flattened()
+}
+
+#[cfg(test)]
+#[test]
+fn template_comparison_checks_a_later_changed_lane() {
+    let rect = Rect::new(-4, 2, 12, 78);
+    let original = [rect; 22];
+    let mut changed = original;
+    changed[21].y1 += 1;
+    assert!(same_template(&original, &original));
+    assert!(!same_template(&original, &changed));
+    assert!(!same_template(&original, &original[..21]));
 }
 
 /// Decide what a list pass does, and do everything that does not need the row's type: replay the relation's
