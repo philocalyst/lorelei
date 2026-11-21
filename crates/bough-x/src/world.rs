@@ -781,7 +781,8 @@ impl<V: View, B: Backend> World<V, B> {
             // `settle` enters only for a changed word or journal, and `learn` only for a changed word.
             debug_assert_ne!(ch, 0);
             self.delta(u, ch);
-            self.shown = *u;
+            // `block` kept the current surface, raster and derived words. A word-only delta leaves them alone.
+            self.shown.w[..APP_WORDS].copy_from_slice(&u.w[..APP_WORDS]);
             return false;
         }
         if ch != 0 {
