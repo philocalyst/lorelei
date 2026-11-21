@@ -135,13 +135,14 @@ impl Journal {
     }
     // Once a list is following this journal, its Arc already owns the revision counter.
     // Rebind only when the source journal changes.
-    fn follow(&self, current: &mut Option<std::sync::Arc<AtomicU32>>) {
+    fn follow(&self, current: &mut Option<std::sync::Arc<AtomicU32>>) -> bool {
         if let (Some(watch), Some(current)) = (self.watch.get(), current.as_ref())
             && std::sync::Arc::ptr_eq(watch, current)
         {
-            return;
+            return false;
         }
         *current = Some(self.watch());
+        true
     }
     #[inline(always)]
     pub fn push(&mut self, e: Edit) {
@@ -256,6 +257,11 @@ pub struct List<'a> {
 
 pub trait Leaf<V> {
     fn leaf<A: Arch>(&mut self, a: &A, key: TypeId, hov: Option<Hov>);
+    /// The next leaf was written here (the element layer's own call site). Only a sink that records
+    /// locations keeps it; every other sink ignores it, and after inlining it is not there.
+    #[cfg(feature = "inspect-metadata")]
+    #[inline(always)]
+    fn at(&mut self, _loc: &'static core::panic::Location<'static>) {}
     /// A place in a row that is not a record: a child with its own space (a scrolled container), whose rect
     /// the row's layout gives. It takes one position of the row so layout and records count alike.
     #[inline(always)]
@@ -325,6 +331,14 @@ pub unsafe trait Row<V> {
     ///
     /// SAFETY: as [`Row::write`].
     unsafe fn patch(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>);
+    /// Patch a row whose non-hole records are already initialized.
+    ///
+    /// SAFETY: as `patch`, and every non-hole site contains its initialized record at `slot`.
+    #[inline(always)]
+    unsafe fn patch_initialized(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
+        // SAFETY: the precondition includes the ordinary patch contract.
+        unsafe { self.patch(sites, slot, mk, cx) }
+    }
 }
 
 /// Where a store's records are on screen during a pass.
@@ -350,34 +364,60 @@ unsafe impl<V, A: Arch> Row<V> for A {
     unsafe fn patch(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
         // SAFETY: as `write`.
         unsafe {
-            if !(*sites).is_init::<A>(slot) {
-                // Never written (a row a re-description appended, or one a panicking row function left
-                // behind): there is nothing to compare with, and reading the slot as an `A` would read a
-                // value that was never made (soundness review S04). It appears where it is.
-                let r = (*sites).rect(slot).shift(mk.org);
-                cx.tiles.mark(r.shift(self.offset(cx.u)).and(mk.clip));
-                cx.tiles.mark(r.and(mk.clip));
-                (*sites).write_record(slot, *self);
-                cx.changed += 1;
+            let Some(p) = (*sites).initialized_record::<A>(slot) else {
+                write_missing(&*sites, slot, *self, mk, cx);
                 return;
-            }
-            let p = (*sites).rec::<A>(slot);
-            if A::STATE {
-                if !(*p).eq_ops(self) {
-                    // other operands: its transitions go on from what the record shows now
-                    let mut a = *self;
-                    a.carry(&*p, cx.u, cx.u);
-                    replace(&*sites, slot, p, a, mk, cx);
-                }
-            } else if !(*p).same_at(self, cx.u) {
-                replace(&*sites, slot, p, *self, mk, cx);
-            } else {
-                // SAFETY: p is an initialized A slot. Preserve newly described
-                // captures even when their evaluated output currently agrees.
-                p.write(*self);
-            }
+            };
+            patch_record(&*sites, slot, p, *self, mk, cx);
         }
     }
+    #[inline(always)]
+    unsafe fn patch_initialized(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
+        // SAFETY: the caller supplies an initialized slot of this record type.
+        unsafe { patch_record(&*sites, slot, (*sites).rec::<A>(slot), *self, mk, cx) }
+    }
+}
+
+/// SAFETY: `p` addresses the initialized record of archetype `A` at `slot` of `site`.
+#[inline(always)]
+unsafe fn patch_record<A: Arch>(
+    site: &Site,
+    slot: u32,
+    p: *mut A,
+    value: A,
+    mk: &Mk,
+    cx: &mut Cx<'_>,
+) {
+    // SAFETY: the caller supplies the record and its lane. Only typed values of `A` are written.
+    unsafe {
+        if A::STATE {
+            if !(*p).eq_ops(&value) {
+                let mut next = value;
+                next.carry(&*p, cx.u, cx.u);
+                replace(site, slot, p, next, mk, cx);
+            }
+        } else if !(*p).same_at(&value, cx.u) {
+            replace(site, slot, p, value, mk, cx);
+        } else {
+            p.write(value);
+        }
+    }
+}
+
+/// Initialize a record first reached during a patch, including a row left by an unwound view.
+///
+/// SAFETY: the site holds A, its pointers are current, and the slot is under capacity.
+#[cold]
+#[inline(never)]
+unsafe fn write_missing<A: Arch>(site: &Site, slot: u32, value: A, mk: &Mk, cx: &mut Cx<'_>) {
+    // SAFETY: the caller supplies the site, column type, and slot needed for a typed write.
+    unsafe {
+        let r = site.rect(slot).shift(mk.org);
+        cx.tiles.mark(r.shift(value.offset(cx.u)).and(mk.clip));
+        cx.tiles.mark(r.and(mk.clip));
+        site.write_record(slot, value);
+    }
+    cx.changed += 1;
 }
 
 /// A record whose operands differ from what the column holds: damage what it showed, store it, damage what it
@@ -423,6 +463,13 @@ unsafe impl<V, X: Row<V>, const N: usize> Row<V> for [X; N] {
             unsafe { x.patch(sites.add(k * X::LEAVES as usize), slot, mk, cx) }
         }
     }
+    #[inline(always)]
+    unsafe fn patch_initialized(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
+        for (k, x) in self.iter().enumerate() {
+            // SAFETY: the element owns those sites, all admitted by the caller.
+            unsafe { x.patch_initialized(sites.add(k * X::LEAVES as usize), slot, mk, cx) }
+        }
+    }
 }
 
 macro_rules! row_tuple {
@@ -451,6 +498,14 @@ macro_rules! row_tuple {
                 let mut p = sites;
                 // SAFETY: as `write`.
                 $(unsafe { $t.patch(p, slot, mk, cx); p = p.add($t::LEAVES as usize); })+
+            }
+            #[inline(always)]
+            #[allow(non_snake_case, unused_assignments)]
+            unsafe fn patch_initialized(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
+                let ($($t,)+) = self;
+                let mut p = sites;
+                // SAFETY: each element receives its initialized sites.
+                $(unsafe { $t.patch_initialized(p, slot, mk, cx); p = p.add($t::LEAVES as usize); })+
             }
         }
     };
@@ -642,7 +697,7 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
                 self.cx.tiles.mark(st.space.clip);
                 self.cx.tiles.mark(space.clip);
             }
-            st.space = space;
+            st.set_space(space);
         }
         st.row_live[0] = 1;
         let mut sub = Write::<V, B>::new(st, self.cx, fresh);
@@ -818,9 +873,12 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
     if (lo == st.lo) & (hi == st.hi) & (st.seen == l.edits.ver) & !cx.all {
         return;
     }
-    if lo < hi && !st.rows.is_empty() {
-        // Admission, once per pass: the rows about to be written are of the record types the columns were made
-        // for, leaf by leaf, and the window fits. If not, the list's columns are made again for these rows.
+    if lo < hi
+        && !st.rows.is_empty()
+        && (hi - lo > st.cap || st.rows[0].0 != tid::<R>() || st.sites.len() != R::LEAVES as usize)
+    {
+        // A row of the discovered type has the same site layout by the unsafe Row contract. Another
+        // sink monomorphization may produce a different type. Compare its layout before reuse.
         let mut same = Same {
             st: &*st,
             k: 0,
@@ -847,17 +905,44 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
     );
     let (sites, mask) = (st.sites.as_ptr(), st.cap - 1);
     let plan = core::mem::take(&mut st.plan);
-    for &e in &plan {
-        let r = e & 0x3fff_ffff;
-        let row = f(r as usize);
-        // SAFETY: the sites were discovered from a row of type `R` (`list_plan` checked the type); `r & mask` is
-        // a slot of the list.
-        unsafe {
-            if e >> 31 != 0 {
-                row.write(sites, r & mask);
-            } else {
-                row.patch(sites, r & mask, &mk, cx);
+    if cx.all && st.initialized_window == Some((lo, hi)) {
+        for &e in &plan {
+            let r = e & 0x3fff_ffff;
+            let row = f(r as usize);
+            // SAFETY: this list admitted the row type, and the certificate covers the current sites
+            // and every exposed slot. Discovery or a new store clears the certificate. Typed writes
+            // preserve initialized slots, even when a later row function unwinds.
+            unsafe {
+                if e >> 31 != 0 {
+                    row.write(sites, r & mask);
+                } else {
+                    row.patch_initialized(sites, r & mask, &mk, cx);
+                }
             }
+        }
+    } else {
+        for &e in &plan {
+            let r = e & 0x3fff_ffff;
+            let row = f(r as usize);
+            // SAFETY: the sites and slot belong to the type that the list admitted.
+            unsafe {
+                if e >> 31 != 0 {
+                    row.write(sites, r & mask);
+                } else {
+                    row.patch(sites, r & mask, &mk, cx);
+                }
+            }
+        }
+        if cx.all && lo < hi {
+            st.initialized_window = st
+                .sites
+                .iter()
+                .all(|site| {
+                    site.col == u32::MAX
+                        || (lo..hi)
+                            .all(|r| st.cols[site.col as usize].rec_init(site.base + (r & mask)))
+                })
+                .then_some((lo, hi));
         }
     }
     st.plan = plan;
@@ -1208,15 +1293,23 @@ fn list_plan(
     leaves: usize,
     src: crate::store::RowSrc,
 ) -> Mk {
-    l.edits.follow(&mut st.journal);
+    if l.edits.follow(&mut st.journal) {
+        st.bump_structure();
+    }
     let (from, upd, nupd) = l.edits.since(st.seen);
     // inserts and removes since the last pass, for whoever holds a row by its index (focus, a press)
-    st.moved_ok = l.edits.moves_since(st.seen, &mut st.moved);
+    st.moved_ok = if l.edits.ver.wrapping_sub(st.seen) == nupd as u32 {
+        // `since` found every outstanding entry, and each one is an update.
+        st.moved.clear();
+        true
+    } else {
+        l.edits.moves_since(st.seen, &mut st.moved)
+    };
     st.moved_from = st.seen;
     #[cfg(feature = "mutant_journal")]
     let (from, nupd) = (u32::MAX, 0 * nupd);
     st.seen = l.edits.ver;
-    st.space = space;
+    st.set_space(space);
     st.n = l.n;
     st.plan.clear();
     let mk = Mk {
@@ -1288,13 +1381,20 @@ fn list_plan(
             // compared, and the row is damaged as a whole.
             if fresh {
                 let at = (l.x, l.y + r as i32 * l.row_h);
-                for (s, t) in st.sites[..leaves].iter().zip(l.shape) {
-                    if s.col == u32::MAX {
-                        // a hole (a scrolled box in the row) has no page (soundness review S13)
-                        continue;
+                let sites = &st.sites[..leaves];
+                if st.has_holes {
+                    for (s, t) in sites.iter().zip(l.shape) {
+                        if s.col != u32::MAX {
+                            // SAFETY: a record's site of this list; the slot is under `cap`.
+                            unsafe { s.set_rect(r & mask, t.shift(at)) }
+                        }
                     }
-                    // SAFETY: a record's site of this list; the slot is under `cap`.
-                    unsafe { s.set_rect(r & mask, t.shift(at)) }
+                } else {
+                    for (s, t) in sites.iter().zip(l.shape) {
+                        // SAFETY: creating a hole sets `has_holes`, so all these sites have pages.
+                        // `r & mask` is under this store's capacity.
+                        unsafe { s.set_rect(r & mask, t.shift(at)) }
+                    }
                 }
             }
             cx.tiles.mark(row_rect(r));
@@ -1305,12 +1405,48 @@ fn list_plan(
     }
     st.lo = lo;
     st.hi = hi;
-    st.row_live.fill(0);
-    for r in lo..hi {
-        let s = r & mask;
-        st.row_live[s as usize >> 6] |= 1 << (s & 63);
-    }
+    publish_window(&mut st.row_live, (lo & mask) as usize, (hi - lo) as usize);
     mk
+}
+
+/// A live window has at most two ranges in the ring bitmap. Fill its whole words in one pass.
+/// This records exposure only. Record and capture access still requires initialization.
+#[inline]
+fn publish_window(words: &mut [u64], start: usize, rows: usize) {
+    let cap = words.len() * 64;
+    let end = start + rows;
+    let wrapped = end.saturating_sub(cap);
+    let low_bits = |n: usize| -> u64 { if n >= 64 { u64::MAX } else { (1u64 << n) - 1 } };
+    for (index, word) in words.iter_mut().enumerate() {
+        let origin = index * 64;
+        let top = low_bits(end.saturating_sub(origin));
+        let bottom = low_bits(start.saturating_sub(origin));
+        *word = (top & !bottom) | low_bits(wrapped.saturating_sub(origin));
+    }
+}
+
+#[cfg(test)]
+mod window_tests {
+    use super::publish_window;
+
+    #[test]
+    fn window_masks_match_each_exposed_slot() {
+        for cap in [64, 128, 256] {
+            let mut actual = vec![0; cap / 64];
+            let mut expected = actual.clone();
+            for start in 0..cap {
+                for len in [0, 1, 2, 63, 64, cap - 1, cap] {
+                    expected.fill(0);
+                    for off in 0..len {
+                        let slot = (start + off) & (cap - 1);
+                        expected[slot >> 6] |= 1 << (slot & 63);
+                    }
+                    publish_window(&mut actual, start, len);
+                    assert_eq!(actual, expected, "start {start}, len {len}, cap {cap}");
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

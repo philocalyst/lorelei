@@ -3,7 +3,11 @@
 #[cfg(feature = "inspect")]
 pub mod inspect;
 pub mod lab;
+#[cfg(feature = "inspect")]
+pub mod overlay_host;
 
 #[cfg(feature = "inspect")]
 pub use inspect::Fields;
 pub use lab::{Event, Lab, Scenario, Shot};
+#[cfg(feature = "inspect")]
+pub use overlay_host::{Overlay, WithOverlay};

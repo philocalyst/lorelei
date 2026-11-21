@@ -39,22 +39,43 @@ pub struct LBox<P = (), C = (), H = HAuto> {
     pub spec: Spec,
     pub paint: P,
     pub kids: C,
+    /// Where the box was written: cold, and only for the inspector (`inspect-metadata`).
+    #[cfg(feature = "inspect-metadata")]
+    pub loc: &'static core::panic::Location<'static>,
     _h: PhantomData<H>,
 }
 
+#[cfg_attr(feature = "inspect-metadata", track_caller)]
 #[inline(always)]
 pub fn column<C>(kids: C) -> LBox<(), C> {
-    LBox { spec: Spec::new(true), paint: (), kids, _h: PhantomData }
+    LBox {
+        spec: Spec::new(true),
+        paint: (),
+        kids,
+        #[cfg(feature = "inspect-metadata")]
+        loc: core::panic::Location::caller(),
+        _h: PhantomData,
+    }
 }
+#[cfg_attr(feature = "inspect-metadata", track_caller)]
 #[inline(always)]
 pub fn row<C>(kids: C) -> LBox<(), C> {
-    LBox { spec: Spec::new(false), paint: (), kids, _h: PhantomData }
+    LBox {
+        spec: Spec::new(false),
+        paint: (),
+        kids,
+        #[cfg(feature = "inspect-metadata")]
+        loc: core::panic::Location::caller(),
+        _h: PhantomData,
+    }
 }
+#[cfg_attr(feature = "inspect-metadata", track_caller)]
 #[inline(always)]
 pub fn div() -> LBox<(), ()> {
     column(())
 }
 /// A leaf rectangle of `w` x `h` points.
+#[cfg_attr(feature = "inspect-metadata", track_caller)]
 #[inline(always)]
 pub fn block(w: f32, h: f32) -> LBox<(), (), HFixed> {
     div().w(w).h(h)
@@ -147,7 +168,14 @@ impl<P, C, H> LBox<P, C, H> {
     pub fn h(self, v: f32) -> LBox<P, C, HFixed> {
         let mut spec = self.spec;
         spec.h = Dim::Pt(v);
-        LBox { spec, paint: self.paint, kids: self.kids, _h: PhantomData }
+        LBox {
+            spec,
+            paint: self.paint,
+            kids: self.kids,
+            #[cfg(feature = "inspect-metadata")]
+            loc: self.loc,
+            _h: PhantomData,
+        }
     }
     #[inline(always)]
     pub fn h_pct(mut self, v: f32) -> Self {
@@ -207,14 +235,46 @@ impl<P, C, H> LBox<P, C, H> {
         }
         self
     }
-    /// Paint the box: `a` is its record.
+    /// Paint the box: `a` is its record. (Its site, for the inspector, is the `.bg(..)` call.)
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     pub fn bg<A>(self, a: A) -> LBox<Rec1<A>, C, H> {
-        LBox { spec: self.spec, paint: Rec1(a), kids: self.kids, _h: PhantomData }
+        LBox {
+            spec: self.spec,
+            paint: Rec1(a),
+            kids: self.kids,
+            #[cfg(feature = "inspect-metadata")]
+            loc: core::panic::Location::caller(),
+            _h: PhantomData,
+        }
+    }
+    /// Paint the box with an explicit site: for a façade method that is not the author's own `.bg` call
+    /// (it passes the site it was called at).
+    #[cfg(feature = "inspect-metadata")]
+    #[inline(always)]
+    pub fn bg_at<A>(
+        self,
+        a: A,
+        loc: &'static core::panic::Location<'static>,
+    ) -> LBox<Rec1<A>, C, H> {
+        LBox {
+            spec: self.spec,
+            paint: Rec1(a),
+            kids: self.kids,
+            loc,
+            _h: PhantomData,
+        }
     }
     #[inline(always)]
     pub fn child<E>(self, e: E) -> LBox<P, Chain<C, E>, H> {
-        LBox { spec: self.spec, paint: self.paint, kids: Chain(self.kids, e), _h: PhantomData }
+        LBox {
+            spec: self.spec,
+            paint: self.paint,
+            kids: Chain(self.kids, e),
+            #[cfg(feature = "inspect-metadata")]
+            loc: self.loc,
+            _h: PhantomData,
+        }
     }
 }
 

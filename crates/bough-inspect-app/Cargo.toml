@@ -20,6 +20,8 @@ bough-mem = { path = "../bough-mem" }
 
 [features]
 default = ["inspect"]
+# Negative control of the live-overlay gate: the panel is painted even when it was never opened.
+mutant_overlay_paint = []
 inspect = ["dep:bough-inspect", "bough-guibench-x/inspect-metadata"]
 
 [[bin]]

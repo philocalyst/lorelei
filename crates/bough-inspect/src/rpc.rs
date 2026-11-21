@@ -275,6 +275,32 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                 .set("revision", snap.app.revision)
                 .set("digest", J::Str(format!("{:016x}", snap.digest()))))
         }
+        "hotpatch" => {
+            if s.recording() {
+                return fail(RpcError::params("stop recording before applying a patch"));
+            }
+            let path = params
+                .get("path")
+                .and_then(J::as_str)
+                .ok_or_else(|| RpcError::params("path (a patch dylib)"))
+                .and_then(|p| {
+                    s.app_mut()
+                        .hot_patch(std::path::Path::new(p))
+                        .map_err(|e| RpcError::params(&e))
+                });
+            match path {
+                Ok(()) => {
+                    s.invalidate();
+                    let snap = s.snapshot();
+                    ok(J::obj()
+                        .set("patched", true)
+                        .set("pid", std::process::id())
+                        .set("revision", snap.app.revision)
+                        .set("digest", J::Str(format!("{:016x}", snap.digest()))))
+                }
+                Err(e) => fail(e),
+            }
+        }
         "shot" => match shot(s, params) {
             Ok(v) => ok(v),
             Err(e) => fail(e),
@@ -519,7 +545,16 @@ fn find<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
     let ty = p.get("ty").and_then(J::as_str);
     let text = p.get("text").and_then(J::as_str);
     let role = p.get("role").and_then(J::as_str);
-    let within = int(p, "within").map(|s| subtree(snap, s as usize));
+    let within = p
+        .get("within")
+        .map(|value| {
+            value
+                .as_usize()
+                .filter(|i| *i < snap.stores.len())
+                .map(|i| subtree(snap, i))
+                .ok_or_else(|| RpcError::params("store index out of range"))
+        })
+        .transpose()?;
     let focused = flag(p, "focused", false);
     let hovered = flag(p, "hovered", false);
     let pressed = flag(p, "pressed", false);
@@ -529,11 +564,23 @@ fn find<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
     // role searches the accessibility tree, which knows roles; everything else searches records
     let mut out: Vec<(usize, J)> = Vec::new();
     if let Some(role) = role {
+        if kind.is_some()
+            || ty.is_some()
+            || within.is_some()
+            || hovered
+            || pressed
+            || visible.is_some()
+            || handler.is_some()
+        {
+            return Err(RpcError::params(
+                "accessibility role cannot be combined with paint-only filters",
+            ));
+        }
         let Some(ax) = &snap.ax else {
             return Err(RpcError::new(INVALID_PARAMS, "no accessibility projection"));
         };
         for (i, n) in ax.nodes.iter().enumerate() {
-            if n.role != role || !n.name.contains(text.unwrap_or("")) {
+            if n.role != role || !n.name.contains(text.unwrap_or("")) || (focused && !n.focused) {
                 continue;
             }
             out.push((
@@ -734,6 +781,14 @@ fn why<P: Program>(s: &mut Session<P>) -> J {
 }
 
 fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
+    let (frame, raw) = prepare_shot(s, p)?;
+    Ok(encode_shot(frame, raw))
+}
+
+pub(crate) fn prepare_shot<P: Program>(
+    s: &mut Session<P>,
+    p: &J,
+) -> Result<(crate::Frame, bool), RpcError> {
     let crop = if let Some(node) = p.get("node") {
         let index = node
             .as_usize()
@@ -770,6 +825,10 @@ fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
     } else {
         full
     };
+    Ok((f, flag(p, "raw", false)))
+}
+
+pub(crate) fn encode_shot(f: crate::Frame, raw_pixels: bool) -> J {
     let png = f.png();
     let mut o = J::obj()
         .set("w", f.w)
@@ -777,7 +836,7 @@ fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
         .set("digest", J::Str(format!("{:016x}", f.digest())))
         .set("png", json::base64_encode(&png))
         .set("bytes", png.len());
-    if flag(p, "raw", false) {
+    if raw_pixels {
         let mut raw = Vec::with_capacity(f.px.len() * 4);
         for c in &f.px {
             let [a, r, g, b] = c.to_be_bytes();
@@ -787,7 +846,7 @@ fn shot<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
             .set("raw", json::base64_encode(&raw))
             .set("format", "rgba8-le");
     }
-    Ok(o)
+    o
 }
 
 fn diff<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {

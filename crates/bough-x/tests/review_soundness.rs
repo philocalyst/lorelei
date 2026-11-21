@@ -42,6 +42,47 @@ fn tiles_mark_whole_window() {
     assert_eq!(t.count(), 4 * 3);
 }
 
+#[test]
+fn tile_row_specializations_mark_the_same_tiles() {
+    for width in [1_280, 2_560, 4_320] {
+        let mut tiles = Tiles::new(width, 100);
+        for rect in [
+            Rect::new(-20, -10, 60, 50),
+            Rect::new(2_015, 34, 90, 67),
+            Rect::new(2_048, 64, 160, 32),
+            Rect::new(0, 0, width, 100),
+        ] {
+            tiles.clear();
+            tiles.mark(rect);
+            for row in 0..tiles.rows {
+                for column in 0..(width as usize).div_ceil(32) {
+                    let clipped = rect.and(Rect::new(0, 0, width, 100));
+                    let expected = clipped.x0 < clipped.x1
+                        && clipped.y0 < clipped.y1
+                        && clipped.hits(Rect::new(column as i32 * 32, row as i32 * 32, 32, 32));
+                    let word = tiles.bits[row * tiles.stride + column / 64];
+                    assert_eq!(
+                        word >> (column % 64) & 1 != 0,
+                        expected,
+                        "{width}, {rect:?}, {row}, {column}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn tile_bitmap_refuses_short_rows_and_overflowing_strides() {
+    for (stride, width, len) in [(2, 2_560, 3), (3, 4_320, 5), (usize::MAX, 32, 2)] {
+        let mut tiles = Tiles::new(width, 64);
+        tiles.stride = stride;
+        tiles.bits.resize(len, 0);
+        assert!(catch_unwind(AssertUnwindSafe(|| tiles.mark_all())).is_err());
+        assert_eq!(tiles.bits, vec![0; len]);
+    }
+}
+
 // ---- S03: a panic inside `view` must not leave the column table naming freed stores ----------------------
 
 struct Lists {

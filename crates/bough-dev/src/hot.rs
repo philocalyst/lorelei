@@ -5,9 +5,10 @@
 //! the two descriptions are compared by digest. A change that is not code (a theme, an asset) goes through the
 //! application's own `reload` instead: no rebuild, no restart, state untouched.
 //!
-//! What is not: patching Rust functions in a running process (the dylib/jump-table route Subsecond takes in the
-//! gpui-ce CLI). The unit here is the view description; a changed `view()` is new code, and new code needs a
-//! new binary. The dev server therefore classifies a Rust change as a *state-preserving restart* and says so.
+//! What is not: a general patch of Rust functions (the dylib/jump-table route Subsecond takes in the gpui-ce
+//! CLI). The one patched unit is the view's hot-call boundary ([`crate::hotview`], [`crate::patch`]): a changed
+//! string literal there is a `cdylib` the running process loads and re-describes with. Every other Rust change
+//! is new code and takes a *state-preserving restart*; the loop classifies it that way and says so.
 use bough_inspect::client::Client;
 use bough_inspect::json::{self, Value as J};
 use std::io::{BufRead, BufReader};

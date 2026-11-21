@@ -13,6 +13,7 @@ bough-expr = { path = "../bough-expr" }
 bough-ax = { path = "../bough-ax" }
 
 [features]
+mutant-inline-reply = []
 # The negative control of G1: the schema writer drops a field the golden holds.
 mutant_schema = []
 # The negative control of G2: a node is reported without its source location.
