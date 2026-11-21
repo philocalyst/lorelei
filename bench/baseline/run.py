@@ -1,314 +1,326 @@
 #!/usr/bin/env python3
-"""Record one reproducible headless baseline on this Mac, or compare two recorded runs.
-
-    python3 bench/baseline/run.py --name 71ee3be --worktree ../baseline
-    python3 bench/baseline/run.py --name try1 --worktree . --cells sheet_x,events_x
-    python3 bench/baseline/compare.py base.json head.json [--threshold-file ...]
-
-`run.py` (this file) resolves the commit and toolchain, builds an exact list of binaries into a
-target directory of its own, records their sha256 and size, then runs every cell in REP rounds in a
-deterministically shuffled order. Each run is `/usr/bin/time -l` under one process, so it reports
-retired instructions (process wide), wall time measured here, and the maximum resident set size.
-The output is one JSON per run and a markdown table beside it.
-
-A cell that fails, times out or cannot be built is recorded with its error and makes the exit
-status 1: the baseline is fail-closed. Cells for scenes another agent is still building are
-present as `unavailable` slots, so a later run fills a slot instead of inventing one.
-
-The measurement lock is the caller's: `bench/baseline/run.sh` takes
-`lockf -k $HOME/work/locks/bench.lock` around this script.
-"""
+"""Run the native measurement matrix. Use run.sh to hold the batch lock."""
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import os
+from pathlib import Path
 import platform
 import random
 import re
-import shutil
 import statistics
 import subprocess
 import sys
 import time
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent.parent
-DEFAULT_TARGET = Path(os.environ.get("BENCH_BASELINE_TARGET", str(Path.home() / "work/targets/bench/baseline")))
-RUSTUP_BIN = "/opt/homebrew/opt/rustup/bin"
-
-# Cells that fail for a reason in the framework, not the harness. They are not measured (a failing
-# cell is not a number) and are stated in every baseline document so nobody reads their absence as a
-# zero. `bench/baselines/macos-71ee3be` recorded the first one.
-KNOWN_FAILURES = [
-    "guibench search --rows 1000 --op filter: panics after ~40 filter steps in bough-mem's region "
-    "layout: column `glyph_x` is full (capacity 524288, need 524304). The 100-row filter and the "
-    "1000-row filter-nochange cells are measured instead.",
-]
-
-# The scenes other agents are building. A baseline names them, empty, so no later reader mistakes
-# a missing scene for a measured zero.
-SLOTS = {
-    "rows": "bough-guibench headless, rows (measured below as guibench/rows-*)",
-    "virtual": "not yet available: bough's virtual list cells are gui-bench's `virtual` scenario on Linux",
-    "table": "bough-guibench headless table cells (measured below as guibench/table-*)",
-    "typing": "bough-guibench headless typing (measured below)",
-    "search": "bough-guibench headless filter (measured below)",
-    "spinner": "not yet available: needs the output-paced animation driver (REPORT 4.8)",
-    "ticker": "not yet available: same clock as spinner",
-    "resize": "not yet available on the new core; the façade's resize is the gui-bench VM cell",
-    "sheet": "bough-x sheet_x example (measured below)",
-    "chat": "not yet available: the element-layer chat scene (REPORT 4.1)",
-    "ide": "not yet available: the element-layer ide scene (REPORT 4.1)",
-    "dashboard": "not yet available: the element-layer dashboard scene (REPORT 4.1)",
-    "canvas": "bough-paint pbench canvas (measured below)",
-    "effects": "not yet available: the effects/motion lane's scene (slot reserved)",
-    "media": "not yet available: the video/image scene (slot reserved)",
-}
+from operations import parse
 
 
-def sh(cmd, **kw):
-    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+ROOT = Path(__file__).resolve().parents[2]
+LOCKFILES = ("Cargo.lock", "comparisons/bough-guibench/Cargo.lock",
+             "comparisons/bough-fx-bench/Cargo.lock")
 
 
-def rust(cmd, cwd, env):
-    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
+@dataclass(frozen=True)
+class Cell:
+    name: str
+    binary: str
+    argv: tuple
+    env: dict
+    parser: str
 
 
-def build(worktree, target, log):
-    """Build every binary the cells name. Returns {label: path}, or raises with the failing command."""
-    env = dict(os.environ)
-    env["PATH"] = RUSTUP_BIN + ":" + env.get("PATH", "")
-    env["RUSTC_WRAPPER"] = ""
-    env["CARGO_TARGET_DIR"] = str(target)
-    steps = [
-        ("bough-x examples", ["cargo", "build", "--profile", "dist", "-p", "bough-x",
-                              "--example", "sheet_x", "--example", "events_x", "--example", "text_x", "--example", "anim_x"]),
-        ("bough-paint pbench", ["cargo", "build", "--profile", "dist", "-p", "bough-paint", "--example", "pbench"]),
-        ("bough-guibench-x", ["cargo", "build", "--release", "-p", "bough-guibench-x"]),
-        ("bough-guibench headless", ["cargo", "build", "--release",
-                                     "--manifest-path", "comparisons/bough-guibench/Cargo.toml",
-                                     "--bin", "headless"]),
+def example(name, parser, **env):
+    return Cell(name, name.split("/")[0], (), env, parser)
+
+
+def cells(worktree):
+    matrix = [
+        example("sheet_x/rows1000", "sheet", ROWS="1000", REPS="32"),
+        example("sheet_x/rows10000", "sheet", ROWS="10000", REPS="32"),
+        example("events_x/rows10000", "events", ROWS="10000", REPS="31"),
+        example("text_x", "text", ROWS="3000", REPS="64"),
+        example("anim_x/208", "anim", H="208"),
+        Cell("pbench/canvas1", "pbench", ("canvas", "1"), {"REPS": "8", "WORKERS": "5"}, "pbench"),
     ]
-    for label, cmd in steps:
-        t = time.monotonic()
-        p = rust(cmd, worktree, env)
-        log.append(f"$ {' '.join(cmd)}  ({time.monotonic()-t:.0f}s, rc {p.returncode})")
-        if p.returncode != 0:
-            raise SystemExit(f"build failed: {label}\n" + p.stderr[-3000:])
+    for scene, rows, op, repeats in (
+        ("rows", 1000, "mount", 0), ("rows", 1000, "hover", 8),
+        ("typing", 1000, "typing", 8), ("search", 100, "filter", 6),
+        ("search", 1000, "filter-nochange", 6),
+    ):
+        label = "rows" if scene == "typing" else scene
+        args = ("--scenario", scene, "--rows", str(rows), "--op", op,
+                "--repeats", str(repeats), "--blocks", "3")
+        matrix.append(Cell(f"guibench/{label}-{rows}-{op}", "headless", args, {}, "guibench"))
+    unavailable = {}
+    if (worktree / "crates/bough-x/examples/ops_x.rs").is_file():
+        for part in ("select", "lane", "ops", "search", "corpus"):
+            matrix.append(example(f"ops_x/{part}", "ops", PART=part, REPS="64", ROWS="100000"))
+        for mode, env in (("near", {"NEAR": "1"}), ("swept", {"SWEPT": "1"}),
+                          ("near-swept", {"NEAR": "1", "SWEPT": "1"})):
+            matrix.append(example(f"anim_x/208/{mode}", "anim", H="208", **env))
+    else:
+        unavailable["incremental"] = "ops_x and near/swept variants require incremental operators"
+    if (worktree / "comparisons/bough-fx-bench/Cargo.toml").is_file():
+        for count in ("200", "1000", "5000"):
+            for op in ("startup", "idle", "one", "many", "hover", "theme", "scroll", "resize"):
+                args = ("cold", count, op, "1") if op == "startup" else ("measure", count, op, "20")
+                matrix.append(Cell(f"effects/{count}/{op}", "bough-fx-bench", args, {}, "effects"))
+    else:
+        unavailable["effects"] = "the effects adapter is absent from this checkout"
+    unavailable["video"] = "staged video requires the separately pinned paint seam"
+    unavailable["windowed"] = "see the VM runbook for compositor scenarios"
+    if not (worktree / "crates/bough/tests/glyph_reclaim.rs").is_file():
+        unavailable["guibench/search-1000-filter"] = "historical glyph_x capacity panic"
+    else:
+        args = ("--scenario", "search", "--rows", "1000", "--op", "filter",
+                "--repeats", "6", "--blocks", "3")
+        matrix.append(Cell("guibench/search-1000-filter", "headless", args, {}, "guibench"))
+    return matrix, unavailable
+
+
+def binary_spec(name):
+    if name == "headless":
+        return "release/headless", ["--release", "--manifest-path", "comparisons/bough-guibench/Cargo.toml",
+                                    "--bin", "headless"]
+    if name == "bough-fx-bench":
+        return "release/bough-fx-bench", ["--locked", "--release", "--manifest-path",
+                                          "comparisons/bough-fx-bench/Cargo.toml",
+                                          "--features", "full-effects", "--bin", name]
+    package = "bough-paint" if name == "pbench" else "bough-x"
+    return f"dist/examples/{name}", ["--locked", "--profile", "dist", "-p", package, "--example", name]
+
+
+def fetch(argv, cwd=None, env=None):
+    return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def digest(path):
+    checksum = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            checksum.update(chunk)
+    return checksum.hexdigest()
+
+
+def source(worktree):
+    commit = fetch(["git", "rev-parse", "HEAD"], worktree)
+    status = fetch(["git", "status", "--porcelain"], worktree)
+    changes = fetch(["git", "diff", "--binary", "HEAD"], worktree) if status else ""
+    untracked = fetch(["git", "ls-files", "--others", "--exclude-standard", "-z"], worktree)
+    for name in filter(None, untracked.split("\0")):
+        changes += f"\n{name}\0{digest(worktree / name)}"
+    locks = {name: digest(worktree / name) for name in LOCKFILES if (worktree / name).is_file()}
+    return {"commit": commit, "dirty": bool(status), "changes_sha256": hashlib.sha256(changes.encode()).hexdigest(),
+            "locks": locks}
+
+
+def binary_manifest(path, relative, args):
+    sections = fetch(["size", "-m", str(path)])
+    size = re.search(r"^\s*Section __text: (\d+)", sections, re.M)
+    if not size:
+        raise ValueError(f"missing Mach-O text section for {relative}")
+    return {"path": relative, "cargo_args": args, "sha256": digest(path),
+            "bytes": path.stat().st_size, "text_bytes": int(size[1])}
+
+
+def write_json(path, doc):
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(doc, indent=2, allow_nan=False) + "\n")
+    tmp.replace(path)
+
+
+def build(worktree, target, binaries, toolchain, log, reuse):
+    cache = target / ".baseline-binaries.json"
+    before = source(worktree)
+    env = {**os.environ, "RUSTC_WRAPPER": "", "CARGO_TARGET_DIR": str(target)}
+    if reuse:
+        previous = json.loads(cache.read_text())
+        if (previous["worktree"], previous["source"], previous["toolchain"]) != (str(worktree), before, toolchain):
+            raise ValueError("reuse target was built for another worktree, source or toolchain")
+    else:
+        if cache.exists() and json.loads(cache.read_text())["worktree"] != str(worktree):
+            raise ValueError("target directory belongs to a different worktree")
+        cache.unlink(missing_ok=True)
+    manifest = {}
+    for name in binaries:
+        relative, args = binary_spec(name)
+        if not reuse:
+            command = ["nice", "-n", "15", "cargo", "build", "-j", "3", *args]
+            print(f"build {name}", flush=True)
+            with (log / f"build-{name}.log").open("w") as stream:
+                stream.write(f"$ {' '.join(command)}\n")
+                stream.flush()
+                subprocess.run(command, cwd=worktree, env=env, stdout=stream, stderr=subprocess.STDOUT, check=True)
+        manifest[name] = binary_manifest(target / relative, relative, args)
+        if reuse and manifest[name] != previous["binaries"].get(name):
+            raise ValueError(f"binary identity changed for {name}; rebuild before timing")
+    after = source(worktree)
+    if before != after:
+        # The historical standalone façade app resolves its path dependencies in its own lockfile.
+        changes = fetch(["git", "status", "--porcelain"], worktree).splitlines()
+        expected = f"M {LOCKFILES[1]}"
+        if before["dirty"] or changes != [expected] or before["commit"] != after["commit"]:
+            raise ValueError("source changed during build")
+    if not reuse:
+        write_json(cache, {"worktree": str(worktree), "source": after,
+                           "toolchain": toolchain, "binaries": manifest})
+    return after, manifest
+
+
+ENV_KEYS = set("ROWS REPS H NEAR SWEPT PART COLD WORKERS BOUGH_PMU SKIP_K".split())
+
+
+def measure(cell, binary, cwd, log):
+    env = {name: value for name, value in os.environ.items() if name not in ENV_KEYS}
+    env.update(cell.env)
+    command = ["/usr/bin/time", "-l", str(binary), *cell.argv]
+    start = time.monotonic_ns()
+    with log.with_suffix(".stdout").open("w+") as out, log.with_suffix(".stderr").open("w+") as err:
+        proc = subprocess.run(command, cwd=cwd, env=env, stdout=out, stderr=err, timeout=600, check=True)
+        elapsed = time.monotonic_ns() - start
+        out.seek(0)
+        err.seek(0)
+        stdout, stderr = out.read(), err.read()
+    assert proc.returncode == 0
+    process = {"wall_ms": elapsed / 1_000_000}
+    for key, label in (("instructions", "instructions retired"), ("rss_bytes", "maximum resident set size")):
+        match = re.search(rf"^\s*(\d+)\s+{label}\s*$", stderr, re.M)
+        if not match or int(match[1]) == 0:
+            raise ValueError(f"missing process {key}")
+        process[key] = int(match[1])
+    return {"process": process, "operations": parse(cell.parser, stdout, stderr, cell.argv, cell.env),
+            "load": os.getloadavg()[0]}
+
+
+def summary(values):
+    return {"median": statistics.median(values), "min": min(values), "max": max(values), "n": len(values)}
+
+
+def summarize(runs):
+    first = runs[0]
+    shape = {key: set(counters) for key, counters in first["operations"].items()}
+    if any({key: set(row) for key, row in run["operations"].items()} != shape for run in runs):
+        raise ValueError("operation names or counters changed between repetitions")
     return {
-        "sheet_x": target / "dist/examples/sheet_x",
-        "events_x": target / "dist/examples/events_x",
-        "text_x": target / "dist/examples/text_x",
-        "anim_x": target / "dist/examples/anim_x",
-        "pbench": target / "dist/examples/pbench",
-        "bough-x-bench": target / "release/bough-bench",
-        "headless": target / "release/headless",
+        "process": {key: summary([run["process"][key] for run in runs]) for key in first["process"]},
+        "operations": {op: {key: summary([run["operations"][op][key] for run in runs])
+                            for key in first["operations"][op]} for op in shape},
     }
-
-
-def cells(bins):
-    """The cells: (id, argv, env, parse). Each is one whole process."""
-    h = str(bins["headless"])
-    return [
-        ("sheet_x/rows1000", [str(bins["sheet_x"])], {"ROWS": "1000", "REPS": "16"}, "sheet"),
-        ("sheet_x/rows10000", [str(bins["sheet_x"])], {"ROWS": "10000", "REPS": "16"}, "sheet"),
-        ("events_x/rows10000", [str(bins["events_x"])], {"ROWS": "10000"}, "events"),
-        ("text_x", [str(bins["text_x"])], {}, "text"),
-        ("anim_x/208", [str(bins["anim_x"])], {"H": "208"}, "anim"),
-        ("pbench/canvas1", [str(bins["pbench"]), "canvas", "1"], {"REPS": "8", "WORKERS": "5"}, "pbench"),
-        ("guibench/rows-1000-mount", [h, "--scenario", "rows", "--rows", "1000", "--op", "mount", "--repeats", "0"], {}, "guibench"),
-        ("guibench/rows-1000-hover", [h, "--scenario", "rows", "--rows", "1000", "--op", "hover", "--repeats", "8", "--blocks", "3"], {}, "guibench"),
-        ("guibench/rows-1000-typing", [h, "--scenario", "typing", "--rows", "1000", "--op", "typing", "--repeats", "8", "--blocks", "3"], {}, "guibench"),
-        ("guibench/search-100-filter", [h, "--scenario", "search", "--rows", "100", "--op", "filter", "--repeats", "6", "--blocks", "3"], {}, "guibench"),
-        ("guibench/search-1000-filter-nochange", [h, "--scenario", "search", "--rows", "1000", "--op", "filter-nochange", "--repeats", "6", "--blocks", "3"], {}, "guibench"),
-    ]
-
-
-INSTR = re.compile(r"(\d+)\s+instructions retired")
-RSS = re.compile(r"(\d+)\s+maximum resident set size")
-REALT = re.compile(r"([\d.]+)\s+real")
-NUM = re.compile(r"^([A-Za-z_][\w/ .-]*?)\s+([0-9][0-9,]*)\s*$")
-
-
-def parse_stdout(kind, out):
-    """The example's own figures, kept as text and as simple name -> number pairs where they parse."""
-    fields = {}
-    for line in out.splitlines():
-        m = NUM.match(line.strip())
-        if m:
-            fields[m.group(1).strip().replace(" ", "_")] = int(m.group(2).replace(",", ""))
-        elif "\t" in line and kind in ("sheet", "events", "text", "anim", "pbench"):
-            p = line.split("\t")
-            if len(p) >= 3 and p[-1].replace(",", "").isdigit():
-                fields[f"{p[0]}/{p[-2] if len(p) > 3 else len(p)}"] = int(p[-1].replace(",", ""))
-    return fields
-
-
-def measure(argv, env, kind, timeout=600):
-    cmd = ["/usr/bin/time", "-l"] + argv
-    t = time.monotonic()
-    try:
-        p = subprocess.run(cmd, capture_output=True, text=True, env={**os.environ, **env}, timeout=timeout)
-    except subprocess.TimeoutExpired as e:
-        return {"error": f"timeout after {timeout}s", "stdout": (e.stdout or "")[-2000:], "stderr": (e.stderr or "")[-2000:]}
-    wall = time.monotonic() - t
-    instr = INSTR.search(p.stderr)
-    rss = RSS.search(p.stderr)
-    real = REALT.search(p.stderr)
-    r = {
-        "exit": p.returncode,
-        "wall_ms": round(wall * 1000, 3),
-        "time_real_s": float(real.group(1)) if real else None,
-        "instructions": int(instr.group(1)) if instr else None,
-        "rss_bytes": int(rss.group(1)) if rss else None,
-        "stdout": p.stdout[-20000:],
-        "stderr": p.stderr[-4000:],
-        "fields": parse_stdout(kind, p.stdout),
-    }
-    if p.returncode != 0:
-        r["error"] = f"exit {p.returncode}"
-    return r
-
-
-def summarise(runs, key):
-    xs = [r[key] for r in runs if isinstance(r, dict) and r.get(key) is not None]
-    if not xs:
-        return None
-    return {"median": statistics.median(xs), "min": min(xs), "max": max(xs), "n": len(xs)}
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--name", required=True)
-    ap.add_argument("--worktree", default=str(ROOT))
-    ap.add_argument("--target-dir", default=None)
-    ap.add_argument("--cells", default="")
-    ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--out", default=None)
-    ap.add_argument("--no-build", action="store_true", help="reuse the target directory's binaries (a quiet re-measure)")
-    a = ap.parse_args()
-    wt = Path(a.worktree).resolve()
-    commit = sh(["git", "rev-parse", "HEAD"], cwd=wt).stdout.strip()
-    dirty = bool(sh(["git", "status", "--porcelain"], cwd=wt).stdout.strip())
-    rustc_v = sh(["rustc", "-V"], cwd=wt, env={**os.environ, "PATH": RUSTUP_BIN + ":" + os.environ["PATH"]}).stdout.strip()
-    target = Path(a.target_dir).resolve() if a.target_dir else DEFAULT_TARGET / f"{a.name}-{commit[:10]}"
-    outdir = Path(a.out).resolve() if a.out else HERE.parent / "baselines" / f"macos-{a.name}"
-    outdir.mkdir(parents=True, exist_ok=True)
-    # Paths are displayed relative to the user's home: the repository is public and the baseline
-    # JSON is committed.
-    def disp(p):
-        p = str(p)
-        home = str(Path.home())
-        return "~" + p[len(home):] if p.startswith(home) else p
-    log = [f"worktree {disp(wt)}", f"commit {commit}", f"dirty {dirty}", f"rustc {rustc_v}", f"target {disp(target)}"]
-    load = os.getloadavg()
-    log.append(f"load-before {load[0]:.2f} {load[1]:.2f} {load[2]:.2f}")
-
-    bins = {k: target / v for k, v in {"sheet_x": "dist/examples/sheet_x", "events_x": "dist/examples/events_x", "text_x": "dist/examples/text_x", "anim_x": "dist/examples/anim_x", "pbench": "dist/examples/pbench", "bough-x-bench": "release/bough-bench", "headless": "release/headless"}.items()}
-    if not a.no_build:
-        bins = build(wt, target, log)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", required=True)
+    parser.add_argument("--worktree", default=str(ROOT))
+    parser.add_argument("--target-dir")
+    parser.add_argument("--cells", default="")
+    parser.add_argument("--reps", type=int, default=3)
+    parser.add_argument("--out")
+    parser.add_argument("--no-build", action="store_true")
+    args = parser.parse_args()
+    if not 1 <= args.reps or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.name):
+        parser.error("use at least one repetition and a filesystem-safe name")
+    worktree = Path(args.worktree).resolve()
+    if Path(fetch(["git", "rev-parse", "--show-toplevel"], worktree)) != worktree:
+        parser.error("--worktree must name a repository root")
+    build_source = source(worktree)
+    matrix, unavailable = cells(worktree)
+    wanted = set(args.cells.split(",")) if args.cells else {cell.name for cell in matrix}
+    unknown = wanted - {cell.name for cell in matrix}
+    if unknown:
+        parser.error(f"unavailable or unknown cells: {', '.join(sorted(unknown))}")
+    matrix = [cell for cell in matrix if cell.name in wanted]
+    root_target = Path(os.environ.get("BENCH_BASELINE_TARGET", os.environ.get("CARGO_TARGET_DIR",
+                       ROOT / "target" / "baseline")))
+    target = Path(args.target_dir).resolve() if args.target_dir else (root_target / build_source["commit"][:12]).resolve()
+    out = Path(args.out).resolve() if args.out else ROOT / "runtime" / "baseline" / args.name
+    log = out / "raw"
+    log.mkdir(parents=True, exist_ok=True)
+    for suffix in (".json", ".md"):
+        (out / (args.name + suffix)).unlink(missing_ok=True)
+    toolchain = fetch(["rustc", "-vV"], worktree)
+    host = {"os": platform.mac_ver()[0], "machine": platform.machine(),
+            "cpu": fetch(["sysctl", "-n", "machdep.cpu.brand_string"]), "cpus": os.cpu_count()}
+    runtime_inputs = {}
+    for name in ("BOUGH_FONT", "ZGX_FONT_FILE"):
+        if value := os.environ.get(name):
+            runtime_inputs[name] = digest(Path(value))
+    load_before = os.getloadavg()
+    records = {cell.name: [] for cell in matrix}
+    errors = []
     manifest = {}
-    for label, p in bins.items():
-        if p.exists():
-            b = p.read_bytes()
-            manifest[label] = {"path": str(p.relative_to(target)), "sha256": hashlib.sha256(b).hexdigest(), "bytes": len(b),
-                               "text_bytes": text_bytes(p)}
-        else:
-            manifest[label] = {"error": "missing"}
-    log.append("binaries " + json.dumps(manifest, sort_keys=True))
-
-    wanted = set(filter(None, a.cells.split(",")))
-    todo = [c for c in cells(bins) if not wanted or c[0] in wanted]
-    missing = wanted - {c[0] for c in todo}
-    if missing:
-        raise SystemExit(f"no such cell: {sorted(missing)}")
-
-    order = list(range(a.reps))
-    random.Random(int(commit[:8], 16) if re.fullmatch(r"[0-9a-f]+", commit) else 0).shuffle(order)
-    records, errors = {}, []
-    for rep in order:
-        for cid, argv, env, kind in todo:
-            r = measure(argv, env, kind)
-            r["rep"] = rep
-            r["load"] = os.getloadavg()[0]
-            if "error" in r:
-                errors.append((cid, r["error"]))
-            records.setdefault(cid, []).append(r)
-            status = r.get("error") or f"{r.get('instructions')} instr  {r.get('wall_ms')} ms"
-            print(f"{cid:<28} rep {rep}  {status}", flush=True)
-    # Fail closed on a load ceiling: a run above it is kept but marked.
-    load_after = os.getloadavg()
-    cells_out = {}
-    for cid, runs in records.items():
-        cells_out[cid] = {
-            "runs": runs,
-            "instructions": summarise(runs, "instructions"),
-            "wall_ms": summarise(runs, "wall_ms"),
-            "rss_bytes": summarise(runs, "rss_bytes"),
-            "fields": {k: [r.get("fields", {}).get(k) for r in runs] for k in sorted({k for r in runs for k in r.get("fields", {})})},
-        }
-    doc = {
-        "format": 1,
-        "name": a.name,
-        "commit": commit,
-        "dirty": dirty,
-        "rustc": rustc_v,
-        "profile": "release for apps; dist for the bough-x/bough-paint examples",
-        "features": "default",
-        "host": {"os": platform.mac_ver()[0], "machine": platform.machine(),
-                 "cpu": subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True).stdout.strip(),
-                 "cpus": os.cpu_count()},
-        "load": {"before": load, "after": load_after, "ceiling": 2.0,
-                 "ok": max(load[0], load_after[0]) <= 2.0},
-        "binaries": manifest,
-        "cells": cells_out,
-        "errors": errors,
-        "slots": SLOTS,
-        "known_failures": KNOWN_FAILURES,
-        "log": log,
-        "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
-    jp = outdir / f"{a.name}.json"
-    jp.write_text(json.dumps(doc, indent=2) + "\n")
-    md = ["# baseline " + a.name, "", f"commit `{commit}`{' (dirty)' if dirty else ''} · {rustc_v}",
-          f"host {doc['host']['cpu']} ({doc['host']['cpus']} cores), macOS {doc['host']['os']}",
-          f"load {load[0]:.2f} → {load_after[0]:.2f} (ceiling 2.0: {'ok' if doc['load']['ok'] else 'LOADED'})", "",
-          "| cell | instructions (median [min–max]) | wall ms | RSS MiB |", "|---|---:|---:|---:|"]
-    for cid, c in cells_out.items():
-        i, w, r = c["instructions"], c["wall_ms"], c["rss_bytes"]
-        rss = f"{r['median']/1048576:.1f}" if r else "-"
-        md.append(f"| {cid} | {fmt(i, ',')} | {fmt(w, '.1f')} | {rss} |")
-    md += ["", "## Slots (scenes other agents are building)", ""]
-    md += [f"* `{k}`: {v}" for k, v in SLOTS.items()]
-    md += ["", "## Known failures (not cells)", ""]
-    md += [f"* {x}" for x in KNOWN_FAILURES]
-    (outdir / f"{a.name}.md").write_text("\n".join(md) + "\n")
-    print(f"baseline: wrote {jp} and {jp.with_suffix('.md')}")
-    if errors:
-        print(f"baseline: {len(errors)} cell error(s): {errors}", file=sys.stderr)
-    return 1 if errors else 0
-
-
-def fmt(s, spec):
-    if not s:
-        return "-"
-    return f"{s['median']:{spec}} [{s['min']:{spec}}–{s['max']:{spec}}]"
-
-
-def text_bytes(p):
-    m = sh(["size", "-m", str(p)])
-    if m.returncode != 0:
-        return None
-    for line in m.stdout.splitlines():
-        if "__text" in line:
-            parts = line.split()
+    order = []
+    try:
+        build_source, manifest = build(worktree, target, sorted({cell.binary for cell in matrix}),
+                                       toolchain, log, args.no_build)
+    except (OSError, ValueError, subprocess.SubprocessError, KeyError) as error:
+        print(f"baseline: build unavailable: {error}", file=sys.stderr)
+        errors.append({"stage": "build", "reason": type(error).__name__})
+    random_order = random.Random(71)
+    for rep in range(args.reps) if manifest else ():
+        batch = matrix.copy()
+        random_order.shuffle(batch)
+        order.append([cell.name for cell in batch])
+        for cell in batch:
+            binary = target / manifest[cell.binary]["path"]
+            path = log / f"{rep}-{cell.name.replace('/', '_')}"
             try:
-                return int(parts[2])
-            except (IndexError, ValueError):
-                return None
-    return None
+                measured = measure(cell, binary, worktree, path)
+                records[cell.name].append(measured)
+                print(f"{cell.name} rep {rep}: {len(measured['operations'])} operation rows", flush=True)
+            except (OSError, ValueError, subprocess.SubprocessError, KeyError) as error:
+                print(f"{cell.name} rep {rep} FAILED: {error}", file=sys.stderr)
+                errors.append({"cell": cell.name, "rep": rep, "reason": type(error).__name__})
+    for name, binary in manifest.items():
+        if digest(target / binary["path"]) != binary["sha256"]:
+            errors.append({"stage": "replay", "reason": f"{name} changed during replay"})
+    if manifest and source(worktree) != build_source:
+        errors.append({"stage": "replay", "reason": "source changed during replay"})
+    results = {}
+    for cell in matrix:
+        runs = records[cell.name]
+        result = {"binary": cell.binary, "argv": list(cell.argv), "env": cell.env, "parser": cell.parser,
+                  "load": [run["load"] for run in runs], "valid": len(runs) == args.reps}
+        if result["valid"]:
+            try:
+                result.update(summarize(runs))
+            except ValueError as error:
+                result["valid"] = False
+                errors.append({"cell": cell.name, "reason": str(error)})
+        results[cell.name] = result
+    load_after = os.getloadavg()
+    peak_load = max(load_before[0], load_after[0], *(v for cell in results.values() for v in cell["load"]))
+    doc = {
+        "format": 2, "name": args.name, "commit": build_source["commit"], "source": build_source,
+        "rustc": toolchain, "host": host, "reps": args.reps, "order": order,
+        "load": {"before": load_before, "after": load_after, "peak": peak_load, "ceiling": 2.0, "ok": peak_load <= 2.0},
+        "runtime_inputs": runtime_inputs, "binaries": manifest, "cells": results, "errors": errors,
+        "unavailable": unavailable, "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "contract": "Native headless macOS. Typed core: prepared Latin-1 DejaVu Sans 14/28 px, opaque colors, "
+                    "arithmetic rows, remount on resize, group-1 keymap and CPU spans. pbench includes offscreen Metal.",
+    }
+    write_json(out / f"{args.name}.json", doc)
+    lines = [f"# {args.name}", "", f"Commit `{doc['commit']}`", "", doc["contract"], "",
+             "| Cell | Operation | Median instructions |", "|---|---|---:|"]
+    for name, cell in results.items():
+        if not cell["valid"]:
+            lines.append(f"| {name} | invalid | |")
+            continue
+        for op, counters in cell["operations"].items():
+            for key in ("instr_p50", "dispatch_instr", "step_instr", "instructions"):
+                if key in counters:
+                    lines.append(f"| {name} | {op} ({key}) | {counters[key]['median']:,} |")
+        if not cell["operations"]:
+            lines.append(f"| {name} | process | {cell['process']['instructions']['median']:,} |")
+    (out / f"{args.name}.md").write_text("\n".join(lines) + "\n")
+    print(f"baseline: wrote {out / (args.name + '.json')} ({len(errors)} errors)")
+    return 1 if errors or not matrix else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        sys.exit(f"baseline: {exc}")
