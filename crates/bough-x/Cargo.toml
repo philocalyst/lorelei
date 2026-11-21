@@ -53,3 +53,7 @@ mutant_uniform = []
 mutant_each_in = []
 # a broad word's change damages nothing (tests/broad.rs must fail)
 mutant_broad = []
+# the world never marks a column as having a bounded delta in its table entry: every delta is the page scan
+mutant_fastcol = []
+# a gapped page skips its record 0 (store.rs page_delta_tests must fail)
+mutant_gap = []

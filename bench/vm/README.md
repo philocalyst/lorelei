@@ -73,6 +73,23 @@ layer disables lavapipe and wgpu (zgui) sees no adapter. An interactive cell who
 false (compositor wake lateness above 2 ms) is reported, never ranked. VM numbers are never compared
 with native macOS numbers.
 
+## Which measurements qualify on the Lima guest
+
+Fresh fixed-rate `rows`, `table`, and `ticker` trials on the ten-vCPU guest completed the phases.
+All 84 interactive timing reports failed Fakeland's wake-lateness check. At four vCPUs, all seven
+interactive `rows` reports failed with fixed timing and passed with unthrottled timing. The paired
+four-vCPU runs used the same binaries and affinity. The timing mode is part of the benchmark contract.
+See the [fixed-rate reports](../results/vm/round3-fixed.json) and the
+[unthrottled and fixed table reports](../results/vm/round4-timing.json).
+
+| Field | Qualification on this guest |
+|---|---|
+| Startup | Use the separately recorded milestones when startup completes without early exit or missing phases. Startup has no interactive wake verdict. |
+| Idle CPU and memory | Use the idle phase when the report passed and resource sampling is complete. |
+| CPU time per operation | Use complete operation traces with valid resource sampling and a recorded operation count. Keep the timing mode and execution contract with the value. |
+| Resident memory and retained state | Use phase-local process samples with comparable renderers and workloads. Retained-memory churn carries its own operation counts. |
+| Interactive latency, throughput and pacing | Require the phase's Fakeland validity verdict. The tested fixed-rate cells fail it. The four-vCPU unthrottled `rows` sample qualifies under that mode. |
+
 ## Guest layout
 
 `~/src/{lorelei,gui-bench,fakeland,zgui-fakeland-marks}`, built into `~/targets/lorelei-release`

@@ -55,7 +55,8 @@ def cells(worktree):
         label = "rows" if scene == "typing" else scene
         args = ("--scenario", scene, "--rows", str(rows), "--op", op, "--repeats", str(repeats))
         if op != "mount":
-            args += ("--blocks", "3")
+            # The no-change search trace reaches a steady allocation regime after the short capture.
+            args += ("--blocks", "15" if op == "filter-nochange" else "3")
         matrix.append(Cell(f"guibench/{label}-{rows}-{op}", "headless", args, {}, "guibench"))
     unavailable = {}
     if 'var("BROAD")' in (worktree / "crates/bough-x/examples/sheet_x.rs").read_text():
