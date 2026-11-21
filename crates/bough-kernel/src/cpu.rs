@@ -2,6 +2,8 @@
 //! specification, and the gates' oracle on any host). `raster` is the fast one: per-tile programs with the
 //! occlusion cut, spans and cores, flat-row replication, bands of tile rows across cores. They, and the GPU,
 //! call the same `kernel.rs` functions; their equality is the crate's test.
+mod shadow_cache;
+use self::shadow_cache::ShadowCache;
 use crate::k::{self, Cmd};
 use crate::stage::{F_TO, Scene, WORDS};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
@@ -507,6 +509,7 @@ impl Stats {
 pub struct Scratch {
     cmds: Vec<Cmd>,
     acc: Box<[[u16; 4]; 1024]>,
+    shadows: ShadowCache,
     pub st: Stats,
 }
 
@@ -515,6 +518,7 @@ impl Default for Scratch {
         Scratch {
             cmds: Vec::new(),
             acc: Box::new([[0; 4]; 1024]),
+            shadows: ShadowCache::default(),
             st: Stats::default(),
         }
     }
@@ -685,6 +689,11 @@ fn shade_tile(
         let (pm, pm2) = (st(c.pm), st(c.pm2));
         // a shadow's column profile over this tile's columns, made at the first row that needs it
         let (mut zone_x, mut sx_ready) = (0u32, false);
+        let mut shadow = if kind == k::K_SHADOW {
+            sc.shadows.coverage(c)
+        } else {
+            None
+        };
         let (hx, hy, lim) = (
             (c.b.z - c.b.x) >> 1,
             (c.b.w - c.b.y) >> 1,
@@ -850,7 +859,11 @@ fn shade_tile(
                             while m != 0 {
                                 let i = m.trailing_zeros() as usize;
                                 m &= m - 1;
-                                cov[i] = k::shadow(*c, cxa + i as i32 * 256, cy) as u16;
+                                let cx = cxa + i as i32 * 256;
+                                cov[i] = match &mut shadow {
+                                    Some(coverage) => coverage.sample(*c, cx, cy),
+                                    None => k::shadow(*c, cx, cy) as u16,
+                                };
                             }
                         }
                         simd::blend_cov(r, pm, &cov[..n]);

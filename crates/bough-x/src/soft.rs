@@ -173,11 +173,34 @@ impl Soft {
     /// Repair the damaged tiles of `tiles` from `paint` (which paints everything, cut to `self.clip`).
     pub fn repair(&mut self, tiles: &Tiles, mut paint: impl FnMut(&mut Soft)) {
         let whole = self.clip;
-        tiles.each(|t| {
-            self.clip = t;
-            self.rect(t, 0);
-            paint(self);
+        let mut bounds: Option<Rect> = None;
+        let mut area = 0;
+        let pixels = |r: Rect| i64::from(r.x1 - r.x0) * i64::from(r.y1 - r.y0);
+        tiles.each(|tile| {
+            area += pixels(tile);
+            bounds = Some(match bounds {
+                Some(r) => Rect {
+                    x0: r.x0.min(tile.x0),
+                    y0: r.y0.min(tile.y0),
+                    x1: r.x1.max(tile.x1),
+                    y1: r.y1.max(tile.y1),
+                },
+                None => tile,
+            });
         });
+        let Some(bounds) = bounds else { return };
+        let mut repair = |this: &mut Self, clip| {
+            this.clip = clip;
+            this.rect(clip, 0);
+            paint(this);
+        };
+        // Distinct tile rectangles are disjoint. Equal areas prove that their bounding
+        // rectangle has no hole, so the painter can walk the store once for that repair.
+        if area == pixels(bounds) || cfg!(feature = "mutant_repair_bounds") {
+            repair(self, bounds);
+        } else {
+            tiles.each(|tile| repair(self, tile));
+        }
         self.clip = whole;
     }
 }
