@@ -1,0 +1,14 @@
+# wave3 7991e7bd4e, release, CPU1, lock held
+layer_bytes,0,102396,147328
+layer_bytes,1,154204,208160
+layer_bytes,2,154204,208160
+layer_bytes,3,92156,135040
+layer_pool_bytes,698688,698688,698688
+gaussian_step,0.500000,28,11.9327,10.4310,false
+gaussian_step,1.289062,56,8.0410,4.9460,true
+gaussian_step,3.000000,126,11.4674,4.5205,true
+gaussian_step,6.000000,252,12.2997,4.6192,true
+gaussian_step,12.000000,504,14.0229,4.4155,true
+gaussian_step,24.000000,1008,22.1805,6.7826,false
+gaussian_step,40.000000,1680,51.8750,21.3474,false
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
