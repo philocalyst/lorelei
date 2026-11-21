@@ -27,7 +27,7 @@ use bough_paint::motion::{Response, Spring, SpringX};
 use bough_paint::paint::*;
 use bough_paint::scene::{ColId, Scene};
 use bough_sys::perf;
-use std::time::Instant;
+use std::{sync::OnceLock, time::Instant};
 
 const W0: u32 = 640;
 const H0: u32 = 400;
@@ -35,6 +35,55 @@ const W1: u32 = 704;
 const H1: u32 = 448;
 const VIDEO: [i32; 4] = [256 * 256, 124 * 256, 512 * 256, 268 * 256];
 const SEED: u32 = 41;
+const PREDECODED: bool = option_env!("BOUGH_FX_PREDECODED").is_some();
+const VIDEO_WIDTH: u32 = 256;
+const VIDEO_HEIGHT: u32 = 144;
+const VIDEO_Y_BYTES: usize = VIDEO_WIDTH as usize * VIDEO_HEIGHT as usize;
+const VIDEO_UV_BYTES: usize = VIDEO_Y_BYTES / 2;
+static DECODED_FRAMES: OnceLock<Vec<Box<[u8]>>> = OnceLock::new();
+
+fn decode_fixture() -> Vec<Box<[u8]>> {
+    let frame_words = bough_paint::media::frame_words(VIDEO_WIDTH, VIDEO_HEIGHT);
+    let mut pool = Media::new(3 * frame_words);
+    let mut source = Synth::new(VIDEO_WIDTH, VIDEO_HEIGHT, SEED);
+    (0..120)
+        .map(|_| {
+            let slot = source.next(&mut pool).expect("predecode source slot") as usize;
+            let words = pool.words();
+            let y_start = words[slot + 2] as usize;
+            let uv_start = words[slot + 3] as usize;
+            assert_eq!(y_start % 4, 0);
+            assert_eq!(uv_start, y_start + VIDEO_Y_BYTES);
+            assert_eq!(words[slot + 4], VIDEO_WIDTH);
+            assert_eq!(words[slot + 5], VIDEO_WIDTH);
+            let stop = (uv_start + VIDEO_UV_BYTES) / 4;
+            let bytes = words[y_start / 4..stop]
+                .iter()
+                .flat_map(|word| word.to_le_bytes())
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            pool.reclaim();
+            bytes
+        })
+        .collect()
+}
+
+fn publish_video(source: &mut Synth, pool: &mut Media) -> Option<u32> {
+    if !PREDECODED {
+        return source.next(pool);
+    }
+    let frames = DECODED_FRAMES.get().expect("prepare the video before timing");
+    let frame = frames.get(source.seq as usize).expect("the replay exceeds the 120-frame input");
+    let (y, uv) = frame.split_at(VIDEO_Y_BYTES);
+    let lease = pool.lease(VIDEO_WIDTH, VIDEO_HEIGHT)?;
+    let (dst_y, dst_uv, _, _) = pool.planes(&lease);
+    dst_y.copy_from_slice(y);
+    dst_uv.copy_from_slice(uv);
+    let slot = pool.publish(lease, source.seq, source.shown);
+    source.shown = Some(slot);
+    source.seq += 1;
+    Some(slot)
+}
 const HL: u32 = 0xff6b_3bff; // hover highlight, opaque (input byte order: R low)
 const BG: u32 = 0xff14_2638;
 const GDX: i32 = 700_000;
@@ -443,7 +492,7 @@ fn build(st: &mut St) -> (Scene, Cols) {
         );
         st.src.shown = None;
         st.src.seq = st.vseq;
-        let slot = st.src.next(&mut s.media).expect("video pool");
+        let slot = publish_video(&mut st.src, &mut s.media).expect("video pool");
         s.push(c.video, VIDEO, video(slot));
         for (j, (x, y)) in PANELS.into_iter().enumerate() {
             let rc = rect(x, y, 112.0, 76.0);
@@ -477,7 +526,7 @@ impl Fixture {
             fore: Spring::rest(0),
             pane: Spring::rest(0),
             pane_dx: 0,
-            src: Synth::new(256, 144, SEED),
+            src: Synth::new(VIDEO_WIDTH, VIDEO_HEIGHT, SEED),
             vseq: 0,
             mv: Vec::new(),
             slot: Vec::new(),
@@ -597,7 +646,7 @@ impl Fixture {
             Cell::Startup | Cell::Idle => {}
         }
         if cell.video_moves() && !self.st.bare && k != 0 && k % 4 == 0 && !drop_input {
-            let slot = self.st.src.next(&mut self.scene.media).expect("video pool");
+            let slot = publish_video(&mut self.st.src, &mut self.scene.media).expect("video pool");
             self.st.vseq = self.st.src.seq - 1;
             self.scene.set(self.cols.video, 0, VIDEO, video(slot));
         }
@@ -985,6 +1034,10 @@ fn main() {
     assert!(o.steps >= need, "need at least {need} samples");
     if o.check && matches!(o.cell, Cell::One | Cell::Many) {
         assert!(o.steps >= 100, "one/many settle after about 70 ticks: use 100 or more steps");
+    }
+    if PREDECODED {
+        let frames = DECODED_FRAMES.get_or_init(decode_fixture);
+        println!("fx_input,predecoded_nv12,{},{}", frames.len(), frames.iter().map(|frame| frame.len()).sum::<usize>());
     }
     if o.cell == Cell::Startup {
         return startup(&o);
