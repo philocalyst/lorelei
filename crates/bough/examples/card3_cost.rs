@@ -34,7 +34,11 @@ fn cfg() -> Config {
 /// What the benchmark needs of a runtime.
 trait Rt: Sized {
     const NAME: &'static str;
-    fn new(n: usize) -> Self;
+    fn new(n: usize) -> Self {
+        Self::of(Slice::new(n))
+    }
+    /// Mount a view that is already built (building 100,000 items is the application's cost, not a runtime's).
+    fn of(v: Slice) -> Self;
     fn frame(&mut self);
     fn turn(&mut self, f: impl FnOnce(&mut Slice));
     fn pointer_move(&mut self, x: f32, y: f32);
@@ -44,8 +48,8 @@ trait Rt: Sized {
 struct Legacy(bough::raw::App<Slice>);
 impl Rt for Legacy {
     const NAME: &'static str = "legacy";
-    fn new(n: usize) -> Self {
-        let mut a = bough::raw::App::new(Slice::new(n), cfg(), true);
+    fn of(v: Slice) -> Self {
+        let mut a = bough::raw::App::new(v, cfg(), true);
         a.repair = Repair::from_env();
         Legacy(a)
     }
@@ -70,8 +74,8 @@ impl Rt for Legacy {
 struct Lowered(bough::lower::App<Slice>);
 impl Rt for Lowered {
     const NAME: &'static str = "lowered";
-    fn new(n: usize) -> Self {
-        Lowered(bough::lower::App::new(Slice::new(n), cfg()))
+    fn of(v: Slice) -> Self {
+        Lowered(bough::lower::App::new(v, cfg()))
     }
     fn frame(&mut self) {
         self.0.frame();
@@ -115,14 +119,18 @@ fn run<R: Rt>() -> Vec<(&'static str, u64, u64)> {
     let mount = |n: usize| {
         let v: Vec<(u64, u64)> = (0..7)
             .map(|_| {
+                let v = Slice::new(n);
                 let i0 = instrs();
-                let mut app = R::new(n);
+                let mut app = R::of(v);
                 let i1 = instrs();
                 app.frame();
                 (i1 - i0, instrs() - i0)
             })
             .collect();
-        (med(v.iter().map(|x| x.0).collect()), med(v.iter().map(|x| x.1).collect()))
+        (
+            med(v.iter().map(|x| x.0).collect()),
+            med(v.iter().map(|x| x.1).collect()),
+        )
     };
     let (a, b) = mount(1000);
     out.push(("mount, 1,000 rows", a, b));
@@ -130,7 +138,9 @@ fn run<R: Rt>() -> Vec<(&'static str, u64, u64)> {
     out.push(("mount, 100,000 rows (virtual)", a, b));
     let mut app = R::new(1000);
     app.frame();
-    let (a, b) = cell(&mut app, |app, k| app.pointer_move(320.0, 200.0 + (k % 2) as f32 * ROW_H));
+    let (a, b) = cell(&mut app, |app, k| {
+        app.pointer_move(320.0, 200.0 + (k % 2) as f32 * ROW_H)
+    });
     out.push(("hover, one row to the next", a, b));
     let (a, b) = cell(&mut app, |app, k| {
         app.turn(|s| {
@@ -148,7 +158,9 @@ fn run<R: Rt>() -> Vec<(&'static str, u64, u64)> {
     out.push(("scroll by one row", a, b));
     let (a, b) = cell(&mut app, |app, _| app.turn(|s| s.toggle_theme()));
     out.push(("theme (opaque state)", a, b));
-    let (a, b) = cell(&mut app, |app, k| app.resize(640.0 + (k % 2) as f32 * 40.0, 480.0));
+    let (a, b) = cell(&mut app, |app, k| {
+        app.resize(640.0 + (k % 2) as f32 * 40.0, 480.0)
+    });
     out.push(("resize by 40 pt", a, b));
     let (a, b) = cell(&mut app, |_, _| {});
     out.push(("still frame", a, b));
@@ -158,22 +170,89 @@ fn run<R: Rt>() -> Vec<(&'static str, u64, u64)> {
 fn main() {
     let tsv = std::env::args().any(|a| a == "tsv");
     let (old, new) = (run::<Legacy>(), run::<Lowered>());
-    let load = std::process::Command::new("sysctl").args(["-n", "vm.loadavg"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let load = std::process::Command::new("sysctl")
+        .args(["-n", "vm.loadavg"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
     if tsv {
-        println!("cell\tlegacy_turn\tlowered_turn\tratio_turn\tlegacy_turn_frame\tlowered_turn_frame\tratio_turn_frame");
+        println!(
+            "cell\tlegacy_turn\tlowered_turn\tratio_turn\tlegacy_turn_frame\tlowered_turn_frame\tratio_turn_frame"
+        );
     } else {
-        println!("legacy repair: {:?}; load average: {load}", Repair::from_env());
-        println!("{:34} {:>12} {:>12} {:>7}   {:>12} {:>12} {:>7}", "cell (instructions, median)", "legacy turn", "lowered", "ratio", "legacy +frame", "lowered", "ratio");
+        println!(
+            "legacy repair: {:?}; load average: {load}",
+            Repair::from_env()
+        );
+        println!(
+            "{:34} {:>12} {:>12} {:>7}   {:>12} {:>12} {:>7}",
+            "cell (instructions, median)",
+            "legacy turn",
+            "lowered",
+            "ratio",
+            "legacy +frame",
+            "lowered",
+            "ratio"
+        );
     }
     for (o, n) in old.iter().zip(&new) {
-        let r = |a: u64, b: u64| if a == 0 { f64::NAN } else { b as f64 / a as f64 };
+        let r = |a: u64, b: u64| {
+            if a == 0 {
+                f64::NAN
+            } else {
+                b as f64 / a as f64
+            }
+        };
         if tsv {
-            println!("{}\t{}\t{}\t{:.3}\t{}\t{}\t{:.3}", o.0, o.1, n.1, r(o.1, n.1), o.2, n.2, r(o.2, n.2));
+            println!(
+                "{}\t{}\t{}\t{:.3}\t{}\t{}\t{:.3}",
+                o.0,
+                o.1,
+                n.1,
+                r(o.1, n.1),
+                o.2,
+                n.2,
+                r(o.2, n.2)
+            );
         } else {
-            println!("{:34} {:>12} {:>12} {:>6.2}x   {:>12} {:>12} {:>6.2}x", o.0, o.1, n.1, r(o.1, n.1), o.2, n.2, r(o.2, n.2));
+            println!(
+                "{:34} {:>12} {:>12} {:>6.2}x   {:>12} {:>12} {:>6.2}x",
+                o.0,
+                o.1,
+                n.1,
+                r(o.1, n.1),
+                o.2,
+                n.2,
+                r(o.2, n.2)
+            );
         }
     }
+    // where a lowered turn's instructions go (the title edit): view and lowering, layout and emission, the world
+    let mut app = bough::lower::App::new(Slice::new(1000), cfg());
+    app.frame();
+    app.stats.profile = true;
+    for k in 0..50 {
+        app.turn(|s| {
+            s.title.set(format!("Profile {k}"));
+        });
+    }
+    let st = app.stats.stage.map(|v| v / 50);
+    let line = format!(
+        "lowered title edit, thread instructions per turn: view+lower {} / layout+emit {} / world compare {} ({} records)",
+        st[0],
+        st[1],
+        st[2],
+        app.record_count()
+    );
     if tsv {
-        println!("# load average: {load}; legacy repair: {:?}", Repair::from_env());
+        println!("# {line}");
+    } else {
+        println!("{line}");
+    }
+    if tsv {
+        println!(
+            "# load average: {load}; legacy repair: {:?}",
+            Repair::from_env()
+        );
     }
 }

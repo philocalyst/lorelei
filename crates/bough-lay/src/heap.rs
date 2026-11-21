@@ -21,7 +21,7 @@ use crate::val::{Av, Cx, V};
 use core::cell::RefCell;
 
 /// One element.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct El {
     pub spec: Spec,
     /// [`K_BOX`], [`K_LINE`] or [`crate::shape::K_WRAP`].
@@ -38,13 +38,15 @@ pub struct El {
 }
 
 type Q = ([Option<V>; 2], [Option<V>; 2], [Av; 2], bool);
+const MEMO: usize = 6;
 
 /// Elements in pre-order.
 #[derive(Default)]
 pub struct Tree {
     pub els: Vec<El>,
     pub wraps: Vec<Box<dyn Wrap>>,
-    memo: RefCell<Vec<Vec<(Q, [V; 2])>>>,
+    /// Per element: up to `MEMO` answered questions (a ring), in one allocation.
+    memo: RefCell<Vec<(u8, [Option<(Q, [V; 2])>; MEMO])>>,
     /// Size questions answered from the memo, and answered by solving (a count band for the gates).
     pub hits: core::cell::Cell<u64>,
     pub misses: core::cell::Cell<u64>,
@@ -107,7 +109,7 @@ impl Tree {
     fn ready(&self) {
         let mut m = self.memo.borrow_mut();
         m.clear();
-        m.resize(self.els.len(), Vec::new());
+        m.resize(self.els.len(), (0, [None; MEMO]));
     }
     /// Lay the subtree at `root` out as a window root of `avail` device pixels: `out[k - root]` is element `k`.
     pub fn place_root<O: Out + ?Sized>(
@@ -201,7 +203,13 @@ impl Lay for At<'_> {
         content_only: bool,
     ) -> [V; 2] {
         let q: Q = (known, parent, avail, content_only);
-        if let Some(&(_, a)) = self.t.memo.borrow()[self.i].iter().find(|e| e.0 == q) {
+        if let Some((_, a)) = self.t.memo.borrow()[self.i]
+            .1
+            .iter()
+            .flatten()
+            .find(|e| e.0 == q)
+        {
+            let a = *a;
             self.t.hits.set(self.t.hits.get() + 1);
             return a;
         }
@@ -241,11 +249,9 @@ impl Lay for At<'_> {
             )
         };
         let mut m = self.t.memo.borrow_mut();
-        let slot = &mut m[self.i];
-        if slot.len() == 8 {
-            slot.remove(0);
-        }
-        slot.push((q, a));
+        let (next, slot) = &mut m[self.i];
+        slot[*next as usize % MEMO] = Some((q, a));
+        *next = next.wrapping_add(1);
         a
     }
     fn reported(&self, cx: &mut Cx, size: [V; 2]) -> [V; 2] {

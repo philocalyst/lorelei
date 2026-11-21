@@ -65,6 +65,10 @@ pub struct Stats {
     /// Frames that found nothing damaged.
     pub idle_frames: u64,
     pub tiles_repaired: u64,
+    /// With `profile` set: thread instructions spent in the view and its lowering, in layout and emission, and
+    /// in the world's compare pass (where a turn's cost is).
+    pub profile: bool,
+    pub stage: [u64; 3],
 }
 
 struct Held {
@@ -83,6 +87,7 @@ pub struct App<V: View> {
     owners: Vec<Owner>,
     refused: Vec<&'static str>,
     lists: super::list::Lists,
+    lay: super::LayMemo,
     size_pt: (f32, f32),
     scale: f32,
     /// The surfaces, each with the damage it has not repaired yet.
@@ -133,6 +138,7 @@ impl<V: View> App<V> {
             owners: Vec::new(),
             refused: Vec::new(),
             lists: Default::default(),
+            lay: Default::default(),
             size_pt: (cfg.width_pt, cfg.height_pt),
             scale: cfg.scale,
             ring: Vec::new(),
@@ -189,10 +195,35 @@ impl<V: View> App<V> {
         let (mut text, mut images) = (self.text.borrow_mut(), self.images.borrow_mut());
         text.begin_pass();
         let mut core = Core::new(self.scale, (w, h), &self.lists, &mut text, &mut images);
+        let t0 = if self.stats.profile {
+            bough_sys::perf::thread_instructions()
+        } else {
+            0
+        };
         View::view(&self.lv.v).lower(&mut Lower::new(&mut core));
-        assert!(core.refused.is_empty(), "the lowered runtime does not lower these elements yet: {:?}", core.refused);
-        let scene = super::finish(&core, w, h);
-        let Core { docs, handlers, owners, refused, rows, .. } = core;
+        let t1 = if self.stats.profile {
+            bough_sys::perf::thread_instructions()
+        } else {
+            0
+        };
+        assert!(
+            core.refused.is_empty(),
+            "the lowered runtime does not lower these elements yet: {:?}",
+            core.refused
+        );
+        let scene = super::finish(&core, w, h, &mut self.lay);
+        if self.stats.profile {
+            self.stats.stage[0] += t1 - t0;
+            self.stats.stage[1] += bough_sys::perf::thread_instructions() - t1;
+        }
+        let Core {
+            docs,
+            handlers,
+            owners,
+            refused,
+            rows,
+            ..
+        } = core;
         let mut again = false;
         for r in rows {
             let rect = scene.rects[r.doc as usize][r.node as usize];
@@ -217,7 +248,7 @@ impl<V: View> App<V> {
         let mut scene = self.lv.scene.borrow_mut();
         for &(d, n) in &self.hover {
             if let Some(c) = self.docs[d as usize].nodes[n as usize].hover_bg {
-                if let Some(h) = scene.hits.iter().find(|h| (h.doc, h.node) == (d, n)) {
+                if let Some(h) = scene.hit(d, n) {
                     if let Some((s, i)) = h.prim {
                         scene.segs[s as usize].prims[i as usize].1.color = c;
                     }
@@ -234,7 +265,15 @@ impl<V: View> App<V> {
             _v: std::marker::PhantomData,
         });
         self.describe();
+        let t0 = if self.stats.profile {
+            bough_sys::perf::thread_instructions()
+        } else {
+            0
+        };
         self.world.redescribe(&self.lv);
+        if self.stats.profile {
+            self.stats.stage[2] += bough_sys::perf::thread_instructions() - t0;
+        }
     }
     /// Run `f` on the state, then bring the window up to date with it.
     pub fn turn(&mut self, f: impl FnOnce(&mut V)) {
@@ -383,6 +422,10 @@ impl<V: View> App<V> {
     pub fn lifecycle(&self) -> (u32, u32) {
         self.world.lifecycle()
     }
+    /// (documents laid out, documents whose layout was kept from the last description).
+    pub fn layouts(&self) -> (u64, u64) {
+        (self.lay.laid, self.lay.kept)
+    }
     pub fn text_stats(&self) -> super::text::TextStats {
         self.text.borrow().stats
     }
@@ -434,7 +477,7 @@ impl<V: View> App<V> {
     pub fn focused(&self) -> Option<[f32; 4]> {
         let (d, n) = self.focus?;
         let scene = self.lv.scene.borrow();
-        let h = scene.hits.iter().find(|h| (h.doc, h.node) == (d, n))?;
+        let h = scene.hit(d, n)?;
         Some(
             [
                 h.rect.x0,

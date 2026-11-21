@@ -32,6 +32,47 @@ fn intern(bytes: &[u8]) -> &'static [u8] {
     k
 }
 
+/// A font file mapped once for the process (a fallback face can be hundreds of megabytes: it is mapped, not
+/// read, and only the pages a glyph needs are ever touched). `None` if the file cannot be opened or mapped.
+fn font_file(path: &str) -> Option<&'static [u8]> {
+    use std::os::fd::AsRawFd;
+    use std::sync::{Mutex, OnceLock};
+    static FILES: OnceLock<Mutex<HashMap<String, Option<&'static [u8]>>>> = OnceLock::new();
+    let mut g = FILES.get_or_init(Default::default).lock().unwrap();
+    if let Some(&f) = g.get(path) {
+        return f;
+    }
+    let map = (|| {
+        let file = std::fs::File::open(path).ok()?;
+        let len = file.metadata().ok()?.len() as usize;
+        if len == 0 {
+            return None;
+        }
+        // SAFETY: a private read-only mapping of `len` bytes of an open file; the kernel picks the address.
+        // The result is checked against MAP_FAILED before use. The mapping is never unmapped, so the slice
+        // is valid for the process's life; it is private, so writes by others to the file are not seen as
+        // changes of mapped pages already copied, and a truncation of a system font file while the process
+        // runs is outside what this guards (the same holds for any mapped font).
+        let p = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                len,
+                libc::PROT_READ,
+                libc::MAP_PRIVATE,
+                file.as_raw_fd(),
+                0,
+            )
+        };
+        if p == libc::MAP_FAILED {
+            return None;
+        }
+        // SAFETY: `p` is a live mapping of `len` readable bytes that is never unmapped.
+        Some(unsafe { std::slice::from_raw_parts(p as *const u8, len) })
+    })();
+    g.insert(path.to_string(), map);
+    map
+}
+
 struct FaceD {
     rb: rustybuzz::Face<'static>,
     upem: f32,
@@ -87,7 +128,8 @@ pub struct TextSys {
     pending: Vec<String>,
     runs: Vec<Run>,
     free: Vec<u32>,
-    memo: HashMap<(Box<str>, u32), u32>,
+    /// Runs by size (its bits), then by text: a lookup borrows the text and allocates nothing.
+    memo: HashMap<u32, HashMap<Box<str>, u32>>,
     glyphs: HashMap<(u8, u16, u32), Bitmap>,
     pass: u32,
     pub stats: TextStats,
@@ -143,7 +185,9 @@ impl TextSys {
         t
     }
     fn add_face(&mut self, bytes: &[u8]) -> bool {
-        let data = intern(bytes);
+        self.add_static(intern(bytes))
+    }
+    fn add_static(&mut self, data: &'static [u8]) -> bool {
         match rustybuzz::Face::from_slice(data, 0) {
             Some(rb) if self.faces.len() < 255 => {
                 let upem = rb.units_per_em() as f32;
@@ -166,8 +210,8 @@ impl TextSys {
             let Some(path) = self.pending.pop() else {
                 return 0;
             };
-            if let Ok(bytes) = std::fs::read(&path) {
-                self.add_face(&bytes);
+            if let Some(bytes) = font_file(&path) {
+                self.add_static(bytes);
             }
         }
     }
@@ -191,7 +235,9 @@ impl TextSys {
             // runs nobody asked for in the last 256 descriptions are released; their slots get a new generation
             for (i, r) in self.runs.iter_mut().enumerate() {
                 if r.live && self.pass.wrapping_sub(r.stamp) > 256 {
-                    self.memo.remove(&r.key);
+                    if let Some(m) = self.memo.get_mut(&r.key.1) {
+                        m.remove(&r.key.0);
+                    }
                     r.live = false;
                     r.glyphs = Vec::new();
                     r.generation = r.generation.wrapping_add(1);
@@ -204,8 +250,7 @@ impl TextSys {
     /// The run of `text` at `size` device pixels: (index, generation). Shaped the first time it is asked for.
     pub fn run(&mut self, text: &str, size: f32) -> (u32, u32) {
         let bits = size.to_bits();
-        // (a lookup by borrowed key: the boxed key is built only on a miss)
-        if let Some(&i) = self.memo.get(&(Box::<str>::from(text), bits)) {
+        if let Some(&i) = self.memo.get(&bits).and_then(|m| m.get(text)) {
             let r = &mut self.runs[i as usize];
             r.stamp = self.pass;
             self.stats.memo_hits += 1;
@@ -247,7 +292,7 @@ impl TextSys {
                 self.runs.len() as u32 - 1
             }
         };
-        self.memo.insert(key, i);
+        self.memo.entry(bits).or_default().insert(key.0, i);
         (i, self.runs[i as usize].generation)
     }
     /// The run a record names, if it is still that run.
@@ -751,5 +796,24 @@ impl bough_lay::Wrap for RcPara {
     }
     fn rc(&self) -> std::rc::Rc<dyn bough_lay::Wrap> {
         self.0.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The mapping behind `font_file`: the bytes are the file's, and a second call is the same mapping.
+    #[test]
+    fn a_font_file_is_mapped_once_and_reads_as_the_file() {
+        let path = std::env::temp_dir().join(format!("bough-font-map-{}.bin", std::process::id()));
+        let bytes: Vec<u8> = (0..70_000u32).map(|i| (i * 31 % 251) as u8).collect();
+        std::fs::write(&path, &bytes).unwrap();
+        let a = font_file(path.to_str().unwrap()).expect("mapped");
+        assert_eq!(a, &bytes[..]);
+        let b = font_file(path.to_str().unwrap()).expect("mapped");
+        assert_eq!(a.as_ptr(), b.as_ptr());
+        assert!(font_file("/nonexistent/font.ttf").is_none());
+        std::fs::remove_file(&path).unwrap();
     }
 }

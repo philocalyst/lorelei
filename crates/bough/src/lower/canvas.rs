@@ -298,14 +298,29 @@ impl Canvas {
             }
         }
     }
-    /// Repaint the damaged tiles of `tiles` from `paint` (which paints everything, cut to `self.clip`).
+    /// Repaint the damaged tiles of `tiles` from `paint` (which paints everything, cut to `self.clip`). Marked
+    /// tiles that are neighbours in a tile row are repainted as one span: `paint` walks the records once per
+    /// span, not once per tile. (A span is a union of whole damaged tiles, so what is cleared and repainted is
+    /// exactly the damage.)
     pub fn repair(&mut self, tiles: &Tiles, mut paint: impl FnMut(&mut Canvas)) {
         let whole = self.clip;
-        tiles.each(|t| {
-            self.clip = t.and(whole);
-            self.clear(t);
-            paint(self);
+        let mut span: Option<Rect> = None;
+        let mut flush = |c: &mut Canvas, t: Rect| {
+            c.clip = t.and(whole);
+            c.clear(t);
+            paint(c);
+        };
+        tiles.each(|t| match span {
+            Some(s) if s.y0 == t.y0 && s.x1 == t.x0 => span = Some(Rect { x1: t.x1, ..s }),
+            Some(s) => {
+                flush(self, s);
+                span = Some(t);
+            }
+            None => span = Some(t),
         });
+        if let Some(s) = span {
+            flush(self, s);
+        }
         self.clip = whole;
     }
     /// One record, as the stores' paint pass would draw it.

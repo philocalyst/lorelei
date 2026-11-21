@@ -194,6 +194,16 @@ impl crate::draw::Prims for SoftPrims<'_> {
     fn rbox(&mut self, r: Rect, cut: Rect, _: i32, _: u32, c: u32) {
         self.0.rect(r.and(cut), c)
     }
+    /// The oracle draws a generic box as its rect in its colour word; it has no shaped text and no images, and
+    /// refuses those kinds.
+    fn prim(&mut self, r: Rect, cut: Rect, p: &crate::prim::Prim) {
+        assert!(
+            p.kind == crate::prim::P_BOX,
+            "the reference raster draws generic boxes only (kind {})",
+            p.kind
+        );
+        self.0.rect(r.and(cut), p.color)
+    }
 }
 
 impl Backend for Soft {

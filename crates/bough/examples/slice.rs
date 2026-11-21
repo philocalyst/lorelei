@@ -7,7 +7,16 @@
 use bough::prelude::*;
 
 pub const ROW_H: f32 = 28.0;
-pub const LABELS: [&str; 8] = ["plain ASCII row", "naïve café, Ångström", "日本語のテキスト", "emoji 😀 🎉 row", "Ελληνικά και кириллица", "mixed 中文 and Latin", "numbers 1234567890", "مرحبا بالعالم"];
+pub const LABELS: [&str; 8] = [
+    "plain ASCII row",
+    "naïve café, Ångström",
+    "日本語のテキスト",
+    "emoji 😀 🎉 row",
+    "Ελληνικά και кириллица",
+    "mixed 中文 and Latin",
+    "numbers 1234567890",
+    "مرحبا بالعالم",
+];
 
 pub struct Item {
     pub id: u32,
@@ -19,13 +28,21 @@ impl View for Item {
         row((
             text(self.id).color(rgb(0x6b7280)).w(56.0),
             text(self.label.as_str()).color(rgb(0x111827)).grow(1.0),
-            text(if self.done { "done" } else { "open" }).color(if self.done { rgb(0x15803d) } else { rgb(0x9ca3af) }),
+            text(if self.done { "done" } else { "open" }).color(if self.done {
+                rgb(0x15803d)
+            } else {
+                rgb(0x9ca3af)
+            }),
         ))
         .items(Align::Center)
         .gap(8.0)
         .px(12.0)
         .h(ROW_H)
-        .bg(if self.id % 2 == 0 { rgb(0xf9fafb) } else { rgb(0xffffff) })
+        .bg(if self.id % 2 == 0 {
+            rgb(0xf9fafb)
+        } else {
+            rgb(0xffffff)
+        })
         .hover_bg(rgb(0xdbeafe))
     }
 }
@@ -43,7 +60,15 @@ pub struct Slice {
 
 impl Slice {
     pub fn new(n: usize) -> Slice {
-        let mut s = Slice { title: Signal::new("Vertical slice".to_string()), count: Signal::new(0), dark: false, scroll: Signal::new(0.0), items: List::new(), next_id: 0, keys: 0 };
+        let mut s = Slice {
+            title: Signal::new("Vertical slice".to_string()),
+            count: Signal::new(0),
+            dark: false,
+            scroll: Signal::new(0.0),
+            items: List::new(),
+            next_id: 0,
+            keys: 0,
+        };
         for _ in 0..n {
             s.add();
         }
@@ -53,7 +78,11 @@ impl Slice {
     fn item(&mut self) -> Item {
         let id = self.next_id;
         self.next_id += 1;
-        Item { id, label: LABELS[id as usize % LABELS.len()].to_string(), done: id % 3 == 0 }
+        Item {
+            id,
+            label: LABELS[id as usize % LABELS.len()].to_string(),
+            done: id % 3 == 0,
+        }
     }
     pub fn add(&mut self) {
         let it = self.item();
@@ -95,11 +124,17 @@ impl Slice {
 
 impl View for Slice {
     fn view(&self) -> impl Element<Self> + '_ {
-        let (bg, bar, ink) = if self.dark { (rgb(0x111827), rgb(0x1f2937), rgb(0xf9fafb)) } else { (rgb(0xe5e7eb), rgb(0xffffff), rgb(0x111827)) };
+        let (bg, bar, ink) = if self.dark {
+            (rgb(0x111827), rgb(0x1f2937), rgb(0xf9fafb))
+        } else {
+            (rgb(0xe5e7eb), rgb(0xffffff), rgb(0x111827))
+        };
         column((
             row((
                 text(sig!(self.title)).font(16.0, 24.0).color(ink),
-                text(sig!(self.count).map(|n| format!("{n} edits"))).color(rgb(0x6b7280)).grow(1.0),
+                text(sig!(self.count).map(|n| format!("{n} edits")))
+                    .color(rgb(0x6b7280))
+                    .grow(1.0),
                 button("Add").on_click(Slice::add),
                 button("Add first").on_click(Slice::add_front),
                 button("Remove").on_click(Slice::remove_first),
@@ -112,9 +147,24 @@ impl View for Slice {
             .h(48.0)
             .bg(bar),
             // a translucent band over the top of the list: what is under it must show through
-            div().relative().grow(1.0).child(list(sig!(self.items)).scroll(sig!(self.scroll)).estimate(ROW_H).w_pct(1.0).h_pct(1.0).bg(rgb(0xffffff)).on_key(Slice::key)).child(
-                block(160.0, 40.0).abs(24.0, 12.0).bg(Color::rgba(47, 107, 255, 96)).rounded(8.0),
-            ),
+            div()
+                .relative()
+                .grow(1.0)
+                .child(
+                    list(sig!(self.items))
+                        .scroll(sig!(self.scroll))
+                        .estimate(ROW_H)
+                        .w_pct(1.0)
+                        .h_pct(1.0)
+                        .bg(rgb(0xffffff))
+                        .on_key(Slice::key),
+                )
+                .child(
+                    block(160.0, 40.0)
+                        .abs(24.0, 12.0)
+                        .bg(Color::rgba(47, 107, 255, 96))
+                        .rounded(8.0),
+                ),
         ))
         .w_pct(1.0)
         .h_pct(1.0)
@@ -124,5 +174,9 @@ impl View for Slice {
 
 #[allow(dead_code)]
 fn main() {
-    Application::run(Window::document(Slice::new(1000)).title("Slice").size(640.0, 480.0));
+    Application::run(
+        Window::document(Slice::new(1000))
+            .title("Slice")
+            .size(640.0, 480.0),
+    );
 }

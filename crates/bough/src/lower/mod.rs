@@ -388,6 +388,16 @@ pub(crate) struct Scene {
     pub rects: Vec<Vec<[i32; 4]>>,
     /// Per document: content height in device pixels.
     pub heights: Vec<i32>,
+    /// Per document, per node: its entry in `hits`.
+    pub index: Vec<Vec<u32>>,
+}
+
+impl Scene {
+    /// The hit entry of node `n` of document `d`.
+    pub(crate) fn hit(&self, d: u32, n: u32) -> Option<&Hit> {
+        let i = *self.index.get(d as usize)?.get(n as usize)?;
+        self.hits.get(i as usize)
+    }
 }
 
 struct Emit<'s> {
@@ -411,7 +421,6 @@ impl Emit<'_> {
     /// Emit document `d` into `space`: its records in pre-order (paint order), its nodes as hits.
     fn doc(&mut self, d: usize, space: Space, parent_hit: u32) {
         let doc = &self.docs[d];
-        let base = self.scene.hits.len() as u32;
         for (k, n) in doc.nodes.iter().enumerate() {
             let r = self.scene.rects[d][k];
             let r = Rect {
@@ -484,9 +493,10 @@ impl Emit<'_> {
             let parent = if n.parent == NO {
                 parent_hit
             } else {
-                base + n.parent
+                self.scene.index[d][n.parent as usize]
             };
             let at = self.scene.hits.len() as u32;
+            self.scene.index[d][k] = at;
             self.scene.hits.push(Hit {
                 rect: r.shift(org),
                 clip: space.clip,
@@ -538,29 +548,73 @@ impl Emit<'_> {
     }
 }
 
+/// What a document's last layout was asked and answered: its elements (layout words and leaf sizes), the space
+/// it was given, its rects and its height. A description whose document asks the same question again takes
+/// the answer: the comparison is of every word, so equal means equal (no hash stands in for it).
+///
+/// A document with a wrapping leaf is never taken from here: a paragraph's layout words do not hold its text.
+#[derive(Default)]
+pub(crate) struct LayMemo {
+    docs: Vec<(Vec<bough_lay::heap::El>, [f32; 2], f32, Vec<[i32; 4]>, i32)>,
+    /// Documents laid out, and documents whose layout was taken from the memo (count bands).
+    pub laid: u64,
+    pub kept: u64,
+}
+
 /// Lay every document out and emit the scene for a window of `w` x `h` device pixels.
-pub(crate) fn finish(core: &Core<'_>, w: i32, h: i32) -> Scene {
+pub(crate) fn finish(core: &Core<'_>, w: i32, h: i32, memo: &mut LayMemo) -> Scene {
     let u = bough_x::expr::U::default();
     let mut scene = Scene {
         rects: vec![Vec::new(); core.docs.len()],
         heights: vec![0; core.docs.len()],
+        index: core.docs.iter().map(|d| vec![NO; d.nodes.len()]).collect(),
         ..Scene::default()
     };
     // documents in creation order: a port is described (and so laid out) before its content
     let mut widths = vec![0f32; core.docs.len()];
+    memo.docs.truncate(core.docs.len());
     for (d, doc) in core.docs.iter().enumerate() {
-        let mut out = vec![[0i32; 4]; doc.nodes.len()];
-        if !doc.nodes.is_empty() {
-            if d == 0 {
-                doc.tree
-                    .place_root(0, core.scale, &u, [w as f32, h as f32], &mut out[..]);
-                scene.heights[0] = h;
-            } else {
-                scene.heights[d] = doc
-                    .tree
-                    .place_row(0, core.scale, &u, widths[d], &mut out[..]);
+        let avail = if d == 0 {
+            [w as f32, h as f32]
+        } else {
+            [widths[d], 0.0]
+        };
+        let same = doc.tree.wraps.is_empty()
+            && memo
+                .docs
+                .get(d)
+                .is_some_and(|m| m.1 == avail && m.2 == core.scale && m.0 == doc.tree.els);
+        let out = if same {
+            memo.kept += 1;
+            scene.heights[d] = memo.docs[d].4;
+            memo.docs[d].3.clone()
+        } else {
+            memo.laid += 1;
+            let mut out = vec![[0i32; 4]; doc.nodes.len()];
+            if !doc.nodes.is_empty() {
+                if d == 0 {
+                    doc.tree.place_root(0, core.scale, &u, avail, &mut out[..]);
+                    scene.heights[0] = h;
+                } else {
+                    scene.heights[d] =
+                        doc.tree
+                            .place_row(0, core.scale, &u, avail[0], &mut out[..]);
+                }
             }
-        }
+            let entry = (
+                doc.tree.els.clone(),
+                avail,
+                core.scale,
+                out.clone(),
+                scene.heights[d],
+            );
+            if d < memo.docs.len() {
+                memo.docs[d] = entry;
+            } else {
+                memo.docs.push(entry);
+            }
+            out
+        };
         for (k, n) in doc.nodes.iter().enumerate() {
             if let Some(sc) = &n.scroll {
                 widths[sc.doc as usize] = (out[k][2] - out[k][0]) as f32;

@@ -1,0 +1,11 @@
+cell	legacy_turn	lowered_turn	ratio_turn	legacy_turn_frame	lowered_turn_frame	ratio_turn_frame
+mount, 1,000 rows	26886556	8269110	0.308	37315788	19199122	0.515
+mount, 100,000 rows (virtual)	58047445	66050608	1.138	68385074	76983214	1.126
+hover, one row to the next	14772	18024	1.220	29372	907181	30.886
+one signal (the title)	22442	764339	34.058	91213	875967	9.604
+click Add first (insert at 0)	132297	1492345	11.280	5109605	8379928	1.640
+scroll by one row	105249	1490061	14.157	7317421	8287896	1.133
+theme (opaque state)	21463	727274	33.885	8019706	11837148	1.476
+resize by 40 pt	4370769	2055878	0.470	14761711	13263346	0.898
+still frame	14251	13097	0.919	28745	26233	0.913
+# load average: { 17.79 15.90 16.94 }; legacy repair: Kernel

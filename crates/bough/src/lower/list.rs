@@ -37,7 +37,8 @@ pub(crate) struct RowRec {
     pub node: u32,
 }
 
-pub(crate) struct ListParams {
+#[doc(hidden)]
+pub struct ListParams {
     pub spec: Spec,
     pub bg: Option<Color>,
     pub radius: f32,
@@ -50,11 +51,20 @@ pub(crate) struct ListParams {
 }
 
 fn mix(a: u64, b: u64) -> u64 {
-    (a ^ b.wrapping_mul(0x9e37_79b9_7f4a_7c15)).rotate_left(27).wrapping_mul(0x100_0000_01b3)
+    (a ^ b.wrapping_mul(0x9e37_79b9_7f4a_7c15))
+        .rotate_left(27)
+        .wrapping_mul(0x100_0000_01b3)
 }
 
 /// One row: a wrapper box (what is measured), under an owner that reaches the item by its slot.
-fn row<V: 'static, T: 'static>(core: &mut Core<'_>, key: ListKey, list: &List<T>, off: u32, pos: usize, f: for<'c, 'a> fn(&T, &mut Lower<'c, 'a, T>)) {
+fn row<V: 'static, T: 'static>(
+    core: &mut Core<'_>,
+    key: ListKey,
+    list: &List<T>,
+    off: u32,
+    pos: usize,
+    f: for<'c, 'a> fn(&T, &mut Lower<'c, 'a, T>),
+) {
     let slot = list.slot(pos).expect("a position under the list's length");
     let item = list.get(pos).expect("a position under the list's length");
     let (parent, parent_key) = (core.owner, core.owner_key);
@@ -71,15 +81,29 @@ fn row<V: 'static, T: 'static>(core: &mut Core<'_>, key: ListKey, list: &List<T>
         }),
     });
     core.owner = core.owners.len() as u32;
-    core.owner_key = mix(mix(parent_key, off as u64), (slot.index() as u64) << 32 | slot.generation as u64);
+    core.owner_key = mix(
+        mix(parent_key, off as u64),
+        (slot.index() as u64) << 32 | slot.generation as u64,
+    );
     let w = core.open(&Spec::new(true, true), "list row");
-    core.rows.push(RowRec { key, slot: slot.index(), doc: core.cur as u32, node: w as u32 });
+    core.rows.push(RowRec {
+        key,
+        slot: slot.index(),
+        doc: core.cur as u32,
+        node: w as u32,
+    });
     f(item, &mut Lower::<T>::new(core));
     core.close(w);
     (core.owner, core.owner_key) = (parent, parent_key);
 }
 
-pub(crate) fn lower_list<V: 'static, T: 'static>(l: &mut Lower<'_, '_, V>, p: ListParams, list: &List<T>, off: u32, f: for<'c, 'a> fn(&T, &mut Lower<'c, 'a, T>)) {
+pub(crate) fn lower_list<V: 'static, T: 'static>(
+    l: &mut Lower<'_, '_, V>,
+    p: ListParams,
+    list: &List<T>,
+    off: u32,
+    f: for<'c, 'a> fn(&T, &mut Lower<'c, 'a, T>),
+) {
     let core = &mut *l.core;
     let key: ListKey = (TypeId::of::<V>(), off, core.owner_key);
     let s = core.scale;
@@ -87,7 +111,11 @@ pub(crate) fn lower_list<V: 'static, T: 'static>(l: &mut Lower<'_, '_, V>, p: Li
     let paint = |core: &mut Core<'_>, i: usize| {
         let node = core.node(i);
         if let Some(c) = p.bg {
-            node.paint = super::Paint::Box { color: c.0, radius: p.radius, border: None };
+            node.paint = super::Paint::Box {
+                color: c.0,
+                radius: p.radius,
+                border: None,
+            };
             node.solid = true;
         }
     };
@@ -119,8 +147,11 @@ pub(crate) fn lower_list<V: 'static, T: 'static>(l: &mut Lower<'_, '_, V>, p: Li
     let at = p.scroll.map_or(0.0, |x| x.0);
     let top = (at * s).round() as i64 - (p.spec.pad[1] * s).round() as i64;
     let order = list.order_slots();
-    let height = |core: &Core<'_>, pos: usize| -> i64 {
-        match core.lists.get(&key).and_then(|st| st.h.get(order[pos] as usize)) {
+    // (the measured heights are looked up once, not per row)
+    let lists = core.lists;
+    let measured: &[i32] = lists.get(&key).map_or(&[], |st| &st.h[..]);
+    let height = |_: &Core<'_>, pos: usize| -> i64 {
+        match measured.get(order[pos] as usize) {
             Some(&h) if h > 0 => h as i64,
             _ => est,
         }
@@ -187,7 +218,11 @@ pub(crate) fn lower_list<V: 'static, T: 'static>(l: &mut Lower<'_, '_, V>, p: Li
                 if let Some(o) = o.downcast_mut::<V>() {
                     // SAFETY: `soff` is the offset of a `Wired<'_, f32, V>` (only `sig!` makes one): a
                     // `Signal<f32>` field of `V`, of which `o` is an exclusive borrow.
-                    let sig = unsafe { &mut *(o as *mut V as *mut u8).add(soff as usize).cast::<crate::signal::Signal<f32>>() };
+                    let sig = unsafe {
+                        &mut *(o as *mut V as *mut u8)
+                            .add(soff as usize)
+                            .cast::<crate::signal::Signal<f32>>()
+                    };
                     sig.set(v);
                 }
             }),
