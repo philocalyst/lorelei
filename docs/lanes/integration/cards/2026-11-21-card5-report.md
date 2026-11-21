@@ -176,14 +176,30 @@ marks the list displayed.
 | theme in a plain field | none below the author's `if`; made cheap by the walk | 0.82x. A bound theme as a palette slot under `World::broad`: not built (the slice does not bind its theme) |
 | title | the run handle is the word | taken (tape). One glyph reshaped instead of the run: no exact rule found |
 
+## Compile time and size (added after the first commit of this report)
+
+`sh bench/card3/compile.sh`, load average 23 to 25, **no bench lock** (the measurement is a build, and the
+amended rule forbids holding the lock across one): wall seconds, indicative only.
+
+```
+clean build of bough + slice + deep view: 19.33 s   load: { 23.07 22.29 26.96 }
+incremental leaf edit (deep view example): 5.96 s   load: { 25.23 22.75 27.09 }
+deep_view binary bytes: 1982472
+deep view: 132 records, 1 describes, legacy passes 0
+```
+
+Against the thresholds (clean <= 35 s, incremental <= 8 s, kill at 30 s): inside both. The deep view is still
+driven by the fallback (it uses `each`, wrapped paragraphs and `.opacity`), so this is what `typed.rs` costs a
+program that does not use it, not what a deep typed view costs; that number does not exist yet.
+
 ## Not done, not verified
 
 * Items 4 and 5 of the brief: `bough_paint::Scene` through the paint lane's seam, executor chosen per change,
   the windowed host with output pacing (X22), `each`/`Vec` children, `para`, `image`, box operands, transitions,
   `eq().select()`, the refused list, the runner scenarios and the five heavy scenes.
-* Compile time and code size with `typed.rs` (now about 2,500 lines, two walks per element type): not measured.
 * A view with a plain scrolled box (`ScrollBox`) or a handler that captures values takes the conversion on every
-  description (`BY_REF` false): correct, slow, and no test pins it.
+  description (`BY_REF` false): correct and slow. Pinned after this report was first written by
+  `tests/typed_byvalue.rs` (clicks, a captured value that changes, the wheel; four oracles; 1 passed).
 * A list whose rows spill out of their band falls back to the column search for the pick: no test.
 * The run store drops a run nobody asked for in 256 descriptions; rows are no longer asked on every
   description, so every 128th description describes and compares every exposed row. Wheel-only sessions never

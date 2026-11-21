@@ -2403,12 +2403,15 @@ impl<V: View> App<V> {
     pub fn immediate_pixels(&self) -> Vec<u8> {
         let (w, h) = self.px();
         let mut c = self.canvas();
+        // (an oracle's pass is not the description the count bands are about)
+        let stats = self.ty.sh.pass.get();
         self.ty.sh.plain.set(true);
         bough_x::sink::View::view(
             &self.ty,
             &mut bough_x::soft::Immediate::on(&mut c, &self.world.shown, w, h),
         );
         self.ty.sh.plain.set(false);
+        self.ty.sh.pass.set(stats);
         c.bytes()
     }
     /// The same state mounted into a new world.
@@ -2417,9 +2420,11 @@ impl<V: View> App<V> {
         let mut world = World::<Ty<V>, Canvas>::new(w, h, APP_WORDS);
         world.set_scale(self.scale);
         world.tick(self.world.now().max(1));
+        let stats = self.ty.sh.pass.get();
         self.ty.sh.plain.set(true);
         world.mount(&self.ty);
         self.ty.sh.plain.set(false);
+        self.ty.sh.pass.set(stats);
         let mut c = self.canvas();
         world.paint(&mut c);
         c.bytes()
