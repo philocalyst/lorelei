@@ -1,0 +1,1394 @@
+ProductName:		macOS
+ProductVersion:		26.7.3
+BuildVersion:		25G342
+Apple M3 Ultra
+arm64
+rustc 1.101.0-nightly (5d8fec066 2026-10-16)
+61a3cf126675db219eb9ed7b279d30e26464814d640f5cd2b696cb61797b3934
+9d3490db11d9b60a1ccd330b66077ea0fc87cb7f00cd407f5d119db81d4c3bd6
+## repetition 1
+## fxbench effects 200 @slice13  9:41  up 4 days, 12:34, 1 user, load averages: 21.01 21.23 21.81
+# fxbench effects 200; 1280x800; reps 24; load at start: 21.01 21.23 21.81
+# scene: 298 records in 8 columns, 17 layers, 17 glass / 50 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	200	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.5	9.3	10.2	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 200 one spring cpu1 instructions [10126683]
+effects	200	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10129.8	9966.5	10382.8	529	0	0	12265	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 200 one spring metal instructions [193768]
+effects	200	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	100.5	98.5	100.4	612	351	0	8623	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+# spring launches effects 200 one spring mixed instructions [178605]
+effects	200	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	99.2	96.8	99.2	614	352	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 200 all springs cpu1 instructions [18162838]
+effects	200	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13281.6	11773.9	13121.8	691	0	0	35127	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 200 all springs metal instructions [3114989]
+effects	200	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	140.3	132.1	140.1	654	378	0	33645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+# spring launches effects 200 all springs mixed instructions [3148693]
+effects	200	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	140.0	130.8	138.7	658	387	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209178.7	204064.2	209372.4	10664	0	0	1200934	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	200	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	1874.5	1601.9	1833.8	1781	1127	0	652131	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/3548
+effects	200	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	1886.7	1608.0	1840.6	1645	1146	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.3	2069.7	2070.3	106	0	0	4090	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.1	75.2	76.7	331	69	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.3	70.5	75.2	367	71	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14872.4	14870.9	14873.4	780	0	0	9414	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	200	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	92.1	91.0	92.4	1163	855	0	3992	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	89.3	88.3	90.4	844	571	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216275.1	216250.0	216276.5	10716	0	0	13888	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	200	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.7	109.0	111.5	1943	1600	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.6	118.7	121.7	2050	1690	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8163.2	7823.0	8837.4	448	0	0	18861	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	200	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	125.9	124.6	127.8	787	525	0	16681	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3314
+effects	200	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	123.7	121.9	125.6	751	491	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 20.53 21.13 21.77
+## exit 0
+ 9:41  up 4 days, 12:34, 1 user, load averages: 20.53 21.13 21.77
+## fxbench effects 1000 @slice13  9:41  up 4 days, 12:34, 1 user, load averages: 20.53 21.13 21.77
+# fxbench effects 1000; 1280x800; reps 24; load at start: 20.53 21.13 21.77
+# scene: 1480 records in 8 columns, 83 layers, 83 glass / 250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	1000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.2	9.8	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 1000 one spring cpu1 instructions [10126434]
+effects	1000	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10133.2	9967.5	10383.6	527	0	0	12265	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 1000 one spring metal instructions [177798]
+effects	1000	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	101.1	97.5	103.2	849	554	0	8623	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+# spring launches effects 1000 one spring mixed instructions [175767]
+effects	1000	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	98.7	95.0	100.8	635	341	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 1000 all springs cpu1 instructions [33850484]
+effects	1000	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13268.1	11774.2	13120.0	678	0	0	35128	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 1000 all springs metal instructions [18774533]
+effects	1000	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	141.4	131.3	140.6	630	342	0	33066	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+# spring launches effects 1000 all springs mixed instructions [18783698]
+effects	1000	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	139.8	130.1	138.0	604	357	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209476.7	204299.2	209633.4	10774	0	0	1418010	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	1000	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	2008.5	1733.2	1958.3	1844	1164	0	729457	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/4868
+effects	1000	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	2016.7	1745.5	1967.4	1659	1140	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.3	2069.7	2070.1	112	0	0	4102	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	75.8	74.5	76.7	291	64	0	3817	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.0	71.9	73.5	367	78	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14872.8	14870.9	14877.6	780	0	0	9415	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	1000	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	92.7	91.4	94.8	1099	768	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	90.9	87.6	92.7	836	564	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216278.4	216243.4	216282.7	10772	0	0	14002	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	1000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.7	108.6	112.7	1888	1529	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.5	118.0	121.4	1915	1604	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8163.9	7820.7	8836.4	467	0	0	18833	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	1000	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	126.4	124.3	127.2	1036	769	0	16560	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4634
+effects	1000	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	125.6	122.0	126.4	749	488	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 19.76 20.96 21.70
+## exit 0
+ 9:41  up 4 days, 12:34, 1 user, load averages: 19.76 20.96 21.70
+## fxbench effects 5000 @slice13  9:41  up 4 days, 12:34, 1 user, load averages: 19.76 20.96 21.70
+# fxbench effects 5000; 1280x800; reps 24; load at start: 19.76 20.96 21.70
+# scene: 7398 records in 8 columns, 417 layers, 417 glass / 1250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	5000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.3	10.1	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 5000 one spring cpu1 instructions [10136852]
+effects	5000	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10140.1	9966.3	10384.4	553	0	0	11899	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 5000 one spring metal instructions [178272]
+effects	5000	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	100.3	97.1	101.2	810	509	0	8185	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+# spring launches effects 5000 one spring mixed instructions [175400]
+effects	5000	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	98.8	95.5	98.7	611	342	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 5000 all springs cpu1 instructions [112058622]
+effects	5000	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13262.2	11773.3	13122.5	694	0	0	34761	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 5000 all springs metal instructions [97017366]
+effects	5000	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	141.7	131.1	139.9	628	362	0	33108	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+# spring launches effects 5000 all springs mixed instructions [97038676]
+effects	5000	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	139.5	129.9	138.4	653	363	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209408.9	204251.9	209614.8	10673	0	0	1416546	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	5000	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	2254.2	1970.5	2207.1	2697	1594	0	731074	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/11544
+effects	5000	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	2262.7	1981.1	2215.9	1672	1156	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.3	2069.7	2070.2	111	0	0	4090	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.3	74.5	76.6	315	65	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.5	72.0	75.1	299	70	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14869.5	14867.9	14871.6	774	0	0	9293	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	5000	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	93.5	91.7	94.2	1149	847	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	90.1	88.0	91.5	886	630	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216273.7	216246.3	216275.2	10775	0	0	14002	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	5000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.7	107.9	111.7	1976	1419	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.7	117.7	121.1	1984	1642	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8161.0	7820.8	8837.1	473	0	0	18739	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	5000	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	126.5	124.1	128.7	1082	770	0	16525	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11310
+effects	5000	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	123.4	120.2	124.8	715	482	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 19.76 20.96 21.70
+## exit 0
+ 9:41  up 4 days, 12:34, 1 user, load averages: 19.76 20.96 21.70
+## fxbench effects 600 dense @slice13  9:41  up 4 days, 12:34, 1 user, load averages: 19.76 20.96 21.70
+# fxbench effects 600 dense; 1280x800; reps 6; load at start: 19.76 20.96 21.70
+# scene: 889 records in 8 columns, 50 layers, 50 glass / 150 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	600d	idle	cpu1	0.0	0.0	0.0	0.0	0	2901279	37	9.9	9.4	11.1	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	idle	metal	0.0	0.0	0.0	0.0	0	2901279	37	6.2	6.2	6.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	idle	mixed	0.0	0.0	0.0	0.0	0	2901279	37	3.1	3.1	3.1	0	0	0	-	6/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 600 one spring cpu1 instructions [39899511]
+effects	600d	one spring	cpu1	46.7	38.0	76.0	62.3	0	2901279	38	40141.3	40118.1	40394.8	2109	0	0	68330	0/0/0	420/456	0/72 0/72 22/96 71/102 30/32	0/0
+# spring launches effects 600 one spring metal instructions [201989]
+effects	600d	one spring	metal	46.7	38.0	108.3	0.0	0	2901279	38	125.4	123.9	126.7	2393	2083	0	21547	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+# spring launches effects 600 one spring mixed instructions [214450]
+effects	600d	one spring	mixed	46.7	38.0	0.0	0.0	0	2901279	38	124.4	122.4	124.3	2298	2031	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 600 all springs cpu1 instructions [71854674]
+effects	600d	all springs	cpu1	80.7	112.0	76.0	62.3	0	2901279	112	57791.1	54221.7	56964.3	2815	0	0	198057	0/0/0	420/456	0/72 0/72 22/96 71/102 30/32	0/0
+# spring launches effects 600 all springs metal instructions [6213326]
+effects	600d	all springs	metal	80.7	112.0	108.3	0.0	0	2901279	112	277.5	245.7	269.9	2580	1714	0	136139	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+# spring launches effects 600 all springs mixed instructions [6252166]
+effects	600d	all springs	mixed	80.7	112.0	0.0	0.0	0	2901279	112	275.3	244.2	270.1	2450	1709	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	scroll 11 px	cpu1	924.7	888.0	1830.2	6960.5	0	2156666	30	901936.5	832642.6	901861.8	45348	0	0	7001940	0/0/0	1331/10981	1647/10912 1243/10561 962/9891 384/7529 20/2870	0/0
+effects	600d	scroll 11 px	metal	924.7	888.0	1830.2	0.0	0	2156666	30	5321.3	4401.8	5146.1	5074	4395	0	2527873	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/19097
+effects	600d	scroll 11 px	mixed	924.7	888.0	0.0	0.0	0	2156666	30	5333.3	4413.9	5153.2	5092	4407	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	2901279	37	2067.9	2067.3	2068.7	106	0	0	4234	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover above glass	metal	6.0	1.0	0.0	0.0	0	2901279	37	76.4	74.8	78.0	298	58	0	3816	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	hover above glass	mixed	6.0	1.0	0.0	0.0	0	2901279	37	76.8	73.6	75.7	311	59	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover beneath glass	cpu1	28.0	1.0	115.0	353.0	0	2901279	37	45509.6	45502.7	45509.7	2384	0	0	9933	0/0/0	186/690	54/498 108/486 186/498 168/390 180/246	0/0
+effects	600d	hover beneath glass	metal	28.0	1.0	208.0	0.0	0	2901279	37	92.3	90.0	91.8	2974	2153	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	hover beneath glass	mixed	28.0	1.0	0.0	0.0	0	2901279	37	93.4	88.5	93.5	2436	2115	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	theme	cpu1	1000.0	0.0	2230.0	8608.0	0	2901279	37	1088741.8	1088698.4	1088764.8	53362	0	0	71872	0/0/0	0/13380	0/13380 0/13380 0/11988 0/9228 0/3672	0/0
+effects	600d	theme	metal	1000.0	0.0	2230.0	0.0	0	2901279	37	111.1	108.7	111.2	4616	4244	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	theme	mixed	1000.0	0.0	0.0	0.0	0	2901279	37	119.6	118.7	122.4	4429	4103	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	glass moves 1 px	cpu1	16.2	0.0	11.8	20.0	0	2901279	37	9847.3	9576.1	10039.4	569	0	0	24184	0/0/0	55/71	0/17 0/18 0/18 22/37 28/30	0/0
+effects	600d	glass moves 1 px	metal	16.2	0.0	100.8	0.0	0	2901279	37	132.0	131.9	135.9	2632	1850	0	16559	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18611
+effects	600d	glass moves 1 px	mixed	16.2	0.0	0.0	0.0	0	2901279	37	132.5	127.8	133.7	3012	1980	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 19.44 20.85 21.65
+## exit 0
+ 9:42  up 4 days, 12:34, 1 user, load averages: 19.44 20.85 21.65
+## fxbench effects 3000 dense @slice13  9:42  up 4 days, 12:34, 1 user, load averages: 19.44 20.85 21.65
+# fxbench effects 3000 dense; 1280x800; reps 6; load at start: 19.44 20.85 21.65
+# scene: 4439 records in 8 columns, 250 layers, 250 glass / 750 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	3000d	idle	cpu1	0.0	0.0	0.0	0.0	0	14399406	187	9.5	9.5	9.7	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	idle	metal	0.0	0.0	0.0	0.0	0	14399406	187	6.2	6.2	6.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	idle	mixed	0.0	0.0	0.0	0.0	0	14399406	187	3.1	3.1	3.1	0	0	0	-	6/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 3000 one spring cpu1 instructions [189017004]
+effects	3000d	one spring	cpu1	48.5	188.0	437.0	343.2	0	14399406	188	188425.3	187234.3	187852.9	9503	0	0	385731	0/0/0	2424/2622	0/396 0/396 124/528 381/555 164/184	0/0
+# spring launches effects 3000 one spring metal instructions [316960]
+effects	3000d	one spring	metal	48.5	188.0	660.7	0.0	0	14399406	188	239.1	238.0	240.9	9703	9388	0	70574	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+# spring launches effects 3000 one spring mixed instructions [318578]
+effects	3000d	one spring	mixed	48.5	188.0	0.0	0.0	0	14399406	188	239.6	238.1	241.7	9229	8887	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 3000 all springs cpu1 instructions [344646443]
+effects	3000d	all springs	cpu1	80.0	562.0	437.0	343.2	0	14399406	562	270532.8	256488.3	267340.1	13442	0	0	983869	0/0/0	2424/2622	0/396 0/396 124/528 381/555 164/184	0/0
+# spring launches effects 3000 all springs metal instructions [31011352]
+effects	3000d	all springs	metal	80.0	562.0	660.7	0.0	0	14399406	562	891.5	760.0	848.5	9250	8855	0	584917	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+# spring launches effects 3000 all springs mixed instructions [31114496]
+effects	3000d	all springs	mixed	80.0	562.0	0.0	0.0	0	14399406	562	882.6	762.7	847.1	9239	8842	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	scroll 11 px	cpu1	924.7	4438.0	9241.5	35018.0	0	10953747	155	4444497.5	4082111.6	4415733.4	224560	0	0	40435401	0/0/0	6761/55449	8326/55059 6139/53307 4513/49950 1571/37744 71/14048	0/0
+effects	3000d	scroll 11 px	metal	924.7	4438.0	9241.5	0.0	0	10953747	155	30612.1	22605.6	28364.9	18244	16361	0	12296642	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/94620
+effects	3000d	scroll 11 px	mixed	924.7	4438.0	0.0	0.0	0	10953747	155	30647.7	22586.0	28376.8	19138	17134	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	14399406	187	3300.9	3300.3	3303.0	175	0	0	4330	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover above glass	metal	6.0	1.0	0.0	0.0	0	14399406	187	78.0	75.9	77.6	880	93	0	3816	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	hover above glass	mixed	6.0	1.0	0.0	0.0	0	14399406	187	74.1	72.4	75.2	364	78	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover beneath glass	cpu1	28.0	1.0	142.0	394.0	0	14399406	187	55845.6	55839.4	55845.4	3010	0	0	10541	0/0/0	222/852	108/618 150/558 210/534 180/408 180/246	0/0
+effects	3000d	hover beneath glass	metal	28.0	1.0	971.0	0.0	0	14399406	187	92.7	91.2	92.7	12044	11698	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	hover beneath glass	mixed	28.0	1.0	0.0	0.0	0	14399406	187	98.2	91.5	98.5	12031	11668	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	theme	cpu1	1000.0	0.0	11079.0	42551.0	0	14399406	187	5246912.6	5246631.2	5246859.1	254614	0	0	350100	0/0/0	0/66474	0/66474 0/66474 0/59202 0/45228 0/17928	0/0
+effects	3000d	theme	metal	1000.0	0.0	11079.0	0.0	0	14399406	187	111.8	109.0	112.2	17335	16963	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	theme	mixed	1000.0	0.0	0.0	0.0	0	14399406	187	122.7	119.9	122.0	17447	17090	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	glass moves 1 px	cpu1	16.2	0.0	11.8	20.0	0	14399406	187	12517.6	12216.8	12704.0	682	0	0	25304	0/0/0	55/71	0/17 0/18 0/18 22/37 28/30	0/0
+effects	3000d	glass moves 1 px	metal	16.2	0.0	485.7	0.0	0	14399406	187	156.7	153.9	156.3	9606	9268	0	16560	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91978
+effects	3000d	glass moves 1 px	mixed	16.2	0.0	0.0	0.0	0	14399406	187	160.1	154.2	158.4	9610	9252	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 19.08 20.70 21.59
+## exit 0
+ 9:42  up 4 days, 12:34, 1 user, load averages: 19.08 20.70 21.59
+## fxbench pane 300 @slice13  9:42  up 4 days, 12:34, 1 user, load averages: 19.08 20.70 21.59
+# fxbench pane 300; 1280x800; reps 24; load at start: 19.08 20.70 21.59
+# scene: 379 records in 8 columns, 1 layers, 1 glass / 75 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 421228 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+pane	300	idle	cpu1	0.0	0.0	0.0	0.0	0	46275	0	9.3	9.3	9.8	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	idle	metal	0.0	0.0	0.0	0.0	0	46275	0	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	idle	mixed	0.0	0.0	0.0	0.0	0	46275	0	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 one spring cpu1 instructions [262087]
+pane	300	one spring	cpu1	2.8	1.0	0.0	0.0	0	46275	1	108.5	107.2	174.6	6	0	0	4986	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 one spring metal instructions [165087]
+pane	300	one spring	metal	2.8	1.0	0.0	0.0	0	46275	1	79.3	75.0	79.4	395	81	0	5314	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 300 one spring mixed instructions [165431]
+pane	300	one spring	mixed	2.8	1.0	0.0	0.0	0	46275	1	76.9	72.4	77.9	413	82	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 all springs cpu1 instructions [10326373]
+pane	300	all springs	cpu1	32.7	12.0	0.0	0.0	0	46275	12	2978.5	1910.0	2913.5	152	0	0	27403	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 all springs metal instructions [5128297]
+pane	300	all springs	metal	32.7	12.0	0.0	0.0	0	46275	12	118.8	108.4	118.4	407	114	0	29782	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 300 all springs mixed instructions [5132693]
+pane	300	all springs	mixed	32.7	12.0	0.0	0.0	0	46275	12	118.7	109.3	118.7	393	112	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	46275	0	3303.8	3303.2	3304.1	177	0	0	4227	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover above glass	metal	6.0	1.0	0.0	0.0	0	46275	0	76.0	74.6	76.6	375	125	0	3938	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	300	hover above glass	mixed	6.0	1.0	0.0	0.0	0	46275	0	73.9	72.1	74.7	420	129	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover beneath glass	cpu1	20.0	1.0	16.0	63.0	0	46275	0	10163.2	10161.6	10165.9	511	0	0	9555	0/0/0	0/384	0/384 0/384 0/384 72/360 0/0	0/0
+pane	300	hover beneath glass	metal	20.0	1.0	16.0	0.0	0	46275	0	91.9	90.8	92.7	581	305	0	4100	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	300	hover beneath glass	mixed	20.0	1.0	0.0	0.0	0	46275	0	89.3	88.0	90.4	574	306	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	glass moves 1 px	cpu1	17.7	0.0	0.2	1.1	0	46275	0	7352.8	7119.4	7560.2	405	0	0	13127	0/0/0	0/4	0/8 0/8 0/8 0/3 0/0	0/0
+pane	300	glass moves 1 px	metal	17.7	0.0	0.2	0.0	0	46275	0	109.8	107.7	111.7	411	128	0	16650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/297
+pane	300	glass moves 1 px	mixed	17.7	0.0	0.0	0.0	0	46275	0	107.3	105.6	109.7	380	124	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 18.67 20.59 21.54
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 18.67 20.59 21.54
+## fxbench pane 3000 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 18.67 20.59 21.54
+# fxbench pane 3000; 1280x800; reps 24; load at start: 18.67 20.59 21.54
+# scene: 3754 records in 8 columns, 1 layers, 1 glass / 750 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 421228 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+pane	3000	idle	cpu1	0.0	0.0	0.0	0.0	0	46275	0	9.3	9.3	10.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	idle	metal	0.0	0.0	0.0	0.0	0	46275	0	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	idle	mixed	0.0	0.0	0.0	0.0	0	46275	0	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 one spring cpu1 instructions [261904]
+pane	3000	one spring	cpu1	2.8	1.0	0.0	0.0	0	46275	1	108.5	107.2	174.6	6	0	0	4864	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 one spring metal instructions [152602]
+pane	3000	one spring	metal	2.8	1.0	0.0	0.0	0	46275	1	80.1	75.9	80.8	403	81	0	4998	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 3000 one spring mixed instructions [177714]
+pane	3000	one spring	mixed	2.8	1.0	0.0	0.0	0	46275	1	76.4	74.2	77.5	353	82	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 all springs cpu1 instructions [63118777]
+pane	3000	all springs	cpu1	32.7	12.0	0.0	0.0	0	46275	12	2978.5	1910.1	2912.7	142	0	0	27353	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 all springs metal instructions [57878801]
+pane	3000	all springs	metal	32.7	12.0	0.0	0.0	0	46275	12	118.4	109.8	118.6	417	114	0	29452	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 3000 all springs mixed instructions [57891784]
+pane	3000	all springs	mixed	32.7	12.0	0.0	0.0	0	46275	12	119.2	109.4	117.4	364	113	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	46275	0	3303.8	3303.2	3304.4	177	0	0	4066	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover above glass	metal	6.0	1.0	0.0	0.0	0	46275	0	77.3	74.0	78.6	414	131	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	3000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	46275	0	73.1	70.4	74.5	365	124	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover beneath glass	cpu1	20.0	1.0	16.0	63.0	0	46275	0	10161.6	10160.1	10162.5	518	0	0	9164	0/0/0	0/384	0/384 0/384 0/384 72/360 0/0	0/0
+pane	3000	hover beneath glass	metal	20.0	1.0	16.0	0.0	0	46275	0	92.2	89.8	93.6	583	304	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	3000	hover beneath glass	mixed	20.0	1.0	0.0	0.0	0	46275	0	90.4	87.3	90.6	561	303	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	glass moves 1 px	cpu1	17.7	0.0	0.2	1.1	0	46275	0	7352.7	7118.8	7558.3	403	0	0	13126	0/0/0	0/4	0/8 0/8 0/8 0/3 0/0	0/0
+pane	3000	glass moves 1 px	metal	17.7	0.0	0.2	0.0	0	46275	0	110.4	107.6	111.6	385	121	0	16560	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/297
+pane	3000	glass moves 1 px	mixed	17.7	0.0	0.0	0.0	0	46275	0	107.0	106.0	109.5	408	128	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 18.67 20.59 21.54
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 18.67 20.59 21.54
+## fxbench media 4 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 18.67 20.59 21.54
+# fxbench media 4; 1280x800; reps 24; load at start: 18.67 20.59 21.54
+# scene: 14 records in 5 columns, 1 layers, 1 glass / 4 dots / 4 videos; media pool 4 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 102.0 instructions per call (1 frame changes in 100000 calls)
+media	4	idle	cpu1	0.0	0.0	0.0	0.0	0	57556	0	9.4	9.1	9.5	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	idle	metal	0.0	0.0	0.0	0.0	0	57556	0	6.0	6.0	6.3	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	idle	mixed	0.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	2.9	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	one video frame	cpu1	28.0	0.0	0.0	0.0	0	57556	0	8387.8	8387.8	8390.5	452	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	one video frame	metal	28.0	0.0	0.0	0.0	0	57556	0	77.2	74.5	77.6	367	98	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	one video frame	mixed	28.0	0.0	0.0	0.0	0	57556	0	75.7	73.9	76.4	365	98	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	video under glass	cpu1	32.7	0.0	20.0	73.4	0	57556	0	18006.4	17629.5	18201.4	1006	0	0	16571	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	4	video under glass	metal	32.7	0.0	20.0	0.0	0	57556	0	92.9	90.4	93.8	644	336	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	video under glass	mixed	32.7	0.0	0.0	0.0	0	57556	0	90.6	88.0	90.4	606	332	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	all videos (every 4th)	cpu1	27.0	0.0	9.0	35.8	0	57556	0	9.4	9.1	11863.9	1	0	0	2263	0/0/0	4/216	0/212 0/216 14/270 0/162 0/0	0/0
+media	4	all videos (every 4th)	metal	27.0	0.0	9.0	0.0	0	57556	0	6.0	6.0	31.3	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	all videos (every 4th)	mixed	27.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	28.1	0	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 4 tiles over 31 refreshes: 32 frames crossed by the audio clocks, 32 published, 23 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480
+media	4	a/v playback (audio clocks)	cpu1	27.0	0.0	9.0	35.8	0	57556	0	9.4	9.1	11865.2	1	0	0	2263	0/0/0	4/216	0/212 0/216 14/270 0/162 0/0	0/0
+media	4	a/v playback (audio clocks)	metal	27.0	0.0	9.0	0.0	0	57556	0	6.0	6.0	30.6	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	a/v playback (audio clocks)	mixed	27.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	28.7	0	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	scroll 11 px	cpu1	25.7	13.0	2.6	9.0	0	0	0	135.1	134.9	2476.5	8	0	0	128030	0/0/0	0/63	0/63 0/63 0/63 0/27 0/0	0/0
+media	4	scroll 11 px	metal	25.7	13.0	2.6	0.0	0	0	0	591.8	587.1	598.2	316	15	0	139996	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	scroll 11 px	mixed	25.7	13.0	0.0	0.0	0	0	0	132.4	132.1	331.9	7	0	0	-	0/14/10	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	hover above glass	cpu1	43.0	4.0	25.0	53.0	0	57556	0	19601.3	19596.8	19603.6	1076	0	0	12559	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	4	hover above glass	metal	43.0	4.0	25.0	0.0	0	57556	0	93.3	91.4	94.4	567	314	0	3864	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	hover above glass	mixed	43.0	4.0	0.0	0.0	0	57556	0	90.2	88.5	90.9	576	324	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	theme	cpu1	1000.0	0.0	45.0	162.0	0	57556	0	53293.8	53279.5	53294.1	2998	0	0	4009	0/0/0	384/1080	576/1080 576/1080 576/1080 288/648 0/0	0/0
+media	4	theme	metal	1000.0	0.0	45.0	0.0	0	57556	0	109.7	108.3	111.0	685	394	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	theme	mixed	1000.0	0.0	0.0	0.0	0	57556	0	119.5	116.6	120.3	660	398	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 4 all springs cpu1 instructions [5484044]
+media	4	all springs	cpu1	6.4	2.0	0.0	0.0	0	57556	2	1942.3	1252.9	1916.4	106	0	0	6958	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 4 all springs metal instructions [108106]
+media	4	all springs	metal	6.4	2.0	0.0	0.0	0	57556	2	83.2	79.4	83.5	370	101	0	7541	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+# spring launches media 4 all springs mixed instructions [101370]
+media	4	all springs	mixed	6.4	2.0	0.0	0.0	0	57556	2	80.1	78.0	80.6	335	96	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	glass over playing video	cpu1	46.3	0.0	10.0	39.6	0	57556	0	9457.7	9438.8	19202.5	568	0	0	15857	0/0/0	4/240	0/241 0/245 16/305 0/159 0/0	0/0
+media	4	glass over playing video	metal	46.3	0.0	10.0	0.0	0	57556	0	117.8	114.1	125.9	360	84	0	19045	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/354
+media	4	glass over playing video	mixed	46.3	0.0	0.0	0.0	0	57556	0	116.6	114.0	125.3	371	84	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 19.02 20.63 21.55
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 19.02 20.63 21.55
+## fxbench media 24 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 19.02 20.63 21.55
+# fxbench media 24; 1280x800; reps 24; load at start: 19.02 20.63 21.55
+# scene: 75 records in 5 columns, 2 layers, 2 glass / 24 dots / 24 videos; media pool 24 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 102.0 instructions per call (1 frame changes in 100000 calls)
+media	24	idle	cpu1	0.0	0.0	0.0	0.0	0	115112	0	9.2	9.1	10.6	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	idle	metal	0.0	0.0	0.0	0.0	0	115112	0	6.0	6.0	6.3	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	idle	mixed	0.0	0.0	0.0	0.0	0	115112	0	2.9	2.9	2.9	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	one video frame	cpu1	28.0	0.0	0.0	0.0	0	115112	0	9058.8	9058.8	9060.5	483	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	one video frame	metal	28.0	0.0	0.0	0.0	0	115112	0	77.6	74.7	78.9	470	158	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	one video frame	mixed	28.0	0.0	0.0	0.0	0	115112	0	75.8	73.4	76.6	434	160	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	video under glass	cpu1	32.7	0.0	20.0	73.4	0	115112	0	18192.5	17798.2	18404.3	982	0	0	16691	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	24	video under glass	metal	32.7	0.0	20.0	0.0	0	115112	0	92.8	90.9	94.3	640	355	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	video under glass	mixed	32.7	0.0	0.0	0.0	0	115112	0	90.7	88.8	94.4	654	347	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	all videos (every 4th)	cpu1	170.0	0.0	20.2	76.1	0	115112	0	9.4	9.1	60520.6	3	0	0	2263	0/0/0	9/486	0/477 0/486 14/540 0/324 0/0	0/0
+media	24	all videos (every 4th)	metal	170.0	0.0	20.2	0.0	0	115112	0	6.0	6.0	50.2	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	all videos (every 4th)	mixed	170.0	0.0	0.0	0.0	0	115112	0	2.9	2.9	49.1	0	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 24 tiles over 31 refreshes: 192 frames crossed by the audio clocks, 192 published, 16 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480 12480 12480
+media	24	a/v playback (audio clocks)	cpu1	191.9	0.0	22.5	76.1	0	115112	0	103938.8	9.1	66782.3	5447	0	0	44099	0/0/0	10/540	0/477 0/486 14/540 0/324 0/0	0/0
+media	24	a/v playback (audio clocks)	metal	191.9	0.0	22.5	0.0	0	115112	0	130.5	6.0	71.5	710	415	0	18754	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	a/v playback (audio clocks)	mixed	191.9	0.0	0.0	0.0	0	115112	0	133.6	2.9	72.0	708	412	0	-	12/0/12	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	scroll 11 px	cpu1	485.0	74.0	40.5	152.6	0	24170	0	147628.3	86069.3	145921.5	7950	0	0	400448	0/0/0	0/972	0/972 0/972 0/972 0/747 0/0	0/0
+media	24	scroll 11 px	metal	485.0	74.0	40.5	0.0	0	24170	0	842.7	763.7	845.6	895	513	0	291716	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/693
+media	24	scroll 11 px	mixed	485.0	74.0	0.0	0.0	0	24170	0	846.9	764.8	850.6	833	511	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	hover above glass	cpu1	43.0	24.0	25.0	53.0	0	115112	0	21642.4	21637.9	21645.3	1186	0	0	14442	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	24	hover above glass	metal	43.0	24.0	25.0	0.0	0	115112	0	94.5	93.2	95.1	630	342	0	5604	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	hover above glass	mixed	43.0	24.0	0.0	0.0	0	115112	0	91.9	90.3	92.2	621	343	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	theme	cpu1	1000.0	0.0	90.0	324.0	0	115112	0	246777.2	246732.7	246791.3	13287	0	0	5425	0/0/0	672/2160	864/2160 864/2160 768/2160 384/1296 0/0	0/0
+media	24	theme	metal	1000.0	0.0	90.0	0.0	0	115112	0	109.5	108.2	109.8	910	614	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	theme	mixed	1000.0	0.0	0.0	0.0	0	115112	0	119.5	118.4	121.0	591	350	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 24 all springs cpu1 instructions [28482134]
+media	24	all springs	cpu1	36.3	12.0	0.0	0.0	0	115112	12	11360.2	9857.6	11527.4	608	0	0	29682	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 24 all springs metal instructions [147131]
+media	24	all springs	metal	36.3	12.0	0.0	0.0	0	115112	12	122.2	116.3	122.2	337	84	0	31428	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+# spring launches media 24 all springs mixed instructions [146358]
+media	24	all springs	mixed	36.3	12.0	0.0	0.0	0	115112	12	121.6	114.4	122.0	306	80	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	glass over playing video	cpu1	189.3	0.0	21.2	79.9	0	115112	0	9624.8	9610.6	68074.4	568	0	0	15857	0/0/0	9/510	0/506 0/515 16/575 0/321 0/0	0/0
+media	24	glass over playing video	metal	189.3	0.0	21.2	0.0	0	115112	0	118.0	114.2	145.6	463	97	0	19045	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/695
+media	24	glass over playing video	mixed	189.3	0.0	0.0	0.0	0	115112	0	119.6	114.1	147.1	381	99	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 19.02 20.63 21.55
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 19.02 20.63 21.55
+## fxbench media 48 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 19.02 20.63 21.55
+# fxbench media 48; 1280x800; reps 24; load at start: 19.02 20.63 21.55
+# scene: 149 records in 5 columns, 4 layers, 4 glass / 48 dots / 48 videos; media pool 48 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 102.0 instructions per call (1 frame changes in 100000 calls)
+media	48	idle	cpu1	0.0	0.0	0.0	0.0	0	163452	0	9.3	9.1	9.6	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	idle	metal	0.0	0.0	0.0	0.0	0	163452	0	6.0	6.0	6.1	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	idle	mixed	0.0	0.0	0.0	0.0	0	163452	0	2.9	2.9	2.9	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	one video frame	cpu1	28.0	0.0	0.0	0.0	0	163452	0	9058.8	9058.8	9060.9	483	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	one video frame	metal	28.0	0.0	0.0	0.0	0	163452	0	77.4	76.1	77.6	431	156	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	one video frame	mixed	28.0	0.0	0.0	0.0	0	163452	0	75.8	74.1	76.8	427	157	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	video under glass	cpu1	32.7	0.0	20.0	73.4	0	163452	0	18198.8	17800.2	18402.1	1010	0	0	16619	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	48	video under glass	metal	32.7	0.0	20.0	0.0	0	163452	0	92.8	90.4	93.8	629	357	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	video under glass	mixed	32.7	0.0	0.0	0.0	0	163452	0	90.7	87.9	91.1	404	203	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	all videos (every 4th)	cpu1	250.0	0.0	29.2	112.0	0	163452	0	9.0	9.0	91131.9	3	0	0	2263	0/0/0	12/702	0/691 0/702 14/756 0/540 0/0	0/0
+media	48	all videos (every 4th)	metal	250.0	0.0	29.2	0.0	0	163452	0	6.0	6.0	63.6	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	all videos (every 4th)	mixed	250.0	0.0	0.0	0.0	0	163452	0	2.9	2.9	64.4	1	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 48 tiles over 31 refreshes: 384 frames crossed by the audio clocks, 384 published, 16 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480 12480 12480
+media	48	a/v playback (audio clocks)	cpu1	290.4	0.0	31.5	112.0	0	163452	0	158692.9	9.0	101965.0	8303	0	0	63819	0/0/0	13/756	0/691 0/702 14/756 0/540 0/0	0/0
+media	48	a/v playback (audio clocks)	metal	290.4	0.0	31.5	0.0	0	163452	0	153.4	6.0	85.1	571	328	0	29024	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	a/v playback (audio clocks)	mixed	290.4	0.0	0.0	0.0	0	163452	0	158.3	2.9	87.2	553	308	0	-	12/0/12	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	scroll 11 px	cpu1	1000.0	148.0	121.5	459.4	0	130066	0	373767.2	332404.5	367361.8	20072	0	0	817272	0/0/0	0/2916	0/2916 0/2916 0/2916 0/2277 0/0	0/0
+media	48	scroll 11 px	metal	1000.0	148.0	121.5	0.0	0	130066	0	1181.6	1124.2	1200.0	1273	437	0	512954	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1298
+media	48	scroll 11 px	mixed	1000.0	148.0	0.0	0.0	0	130066	0	1193.9	1136.6	1211.7	738	420	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	hover above glass	cpu1	43.0	48.0	25.0	53.0	0	163452	0	21645.3	21640.9	21650.5	1200	0	0	16581	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	48	hover above glass	metal	43.0	48.0	25.0	0.0	0	163452	0	96.4	95.2	97.4	450	202	0	7691	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	hover above glass	mixed	43.0	48.0	0.0	0.0	0	163452	0	95.9	92.5	96.4	451	203	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	theme	cpu1	1000.0	0.0	126.0	468.0	0	163452	0	367519.8	367455.3	367541.4	19712	0	0	6893	0/0/0	1248/3024	1440/3024 1440/3024 1344/3024 696/2160 0/0	0/0
+media	48	theme	metal	1000.0	0.0	126.0	0.0	0	163452	0	109.5	108.4	109.9	695	486	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	theme	mixed	1000.0	0.0	0.0	0.0	0	163452	0	119.3	116.7	119.5	722	511	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 48 all springs cpu1 instructions [37441963]
+media	48	all springs	cpu1	45.2	18.0	0.0	0.0	0	163452	18	14443.0	12714.7	14984.5	814	0	0	40055	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 48 all springs metal instructions [646304]
+media	48	all springs	metal	45.2	18.0	0.0	0.0	0	163452	18	137.5	127.3	137.3	296	77	0	41692	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+# spring launches media 48 all springs mixed instructions [646378]
+media	48	all springs	mixed	45.2	18.0	0.0	0.0	0	163452	18	138.0	127.8	137.7	328	79	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	glass over playing video	cpu1	269.3	0.0	30.2	115.8	0	163452	0	9629.9	9610.6	98683.9	595	0	0	15857	0/0/0	12/726	0/720 0/731 16/791 0/537 0/0	0/0
+media	48	glass over playing video	metal	269.3	0.0	30.2	0.0	0	163452	0	122.0	114.9	161.0	396	64	0	19362	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1045
+media	48	glass over playing video	mixed	269.3	0.0	0.0	0.0	0	163452	0	119.0	115.1	161.7	316	62	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 18.62 20.52 21.51
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 18.62 20.52 21.51
+## fxbench effects 200 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 18.62 20.52 21.51
+# fxbench effects 200; 1280x800; reps 24; load at start: 18.62 20.52 21.51
+# scene: 498 records in 8 columns, 17 layers, 17 glass / 50 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	200	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.6	9.3	9.6	1	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217441.4	217399.8	217452.0	10841	0	0	14231	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	200	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	109.5	108.4	110.4	1450	1169	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	119.7	117.8	121.1	1390	1125	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211667.1	211609.4	211677.6	10710	0	0	14231	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	200	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.2	107.6	111.6	1932	1643	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	119.7	117.1	120.8	2062	1676	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211693.0	211666.5	211698.8	11083	0	0	17422	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	200	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	113.9	112.0	114.4	1989	1176	0	5865	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	124.8	121.9	125.8	1477	1156	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2071.3	113	0	0	4114	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.1	74.0	77.2	362	71	0	3841	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.1	72.0	73.9	333	73	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	210707.7	205683.3	211392.8	11026	0	0	1353990	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	200	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2004.3	1724.2	1967.0	1983	1454	0	756579	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/3548
+effects	200	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2015.4	1743.9	1977.8	1630	1155	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 20.01 20.78 21.59
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 20.01 20.78 21.59
+## fxbench effects 1000 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 20.01 20.78 21.59
+# fxbench effects 1000; 1280x800; reps 24; load at start: 20.01 20.78 21.59
+# scene: 2480 records in 8 columns, 83 layers, 83 glass / 250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	1000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.3	9.8	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217437.5	217401.4	217433.8	10863	0	0	14069	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	1000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.0	109.2	112.2	1474	1139	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	119.8	118.2	122.0	1432	1109	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211642.3	211590.7	211655.5	10982	0	0	14069	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	1000	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	111.3	107.6	110.8	2021	1693	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	119.7	117.2	120.7	2045	1714	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211723.4	211666.0	211724.4	10878	0	0	17260	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	1000	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	114.1	112.9	114.5	1418	1118	0	5865	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	124.6	122.2	126.8	1357	1087	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2075.7	112	0	0	4127	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	78.8	73.3	81.8	321	59	0	3878	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.2	70.5	73.6	277	60	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	211042.5	206160.9	211729.9	11193	0	0	1610070	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	1000	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2159.2	1873.4	2116.4	1940	1471	0	853762	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/4868
+effects	1000	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2164.3	1883.9	2122.6	2012	1516	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 19.45 20.65 21.54
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 19.45 20.65 21.54
+## fxbench effects 5000 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 19.45 20.65 21.54
+# fxbench effects 5000; 1280x800; reps 24; load at start: 19.45 20.65 21.54
+# scene: 12398 records in 8 columns, 417 layers, 417 glass / 1250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	5000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.4	9.3	9.8	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217439.0	217402.3	217454.7	10989	0	0	14026	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	5000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	111.0	109.6	112.9	1428	1126	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.7	118.6	122.0	1397	1106	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211647.2	211596.9	211655.6	10799	0	0	14026	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	5000	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	111.6	109.5	114.7	1613	1307	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	121.4	118.2	122.1	1965	1654	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211715.7	211670.6	211722.6	10869	0	0	17217	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	5000	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	114.8	111.7	116.2	1404	1111	0	5866	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	125.8	124.1	127.5	1383	1114	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2071.3	112	0	0	4114	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	75.9	74.0	76.9	271	59	0	3829	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.3	70.5	74.3	287	59	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	211025.8	205974.0	211674.9	10902	0	0	1605129	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	5000	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2398.4	2117.1	2357.4	1792	1171	0	846536	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/11544
+effects	5000	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2409.8	2129.5	2369.0	1672	1139	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 19.45 20.65 21.54
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 19.45 20.65 21.54
+## repetition 2
+## fxbench effects 200 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 19.45 20.65 21.54
+# fxbench effects 200; 1280x800; reps 24; load at start: 19.45 20.65 21.54
+# scene: 298 records in 8 columns, 17 layers, 17 glass / 50 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	200	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.3	9.8	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 200 one spring cpu1 instructions [10134271]
+effects	200	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10130.7	9967.4	10382.9	492	0	0	12265	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 200 one spring metal instructions [177265]
+effects	200	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	99.6	96.4	100.5	728	461	0	8185	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+# spring launches effects 200 one spring mixed instructions [175876]
+effects	200	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	98.9	95.4	100.1	829	552	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 200 all springs cpu1 instructions [18142447]
+effects	200	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13262.1	11773.2	13123.2	691	0	0	34761	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 200 all springs metal instructions [3110795]
+effects	200	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	140.9	131.1	139.9	609	350	0	32776	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+# spring launches effects 200 all springs mixed instructions [3157522]
+effects	200	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	139.1	131.9	140.6	631	358	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209159.2	204041.0	209362.0	10681	0	0	1199715	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	200	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	1878.2	1599.0	1836.6	1641	1129	0	651464	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/3548
+effects	200	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	1885.8	1610.5	1844.5	1587	1135	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.3	2069.7	2071.4	112	0	0	4102	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.4	73.9	78.0	295	63	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.2	70.8	73.8	360	85	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14888.7	14867.9	14884.3	799	0	0	9293	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	200	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	92.7	90.0	93.7	860	574	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	90.0	88.1	90.7	792	577	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216278.9	216242.5	216283.5	10816	0	0	13888	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	200	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	111.8	108.7	117.8	1409	1075	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	121.2	119.3	124.5	1389	1096	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8161.0	7820.8	8835.2	448	0	0	18738	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	200	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	126.2	123.2	129.5	742	494	0	16559	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3314
+effects	200	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	124.4	121.9	126.7	771	510	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 20.53 20.85 21.61
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 20.53 20.85 21.61
+## fxbench effects 1000 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 20.53 20.85 21.61
+# fxbench effects 1000; 1280x800; reps 24; load at start: 20.53 20.85 21.61
+# scene: 1480 records in 8 columns, 83 layers, 83 glass / 250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	1000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.4	9.3	10.5	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.4	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 1000 one spring cpu1 instructions [10126300]
+effects	1000	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10130.2	9967.4	10382.7	526	0	0	12265	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 1000 one spring metal instructions [178434]
+effects	1000	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	102.3	97.5	104.3	622	339	0	8468	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+# spring launches effects 1000 one spring mixed instructions [179710]
+effects	1000	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	99.9	95.5	104.8	606	339	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 1000 all springs cpu1 instructions [33821552]
+effects	1000	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13262.0	11775.7	13121.0	690	0	0	34761	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 1000 all springs metal instructions [18813646]
+effects	1000	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	141.6	132.7	141.1	631	355	0	32776	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+# spring launches effects 1000 all springs mixed instructions [18794648]
+effects	1000	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	140.1	130.9	138.4	649	376	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209422.6	204259.9	209619.8	10748	0	0	1416913	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	1000	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	2025.8	1731.9	1973.5	1680	1103	0	732302	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/4868
+effects	1000	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	2037.0	1759.2	1980.8	1688	1110	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.3	2069.7	2070.2	112	0	0	4090	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.4	74.6	78.2	252	59	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.6	71.4	75.2	289	60	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14873.3	14870.9	14875.0	777	0	0	9485	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	1000	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	93.6	91.2	100.5	907	570	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	92.6	88.4	100.1	874	573	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216296.3	216253.5	216330.2	10890	0	0	13888	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	1000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.8	108.0	112.0	2281	1958	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	122.4	118.5	128.1	1494	1224	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8163.2	7823.0	8838.2	459	0	0	18861	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	1000	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	128.0	125.7	129.1	768	484	0	16754	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4634
+effects	1000	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	125.7	121.9	129.6	760	489	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 20.53 20.85 21.61
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 20.53 20.85 21.61
+## fxbench effects 5000 @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 20.53 20.85 21.61
+# fxbench effects 5000; 1280x800; reps 24; load at start: 20.53 20.85 21.61
+# scene: 7398 records in 8 columns, 417 layers, 417 glass / 1250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	5000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.4	9.3	10.2	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 5000 one spring cpu1 instructions [10126347]
+effects	5000	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10129.7	9966.2	10381.7	523	0	0	11899	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 5000 one spring metal instructions [177830]
+effects	5000	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	100.7	99.1	103.4	674	346	0	8286	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+# spring launches effects 5000 one spring mixed instructions [202337]
+effects	5000	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	98.9	96.6	101.3	629	344	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 5000 all springs cpu1 instructions [112077315]
+effects	5000	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13268.1	11773.3	13119.9	674	0	0	34761	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 5000 all springs metal instructions [97020728]
+effects	5000	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	141.3	130.9	139.9	652	348	0	32776	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+# spring launches effects 5000 all springs mixed instructions [97056143]
+effects	5000	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	140.7	130.4	147.3	674	344	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209422.2	204269.1	209627.0	10789	0	0	1415319	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	5000	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	2270.9	2011.5	2216.0	1724	1191	0	729485	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/11544
+effects	5000	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	2264.4	1986.3	2219.8	1753	1160	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.3	2069.7	2070.4	112	0	0	4090	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.7	74.0	78.2	300	69	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.5	72.1	79.4	383	85	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14869.6	14868.0	14873.6	786	0	0	9293	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	5000	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	92.6	90.3	97.5	1275	947	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	90.2	88.0	93.1	866	590	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216272.7	216245.4	216275.7	10745	0	0	14002	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	5000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.4	108.9	111.5	1390	1101	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.9	117.8	124.9	1413	1083	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8161.0	7820.9	8836.4	471	0	0	18739	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	5000	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	135.5	123.4	136.5	839	491	0	16842	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11310
+effects	5000	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	127.2	122.0	133.1	789	504	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 20.81 20.91 21.62
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 20.81 20.91 21.62
+## fxbench effects 600 dense @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 20.81 20.91 21.62
+# fxbench effects 600 dense; 1280x800; reps 6; load at start: 20.81 20.91 21.62
+# scene: 889 records in 8 columns, 50 layers, 50 glass / 150 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	600d	idle	cpu1	0.0	0.0	0.0	0.0	0	2901279	37	9.5	9.5	9.7	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	idle	metal	0.0	0.0	0.0	0.0	0	2901279	37	6.2	6.2	6.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	idle	mixed	0.0	0.0	0.0	0.0	0	2901279	37	3.1	3.1	3.1	0	0	0	-	6/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 600 one spring cpu1 instructions [39921848]
+effects	600d	one spring	cpu1	46.7	38.0	76.0	62.3	0	2901279	38	40126.9	40117.7	40393.0	2048	0	0	68330	0/0/0	420/456	0/72 0/72 22/96 71/102 30/32	0/0
+# spring launches effects 600 one spring metal instructions [201746]
+effects	600d	one spring	metal	46.7	38.0	108.3	0.0	0	2901279	38	129.4	124.8	129.5	2783	2300	0	21109	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+# spring launches effects 600 one spring mixed instructions [200492]
+effects	600d	one spring	mixed	46.7	38.0	0.0	0.0	0	2901279	38	123.7	123.0	124.0	1936	1633	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 600 all springs cpu1 instructions [71844800]
+effects	600d	all springs	cpu1	80.7	112.0	76.0	62.3	0	2901279	112	57770.2	54214.8	56957.9	2894	0	0	194797	0/0/0	420/456	0/72 0/72 22/96 71/102 30/32	0/0
+# spring launches effects 600 all springs metal instructions [6213682]
+effects	600d	all springs	metal	80.7	112.0	108.3	0.0	0	2901279	112	276.3	245.5	270.5	2627	1927	0	135162	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+# spring launches effects 600 all springs mixed instructions [6243549]
+effects	600d	all springs	mixed	80.7	112.0	0.0	0.0	0	2901279	112	275.1	242.6	267.2	2836	2114	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	scroll 11 px	cpu1	924.7	888.0	1830.2	6960.5	0	2156666	30	901822.4	832686.2	901780.5	45078	0	0	7001166	0/0/0	1331/10981	1647/10912 1243/10561 962/9891 384/7529 20/2870	0/0
+effects	600d	scroll 11 px	metal	924.7	888.0	1830.2	0.0	0	2156666	30	5330.8	4451.3	5174.5	5748	4929	0	2532357	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/19097
+effects	600d	scroll 11 px	mixed	924.7	888.0	0.0	0.0	0	2156666	30	5354.0	4417.6	5173.5	5752	5004	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	2901279	37	2067.9	2067.3	2067.7	112	0	0	4234	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover above glass	metal	6.0	1.0	0.0	0.0	0	2901279	37	76.3	75.6	77.4	421	104	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	hover above glass	mixed	6.0	1.0	0.0	0.0	0	2901279	37	84.1	71.6	82.2	335	59	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover beneath glass	cpu1	28.0	1.0	115.0	353.0	0	2901279	37	45508.0	45502.6	45506.3	2410	0	0	9933	0/0/0	186/690	54/498 108/486 186/498 168/390 180/246	0/0
+effects	600d	hover beneath glass	metal	28.0	1.0	208.0	0.0	0	2901279	37	91.9	90.9	95.4	2563	2249	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	hover beneath glass	mixed	28.0	1.0	0.0	0.0	0	2901279	37	89.8	88.8	93.2	2558	2250	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	theme	cpu1	1000.0	0.0	2230.0	8608.0	0	2901279	37	1088657.0	1088557.1	1088632.2	53603	0	0	71872	0/0/0	0/13380	0/13380 0/13380 0/11988 0/9228 0/3672	0/0
+effects	600d	theme	metal	1000.0	0.0	2230.0	0.0	0	2901279	37	123.5	108.9	128.9	3988	3618	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	theme	mixed	1000.0	0.0	0.0	0.0	0	2901279	37	119.8	118.6	121.0	3962	3620	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	glass moves 1 px	cpu1	16.2	0.0	11.8	20.0	0	2901279	37	9839.3	9576.0	10038.3	538	0	0	24184	0/0/0	55/71	0/17 0/18 0/18 22/37 28/30	0/0
+effects	600d	glass moves 1 px	metal	16.2	0.0	100.8	0.0	0	2901279	37	145.4	132.5	145.2	2021	1670	0	16560	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18611
+effects	600d	glass moves 1 px	mixed	16.2	0.0	0.0	0.0	0	2901279	37	134.3	128.4	137.7	2516	1791	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 21.06 20.96 21.63
+## exit 0
+ 9:42  up 4 days, 12:35, 1 user, load averages: 21.06 20.96 21.63
+## fxbench effects 3000 dense @slice13  9:42  up 4 days, 12:35, 1 user, load averages: 21.06 20.96 21.63
+# fxbench effects 3000 dense; 1280x800; reps 6; load at start: 21.06 20.96 21.63
+# scene: 4439 records in 8 columns, 250 layers, 250 glass / 750 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	3000d	idle	cpu1	0.0	0.0	0.0	0.0	0	14399406	187	9.5	9.5	9.7	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	idle	metal	0.0	0.0	0.0	0.0	0	14399406	187	6.5	6.2	8.1	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	idle	mixed	0.0	0.0	0.0	0.0	0	14399406	187	3.1	3.1	3.1	0	0	0	-	6/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 3000 one spring cpu1 instructions [188975319]
+effects	3000d	one spring	cpu1	48.5	188.0	437.0	343.2	0	14399406	188	188421.3	187211.3	187823.7	9758	0	0	386276	0/0/0	2424/2622	0/396 0/396 124/528 381/555 164/184	0/0
+# spring launches effects 3000 one spring metal instructions [330075]
+effects	3000d	one spring	metal	48.5	188.0	660.7	0.0	0	14399406	188	308.1	241.2	284.0	9428	8982	0	71126	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+# spring launches effects 3000 one spring mixed instructions [366291]
+effects	3000d	one spring	mixed	48.5	188.0	0.0	0.0	0	14399406	188	260.3	241.0	255.8	9516	9007	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 3000 all springs cpu1 instructions [344871730]
+effects	3000d	all springs	cpu1	80.0	562.0	437.0	343.2	0	14399406	562	270504.1	256487.6	267340.3	13955	0	0	994465	0/0/0	2424/2622	0/396 0/396 124/528 381/555 164/184	0/0
+# spring launches effects 3000 all springs metal instructions [31071381]
+effects	3000d	all springs	metal	80.0	562.0	660.7	0.0	0	14399406	562	880.2	776.3	858.0	9551	9103	0	586030	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+# spring launches effects 3000 all springs mixed instructions [31153225]
+effects	3000d	all springs	mixed	80.0	562.0	0.0	0.0	0	14399406	562	893.5	781.6	855.4	9646	9178	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	scroll 11 px	cpu1	924.7	4438.0	9241.5	35018.0	0	10953747	155	4443761.3	4082457.2	4415342.1	224492	0	0	40460946	0/0/0	6761/55449	8326/55059 6139/53307 4513/49950 1571/37744 71/14048	0/0
+effects	3000d	scroll 11 px	metal	924.7	4438.0	9241.5	0.0	0	10953747	155	30651.4	22612.8	28377.2	18708	16698	0	12297856	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/94620
+effects	3000d	scroll 11 px	mixed	924.7	4438.0	0.0	0.0	0	10953747	155	30633.7	22576.7	28431.2	18562	16433	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	14399406	187	3301.1	3300.5	3300.9	178	0	0	4452	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover above glass	metal	6.0	1.0	0.0	0.0	0	14399406	187	82.6	74.7	80.5	835	119	0	4014	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	hover above glass	mixed	6.0	1.0	0.0	0.0	0	14399406	187	76.0	74.8	75.6	326	71	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover beneath glass	cpu1	28.0	1.0	142.0	394.0	0	14399406	187	55848.5	55845.6	55849.1	3000	0	0	10554	0/0/0	222/852	108/618 150/558 210/534 180/408 180/246	0/0
+effects	3000d	hover beneath glass	metal	28.0	1.0	971.0	0.0	0	14399406	187	94.0	91.2	93.3	14876	14589	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	hover beneath glass	mixed	28.0	1.0	0.0	0.0	0	14399406	187	93.2	91.7	94.8	12085	11719	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	theme	cpu1	1000.0	0.0	11079.0	42551.0	0	14399406	187	5247011.4	5246568.8	5246881.6	256329	0	0	350100	0/0/0	0/66474	0/66474 0/66474 0/59202 0/45228 0/17928	0/0
+effects	3000d	theme	metal	1000.0	0.0	11079.0	0.0	0	14399406	187	113.2	109.4	117.1	17459	17025	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	theme	mixed	1000.0	0.0	0.0	0.0	0	14399406	187	121.1	118.6	125.4	17234	16867	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	glass moves 1 px	cpu1	16.2	0.0	11.8	20.0	0	14399406	187	12518.1	12216.8	12704.3	685	0	0	25304	0/0/0	55/71	0/17 0/18 0/18 22/37 28/30	0/0
+effects	3000d	glass moves 1 px	metal	16.2	0.0	485.7	0.0	0	14399406	187	170.2	156.5	165.4	11634	11400	0	16560	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91978
+effects	3000d	glass moves 1 px	mixed	16.2	0.0	0.0	0.0	0	14399406	187	156.4	154.7	158.7	9678	9354	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 22.12 21.21 21.72
+## exit 0
+ 9:43  up 4 days, 12:35, 1 user, load averages: 22.12 21.21 21.72
+## fxbench pane 300 @slice13  9:43  up 4 days, 12:35, 1 user, load averages: 22.12 21.21 21.72
+# fxbench pane 300; 1280x800; reps 24; load at start: 22.12 21.21 21.72
+# scene: 379 records in 8 columns, 1 layers, 1 glass / 75 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 421228 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+pane	300	idle	cpu1	0.0	0.0	0.0	0.0	0	46275	0	9.4	9.3	9.8	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	idle	metal	0.0	0.0	0.0	0.0	0	46275	0	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	idle	mixed	0.0	0.0	0.0	0.0	0	46275	0	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 one spring cpu1 instructions [262563]
+pane	300	one spring	cpu1	2.8	1.0	0.0	0.0	0	46275	1	108.7	107.3	175.0	6	0	0	4986	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 one spring metal instructions [171767]
+pane	300	one spring	metal	2.8	1.0	0.0	0.0	0	46275	1	81.1	78.5	86.0	361	51	0	5753	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 300 one spring mixed instructions [222058]
+pane	300	one spring	mixed	2.8	1.0	0.0	0.0	0	46275	1	80.2	73.6	85.8	847	58	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 all springs cpu1 instructions [10323525]
+pane	300	all springs	cpu1	32.7	12.0	0.0	0.0	0	46275	12	2978.7	1910.2	2912.6	143	0	0	27403	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 all springs metal instructions [5199006]
+pane	300	all springs	metal	32.7	12.0	0.0	0.0	0	46275	12	131.6	113.0	134.3	920	78	0	29782	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 300 all springs mixed instructions [5148022]
+pane	300	all springs	mixed	32.7	12.0	0.0	0.0	0	46275	12	125.3	110.3	127.1	447	73	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	46275	0	3303.9	3303.2	3306.7	179	0	0	4066	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover above glass	metal	6.0	1.0	0.0	0.0	0	46275	0	84.5	76.4	84.2	654	114	0	3830	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	300	hover above glass	mixed	6.0	1.0	0.0	0.0	0	46275	0	88.2	72.8	88.1	470	124	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover beneath glass	cpu1	20.0	1.0	16.0	63.0	0	46275	0	10163.4	10161.8	10171.3	524	0	0	9273	0/0/0	0/384	0/384 0/384 0/384 72/360 0/0	0/0
+pane	300	hover beneath glass	metal	20.0	1.0	16.0	0.0	0	46275	0	95.4	91.3	101.1	827	306	0	3978	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	300	hover beneath glass	mixed	20.0	1.0	0.0	0.0	0	46275	0	92.8	88.7	97.6	694	304	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	glass moves 1 px	cpu1	17.7	0.0	0.2	1.1	0	46275	0	7357.6	7163.9	7572.1	407	0	0	13126	0/0/0	0/4	0/8 0/8 0/8 0/3 0/0	0/0
+pane	300	glass moves 1 px	metal	17.7	0.0	0.2	0.0	0	46275	0	117.0	108.8	122.0	525	124	0	16682	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/297
+pane	300	glass moves 1 px	mixed	17.7	0.0	0.0	0.0	0	46275	0	117.6	107.8	121.5	566	118	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 23.15 21.44 21.79
+## exit 0
+ 9:43  up 4 days, 12:35, 1 user, load averages: 23.15 21.44 21.79
+## fxbench pane 3000 @slice13  9:43  up 4 days, 12:35, 1 user, load averages: 23.15 21.44 21.79
+# fxbench pane 3000; 1280x800; reps 24; load at start: 23.15 21.44 21.79
+# scene: 3754 records in 8 columns, 1 layers, 1 glass / 750 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 421228 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+pane	3000	idle	cpu1	0.0	0.0	0.0	0.0	0	46275	0	9.6	9.2	9.9	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	idle	metal	0.0	0.0	0.0	0.0	0	46275	0	6.2	6.2	6.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	idle	mixed	0.0	0.0	0.0	0.0	0	46275	0	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 one spring cpu1 instructions [262133]
+pane	3000	one spring	cpu1	2.8	1.0	0.0	0.0	0	46275	1	108.5	107.1	174.5	6	0	0	4864	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 one spring metal instructions [162180]
+pane	3000	one spring	metal	2.8	1.0	0.0	0.0	0	46275	1	80.8	75.2	85.3	350	46	0	4998	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 3000 one spring mixed instructions [157604]
+pane	3000	one spring	mixed	2.8	1.0	0.0	0.0	0	46275	1	89.3	73.9	92.1	366	62	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 all springs cpu1 instructions [63196630]
+pane	3000	all springs	cpu1	32.7	12.0	0.0	0.0	0	46275	12	2978.5	1910.0	2913.3	143	0	0	27281	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 all springs metal instructions [57899610]
+pane	3000	all springs	metal	32.7	12.0	0.0	0.0	0	46275	12	120.7	110.1	120.5	421	102	0	29144	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 3000 all springs mixed instructions [58576992]
+pane	3000	all springs	mixed	32.7	12.0	0.0	0.0	0	46275	12	121.8	109.6	126.3	361	71	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	46275	0	3303.8	3303.2	3304.1	177	0	0	4066	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover above glass	metal	6.0	1.0	0.0	0.0	0	46275	0	75.9	73.8	77.5	305	71	0	3815	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	3000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	46275	0	75.2	73.2	81.9	330	72	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover beneath glass	cpu1	20.0	1.0	16.0	63.0	0	46275	0	10163.1	10161.5	10165.3	517	0	0	9162	0/0/0	0/384	0/384 0/384 0/384 72/360 0/0	0/0
+pane	3000	hover beneath glass	metal	20.0	1.0	16.0	0.0	0	46275	0	96.2	90.7	102.7	489	182	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	3000	hover beneath glass	mixed	20.0	1.0	0.0	0.0	0	46275	0	100.7	86.8	104.8	503	187	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	glass moves 1 px	cpu1	17.7	0.0	0.2	1.1	0	46275	0	7359.2	7119.5	7573.0	413	0	0	13126	0/0/0	0/4	0/8 0/8 0/8 0/3 0/0	0/0
+pane	3000	glass moves 1 px	metal	17.7	0.0	0.2	0.0	0	46275	0	120.6	108.1	128.8	888	115	0	16560	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/297
+pane	3000	glass moves 1 px	mixed	17.7	0.0	0.0	0.0	0	46275	0	128.3	107.1	131.8	537	120	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 23.15 21.44 21.79
+## exit 0
+ 9:43  up 4 days, 12:35, 1 user, load averages: 23.15 21.44 21.79
+## fxbench media 4 @slice13  9:43  up 4 days, 12:35, 1 user, load averages: 23.15 21.44 21.79
+# fxbench media 4; 1280x800; reps 24; load at start: 23.15 21.44 21.79
+# scene: 14 records in 5 columns, 1 layers, 1 glass / 4 dots / 4 videos; media pool 4 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 103.0 instructions per call (1 frame changes in 100000 calls)
+media	4	idle	cpu1	0.0	0.0	0.0	0.0	0	57556	0	9.4	9.2	9.8	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	idle	metal	0.0	0.0	0.0	0.0	0	57556	0	6.0	6.0	6.1	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	idle	mixed	0.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	2.9	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	one video frame	cpu1	28.0	0.0	0.0	0.0	0	57556	0	8387.7	8387.7	8388.7	450	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	one video frame	metal	28.0	0.0	0.0	0.0	0	57556	0	80.3	76.2	84.9	1146	110	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	one video frame	mixed	28.0	0.0	0.0	0.0	0	57556	0	83.5	74.1	84.9	439	98	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	video under glass	cpu1	32.7	0.0	20.0	73.4	0	57556	0	17995.1	17600.5	18197.5	987	0	0	16449	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	4	video under glass	metal	32.7	0.0	20.0	0.0	0	57556	0	96.2	90.5	101.5	654	323	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	video under glass	mixed	32.7	0.0	0.0	0.0	0	57556	0	92.9	90.3	95.8	650	333	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	all videos (every 4th)	cpu1	27.0	0.0	9.0	35.8	0	57556	0	9.0	9.0	11861.6	1	0	0	2263	0/0/0	4/216	0/212 0/216 14/270 0/162 0/0	0/0
+media	4	all videos (every 4th)	metal	27.0	0.0	9.0	0.0	0	57556	0	6.0	6.0	32.3	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	all videos (every 4th)	mixed	27.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	28.3	0	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 4 tiles over 31 refreshes: 32 frames crossed by the audio clocks, 32 published, 23 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480
+media	4	a/v playback (audio clocks)	cpu1	27.0	0.0	9.0	35.8	0	57556	0	9.1	9.0	11863.7	1	0	0	2263	0/0/0	4/216	0/212 0/216 14/270 0/162 0/0	0/0
+media	4	a/v playback (audio clocks)	metal	27.0	0.0	9.0	0.0	0	57556	0	6.0	6.0	30.9	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	a/v playback (audio clocks)	mixed	27.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	27.8	0	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	scroll 11 px	cpu1	25.7	13.0	2.6	9.0	0	0	0	135.0	134.8	2476.0	8	0	0	128025	0/0/0	0/63	0/63 0/63 0/63 0/27 0/0	0/0
+media	4	scroll 11 px	metal	25.7	13.0	2.6	0.0	0	0	0	598.4	587.9	606.7	311	9	0	140098	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	scroll 11 px	mixed	25.7	13.0	0.0	0.0	0	0	0	132.4	132.2	331.6	6	0	0	-	0/14/10	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	hover above glass	cpu1	43.0	4.0	25.0	53.0	0	57556	0	19601.7	19597.2	19603.5	1071	0	0	12559	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	4	hover above glass	metal	43.0	4.0	25.0	0.0	0	57556	0	94.0	90.8	96.6	430	196	0	3863	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	hover above glass	mixed	43.0	4.0	0.0	0.0	0	57556	0	91.6	89.4	94.7	515	214	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	theme	cpu1	1000.0	0.0	45.0	162.0	0	57556	0	53366.6	53279.9	53391.5	6794	0	0	4237	0/0/0	384/1080	576/1080 576/1080 576/1080 288/648 0/0	0/0
+media	4	theme	metal	1000.0	0.0	45.0	0.0	0	57556	0	120.5	109.7	120.7	1119	223	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	theme	mixed	1000.0	0.0	0.0	0.0	0	57556	0	133.3	119.2	140.3	722	263	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 4 all springs cpu1 instructions [5474233]
+media	4	all springs	cpu1	6.4	2.0	0.0	0.0	0	57556	2	1942.3	1252.8	1915.9	106	0	0	6958	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 4 all springs metal instructions [150644]
+media	4	all springs	metal	6.4	2.0	0.0	0.0	0	57556	2	93.7	82.3	96.7	443	74	0	7562	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+# spring launches media 4 all springs mixed instructions [149250]
+media	4	all springs	mixed	6.4	2.0	0.0	0.0	0	57556	2	98.8	78.0	104.2	828	91	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	glass over playing video	cpu1	46.3	0.0	10.0	39.6	0	57556	0	9446.8	9438.7	19196.0	553	0	0	15857	0/0/0	4/240	0/241 0/245 16/305 0/159 0/0	0/0
+media	4	glass over playing video	metal	46.3	0.0	10.0	0.0	0	57556	0	142.9	118.4	144.9	753	79	0	19544	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/354
+media	4	glass over playing video	mixed	46.3	0.0	0.0	0.0	0	57556	0	130.3	115.7	134.5	473	76	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 23.15 21.44 21.79
+## exit 0
+ 9:43  up 4 days, 12:35, 1 user, load averages: 23.15 21.44 21.79
+## fxbench media 24 @slice13  9:43  up 4 days, 12:35, 1 user, load averages: 23.15 21.44 21.79
+# fxbench media 24; 1280x800; reps 24; load at start: 23.15 21.44 21.79
+# scene: 75 records in 5 columns, 2 layers, 2 glass / 24 dots / 24 videos; media pool 24 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 102.8 instructions per call (1 frame changes in 100000 calls)
+media	24	idle	cpu1	0.0	0.0	0.0	0.0	0	115112	0	9.2	9.2	10.0	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	idle	metal	0.0	0.0	0.0	0.0	0	115112	0	6.0	6.0	7.0	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	idle	mixed	0.0	0.0	0.0	0.0	0	115112	0	2.9	2.9	3.0	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	one video frame	cpu1	28.0	0.0	0.0	0.0	0	115112	0	9059.1	9058.8	9064.2	484	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	one video frame	metal	28.0	0.0	0.0	0.0	0	115112	0	89.2	77.7	97.5	1076	156	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	one video frame	mixed	28.0	0.0	0.0	0.0	0	115112	0	79.3	75.3	90.6	1030	154	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	video under glass	cpu1	32.7	0.0	20.0	73.4	0	115112	0	18199.7	17798.0	18398.6	994	0	0	16497	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	24	video under glass	metal	32.7	0.0	20.0	0.0	0	115112	0	106.4	92.4	118.1	1518	371	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	video under glass	mixed	32.7	0.0	0.0	0.0	0	115112	0	103.3	89.2	104.1	912	347	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	all videos (every 4th)	cpu1	170.0	0.0	20.2	76.1	0	115112	0	9.4	9.1	60574.6	4	0	0	2263	0/0/0	9/486	0/477 0/486 14/540 0/324 0/0	0/0
+media	24	all videos (every 4th)	metal	170.0	0.0	20.2	0.0	0	115112	0	6.0	6.0	52.1	2	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	all videos (every 4th)	mixed	170.0	0.0	0.0	0.0	0	115112	0	2.9	2.9	51.5	1	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 24 tiles over 31 refreshes: 192 frames crossed by the audio clocks, 192 published, 16 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480 12480 12480
+media	24	a/v playback (audio clocks)	cpu1	191.9	0.0	22.5	76.1	0	115112	0	103933.2	9.1	66811.1	5561	0	0	43978	0/0/0	10/540	0/477 0/486 14/540 0/324 0/0	0/0
+media	24	a/v playback (audio clocks)	metal	191.9	0.0	22.5	0.0	0	115112	0	133.2	6.0	77.2	633	252	0	18754	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	a/v playback (audio clocks)	mixed	191.9	0.0	0.0	0.0	0	115112	0	134.0	2.9	76.2	2865	316	0	-	12/0/12	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	scroll 11 px	cpu1	485.0	74.0	40.5	152.6	0	24170	0	147657.4	86131.7	145966.3	10585	0	0	400448	0/0/0	0/972	0/972 0/972 0/972 0/747 0/0	0/0
+media	24	scroll 11 px	metal	485.0	74.0	40.5	0.0	0	24170	0	881.1	763.7	884.4	949	355	0	300801	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/693
+media	24	scroll 11 px	mixed	485.0	74.0	0.0	0.0	0	24170	0	877.2	778.4	890.3	1057	482	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	hover above glass	cpu1	43.0	24.0	25.0	53.0	0	115112	0	21642.1	21637.7	21654.9	1192	0	0	14443	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	24	hover above glass	metal	43.0	24.0	25.0	0.0	0	115112	0	97.8	94.9	106.8	947	196	0	5604	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	hover above glass	mixed	43.0	24.0	0.0	0.0	0	115112	0	106.9	92.6	114.4	762	206	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	theme	cpu1	1000.0	0.0	90.0	324.0	0	115112	0	246785.4	246733.8	246956.1	15798	0	0	5425	0/0/0	672/2160	864/2160 864/2160 768/2160 384/1296 0/0	0/0
+media	24	theme	metal	1000.0	0.0	90.0	0.0	0	115112	0	114.3	110.0	124.0	1854	620	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	theme	mixed	1000.0	0.0	0.0	0.0	0	115112	0	127.5	119.8	130.9	1776	613	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 24 all springs cpu1 instructions [28486050]
+media	24	all springs	cpu1	36.3	12.0	0.0	0.0	0	115112	12	11377.1	9857.5	11531.6	662	0	0	29721	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 24 all springs metal instructions [196500]
+media	24	all springs	metal	36.3	12.0	0.0	0.0	0	115112	12	125.7	116.2	129.8	1108	137	0	31732	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+# spring launches media 24 all springs mixed instructions [169796]
+media	24	all springs	mixed	36.3	12.0	0.0	0.0	0	115112	12	136.6	117.1	142.1	616	136	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	glass over playing video	cpu1	189.3	0.0	21.2	79.9	0	115112	0	9624.0	9610.7	68085.3	584	0	0	15857	0/0/0	9/510	0/506 0/515 16/575 0/321 0/0	0/0
+media	24	glass over playing video	metal	189.3	0.0	21.2	0.0	0	115112	0	135.1	117.0	157.3	1262	109	0	19177	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/695
+media	24	glass over playing video	mixed	189.3	0.0	0.0	0.0	0	115112	0	150.8	114.9	168.2	2160	107	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 24.74 21.80 21.92
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 24.74 21.80 21.92
+## fxbench media 48 @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 24.74 21.80 21.92
+# fxbench media 48; 1280x800; reps 24; load at start: 24.74 21.80 21.92
+# scene: 149 records in 5 columns, 4 layers, 4 glass / 48 dots / 48 videos; media pool 48 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 102.4 instructions per call (1 frame changes in 100000 calls)
+media	48	idle	cpu1	0.0	0.0	0.0	0.0	0	163452	0	9.5	9.2	10.4	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	idle	metal	0.0	0.0	0.0	0.0	0	163452	0	6.0	6.0	6.1	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	idle	mixed	0.0	0.0	0.0	0.0	0	163452	0	2.9	2.9	2.9	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	one video frame	cpu1	28.0	0.0	0.0	0.0	0	163452	0	9058.8	9058.8	9059.7	483	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	one video frame	metal	28.0	0.0	0.0	0.0	0	163452	0	83.2	77.9	90.0	1355	100	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	one video frame	mixed	28.0	0.0	0.0	0.0	0	163452	0	78.9	74.8	84.9	796	102	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	video under glass	cpu1	32.7	0.0	20.0	73.4	0	163452	0	18206.2	17798.5	18438.8	1115	0	0	16497	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	48	video under glass	metal	32.7	0.0	20.0	0.0	0	163452	0	106.2	93.7	105.5	2434	379	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	video under glass	mixed	32.7	0.0	0.0	0.0	0	163452	0	94.2	88.7	97.9	511	208	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	all videos (every 4th)	cpu1	250.0	0.0	29.2	112.0	0	163452	0	9.4	9.1	91138.1	2	0	0	2263	0/0/0	12/702	0/691 0/702 14/756 0/540 0/0	0/0
+media	48	all videos (every 4th)	metal	250.0	0.0	29.2	0.0	0	163452	0	6.0	6.0	65.6	2	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	all videos (every 4th)	mixed	250.0	0.0	0.0	0.0	0	163452	0	2.9	2.9	64.9	1	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 48 tiles over 31 refreshes: 384 frames crossed by the audio clocks, 384 published, 16 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480 12480 12480
+media	48	a/v playback (audio clocks)	cpu1	290.4	0.0	31.5	112.0	0	163452	0	158688.1	9.1	101953.8	8459	0	0	63697	0/0/0	13/756	0/691 0/702 14/756 0/540 0/0	0/0
+media	48	a/v playback (audio clocks)	metal	290.4	0.0	31.5	0.0	0	163452	0	153.0	6.0	86.8	603	312	0	29024	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	a/v playback (audio clocks)	mixed	290.4	0.0	0.0	0.0	0	163452	0	158.6	2.9	88.2	611	355	0	-	12/0/12	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	scroll 11 px	cpu1	1000.0	148.0	121.5	459.4	0	130066	0	373684.2	332349.5	367332.4	20001	0	0	816805	0/0/0	0/2916	0/2916 0/2916 0/2916 0/2277 0/0	0/0
+media	48	scroll 11 px	metal	1000.0	148.0	121.5	0.0	0	130066	0	1185.1	1127.0	1207.0	1546	728	0	513251	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1298
+media	48	scroll 11 px	mixed	1000.0	148.0	0.0	0.0	0	130066	0	1198.6	1140.2	1215.9	1117	731	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	hover above glass	cpu1	43.0	48.0	25.0	53.0	0	163452	0	21644.1	21639.7	21644.5	1178	0	0	16459	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	48	hover above glass	metal	43.0	48.0	25.0	0.0	0	163452	0	96.9	94.7	97.5	457	202	0	7692	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	hover above glass	mixed	43.0	48.0	0.0	0.0	0	163452	0	95.1	92.6	96.7	435	201	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	theme	cpu1	1000.0	0.0	126.0	468.0	0	163452	0	367505.7	367450.5	367509.5	19714	0	0	6622	0/0/0	1248/3024	1440/3024 1440/3024 1344/3024 696/2160 0/0	0/0
+media	48	theme	metal	1000.0	0.0	126.0	0.0	0	163452	0	111.0	108.1	114.3	863	574	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	theme	mixed	1000.0	0.0	0.0	0.0	0	163452	0	121.1	119.6	123.7	882	589	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 48 all springs cpu1 instructions [37436225]
+media	48	all springs	cpu1	45.2	18.0	0.0	0.0	0	163452	18	14467.1	12714.6	14983.9	811	0	0	39933	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 48 all springs metal instructions [649851]
+media	48	all springs	metal	45.2	18.0	0.0	0.0	0	163452	18	139.7	127.4	140.1	314	81	0	41139	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+# spring launches media 48 all springs mixed instructions [646948]
+media	48	all springs	mixed	45.2	18.0	0.0	0.0	0	163452	18	139.2	134.3	140.1	291	77	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	glass over playing video	cpu1	269.3	0.0	30.2	115.8	0	163452	0	9618.8	9610.7	98678.9	575	0	0	15857	0/0/0	12/726	0/720 0/731 16/791 0/537 0/0	0/0
+media	48	glass over playing video	metal	269.3	0.0	30.2	0.0	0	163452	0	129.1	115.5	162.6	533	78	0	19159	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1045
+media	48	glass over playing video	mixed	269.3	0.0	0.0	0.0	0	163452	0	124.7	112.7	164.9	378	77	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 24.92 21.89 21.95
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 24.92 21.89 21.95
+## fxbench effects 200 @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 24.92 21.89 21.95
+# fxbench effects 200; 1280x800; reps 24; load at start: 24.92 21.89 21.95
+# scene: 498 records in 8 columns, 17 layers, 17 glass / 50 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	200	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.6	9.3	9.6	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217423.5	217405.2	217428.0	10820	0	0	14226	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	200	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.9	109.1	112.8	2075	1486	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.5	118.6	121.9	2353	2039	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211629.2	211588.8	211641.0	10733	0	0	14226	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	200	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.7	108.5	112.7	1531	1243	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.2	118.2	123.8	1496	1188	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211714.5	211661.8	211718.6	10834	0	0	17417	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	200	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	116.7	113.4	119.8	1426	1111	0	5865	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	125.7	122.5	128.4	1455	1131	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2070.2	112	0	0	4126	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.6	73.1	79.1	290	65	0	3829	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	74.3	72.1	76.4	288	65	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	210755.5	205667.7	211383.1	10678	0	0	1353705	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	200	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2016.5	1725.6	1970.9	1889	1436	0	757325	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/3548
+effects	200	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2029.5	1733.6	1979.2	1952	1514	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 24.37 21.82 21.92
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 24.37 21.82 21.92
+## fxbench effects 1000 @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 24.37 21.82 21.92
+# fxbench effects 1000; 1280x800; reps 24; load at start: 24.37 21.82 21.92
+# scene: 2480 records in 8 columns, 83 layers, 83 glass / 250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	1000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.3	9.8	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.7	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217427.3	217399.0	217429.5	10907	0	0	14069	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	1000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.4	109.3	112.2	1932	1666	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.7	117.5	122.0	1560	1275	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211636.1	211591.2	211641.0	10751	0	0	14069	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	1000	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	111.3	109.0	113.5	1391	1098	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.0	117.3	122.1	1379	1119	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211693.4	211668.1	211695.2	10760	0	0	17260	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	1000	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	116.4	111.9	119.9	1954	1642	0	5865	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	125.7	123.7	128.4	1981	1636	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.3	2069.7	2071.3	112	0	0	4114	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.3	73.9	77.4	347	103	0	3829	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	74.0	72.2	75.2	352	105	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	211014.0	205952.5	211663.0	10848	0	0	1606625	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	1000	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2161.2	1875.7	2112.1	1647	1170	0	847713	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/4868
+effects	1000	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2165.2	1885.6	2123.7	1705	1179	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 24.37 21.82 21.92
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 24.37 21.82 21.92
+## fxbench effects 5000 @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 24.37 21.82 21.92
+# fxbench effects 5000; 1280x800; reps 24; load at start: 24.37 21.82 21.92
+# scene: 12398 records in 8 columns, 417 layers, 417 glass / 1250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	5000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.5	9.3	9.9	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.5	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217433.4	217403.5	217437.9	10880	0	0	14026	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	5000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.7	108.0	111.4	1410	1165	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	121.3	120.1	122.4	1421	1142	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211631.0	211597.2	211645.0	10696	0	0	14026	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	5000	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	111.3	108.4	113.7	1614	1350	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	121.7	119.3	124.1	2019	1712	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211714.3	211671.4	211791.4	10787	0	0	17217	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	5000	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	115.9	114.5	117.3	1489	1164	0	5865	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	131.2	123.5	133.7	1483	1155	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2071.0	112	0	0	4114	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	77.2	75.5	79.2	343	68	0	3829	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	74.8	72.9	76.3	310	69	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	211068.8	205951.7	211677.5	10971	0	0	1606568	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	5000	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2403.1	2119.4	2362.9	1964	1395	0	847257	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/11544
+effects	5000	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2421.5	2145.5	2372.6	1698	1157	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 24.02 21.79 21.91
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 24.02 21.79 21.91
+## repetition 3
+## fxbench effects 200 @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 24.02 21.79 21.91
+# fxbench effects 200; 1280x800; reps 24; load at start: 24.02 21.79 21.91
+# scene: 298 records in 8 columns, 17 layers, 17 glass / 50 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	200	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.3	9.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 200 one spring cpu1 instructions [10126336]
+effects	200	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10130.2	9966.5	10382.6	519	0	0	12265	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 200 one spring metal instructions [187014]
+effects	200	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	104.5	97.9	107.5	714	351	0	9062	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+# spring launches effects 200 one spring mixed instructions [206002]
+effects	200	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	99.3	95.9	101.2	609	349	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 200 all springs cpu1 instructions [18148647]
+effects	200	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13262.3	11773.5	13121.8	668	0	0	35127	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 200 all springs metal instructions [3117828]
+effects	200	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	141.4	131.2	141.6	632	361	0	33597	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+# spring launches effects 200 all springs mixed instructions [3117663]
+effects	200	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	140.4	130.7	140.6	649	387	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209180.2	204021.1	209365.2	10535	0	0	1202850	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	200	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	1884.1	1602.8	1835.7	1874	1159	0	652342	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/3548
+effects	200	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	1885.7	1607.7	1843.4	1664	1157	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2070.4	111	0	0	4212	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.3	74.4	77.5	386	76	0	3804	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.4	72.2	75.4	336	73	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14872.4	14870.8	14876.6	769	0	0	9415	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	200	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	92.4	89.5	93.3	1319	1081	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	89.9	87.5	91.9	866	608	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216274.8	216254.3	216291.5	10759	0	0	13888	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	200	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.5	108.6	112.5	1372	1099	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	121.7	118.5	123.2	1700	1493	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8163.2	7823.0	8838.4	465	0	0	18954	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	200	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	126.3	124.2	127.3	716	486	0	16682	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3314
+effects	200	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	125.6	122.9	126.6	734	483	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 23.13 21.65 21.86
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 23.13 21.65 21.86
+## fxbench effects 1000 @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 23.13 21.65 21.86
+# fxbench effects 1000; 1280x800; reps 24; load at start: 23.13 21.65 21.86
+# scene: 1480 records in 8 columns, 83 layers, 83 glass / 250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	1000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.2	9.9	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 1000 one spring cpu1 instructions [10144886]
+effects	1000	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10130.0	9966.7	10382.4	518	0	0	12265	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 1000 one spring metal instructions [194390]
+effects	1000	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	101.1	97.7	102.4	811	506	0	8624	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+# spring launches effects 1000 one spring mixed instructions [205365]
+effects	1000	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	98.3	95.3	100.4	601	338	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 1000 all springs cpu1 instructions [33817986]
+effects	1000	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13262.5	11773.8	13121.3	682	0	0	35127	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 1000 all springs metal instructions [18863229]
+effects	1000	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	141.4	130.7	140.3	616	344	0	33264	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+# spring launches effects 1000 all springs mixed instructions [18821585]
+effects	1000	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	141.2	131.4	141.3	616	356	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209461.4	204293.4	209625.0	10767	0	0	1418429	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	1000	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	2014.6	1736.5	1964.6	2248	1756	0	730546	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/4868
+effects	1000	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	2025.8	1748.1	1974.1	1584	1122	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2070.7	111	0	0	4115	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	75.8	73.9	79.9	343	66	0	3817	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.3	72.2	74.3	254	59	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14873.1	14871.2	14877.1	791	0	0	9415	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	1000	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	92.2	90.8	93.0	802	569	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	89.6	89.1	91.2	812	559	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216281.0	216249.0	216283.5	10783	0	0	13888	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	1000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.4	108.0	112.5	1921	1612	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.3	117.3	122.7	1912	1622	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8167.4	7823.3	8839.2	464	0	0	18936	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	1000	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	126.2	124.7	127.5	911	647	0	16682	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4634
+effects	1000	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	123.7	121.8	125.5	940	650	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 23.13 21.65 21.86
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 23.13 21.65 21.86
+## fxbench effects 5000 @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 23.13 21.65 21.86
+# fxbench effects 5000; 1280x800; reps 24; load at start: 23.13 21.65 21.86
+# scene: 7398 records in 8 columns, 417 layers, 417 glass / 1250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	5000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.5	9.2	9.7	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 5000 one spring cpu1 instructions [10125816]
+effects	5000	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10132.0	9966.2	10384.0	532	0	0	11899	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 5000 one spring metal instructions [198950]
+effects	5000	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	100.2	99.0	102.5	610	343	0	8185	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+# spring launches effects 5000 one spring mixed instructions [176905]
+effects	5000	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	98.9	96.5	100.3	608	347	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 5000 all springs cpu1 instructions [112108414]
+effects	5000	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	13262.0	11775.8	13120.0	665	0	0	34762	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 5000 all springs metal instructions [97016449]
+effects	5000	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	140.2	132.6	140.4	669	364	0	33067	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+# spring launches effects 5000 all springs mixed instructions [97037971]
+effects	5000	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	139.1	129.2	137.3	565	393	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	209427.3	204307.2	209623.3	10712	0	0	1417878	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	5000	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	2252.5	1994.3	2211.9	1891	1322	0	729249	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/11544
+effects	5000	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	2262.6	1989.6	2217.6	1730	1273	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.3	2069.7	2071.4	110	0	0	4090	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.5	75.5	77.4	325	62	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	75.2	71.6	77.7	319	61	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	14872.5	14867.7	14874.5	772	0	0	9294	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	5000	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	92.2	89.8	92.6	857	589	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	89.5	87.1	90.1	798	592	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	216269.6	216246.5	216273.2	10706	0	0	14202	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	5000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	113.3	107.8	113.6	1958	1645	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.9	119.3	122.6	1524	1256	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8160.8	7820.6	8836.8	471	0	0	18739	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	5000	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	126.6	124.0	128.7	781	516	0	16525	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11310
+effects	5000	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	123.3	121.5	125.4	777	534	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 22.48 21.53 21.82
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 22.48 21.53 21.82
+## fxbench effects 600 dense @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 22.48 21.53 21.82
+# fxbench effects 600 dense; 1280x800; reps 6; load at start: 22.48 21.53 21.82
+# scene: 889 records in 8 columns, 50 layers, 50 glass / 150 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	600d	idle	cpu1	0.0	0.0	0.0	0.0	0	2901279	37	9.5	9.5	9.7	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	idle	metal	0.0	0.0	0.0	0.0	0	2901279	37	6.2	6.2	6.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	idle	mixed	0.0	0.0	0.0	0.0	0	2901279	37	3.1	3.1	3.1	0	0	0	-	6/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 600 one spring cpu1 instructions [39904174]
+effects	600d	one spring	cpu1	46.7	38.0	76.0	62.3	0	2901279	38	40139.9	40117.7	40392.3	2006	0	0	68330	0/0/0	420/456	0/72 0/72 22/96 71/102 30/32	0/0
+# spring launches effects 600 one spring metal instructions [210605]
+effects	600d	one spring	metal	46.7	38.0	108.3	0.0	0	2901279	38	124.9	123.1	125.4	1966	1664	0	21547	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+# spring launches effects 600 one spring mixed instructions [207263]
+effects	600d	one spring	mixed	46.7	38.0	0.0	0.0	0	2901279	38	125.7	122.3	124.6	2690	1779	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 600 all springs cpu1 instructions [71843949]
+effects	600d	all springs	cpu1	80.7	112.0	76.0	62.3	0	2901279	112	57790.8	54236.5	56966.6	2818	0	0	198057	0/0/0	420/456	0/72 0/72 22/96 71/102 30/32	0/0
+# spring launches effects 600 all springs metal instructions [6229658]
+effects	600d	all springs	metal	80.7	112.0	108.3	0.0	0	2901279	112	279.8	244.4	272.8	2953	2391	0	135650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+# spring launches effects 600 all springs mixed instructions [6283366]
+effects	600d	all springs	mixed	80.7	112.0	0.0	0.0	0	2901279	112	276.2	244.1	269.6	2124	1697	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	scroll 11 px	cpu1	924.7	888.0	1830.2	6960.5	0	2156666	30	901942.6	832642.7	901790.4	45325	0	0	7000758	0/0/0	1331/10981	1647/10912 1243/10561 962/9891 384/7529 20/2870	0/0
+effects	600d	scroll 11 px	metal	924.7	888.0	1830.2	0.0	0	2156666	30	5336.8	4400.8	5144.8	3966	3307	0	2526985	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/19097
+effects	600d	scroll 11 px	mixed	924.7	888.0	0.0	0.0	0	2156666	30	5344.2	4413.0	5159.5	3953	3318	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	2901279	37	2067.9	2067.3	2067.8	112	0	0	4234	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover above glass	metal	6.0	1.0	0.0	0.0	0	2901279	37	75.5	73.0	75.2	876	77	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	hover above glass	mixed	6.0	1.0	0.0	0.0	0	2901279	37	73.6	71.9	73.2	303	74	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	hover beneath glass	cpu1	28.0	1.0	115.0	353.0	0	2901279	37	45509.6	45502.7	45510.3	2477	0	0	9933	0/0/0	186/690	54/498 108/486 186/498 168/390 180/246	0/0
+effects	600d	hover beneath glass	metal	28.0	1.0	208.0	0.0	0	2901279	37	92.6	90.9	92.4	2931	2141	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	hover beneath glass	mixed	28.0	1.0	0.0	0.0	0	2901279	37	89.8	88.7	90.5	2393	2078	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	theme	cpu1	1000.0	0.0	2230.0	8608.0	0	2901279	37	1088707.8	1088655.9	1088875.1	53254	0	0	71758	0/0/0	0/13380	0/13380 0/13380 0/11988 0/9228 0/3672	0/0
+effects	600d	theme	metal	1000.0	0.0	2230.0	0.0	0	2901279	37	112.2	108.6	112.5	5180	4907	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18596
+effects	600d	theme	mixed	1000.0	0.0	0.0	0.0	0	2901279	37	119.5	118.5	121.2	5211	4937	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	600d	glass moves 1 px	cpu1	16.2	0.0	11.8	20.0	0	2901279	37	9846.1	9576.0	10036.0	541	0	0	24184	0/0/0	55/71	0/17 0/18 0/18 22/37 28/30	0/0
+effects	600d	glass moves 1 px	metal	16.2	0.0	100.8	0.0	0	2901279	37	134.6	131.6	135.0	1990	1687	0	16560	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	18/18611
+effects	600d	glass moves 1 px	mixed	16.2	0.0	0.0	0.0	0	2901279	37	129.6	128.9	129.3	2010	1771	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 21.80 21.41 21.77
+## exit 0
+ 9:43  up 4 days, 12:36, 1 user, load averages: 21.80 21.41 21.77
+## fxbench effects 3000 dense @slice13  9:43  up 4 days, 12:36, 1 user, load averages: 21.80 21.41 21.77
+# fxbench effects 3000 dense; 1280x800; reps 6; load at start: 21.80 21.41 21.77
+# scene: 4439 records in 8 columns, 250 layers, 250 glass / 750 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	3000d	idle	cpu1	0.0	0.0	0.0	0.0	0	14399406	187	9.5	9.4	9.6	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	idle	metal	0.0	0.0	0.0	0.0	0	14399406	187	6.2	6.2	6.4	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	idle	mixed	0.0	0.0	0.0	0.0	0	14399406	187	3.1	3.1	3.1	0	0	0	-	6/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 3000 one spring cpu1 instructions [189030434]
+effects	3000d	one spring	cpu1	48.5	188.0	437.0	343.2	0	14399406	188	188427.7	187232.6	187847.5	9761	0	0	385867	0/0/0	2424/2622	0/396 0/396 124/528 381/555 164/184	0/0
+# spring launches effects 3000 one spring metal instructions [344463]
+effects	3000d	one spring	metal	48.5	188.0	660.7	0.0	0	14399406	188	243.2	237.8	243.0	9227	8874	0	71012	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+# spring launches effects 3000 one spring mixed instructions [316068]
+effects	3000d	one spring	mixed	48.5	188.0	0.0	0.0	0	14399406	188	241.9	238.4	242.2	9286	8905	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 3000 all springs cpu1 instructions [344661090]
+effects	3000d	all springs	cpu1	80.0	562.0	437.0	343.2	0	14399406	562	270521.9	256541.0	267350.9	13491	0	0	994465	0/0/0	2424/2622	0/396 0/396 124/528 381/555 164/184	0/0
+# spring launches effects 3000 all springs metal instructions [30993380]
+effects	3000d	all springs	metal	80.0	562.0	660.7	0.0	0	14399406	562	888.1	758.6	850.3	9266	8909	0	591820	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+# spring launches effects 3000 all springs mixed instructions [31131099]
+effects	3000d	all springs	mixed	80.0	562.0	0.0	0.0	0	14399406	562	879.2	761.9	849.8	9261	8862	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	scroll 11 px	cpu1	924.7	4438.0	9241.5	35018.0	0	10953747	155	4443798.1	4081924.2	4415408.2	221573	0	0	40460393	0/0/0	6761/55449	8326/55059 6139/53307 4513/49950 1571/37744 71/14048	0/0
+effects	3000d	scroll 11 px	metal	924.7	4438.0	9241.5	0.0	0	10953747	155	30619.1	22569.1	28364.9	18338	16285	0	12297776	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/94620
+effects	3000d	scroll 11 px	mixed	924.7	4438.0	0.0	0.0	0	10953747	155	30641.2	22602.3	28382.4	18420	16336	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	14399406	187	3301.1	3300.5	3301.0	177	0	0	4524	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover above glass	metal	6.0	1.0	0.0	0.0	0	14399406	187	76.2	74.7	76.2	847	93	0	3939	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	hover above glass	mixed	6.0	1.0	0.0	0.0	0	14399406	187	75.9	75.2	79.6	874	95	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	hover beneath glass	cpu1	28.0	1.0	142.0	394.0	0	14399406	187	55848.2	55843.4	55848.4	3046	0	0	10541	0/0/0	222/852	108/618 150/558 210/534 180/408 180/246	0/0
+effects	3000d	hover beneath glass	metal	28.0	1.0	971.0	0.0	0	14399406	187	92.1	91.1	92.7	11964	11679	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	hover beneath glass	mixed	28.0	1.0	0.0	0.0	0	14399406	187	92.3	90.2	92.6	12052	11691	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	theme	cpu1	1000.0	0.0	11079.0	42551.0	0	14399406	187	5246701.5	5246552.2	5246724.5	254293	0	0	349898	0/0/0	0/66474	0/66474 0/66474 0/59202 0/45228 0/17928	0/0
+effects	3000d	theme	metal	1000.0	0.0	11079.0	0.0	0	14399406	187	110.6	109.0	112.2	17153	16778	0	2650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91963
+effects	3000d	theme	mixed	1000.0	0.0	0.0	0.0	0	14399406	187	120.4	120.1	122.5	17205	16688	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	3000d	glass moves 1 px	cpu1	16.2	0.0	11.8	20.0	0	14399406	187	12530.4	12216.8	12737.9	732	0	0	25304	0/0/0	55/71	0/17 0/18 0/18 22/37 28/30	0/0
+effects	3000d	glass moves 1 px	metal	16.2	0.0	485.7	0.0	0	14399406	187	166.2	153.6	163.0	9794	9335	0	16560	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	68/91978
+effects	3000d	glass moves 1 px	mixed	16.2	0.0	0.0	0.0	0	14399406	187	158.2	154.1	163.6	9730	9382	0	-	0/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 21.20 21.29 21.72
+## exit 0
+ 9:44  up 4 days, 12:36, 1 user, load averages: 21.20 21.29 21.72
+## fxbench pane 300 @slice13  9:44  up 4 days, 12:36, 1 user, load averages: 21.20 21.29 21.72
+# fxbench pane 300; 1280x800; reps 24; load at start: 21.20 21.29 21.72
+# scene: 379 records in 8 columns, 1 layers, 1 glass / 75 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 421228 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+pane	300	idle	cpu1	0.0	0.0	0.0	0.0	0	46275	0	9.6	9.3	9.9	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	idle	metal	0.0	0.0	0.0	0.0	0	46275	0	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	idle	mixed	0.0	0.0	0.0	0.0	0	46275	0	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 one spring cpu1 instructions [262421]
+pane	300	one spring	cpu1	2.8	1.0	0.0	0.0	0	46275	1	108.6	107.3	174.7	6	0	0	4986	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 one spring metal instructions [163647]
+pane	300	one spring	metal	2.8	1.0	0.0	0.0	0	46275	1	78.5	77.2	79.9	325	49	0	5314	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 300 one spring mixed instructions [162985]
+pane	300	one spring	mixed	2.8	1.0	0.0	0.0	0	46275	1	77.2	73.4	78.5	315	48	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 all springs cpu1 instructions [10320144]
+pane	300	all springs	cpu1	32.7	12.0	0.0	0.0	0	46275	12	2978.6	1910.1	2913.2	149	0	0	27403	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 300 all springs metal instructions [5161074]
+pane	300	all springs	metal	32.7	12.0	0.0	0.0	0	46275	12	120.7	110.1	121.8	407	98	0	29782	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 300 all springs mixed instructions [5185041]
+pane	300	all springs	mixed	32.7	12.0	0.0	0.0	0	46275	12	123.5	110.0	126.6	537	110	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	46275	0	3303.8	3303.2	3304.1	177	0	0	4079	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover above glass	metal	6.0	1.0	0.0	0.0	0	46275	0	75.8	73.9	76.9	421	129	0	3818	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	300	hover above glass	mixed	6.0	1.0	0.0	0.0	0	46275	0	75.3	70.6	81.4	429	125	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	hover beneath glass	cpu1	20.0	1.0	16.0	63.0	0	46275	0	10163.1	10161.5	10175.1	524	0	0	9287	0/0/0	0/384	0/384 0/384 0/384 72/360 0/0	0/0
+pane	300	hover beneath glass	metal	20.0	1.0	16.0	0.0	0	46275	0	94.5	90.8	99.5	1151	316	0	4027	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	300	hover beneath glass	mixed	20.0	1.0	0.0	0.0	0	46275	0	91.4	87.6	94.4	679	305	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	300	glass moves 1 px	cpu1	17.7	0.0	0.2	1.1	0	46275	0	7359.9	7120.7	7573.3	406	0	0	13208	0/0/0	0/4	0/8 0/8 0/8 0/3 0/0	0/0
+pane	300	glass moves 1 px	metal	17.7	0.0	0.2	0.0	0	46275	0	109.1	107.2	111.9	451	127	0	16650	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/297
+pane	300	glass moves 1 px	mixed	17.7	0.0	0.0	0.0	0	46275	0	107.7	106.5	114.1	423	123	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 23.83 21.83 21.91
+## exit 0
+ 9:44  up 4 days, 12:36, 1 user, load averages: 23.83 21.83 21.91
+## fxbench pane 3000 @slice13  9:44  up 4 days, 12:36, 1 user, load averages: 23.83 21.83 21.91
+# fxbench pane 3000; 1280x800; reps 24; load at start: 23.83 21.83 21.91
+# scene: 3754 records in 8 columns, 1 layers, 1 glass / 750 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 421228 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+pane	3000	idle	cpu1	0.0	0.0	0.0	0.0	0	46275	0	9.3	9.3	11.1	1	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	idle	metal	0.0	0.0	0.0	0.0	0	46275	0	6.2	6.2	6.3	0	0	0	2416	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	idle	mixed	0.0	0.0	0.0	0.0	0	46275	0	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 one spring cpu1 instructions [262172]
+pane	3000	one spring	cpu1	2.8	1.0	0.0	0.0	0	46275	1	108.6	107.3	174.7	6	0	0	4986	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 one spring metal instructions [155435]
+pane	3000	one spring	metal	2.8	1.0	0.0	0.0	0	46275	1	79.3	73.5	79.7	329	57	0	5314	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 3000 one spring mixed instructions [152115]
+pane	3000	one spring	mixed	2.8	1.0	0.0	0.0	0	46275	1	76.4	73.7	76.2	254	52	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 all springs cpu1 instructions [63115876]
+pane	3000	all springs	cpu1	32.7	12.0	0.0	0.0	0	46275	12	2978.7	1910.2	2912.5	143	0	0	27403	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches pane 3000 all springs metal instructions [57938542]
+pane	3000	all springs	metal	32.7	12.0	0.0	0.0	0	46275	12	119.4	109.9	118.2	332	69	0	29452	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+# spring launches pane 3000 all springs mixed instructions [57897908]
+pane	3000	all springs	mixed	32.7	12.0	0.0	0.0	0	46275	12	120.1	109.3	119.6	342	76	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	46275	0	3303.8	3303.2	3303.9	177	0	0	4066	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover above glass	metal	6.0	1.0	0.0	0.0	0	46275	0	75.8	74.7	76.7	354	100	0	3805	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	3000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	46275	0	74.6	71.3	76.6	370	145	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	hover beneath glass	cpu1	20.0	1.0	16.0	63.0	0	46275	0	10163.4	10161.8	10164.6	518	0	0	9287	0/0/0	0/384	0/384 0/384 0/384 72/360 0/0	0/0
+pane	3000	hover beneath glass	metal	20.0	1.0	16.0	0.0	0	46275	0	92.2	90.0	93.5	537	303	0	3979	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/282
+pane	3000	hover beneath glass	mixed	20.0	1.0	0.0	0.0	0	46275	0	89.0	86.9	91.4	529	302	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+pane	3000	glass moves 1 px	cpu1	17.7	0.0	0.2	1.1	0	46275	0	7358.8	7119.5	7561.4	403	0	0	13127	0/0/0	0/4	0/8 0/8 0/8 0/3 0/0	0/0
+pane	3000	glass moves 1 px	metal	17.7	0.0	0.2	0.0	0	46275	0	109.8	106.5	112.0	389	124	0	16682	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/297
+pane	3000	glass moves 1 px	mixed	17.7	0.0	0.0	0.0	0	46275	0	107.3	105.6	109.4	397	124	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 23.83 21.83 21.91
+## exit 0
+ 9:44  up 4 days, 12:36, 1 user, load averages: 23.83 21.83 21.91
+## fxbench media 4 @slice13  9:44  up 4 days, 12:36, 1 user, load averages: 23.83 21.83 21.91
+# fxbench media 4; 1280x800; reps 24; load at start: 23.83 21.83 21.91
+# scene: 14 records in 5 columns, 1 layers, 1 glass / 4 dots / 4 videos; media pool 4 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 102.0 instructions per call (1 frame changes in 100000 calls)
+media	4	idle	cpu1	0.0	0.0	0.0	0.0	0	57556	0	9.4	9.1	9.8	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	idle	metal	0.0	0.0	0.0	0.0	0	57556	0	6.0	6.0	6.4	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	idle	mixed	0.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	2.9	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	one video frame	cpu1	28.0	0.0	0.0	0.0	0	57556	0	8393.4	8387.7	8417.4	460	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	one video frame	metal	28.0	0.0	0.0	0.0	0	57556	0	77.7	75.4	79.4	401	65	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	one video frame	mixed	28.0	0.0	0.0	0.0	0	57556	0	80.5	74.7	82.9	810	70	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	video under glass	cpu1	32.7	0.0	20.0	73.4	0	57556	0	18012.4	17600.6	18197.9	1002	0	0	16571	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	4	video under glass	metal	32.7	0.0	20.0	0.0	0	57556	0	93.8	91.9	96.2	544	256	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	video under glass	mixed	32.7	0.0	0.0	0.0	0	57556	0	91.7	89.7	92.8	578	283	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	all videos (every 4th)	cpu1	27.0	0.0	9.0	35.8	0	57556	0	9.4	9.1	11885.1	1	0	0	2263	0/0/0	4/216	0/212 0/216 14/270 0/162 0/0	0/0
+media	4	all videos (every 4th)	metal	27.0	0.0	9.0	0.0	0	57556	0	6.0	6.0	31.4	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	all videos (every 4th)	mixed	27.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	31.2	1	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 4 tiles over 31 refreshes: 32 frames crossed by the audio clocks, 32 published, 23 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480
+media	4	a/v playback (audio clocks)	cpu1	27.0	0.0	9.0	35.8	0	57556	0	9.4	9.1	11886.0	2	0	0	2263	0/0/0	4/216	0/212 0/216 14/270 0/162 0/0	0/0
+media	4	a/v playback (audio clocks)	metal	27.0	0.0	9.0	0.0	0	57556	0	6.0	6.0	31.1	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	a/v playback (audio clocks)	mixed	27.0	0.0	0.0	0.0	0	57556	0	2.9	2.9	27.8	0	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	scroll 11 px	cpu1	25.7	13.0	2.6	9.0	0	0	0	135.1	134.9	2475.9	6	0	0	128024	0/0/0	0/63	0/63 0/63 0/63 0/27 0/0	0/0
+media	4	scroll 11 px	metal	25.7	13.0	2.6	0.0	0	0	0	590.4	587.1	598.0	325	19	0	137152	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	scroll 11 px	mixed	25.7	13.0	0.0	0.0	0	0	0	132.4	132.1	331.4	7	0	0	-	0/14/10	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	hover above glass	cpu1	43.0	4.0	25.0	53.0	0	57556	0	19601.6	19597.2	19602.9	1066	0	0	12559	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	4	hover above glass	metal	43.0	4.0	25.0	0.0	0	57556	0	94.1	91.4	95.4	622	321	0	3864	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	hover above glass	mixed	43.0	4.0	0.0	0.0	0	57556	0	90.5	87.4	91.4	611	327	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	theme	cpu1	1000.0	0.0	45.0	162.0	0	57556	0	53285.1	53279.5	53294.0	2987	0	0	4009	0/0/0	384/1080	576/1080 576/1080 576/1080 288/648 0/0	0/0
+media	4	theme	metal	1000.0	0.0	45.0	0.0	0	57556	0	109.5	106.7	109.9	440	234	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+media	4	theme	mixed	1000.0	0.0	0.0	0.0	0	57556	0	119.5	118.0	120.1	423	225	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 4 all springs cpu1 instructions [5475273]
+media	4	all springs	cpu1	6.4	2.0	0.0	0.0	0	57556	2	1942.3	1253.7	1917.0	106	0	0	6958	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 4 all springs metal instructions [105283]
+media	4	all springs	metal	6.4	2.0	0.0	0.0	0	57556	2	84.0	80.9	87.1	349	50	0	7541	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/341
+# spring launches media 4 all springs mixed instructions [101550]
+media	4	all springs	mixed	6.4	2.0	0.0	0.0	0	57556	2	82.0	78.4	87.2	325	52	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	4	glass over playing video	cpu1	46.3	0.0	10.0	39.6	0	57556	0	9526.6	9438.8	19249.6	801	0	0	15858	0/0/0	4/240	0/241 0/245 16/305 0/159 0/0	0/0
+media	4	glass over playing video	metal	46.3	0.0	10.0	0.0	0	57556	0	127.2	116.6	131.1	840	61	0	19177	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/354
+media	4	glass over playing video	mixed	46.3	0.0	0.0	0.0	0	57556	0	124.4	112.2	131.5	438	48	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 24.56 22.01 21.97
+## exit 0
+ 9:44  up 4 days, 12:37, 1 user, load averages: 24.56 22.01 21.97
+## fxbench media 24 @slice13  9:44  up 4 days, 12:37, 1 user, load averages: 24.56 22.01 21.97
+# fxbench media 24; 1280x800; reps 24; load at start: 24.56 22.01 21.97
+# scene: 75 records in 5 columns, 2 layers, 2 glass / 24 dots / 24 videos; media pool 24 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 102.0 instructions per call (1 frame changes in 100000 calls)
+media	24	idle	cpu1	0.0	0.0	0.0	0.0	0	115112	0	9.4	9.1	9.9	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	idle	metal	0.0	0.0	0.0	0.0	0	115112	0	6.0	6.0	6.1	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	idle	mixed	0.0	0.0	0.0	0.0	0	115112	0	2.9	2.9	2.9	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	one video frame	cpu1	28.0	0.0	0.0	0.0	0	115112	0	9058.8	9058.8	9062.9	487	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	one video frame	metal	28.0	0.0	0.0	0.0	0	115112	0	77.6	75.5	78.6	443	158	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	one video frame	mixed	28.0	0.0	0.0	0.0	0	115112	0	77.1	72.9	82.8	513	158	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	video under glass	cpu1	32.7	0.0	20.0	73.4	0	115112	0	18224.4	17830.7	18417.7	1281	0	0	16691	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	24	video under glass	metal	32.7	0.0	20.0	0.0	0	115112	0	94.1	91.9	97.1	1151	363	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	video under glass	mixed	32.7	0.0	0.0	0.0	0	115112	0	92.1	89.4	95.0	1094	357	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	all videos (every 4th)	cpu1	170.0	0.0	20.2	76.1	0	115112	0	9.4	9.1	60588.3	4	0	0	2263	0/0/0	9/486	0/477 0/486 14/540 0/324 0/0	0/0
+media	24	all videos (every 4th)	metal	170.0	0.0	20.2	0.0	0	115112	0	6.0	6.0	50.2	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	all videos (every 4th)	mixed	170.0	0.0	0.0	0.0	0	115112	0	2.9	2.9	50.3	0	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 24 tiles over 31 refreshes: 192 frames crossed by the audio clocks, 192 published, 16 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480 12480 12480
+media	24	a/v playback (audio clocks)	cpu1	191.9	0.0	22.5	76.1	0	115112	0	103967.5	9.1	66893.3	5818	0	0	44099	0/0/0	10/540	0/477 0/486 14/540 0/324 0/0	0/0
+media	24	a/v playback (audio clocks)	metal	191.9	0.0	22.5	0.0	0	115112	0	130.1	6.0	71.6	472	249	0	18754	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	a/v playback (audio clocks)	mixed	191.9	0.0	0.0	0.0	0	115112	0	132.7	2.9	72.1	522	238	0	-	12/0/12	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	scroll 11 px	cpu1	485.0	74.0	40.5	152.6	0	24170	0	147627.6	86093.2	146073.7	9309	0	0	400159	0/0/0	0/972	0/972 0/972 0/972 0/747 0/0	0/0
+media	24	scroll 11 px	metal	485.0	74.0	40.5	0.0	0	24170	0	845.4	760.9	847.9	1202	321	0	292051	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/693
+media	24	scroll 11 px	mixed	485.0	74.0	0.0	0.0	0	24170	0	850.2	763.0	852.2	627	290	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	hover above glass	cpu1	43.0	24.0	25.0	53.0	0	115112	0	21642.3	21637.8	21643.5	1183	0	0	14371	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	24	hover above glass	metal	43.0	24.0	25.0	0.0	0	115112	0	95.9	93.8	99.2	494	214	0	5604	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	hover above glass	mixed	43.0	24.0	0.0	0.0	0	115112	0	92.3	90.2	94.2	458	216	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	theme	cpu1	1000.0	0.0	90.0	324.0	0	115112	0	246804.4	246740.5	246944.6	13362	0	0	5468	0/0/0	672/2160	864/2160 864/2160 768/2160 384/1296 0/0	0/0
+media	24	theme	metal	1000.0	0.0	90.0	0.0	0	115112	0	110.6	108.3	114.2	1378	610	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+media	24	theme	mixed	1000.0	0.0	0.0	0.0	0	115112	0	120.1	118.2	123.8	727	423	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 24 all springs cpu1 instructions [28530219]
+media	24	all springs	cpu1	36.3	12.0	0.0	0.0	0	115112	12	11390.9	9856.3	11562.6	862	0	0	29681	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 24 all springs metal instructions [175970]
+media	24	all springs	metal	36.3	12.0	0.0	0.0	0	115112	12	123.4	115.8	124.3	320	80	0	31536	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/682
+# spring launches media 24 all springs mixed instructions [157228]
+media	24	all springs	mixed	36.3	12.0	0.0	0.0	0	115112	12	123.2	113.7	124.4	366	78	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	24	glass over playing video	cpu1	189.3	0.0	21.2	79.9	0	115112	0	9629.3	9612.0	68080.2	576	0	0	15857	0/0/0	9/510	0/506 0/515 16/575 0/321 0/0	0/0
+media	24	glass over playing video	metal	189.3	0.0	21.2	0.0	0	115112	0	121.8	115.7	150.9	486	71	0	19045	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/695
+media	24	glass over playing video	mixed	189.3	0.0	0.0	0.0	0	115112	0	119.0	114.3	148.2	527	65	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 24.51 22.05 21.98
+## exit 0
+ 9:44  up 4 days, 12:37, 1 user, load averages: 24.51 22.05 21.98
+## fxbench media 48 @slice13  9:44  up 4 days, 12:37, 1 user, load averages: 24.51 22.05 21.98
+# fxbench media 48; 1280x800; reps 24; load at start: 24.51 22.05 21.98
+# scene: 149 records in 5 columns, 4 layers, 4 glass / 48 dots / 48 videos; media pool 48 slots
+# retained shadow coverage: 69296 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+# pacer: 102.0 instructions per call (1 frame changes in 100000 calls)
+media	48	idle	cpu1	0.0	0.0	0.0	0.0	0	163452	0	9.4	9.2	9.8	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	idle	metal	0.0	0.0	0.0	0.0	0	163452	0	6.0	6.0	6.1	0	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	idle	mixed	0.0	0.0	0.0	0.0	0	163452	0	2.9	2.9	2.9	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	one video frame	cpu1	28.0	0.0	0.0	0.0	0	163452	0	9058.8	9058.8	9061.5	483	0	0	5034	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	one video frame	metal	28.0	0.0	0.0	0.0	0	163452	0	77.6	75.3	78.7	448	155	0	3645	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	one video frame	mixed	28.0	0.0	0.0	0.0	0	163452	0	76.0	73.9	76.1	338	94	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	video under glass	cpu1	32.7	0.0	20.0	73.4	0	163452	0	18192.0	17798.7	18402.4	1009	0	0	16619	0/0/0	60/480	0/420 0/428 62/553 16/360 0/0	0/0
+media	48	video under glass	metal	32.7	0.0	20.0	0.0	0	163452	0	94.7	92.0	95.5	537	225	0	3773	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	video under glass	mixed	32.7	0.0	0.0	0.0	0	163452	0	90.5	89.6	90.7	471	236	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	all videos (every 4th)	cpu1	250.0	0.0	29.2	112.0	0	163452	0	9.4	9.1	91118.0	3	0	0	2263	0/0/0	12/702	0/691 0/702 14/756 0/540 0/0	0/0
+media	48	all videos (every 4th)	metal	250.0	0.0	29.2	0.0	0	163452	0	6.0	6.0	64.5	1	0	0	2263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	all videos (every 4th)	mixed	250.0	0.0	0.0	0.0	0	163452	0	2.9	2.9	64.1	1	0	0	-	18/0/6	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# a/v: 48 tiles over 31 refreshes: 384 frames crossed by the audio clocks, 384 published, 16 refreshes with none; audio frames delivered by the first tiles: 12480 12480 12480 12480 12480 12480
+media	48	a/v playback (audio clocks)	cpu1	290.4	0.0	31.5	112.0	0	163452	0	158706.6	9.2	101964.3	8132	0	0	63697	0/0/0	13/756	0/691 0/702 14/756 0/540 0/0	0/0
+media	48	a/v playback (audio clocks)	metal	290.4	0.0	31.5	0.0	0	163452	0	153.3	6.0	86.2	873	489	0	29023	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	a/v playback (audio clocks)	mixed	290.4	0.0	0.0	0.0	0	163452	0	159.1	2.9	87.8	837	483	0	-	12/0/12	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	scroll 11 px	cpu1	1000.0	148.0	121.5	459.4	0	130066	0	374073.3	332440.2	367767.4	25225	0	0	818868	0/0/0	0/2916	0/2916 0/2916 0/2916 0/2277 0/0	0/0
+media	48	scroll 11 px	metal	1000.0	148.0	121.5	0.0	0	130066	0	1192.1	1123.6	1209.9	1597	745	0	513263	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1298
+media	48	scroll 11 px	mixed	1000.0	148.0	0.0	0.0	0	130066	0	1196.0	1135.8	1213.4	1180	731	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	hover above glass	cpu1	43.0	48.0	25.0	53.0	0	163452	0	21645.7	21640.2	21662.8	1194	0	0	16459	0/0/0	192/600	72/384 24/336 24/336 0/216 0/0	0/0
+media	48	hover above glass	metal	43.0	48.0	25.0	0.0	0	163452	0	96.6	95.4	98.6	636	340	0	7692	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	hover above glass	mixed	43.0	48.0	0.0	0.0	0	163452	0	94.3	92.6	94.5	625	342	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	theme	cpu1	1000.0	0.0	126.0	468.0	0	163452	0	367511.2	367457.1	367670.8	19771	0	0	6736	0/0/0	1248/3024	1440/3024 1440/3024 1344/3024 696/2160 0/0	0/0
+media	48	theme	metal	1000.0	0.0	126.0	0.0	0	163452	0	110.0	106.8	113.6	1174	725	0	2497	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+media	48	theme	mixed	1000.0	0.0	0.0	0.0	0	163452	0	120.0	118.2	121.1	993	690	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 48 all springs cpu1 instructions [37435605]
+media	48	all springs	cpu1	45.2	18.0	0.0	0.0	0	163452	18	14460.6	12736.0	14985.0	815	0	0	39937	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches media 48 all springs metal instructions [698791]
+media	48	all springs	metal	45.2	18.0	0.0	0.0	0	163452	18	139.7	126.4	139.9	374	87	0	41577	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1032
+# spring launches media 48 all springs mixed instructions [666421]
+media	48	all springs	mixed	45.2	18.0	0.0	0.0	0	163452	18	137.7	126.7	138.2	362	95	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+media	48	glass over playing video	cpu1	269.3	0.0	30.2	115.8	0	163452	0	9725.8	9614.6	98824.5	870	0	0	15857	0/0/0	12/726	0/720 0/731 16/791 0/537 0/0	0/0
+media	48	glass over playing video	metal	269.3	0.0	30.2	0.0	0	163452	0	125.5	115.7	161.9	396	58	0	19454	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	1/1045
+media	48	glass over playing video	mixed	269.3	0.0	0.0	0.0	0	163452	0	117.0	114.3	162.3	287	56	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 26.96 22.59 22.18
+## exit 0
+ 9:44  up 4 days, 12:37, 1 user, load averages: 26.96 22.59 22.18
+## fxbench effects 200 @slice13  9:44  up 4 days, 12:37, 1 user, load averages: 26.96 22.59 22.18
+# fxbench effects 200; 1280x800; reps 24; load at start: 26.96 22.59 22.18
+# scene: 498 records in 8 columns, 17 layers, 17 glass / 50 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	200	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.4	9.3	9.9	1	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217424.6	217398.9	217428.6	10825	0	0	13912	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	200	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	109.5	107.7	111.7	1385	1112	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	119.5	117.5	120.6	1367	1096	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211652.0	211589.3	211646.9	10713	0	0	13912	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	200	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	109.7	107.7	111.6	1420	1114	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	119.7	118.6	120.4	1382	1098	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211960.6	211669.9	212080.5	14707	0	0	17103	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	200	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	113.8	111.9	114.4	2055	1699	0	5865	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	125.7	122.8	128.5	1450	1121	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2070.8	112	0	0	4114	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	75.9	74.7	76.4	288	61	0	3829	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/3299
+effects	200	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.2	72.0	74.7	367	75	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	200	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	210759.5	205682.2	211394.1	10854	0	0	1353504	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	200	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2009.2	1725.3	1969.4	1952	1174	0	757535	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/3548
+effects	200	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2016.4	1736.5	1979.7	1690	1157	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 26.16 22.50 22.15
+## exit 0
+ 9:44  up 4 days, 12:37, 1 user, load averages: 26.16 22.50 22.15
+## fxbench effects 1000 @slice13  9:44  up 4 days, 12:37, 1 user, load averages: 26.16 22.50 22.15
+# fxbench effects 1000; 1280x800; reps 24; load at start: 26.16 22.50 22.15
+# scene: 2480 records in 8 columns, 83 layers, 83 glass / 250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	1000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.3	9.8	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217825.2	217411.7	217804.6	13656	0	0	14069	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	1000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	111.3	107.7	115.3	1464	1123	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	119.5	117.7	120.9	1383	1110	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211641.7	211592.4	211676.2	10681	0	0	14069	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	1000	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	112.0	108.2	115.2	2874	2022	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	122.1	118.3	126.0	1525	1162	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211726.4	211674.8	211791.9	10935	0	0	17374	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	1000	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	116.0	113.0	117.2	1446	1147	0	5865	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	126.1	122.8	127.2	1419	1118	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.5	2069.9	2070.3	111	0	0	4139	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.5	74.7	77.5	353	74	0	3829	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	75.5	71.2	78.7	474	86	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	211427.3	206158.1	211888.3	12323	0	0	1607375	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	1000	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2158.6	1871.7	2108.7	1953	1186	0	847993	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/4868
+effects	1000	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2166.5	1891.2	2119.3	1674	1170	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 26.16 22.50 22.15
+## exit 0
+ 9:44  up 4 days, 12:37, 1 user, load averages: 26.16 22.50 22.15
+## fxbench effects 5000 @slice13  9:44  up 4 days, 12:37, 1 user, load averages: 26.16 22.50 22.15
+# fxbench effects 5000; 1280x800; reps 24; load at start: 26.16 22.50 22.15
+# scene: 12398 records in 8 columns, 417 layers, 417 glass / 1250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	5000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.4	9.3	9.8	0	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.8	1	0	0	2440	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	217728.8	217479.9	217727.7	18608	0	0	14026	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	5000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	110.2	108.2	112.7	1427	1122	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	120.9	117.7	126.0	1471	1146	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	palette switch	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	211662.8	211594.5	211656.6	10736	0	0	14026	0/0/0	7480/8808	7408/8808 6888/8808 6144/7920 4736/6408 1552/2592	0/0
+effects	5000	palette switch	metal	1000.0	0.0	367.0	0.0	0	478634	6	109.5	108.4	111.8	1426	1113	0	2674	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	palette switch	mixed	1000.0	0.0	0.0	0.0	0	478634	6	121.0	118.7	123.7	1404	1131	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	palette fade	cpu1	1000.0	6.0	367.0	1439.0	0	478634	6	211698.7	211664.7	211708.6	10673	0	0	17217	0/0/0	7473/8808	7351/8808 7248/8808 6524/7920 5504/6408 2353/2592	0/0
+effects	5000	palette fade	metal	1000.0	6.0	367.0	0.0	0	478634	6	115.1	111.0	117.7	1441	1134	0	5865	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	palette fade	mixed	1000.0	6.0	0.0	0.0	0	478634	6	126.0	122.8	127.2	1436	1151	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2070.4	2069.8	2071.3	112	0	0	4114	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	76.5	74.7	77.3	298	65	0	3829	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/11295
+effects	5000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	73.7	71.1	74.7	361	87	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	5000	scroll 11 px	cpu1	1000.0	339.3	348.5	1316.0	0	442946	7	211027.3	206031.4	211697.1	10887	0	0	1606568	0/0/0	887/8365	1114/8295 879/8028 796/7528 460/5628 18/2105	0/0
+effects	5000	scroll 11 px	metal	1000.0	339.3	348.5	0.0	0	442946	7	2402.8	2119.5	2360.2	2069	1196	0	847243	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/11544
+effects	5000	scroll 11 px	mixed	1000.0	339.3	0.0	0.0	0	442946	7	2420.5	2129.7	2372.3	1731	1182	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 25.83 22.49 22.15
+## exit 0
+ 9:44  up 4 days, 12:37, 1 user, load averages: 25.83 22.49 22.15
