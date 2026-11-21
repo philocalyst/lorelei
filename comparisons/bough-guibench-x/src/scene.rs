@@ -119,7 +119,7 @@ impl<V: Model> App for Scene<V> {
         self.geo = geo;
         self.v.layout(geo);
         self.world = World::new(w, h, V::NWORDS);
-        // the world's scale is the frame's: layout's text measure and every `scale`-reading expression see it
+        #[cfg(feature = "inspect-metadata")]
         self.world.set_scale(geo.k as f32);
         self.world.tick(self.ms);
         self.world.mount(&self.v);

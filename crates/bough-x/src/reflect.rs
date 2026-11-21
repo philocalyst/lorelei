@@ -339,6 +339,7 @@ impl<'a, V> Sink<V> for Learn<'a> {
     /// A list of elements (the element layer's `each` under a scrolled box): the same store a `list` is,
     /// described from the row's own layout (`rows_sync` kept its first row's rects). Reflection walks the row
     /// function's first row, as it does for a hand-written list.
+    #[cfg(feature = "inspect-metadata")]
     #[track_caller]
     fn rows<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
         &mut self,
@@ -377,7 +378,7 @@ impl<'a, V> Sink<V> for Learn<'a> {
                 loc,
             });
         }
-        (n as i32) * st.geo.2
+        (n as i32).saturating_mul(st.geo.2)
     }
     #[track_caller]
     fn list<R: Row<V>, F: FnMut(usize) -> R>(&mut self, l: &List<'_>, mut f: F) {

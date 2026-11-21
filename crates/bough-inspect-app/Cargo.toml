@@ -20,7 +20,7 @@ bough-mem = { path = "../bough-mem" }
 
 [features]
 default = ["inspect"]
-inspect = ["dep:bough-inspect"]
+inspect = ["dep:bough-inspect", "bough-guibench-x/inspect-metadata"]
 
 [[bin]]
 name = "bough-inspect-app"

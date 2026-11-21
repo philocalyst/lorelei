@@ -159,32 +159,36 @@ mod sheet_el;
 
 #[test]
 fn sheet_el_retained_ledger() {
-    // the element sheet is one deep view: its description frame is large. A test thread gets 2 MiB on macOS,
-    // so the body runs on a thread with a stack the view fits (the app itself runs on the main thread).
-    std::thread::Builder::new()
-        .stack_size(32 << 20)
-        .spawn(|| {
-            assert!(!core::mem::needs_drop::<sheet_el::Sheet>());
-            let app = bough_x::el::App::<sheet_el::Sheet, Soft>::new(
-                *sheet_el::Sheet::with_rows(10_000),
-                2560,
-                1600,
-                2.0,
-            );
-            let (records, pages, bytes) = app.world.root().stats();
-            fn columns(s: &bough_x::store::Store) -> usize {
-                s.cols.len() + s.subs.iter().map(columns).sum::<usize>()
-            }
-            eprintln!(
-                "sheet_el rows=10000 records={records} columns={} pages={pages} column_bytes={bytes}",
-                columns(app.world.root())
-            );
-            assert!(records < 860);
-            assert!(bytes < 320 * 1024);
-        })
-        .unwrap()
-        .join()
-        .unwrap();
+    if cfg!(debug_assertions) {
+        std::thread::Builder::new()
+            .stack_size(32 << 20)
+            .spawn(sheet_el_retained_ledger_body)
+            .unwrap()
+            .join()
+            .unwrap();
+    } else {
+        sheet_el_retained_ledger_body();
+    }
+}
+
+fn sheet_el_retained_ledger_body() {
+    assert!(!core::mem::needs_drop::<sheet_el::Sheet>());
+    let app = bough_x::el::App::<sheet_el::Sheet, Soft>::new(
+        *sheet_el::Sheet::with_rows(10_000),
+        2560,
+        1600,
+        2.0,
+    );
+    let (records, pages, bytes) = app.world.root().stats();
+    fn columns(s: &bough_x::store::Store) -> usize {
+        s.cols.len() + s.subs.iter().map(columns).sum::<usize>()
+    }
+    eprintln!(
+        "sheet_el rows=10000 records={records} columns={} pages={pages} column_bytes={bytes}",
+        columns(app.world.root())
+    );
+    assert!(records < 860);
+    assert!(bytes < 320 * 1024);
 }
 
 mod padded_closure {

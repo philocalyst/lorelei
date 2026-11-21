@@ -16,12 +16,7 @@ pub const GUTTER: i32 = 112;
 pub const TOOLBAR: i32 = 80;
 pub const HEADER: i32 = 48;
 pub const NO_HOVER: u32 = 0xff;
-pub const BODY: Rect = Rect {
-    x0: 0,
-    y0: TOOLBAR + HEADER,
-    x1: W,
-    y1: H - CELL_H,
-};
+pub const BODY: Rect = Rect { x0: 0, y0: TOOLBAR + HEADER, x1: W, y1: H - CELL_H };
 
 lens!(pub Theme: u32 = 0);
 lens!(pub Hover: u32 = 1);
@@ -68,25 +63,14 @@ fn chrome(dark: u32) -> Color {
     Color(if dark != 0 { 0x23262d } else { 0xeceef2 })
 }
 fn head((dark, hot, col): (u32, u32, u32)) -> Color {
-    if hot == col {
-        Color(0x9db8f0)
-    } else {
-        chrome(dark)
-    }
+    if hot == col { Color(0x9db8f0) } else { chrome(dark) }
 }
 /// Where the outline is: a glide from where it was to the selected cell. No turn runs while it moves.
 fn sel_glide() -> impl bough_x::kinds::Motion {
-    Glide::<SEL_MS, _, _, _>(
-        (un::<SelFromX>(), un::<SelFromY>()),
-        un::<Sel>().map(sel_at),
-        un::<SelT0>(),
-    )
+    Glide::<SEL_MS, _, _, _>((un::<SelFromX>(), un::<SelFromY>()), un::<Sel>().map(sel_at), un::<SelT0>())
 }
 fn sel_at(i: u32) -> (i32, i32) {
-    (
-        (i % COLS as u32) as i32 * CELL_W,
-        (i / COLS as u32) as i32 * CELL_H,
-    )
+    ((i % COLS as u32) as i32 * CELL_W, (i / COLS as u32) as i32 * CELL_H)
 }
 
 /// The gui-bench spec's data, near enough: deterministic, two decimals.
@@ -98,26 +82,19 @@ const NAMES: [&str; COLS] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 impl Sheet {
     pub fn new(rows: usize) -> Sheet {
-        let items: Vec<[f32; COLS]> = (0..rows)
-            .map(|r| std::array::from_fn(|c| value(r, c)))
-            .collect();
+        let items: Vec<[f32; COLS]> = (0..rows).map(|r| std::array::from_fn(|c| value(r, c))).collect();
         let mut u = U::default();
         u.set::<Hover>(NO_HOVER);
         for c in 0..COLS {
-            // the column total is one block word (i32): 100,000 rows of up to 1,000.00 leave it, so it saturates
-            u.set_at::<Sum>(
-                c,
-                items
-                    .iter()
-                    .map(|row| cents(row[c]) as i64)
-                    .sum::<i64>()
-                    .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
-            );
+            // The fixture stores totals modulo one block word. Match the release
+            // sum in debug when a large sheet exceeds the signed range.
+            #[cfg(debug_assertions)]
+            let sum = items.iter().map(|row| cents(row[c])).fold(0i32, i32::wrapping_add);
+            #[cfg(not(debug_assertions))]
+            let sum = items.iter().map(|row| cents(row[c])).sum();
+            u.set_at::<Sum>(c, sum);
         }
-        Sheet {
-            u,
-            rows: Rel::new(items),
-        }
+        Sheet { u, rows: Rel::new(items) }
     }
     pub fn hover_header(&mut self, col: u32, on: bool) {
         if on {
@@ -140,7 +117,7 @@ impl Sheet {
         self.total(c, cents(v) - cents(old));
     }
     fn total(&mut self, c: usize, d: i32) {
-        let s = self.u.at::<Sum>(c) + d;
+        let s = self.u.at::<Sum>(c).wrapping_add(d);
         self.u.set_at::<Sum>(c, s);
     }
     /// Select a cell at time `now`: the outline glides there from wherever it is.
@@ -162,18 +139,10 @@ impl Sheet {
         for c in 0..COLS {
             self.total(c, cents(row[c]));
         }
-        if opaque {
-            self.rows.items_mut().insert(at, row)
-        } else {
-            self.rows.insert(at, row)
-        }
+        if opaque { self.rows.items_mut().insert(at, row) } else { self.rows.insert(at, row) }
     }
     pub fn remove_row(&mut self, at: usize, opaque: bool) {
-        let row = if opaque {
-            self.rows.items_mut().remove(at)
-        } else {
-            self.rows.remove(at)
-        };
+        let row = if opaque { self.rows.items_mut().remove(at) } else { self.rows.remove(at) };
         for c in 0..COLS {
             self.total(c, -cents(row[c]));
         }
@@ -225,10 +194,7 @@ impl View for Sheet {
                 Fill(theme.map(chrome)),
                 std::array::from_fn::<_, COLS, _>(|c| {
                     (
-                        hover(
-                            Fill((theme, un::<Hover>(), rec(c as u32)).map(head)),
-                            |v: &mut Sheet, a, on| v.hover_header(a.0.0.2.0, on),
-                        ),
+                        hover(Fill((theme, un::<Hover>(), rec(c as u32)).map(head)), |v: &mut Sheet, a, on| v.hover_header(a.0.0.2.0, on)),
                         Label(Txt::new(NAMES[c]), theme.map(ink)),
                     )
                 }),
@@ -236,51 +202,19 @@ impl View for Sheet {
             (rects, row)
         });
         // body: the rows scroll under the header; the selection outline rides above them
-        s.scope(
-            Space {
-                clip: BODY,
-                base: (0, BODY.y0),
-                scroll: Scroll::SLOT as u8,
-            },
-            |s| {
-                s.list(
-                    &List {
-                        n: self.rows.len() as u32,
-                        row_h: CELL_H,
-                        x: 0,
-                        y: 0,
-                        shape: &ROW_SHAPE,
-                        edits: &self.rows.journal,
-                    },
-                    |r| {
-                        let vals = self.rows.get(r);
-                        (
-                            Fill(theme.map(chrome)),
-                            Num::<0, _, _>(rec(r as i32 + 1), Kc::<0x7a808c>),
-                            std::array::from_fn::<_, COLS, _>(|c| {
-                                (
-                                    Fill(
-                                        (
-                                            theme,
-                                            un::<Hover>(),
-                                            rec(c as u32 | ((r as u32 & 1) << 8)),
-                                        )
-                                            .map(fill),
-                                    ),
-                                    Num::<2, _, _>(rec(cents(vals[c])), theme.map(ink)),
-                                )
-                            }),
-                        )
-                    },
-                );
-                s.row(|| {
-                    (
-                        [Rect::new(GUTTER, 0, CELL_W, CELL_H)],
-                        Outline::<4, _, _>(Kc::<0x2f6bff>, sel_glide()),
-                    )
-                });
-            },
-        );
+        s.scope(Space { clip: BODY, base: (0, BODY.y0), scroll: Scroll::SLOT as u8 }, |s| {
+            s.list(&List { n: self.rows.len() as u32, row_h: CELL_H, x: 0, y: 0, shape: &ROW_SHAPE, edits: &self.rows.journal }, |r| {
+                let vals = self.rows.get(r);
+                (
+                    Fill(theme.map(chrome)),
+                    Num::<0, _, _>(rec(r as i32 + 1), Kc::<0x7a808c>),
+                    std::array::from_fn::<_, COLS, _>(|c| {
+                        (Fill((theme, un::<Hover>(), rec(c as u32 | ((r as u32 & 1) << 8))).map(fill)), Num::<2, _, _>(rec(cents(vals[c])), theme.map(ink)))
+                    }),
+                )
+            });
+            s.row(|| ([Rect::new(GUTTER, 0, CELL_W, CELL_H)], Outline::<4, _, _>(Kc::<0x2f6bff>, sel_glide())));
+        });
         // footer: the totals are words of the block, formatted while shading
         s.row(|| {
             let mut rects = [Rect::new(0, H - CELL_H, W, CELL_H); 2 + COLS];
@@ -288,16 +222,7 @@ impl View for Sheet {
             for c in 0..COLS {
                 rects[2 + c] = total(c);
             }
-            (
-                rects,
-                (
-                    Fill(theme.map(chrome)),
-                    Label(Txt::new("Σ"), theme.map(ink)),
-                    std::array::from_fn::<_, COLS, _>(|c| {
-                        Num::<2, _, _>(un_at::<Sum>(c), theme.map(ink))
-                    }),
-                ),
-            )
+            (rects, (Fill(theme.map(chrome)), Label(Txt::new("Σ"), theme.map(ink)), std::array::from_fn::<_, COLS, _>(|c| Num::<2, _, _>(un_at::<Sum>(c), theme.map(ink)))))
         });
     }
 }
