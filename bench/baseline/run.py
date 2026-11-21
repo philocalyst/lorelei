@@ -258,12 +258,21 @@ def main():
     parser.add_argument("--reps", type=int, default=3)
     parser.add_argument("--out")
     parser.add_argument("--no-build", action="store_true")
+    parser.add_argument("--expected-inputs-from", help="fail before building if reference input digests differ")
     args = parser.parse_args()
     if not 1 <= args.reps or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.name):
         parser.error("use at least one repetition and a filesystem-safe name")
     worktree = Path(args.worktree).resolve()
     if Path(fetch(["git", "rev-parse", "--show-toplevel"], worktree)) != worktree:
         parser.error("--worktree must name a repository root")
+    runtime_inputs = {}
+    for name in ("BOUGH_FONT", "ZGX_FONT_FILE"):
+        if value := os.environ.get(name):
+            runtime_inputs[name] = digest(Path(value))
+    if args.expected_inputs_from:
+        expected = json.loads(Path(args.expected_inputs_from).read_text()).get("runtime_inputs")
+        if expected != runtime_inputs:
+            raise ValueError(f"runtime inputs differ from reference (expected SHA-256: {expected})")
     build_source = source(worktree)
     matrix, unavailable = cells(worktree)
     wanted = set(args.cells.split(",")) if args.cells else {cell.name for cell in matrix}
@@ -283,10 +292,6 @@ def main():
     harness = {name: digest(Path(__file__).with_name(name)) for name in ("run.py", "operations.py")}
     host = {"os": platform.mac_ver()[0], "machine": platform.machine(),
             "cpu": fetch(["sysctl", "-n", "machdep.cpu.brand_string"]), "cpus": os.cpu_count()}
-    runtime_inputs = {}
-    for name in ("BOUGH_FONT", "ZGX_FONT_FILE"):
-        if value := os.environ.get(name):
-            runtime_inputs[name] = digest(Path(value))
     load_before = os.getloadavg()
     records = {cell.name: [] for cell in matrix}
     errors = []

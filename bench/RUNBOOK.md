@@ -71,7 +71,7 @@ For an integration checkout, set `BOUGH_FONT` to the face identified by the nati
 bench/baseline/gate.sh
 ```
 
-The command builds the current source, runs the complete native suite and compares its receipt with `bench/baselines/native/reference.json` using the checked-in limits. An unexplained regression, an invalid fixture, or a changed set of operation names makes it exit nonzero. Treat an added fixture as a reference update requiring a measured receipt. The native performance gate runs alongside the existing `bench/gate.sh` code gate.
+The command checks the font digest before building, runs the complete native suite and compares its receipt with `bench/baselines/native/reference.json` using the checked-in limits. An unexplained regression, an invalid fixture, or a changed set of operation names makes it exit nonzero. Treat an added fixture as a reference update requiring a measured receipt. The gate writes a fresh output directory under `runtime/baseline/` for each invocation. The native performance gate runs alongside the existing `bench/gate.sh` code gate.
 
 Use the separate commands for historical source comparisons:
 
