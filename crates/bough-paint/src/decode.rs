@@ -1,4 +1,5 @@
 //! Bounded off-thread compressed-image decode. The frame thread owns publication into the media arena.
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::time::Duration;
 
@@ -23,10 +24,10 @@ pub struct ImageFrame {
     pub duration: Duration,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DecodedImage {
-    frames: Vec<ImageFrame>,
-    ends_ms: Vec<u64>,
+    frames: Arc<[ImageFrame]>,
+    ends_ms: Arc<[u64]>,
 }
 impl DecodedImage {
     pub fn frames(&self) -> &[ImageFrame] {
@@ -44,6 +45,7 @@ impl DecodedImage {
 type ResultImage = Result<DecodedImage, DecodeError>;
 struct Request {
     bytes: Vec<u8>,
+    svg: Option<[u32; 2]>,
     done: SyncSender<ResultImage>,
 }
 
@@ -69,8 +71,13 @@ impl Decoder {
         std::thread::Builder::new()
             .name("bough-image-decoder".into())
             .spawn(move || {
+                let mut svg = SvgCache::default();
                 while let Ok(request) = rx.recv() {
-                    let result = native::decode(&request.bytes);
+                    let result = if let Some(size) = request.svg {
+                        svg.rasterize(request.bytes, size)
+                    } else {
+                        native::decode(&request.bytes)
+                    };
                     // This ticket's single result cannot fill the channel before this send.
                     let _ = request.done.try_send(result);
                 }
@@ -88,12 +95,59 @@ impl Decoder {
         {
             return Err(DecodeError::UnsupportedFormat);
         }
+        self.queue(bytes, None)
+    }
+
+    /// Rasterize an SVG asset at a device size. Repeated requests on this decoder share their pixels.
+    pub fn submit_svg(
+        &self,
+        bytes: Vec<u8>,
+        width: u32,
+        height: u32,
+    ) -> Result<DecodeTicket, DecodeError> {
+        if bytes.len() > 256 * 1024 || !(1..=2047).contains(&width) || !(1..=2047).contains(&height)
+        {
+            return Err(DecodeError::Limit);
+        }
+        self.queue(bytes, Some([width, height]))
+    }
+
+    fn queue(&self, bytes: Vec<u8>, svg: Option<[u32; 2]>) -> Result<DecodeTicket, DecodeError> {
         let (done, result) = mpsc::sync_channel(1);
-        match self.work.try_send(Request { bytes, done }) {
+        match self.work.try_send(Request { bytes, svg, done }) {
             Ok(()) => Ok(DecodeTicket(result)),
             Err(TrySendError::Full(_)) => Err(DecodeError::Busy),
             Err(TrySendError::Disconnected(_)) => Err(DecodeError::Closed),
         }
+    }
+}
+
+#[derive(Default)]
+struct SvgCache {
+    entries: std::collections::VecDeque<(Vec<u8>, [u32; 2], DecodedImage, usize)>,
+    bytes: usize,
+}
+impl SvgCache {
+    fn rasterize(&mut self, source: Vec<u8>, size: [u32; 2]) -> ResultImage {
+        const BUDGET: usize = 4 * 1024 * 1024;
+        if let Some(index) = self.entries.iter().position(|(s, dimensions, _, _)| {
+            s == &source && (*dimensions == size || cfg!(feature = "mutant_svg_size"))
+        }) {
+            let entry = self.entries.remove(index).expect("cache index existed");
+            let image = entry.2.clone();
+            self.entries.push_back(entry);
+            return Ok(image);
+        }
+        let image = native::svg(&source, size)?;
+        let bytes = source.capacity() + image.frames()[0].pixels.capacity() * 4;
+        if bytes <= BUDGET {
+            while bytes + self.bytes > BUDGET || self.entries.len() >= 64 {
+                self.bytes -= self.entries.pop_front().expect("at least one entry").3;
+            }
+            self.bytes += bytes;
+            self.entries.push_back((source, size, image.clone(), bytes));
+        }
+        Ok(image)
     }
 }
 
@@ -116,6 +170,22 @@ mod native {
     unsafe extern "C" {
         fn CFDataCreate(allocator: Ref, bytes: *const u8, len: isize) -> Ref;
         fn CFRelease(value: Ref);
+        fn CFEqual(a: Ref, b: Ref) -> bool;
+        fn CFStringCreateWithCString(
+            allocator: Ref,
+            text: *const std::ffi::c_char,
+            encoding: u32,
+        ) -> Ref;
+        fn CFNumberCreate(allocator: Ref, kind: isize, value: *const c_void) -> Ref;
+        fn CFDictionaryCreate(
+            allocator: Ref,
+            keys: *const Ref,
+            values: *const Ref,
+            count: isize,
+            key_callbacks: Ref,
+            value_callbacks: Ref,
+        ) -> Ref;
+        static kCFBooleanTrue: Ref;
         fn CFDictionaryGetValue(dictionary: Ref, key: Ref) -> Ref;
         fn CFGetTypeID(value: Ref) -> usize;
         fn CFNumberGetTypeID() -> usize;
@@ -126,6 +196,10 @@ mod native {
     unsafe extern "C" {
         fn CGImageSourceCreateWithData(data: Ref, options: Ref) -> Ref;
         fn CGImageSourceGetCount(source: Ref) -> usize;
+        fn CGImageSourceGetType(source: Ref) -> Ref;
+        fn CGImageSourceCreateThumbnailAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
+        static kCGImageSourceThumbnailMaxPixelSize: Ref;
+        static kCGImageSourceCreateThumbnailFromImageAlways: Ref;
         fn CGImageSourceCopyPropertiesAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
         fn CGImageSourceCreateImageAtIndex(source: Ref, index: usize, options: Ref) -> Ref;
         static kCGImagePropertyPixelWidth: Ref;
@@ -270,39 +344,7 @@ mod native {
             if unsafe { (CGImageGetWidth(image.0), CGImageGetHeight(image.0)) } != (width, height) {
                 return Err(DecodeError::Invalid);
             }
-            let mut pixels = vec![0u32; width * height];
-            // SAFETY: kCGColorSpaceSRGB is an immutable CoreGraphics string reference.
-            let colorspace =
-                Owned::from_created(unsafe { CGColorSpaceCreateWithName(kCGColorSpaceSRGB) })?;
-            // SAFETY: each row holds width * 4 bytes and `pixels` is exclusively available to the
-            // context until it is dropped. 0x2002 selects little-endian premultiplied alpha first.
-            let context = Owned::from_created(unsafe {
-                CGBitmapContextCreate(
-                    pixels.as_mut_ptr().cast(),
-                    width,
-                    height,
-                    8,
-                    width * 4,
-                    colorspace.0,
-                    0x2002,
-                )
-            })?;
-            // SAFETY: both CoreGraphics objects are retained and context owns a valid bitmap target.
-            unsafe {
-                CGContextSetBlendMode(context.0, 17); // kCGBlendModeCopy
-                CGContextDrawImage(
-                    context.0,
-                    Rect {
-                        x: 0.0,
-                        y: 0.0,
-                        width: width as f64,
-                        height: height as f64,
-                    },
-                    image.0,
-                );
-                CGContextFlush(context.0);
-            }
-            drop(context);
+            let pixels = raster(&image, width, height)?;
             let ms = delay(props.0, bytes.starts_with(b"RIFF"));
             frames.push(ImageFrame {
                 width: width as u32,
@@ -313,7 +355,97 @@ mod native {
             end += ms;
             ends_ms.push(end);
         }
-        Ok(DecodedImage { frames, ends_ms })
+        Ok(DecodedImage {
+            frames: frames.into(),
+            ends_ms: ends_ms.into(),
+        })
+    }
+
+    fn raster(image: &Owned, width: usize, height: usize) -> Result<Vec<u32>, DecodeError> {
+        let mut pixels = vec![0u32; width * height];
+        // SAFETY: kCGColorSpaceSRGB is an immutable CoreGraphics string reference.
+        let colorspace =
+            Owned::from_created(unsafe { CGColorSpaceCreateWithName(kCGColorSpaceSRGB) })?;
+        // SAFETY: each row holds width * 4 bytes and `pixels` is exclusively available to the
+        // context until it is dropped. 0x2002 selects little-endian premultiplied alpha first.
+        let context = Owned::from_created(unsafe {
+            CGBitmapContextCreate(
+                pixels.as_mut_ptr().cast(),
+                width,
+                height,
+                8,
+                width * 4,
+                colorspace.0,
+                0x2002,
+            )
+        })?;
+        // SAFETY: both CoreGraphics objects are retained and context owns a valid bitmap target.
+        unsafe {
+            CGContextSetBlendMode(context.0, 17); // kCGBlendModeCopy
+            CGContextDrawImage(
+                context.0,
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: width as f64,
+                    height: height as f64,
+                },
+                image.0,
+            );
+            CGContextFlush(context.0);
+        }
+        drop(context);
+        Ok(pixels)
+    }
+
+    pub(super) fn svg(bytes: &[u8], [width, height]: [u32; 2]) -> ResultImage {
+        // SAFETY: the bounded source slice lives through CFDataCreate, which copies its bytes.
+        let data = Owned::from_created(unsafe {
+            CFDataCreate(null(), bytes.as_ptr(), bytes.len() as isize)
+        })?;
+        // SAFETY: CFData is owned for the entire ImageIO operation.
+        let source = Owned::from_created(unsafe { CGImageSourceCreateWithData(data.0, null()) })?;
+        // SAFETY: the literal is NUL-terminated and the source and CF strings are retained.
+        let image = unsafe {
+            let format = CGImageSourceGetType(source.0);
+            let svg = Owned::from_created(CFStringCreateWithCString(
+                null(),
+                c"public.svg-image".as_ptr(),
+                0x0800_0100,
+            ))?;
+            if format.is_null() || !CFEqual(format, svg.0) {
+                return Err(DecodeError::UnsupportedFormat);
+            }
+            let size = width.max(height) as i32;
+            let pixels =
+                Owned::from_created(CFNumberCreate(null(), 3, (&size as *const i32).cast()))?;
+            let keys = [
+                kCGImageSourceThumbnailMaxPixelSize,
+                kCGImageSourceCreateThumbnailFromImageAlways,
+            ];
+            let values = [pixels.0, kCFBooleanTrue];
+            // A no-callback dictionary borrows these live keys and values until thumbnail creation ends.
+            let options = Owned::from_created(CFDictionaryCreate(
+                null(),
+                keys.as_ptr(),
+                values.as_ptr(),
+                2,
+                null(),
+                null(),
+            ))?;
+            Owned::from_created(CGImageSourceCreateThumbnailAtIndex(source.0, 0, options.0))?
+        };
+        let pixels = raster(&image, width as usize, height as usize)?;
+        Ok(DecodedImage {
+            frames: [ImageFrame {
+                width,
+                height,
+                pixels,
+                duration: Duration::from_millis(100),
+            }]
+            .into(),
+            ends_ms: [100].into(),
+        })
     }
 }
 
@@ -321,6 +453,9 @@ mod native {
 mod native {
     use super::*;
     pub(super) fn decode(_: &[u8]) -> ResultImage {
+        Err(DecodeError::UnsupportedFormat)
+    }
+    pub(super) fn svg(_: &[u8], _: [u32; 2]) -> ResultImage {
         Err(DecodeError::UnsupportedFormat)
     }
 }
@@ -396,4 +531,42 @@ mod tests {
             "decoder: PNG and WebP exact 4-word pixels, JPEG 256 pixels in tolerance, APNG 2 frames at 73/121 ms"
         );
     }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[test]
+fn svg_is_rasterized_at_the_device_size_and_shared() {
+    let source = br##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="8" height="16" fill="#ff0000"/><circle cx="24" cy="8" r="6" fill="#0000ff"/></svg>"##;
+    let decoder = Decoder::new().unwrap();
+    let render = |w, h| {
+        decoder
+            .submit_svg(source.to_vec(), w, h)
+            .unwrap()
+            .0
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap()
+    };
+    let original = render(32, 16);
+    let repeated = render(32, 16);
+    let large = render(64, 32);
+    assert!(Arc::ptr_eq(&original.frames, &repeated.frames));
+    assert_eq!(
+        (large.frames()[0].width, large.frames()[0].height),
+        (64, 32)
+    );
+    assert!(!Arc::ptr_eq(&original.frames, &large.frames));
+    for frame in [&original.frames()[0], &large.frames()[0]] {
+        let at = |x, y| frame.pixels[(y * frame.width + x) as usize];
+        assert_eq!(at(frame.width / 16, frame.height / 2), 0xffff_0000);
+        assert_eq!(at(frame.width * 3 / 4, frame.height / 2), 0xff00_00ff);
+        assert_eq!(at(frame.width / 2, frame.height / 2), 0);
+    }
+    assert_eq!(
+        decoder.submit_svg(source.to_vec(), 0, 16).err(),
+        Some(DecodeError::Limit)
+    );
+    eprintln!(
+        "SVG: exact red, blue and transparent samples at two sizes, cache hit shares the BGRA frame"
+    );
 }
