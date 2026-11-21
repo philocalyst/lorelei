@@ -63,7 +63,7 @@ fn empty_zero_height_list_can_later_gain_rows() {
 }
 
 #[test]
-#[ignore = "known issue: packed place needs a publication generation"]
+#[ignore = "TR1-02 open"]
 fn stale_place_after_ring_reuse_is_refused() {
     let mut view = Rows {
         u: U::default(),
@@ -101,7 +101,7 @@ fn redescribe_subscribes_to_replacement_relation() {
 }
 
 #[test]
-#[ignore = "known issue: settle still watches the retired relation"]
+#[ignore = "TR1-03 open"]
 fn settle_subscribes_to_replacement_relation() {
     let mut view = Rows {
         u: U::default(),
@@ -167,7 +167,7 @@ impl View for CountingRows {
 }
 
 #[test]
-#[ignore = "known scaling limit: a front insert rewrites the exposed suffix"]
+#[ignore = "TR1-10 open"]
 fn front_insert_does_not_redescribe_every_visible_row() {
     let mut counts = Vec::new();
     for height in [32, 256] {
@@ -221,7 +221,7 @@ impl View for PointerRows {
 }
 
 #[test]
-#[ignore = "known scaling limit: pointer words evaluate every exposed reader"]
+#[ignore = "TR1-09 open"]
 fn pointer_change_without_damage_has_bounded_record_work() {
     let mut counts = Vec::new();
     for height in [32, 256] {

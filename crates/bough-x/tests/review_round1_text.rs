@@ -30,7 +30,7 @@ fn refused_runs_and_missing_faces_emit_no_spans() {
 }
 
 #[test]
-#[ignore = "known issue: glyph shaper receives previously published lanes as mutable Vecs"]
+#[ignore = "TR1-05 open"]
 fn refused_shaper_does_not_overwrite_an_older_run() {
     let mut glyphs = Glyphs::new();
     let (run, _) = glyphs

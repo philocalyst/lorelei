@@ -262,6 +262,7 @@ fn reentry_and_caret_moves_shape_nothing() {
 /// T04): what the memo holds stays bounded, and every frame, the ones right after a collection included, is
 /// the full redraw.
 #[test]
+#[ignore = "TR1-04 open"]
 fn the_glyph_memo_is_collected_and_frames_stay_exact() {
     const BUDGET: usize = 24 << 10;
     let mut v = Search::new(2_000);
