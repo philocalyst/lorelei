@@ -1,0 +1,22 @@
+[package]
+name = "bough-inspect-app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "A headless host for the inspector: the real comparison apps (bough-guibench-x Rows/Table/Search/Spinner) with the agent/test socket, and the element-layer overlay. Built with `inspect` off, it is the zero-cost control"
+
+[dependencies]
+bough-x = { path = "../bough-x" }
+bough-span = { path = "../bough-span" }
+bough-host = { path = "../bough-host" }
+bough-guibench-x = { path = "../../comparisons/bough-guibench-x" }
+bough-inspect = { path = "../bough-inspect", optional = true }
+
+[features]
+default = ["inspect"]
+inspect = ["dep:bough-inspect"]
+
+[[bin]]
+name = "bough-inspect-app"
+path = "src/main.rs"

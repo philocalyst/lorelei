@@ -158,6 +158,14 @@ name = "bough-damage-lab"
 version = "0.0.0"
 
 [[package]]
+name = "bough-dev"
+version = "0.1.0"
+dependencies = [
+ "bough-inspect",
+ "bough-mcp",
+]
+
+[[package]]
 name = "bough-expr"
 version = "0.0.0"
 
@@ -235,6 +243,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "bough-inspect"
+version = "0.1.0"
+dependencies = [
+ "bough-ax",
+ "bough-expr",
+ "bough-x",
+]
+
+[[package]]
+name = "bough-inspect-app"
+version = "0.1.0"
+dependencies = [
+ "bough-guibench-x",
+ "bough-host",
+ "bough-inspect",
+ "bough-span",
+ "bough-x",
+]
+
+[[package]]
 name = "bough-kernel"
 version = "0.0.0"
 dependencies = [
@@ -253,6 +281,13 @@ dependencies = [
  "bough-expr",
  "bough-mem",
  "cephal",
+]
+
+[[package]]
+name = "bough-mcp"
+version = "0.1.0"
+dependencies = [
+ "bough-inspect",
 ]
 
 [[package]]
