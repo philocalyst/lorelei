@@ -253,9 +253,11 @@ struct LearnLeaf<'a> {
     /// Where the row (or list) was described: the site of a leaf the element layer did not name.
     loc: &'static Location<'static>,
     /// Where the next leaf was written, when the element layer said so.
+    #[cfg(feature = "inspect-metadata")]
     cur: &'static Location<'static>,
 }
 impl<V> Leaf<V> for LearnLeaf<'_> {
+    #[cfg(feature = "inspect-metadata")]
     fn at(&mut self, loc: &'static Location<'static>) {
         #[cfg(feature = "mutant_same_site")]
         let _ = loc;
@@ -268,14 +270,18 @@ impl<V> Leaf<V> for LearnLeaf<'_> {
         // a position of the row that is not a record (an element's scrolled child): it has a site, and no info
         self.site += 1;
         self.pos += 1;
-        self.cur = self.loc;
+        #[cfg(feature = "inspect-metadata")]
+        { self.cur = self.loc; }
     }
     fn leaf<A: Arch>(&mut self, _: &A, _: TypeId, hov: Option<Hov>) {
         let k = self.site as usize;
         self.site += 1;
         let pos = self.pos;
         self.pos += 1;
+        #[cfg(feature = "inspect-metadata")]
         let loc = core::mem::replace(&mut self.cur, self.loc);
+        #[cfg(not(feature = "inspect-metadata"))]
+        let loc = self.loc;
         let Some(s) = self.st.sites.get(k) else {
             return;
         };
@@ -329,7 +335,7 @@ impl<'a, V> Sink<V> for Learn<'a> {
             row: k,
             pos: 0,
             loc,
-            cur: loc,
+            #[cfg(feature = "inspect-metadata")]            cur: loc,
         });
     }
     #[track_caller]
@@ -390,7 +396,7 @@ impl<'a, V> Sink<V> for Learn<'a> {
                 row: 0,
                 pos: 0,
                 loc,
-                cur: loc,
+                #[cfg(feature = "inspect-metadata")]                cur: loc,
             });
         }
         (n as i32).saturating_mul(st.geo.2)
@@ -422,7 +428,7 @@ impl<'a, V> Sink<V> for Learn<'a> {
                 row: 0,
                 pos: 0,
                 loc,
-                cur: loc,
+                #[cfg(feature = "inspect-metadata")]                cur: loc,
             });
         }
     }
@@ -855,6 +861,7 @@ impl Detach<'_> {
 struct DLeaf<'a> {
     ent: Ent,
     loc: &'static Location<'static>,
+    #[cfg(feature = "inspect-metadata")]
     cur: &'static Location<'static>,
     shape: &'a [Rect],
     at: (i32, i32),
@@ -862,16 +869,21 @@ struct DLeaf<'a> {
     out: &'a mut Vec<Snap>,
 }
 impl<V> Leaf<V> for DLeaf<'_> {
+    #[cfg(feature = "inspect-metadata")]
     fn at(&mut self, loc: &'static Location<'static>) {
         self.cur = loc;
     }
     fn hole(&mut self) {
         self.ent.pos += 1;
-        self.cur = self.loc;
+        #[cfg(feature = "inspect-metadata")]
+        { self.cur = self.loc; }
     }
     fn leaf<A: Arch>(&mut self, a: &A, _: TypeId, hov: Option<Hov>) {
         let k = self.ent.pos as usize;
+        #[cfg(feature = "inspect-metadata")]
         let loc = core::mem::replace(&mut self.cur, self.loc);
+        #[cfg(not(feature = "inspect-metadata"))]
+        let loc = self.loc;
         let vals = (0..A::OPS.len()).map(|i| a.val(i, self.u)).collect();
         let off = if A::MOVES { a.offset(self.u) } else { (0, 0) };
         self.out.push(Snap {
@@ -927,7 +939,7 @@ impl<'a, V> Sink<V> for Detach<'a> {
                     pos: 0,
                 },
                 loc,
-                cur: loc,
+                #[cfg(feature = "inspect-metadata")]                cur: loc,
                 shape: l.shape,
                 at,
                 u: self.u,

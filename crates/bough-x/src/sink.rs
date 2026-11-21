@@ -258,6 +258,7 @@ pub trait Leaf<V> {
     fn leaf<A: Arch>(&mut self, a: &A, key: TypeId, hov: Option<Hov>);
     /// The next leaf was written here (the element layer's own call site). Only a sink that records
     /// locations keeps it; every other sink ignores it, and after inlining it is not there.
+    #[cfg(feature = "inspect-metadata")]
     #[inline(always)]
     fn at(&mut self, _loc: &'static core::panic::Location<'static>) {}
     /// A place in a row that is not a record: a child with its own space (a scrolled container), whose rect
