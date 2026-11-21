@@ -1603,7 +1603,7 @@ pub struct LList<'a, S, V> {
     pub(crate) scroll: Option<Wired<'a, f32, V>>,
     pub(crate) estimate: f32,
     overscan: usize,
-    animate: Option<Spring>,
+    pub(crate) animate: Option<Spring>,
 }
 
 /// A `List<T>` of views: item `T` is mounted by its `View::view`.

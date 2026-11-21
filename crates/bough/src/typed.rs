@@ -82,6 +82,7 @@ pub struct Shared {
     refused: RefCell<Vec<&'static str>>,
     scale: Cell<f32>,
     root: TypeId,
+    owner: Cell<*const u8>,
     /// The list row being described: (list offset in its owner, slot index, slot generation, row + 1); 0: none.
     row: Cell<(u32, u32, u32, u32)>,
     /// `hover_bg` boxes described so far in this row (or in the fixed part).
@@ -213,14 +214,23 @@ fn with<T>(f: impl FnOnce(&Shared) -> T) -> T {
     // (also on unwind); a conversion runs only inside that call, on this thread.
     f(unsafe { &*p })
 }
-fn enter<T>(sh: &Shared, f: impl FnOnce() -> T) -> T {
-    struct Back(*const Shared);
-    impl Drop for Back {
+fn enter<T>(sh: &Shared, owner: *const u8, f: impl FnOnce() -> T) -> T {
+    struct Back<'a> {
+        previous: *const Shared,
+        owner: &'a Cell<*const u8>,
+        previous_owner: *const u8,
+    }
+    impl Drop for Back<'_> {
         fn drop(&mut self) {
-            CX.with(|c| c.set(self.0));
+            self.owner.set(self.previous_owner);
+            CX.with(|c| c.set(self.previous));
         }
     }
-    let _back = Back(CX.with(|c| c.replace(sh)));
+    let _back = Back {
+        previous: CX.with(|c| c.replace(sh)),
+        owner: &sh.owner,
+        previous_owner: sh.owner.replace(owner),
+    };
     f()
 }
 fn refuse(what: &'static str) {
@@ -672,7 +682,7 @@ impl<V: View> bough_x::sink::View for Ty<V> {
         Some(&mut self.shadow)
     }
     fn view<S: Sink<Self>>(&self, s: &mut S) {
-        enter(&self.sh, || {
+        enter(&self.sh, (&raw const self.v).cast(), || {
             self.sh.row.set((0, 0, 0, 0));
             self.sh.ord.set(0);
             self.sh.ti.set(0);
@@ -1528,7 +1538,7 @@ where
 pub struct TRows<'a, V, T> {
     list: &'a List<T>,
     off: u32,
-    /// The list's journal (`Shared::lists`), and whether every exposed row is to be described again.
+    /// The list's journal (`Shared::lists`), null when the list was refused.
     journal: *const Journal,
     all: bool,
     _v: PhantomData<fn(&V)>,
@@ -1564,7 +1574,9 @@ impl<'a, V: View, T: View> Seg<Ty<V>> for TRows<'a, V, T> {
         // SAFETY: the journal is boxed in `Shared::lists`, which only grows and outlives every pass (the
         // world's stores are dropped with the `App` that holds the `Shared`); nothing writes it while a
         // pass runs (`App::after` feeds it before the pass).
-        let edits = unsafe { &*self.journal };
+        let Some(edits) = (unsafe { self.journal.as_ref() }) else {
+            return;
+        };
         // A row is its item's view, and its handlers reach the item by its slot: nothing in it is the index.
         let how = bough_x::sink::RowsHow {
             all: self.all,
@@ -1634,6 +1646,9 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
         if self_.spec.gap != 0.0 || self_.spec.pad != [0.0; 4] {
             refuse("a list with a gap or padding");
         }
+        if self_.animate.is_some() {
+            refuse("list move animation");
+        }
         let s = with(|sh| sh.scale.get());
         let word = match &self_.scroll {
             Some(w) => {
@@ -1658,6 +1673,14 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
             content: {
                 let (list, off) = (self_.src.list.list, self_.src.list.off);
                 let (journal, all) = with(|sh| {
+                    if sh.row.get().3 != 0
+                        || TypeId::of::<R::O>() != sh.root
+                        || sh.owner.get().wrapping_add(off as usize)
+                            != std::ptr::from_ref(list).cast()
+                    {
+                        refuse("a typed list must be projected from the mounted root");
+                        return (std::ptr::null(), false);
+                    }
                     let k = sh.li.get();
                     sh.li.set(k + 1);
                     let mut lists = sh.lists.borrow_mut();
@@ -1947,6 +1970,8 @@ pub struct App<V: View> {
     once: bool,
     /// The run store's pass at the last description that asked for every exposed row's runs.
     full_at: u32,
+    /// A description started but unwound. Its journals and tapes cannot certify that every write landed.
+    retry_description: bool,
     /// The turn's publications for `View::changed` (kept: its buffers are reused).
     pubs: crate::changed::Pubs,
     ring: Vec<(Canvas, Tiles)>,
@@ -1976,6 +2001,7 @@ impl<V: View> App<V> {
             refused: RefCell::new(Vec::new()),
             scale: Cell::new(cfg.scale),
             root: TypeId::of::<V>(),
+            owner: Cell::new(std::ptr::null()),
             row: Cell::new((0, 0, 0, 0)),
             ord: Cell::new(0),
             describes: Cell::new(0),
@@ -2008,6 +2034,7 @@ impl<V: View> App<V> {
             scale: cfg.scale,
             once: cfg.mount_once,
             full_at: 0,
+            retry_description: false,
             pubs: crate::changed::Pubs::default(),
             ring: Vec::new(),
             next: 0,
@@ -2129,6 +2156,25 @@ impl<V: View> App<V> {
     pub fn pass_stats(&self) -> PassStats {
         self.ty.sh.pass.get()
     }
+    /// Refresh the runs of kept rows before the text store can evict them. Every fixed description,
+    /// including resize and hover-handler descriptions, advances the text store's clock.
+    fn update_description(&mut self) {
+        let pass = self.text.borrow().pass();
+        let full = self.retry_description || pass.wrapping_sub(self.full_at) >= 128;
+        if self.retry_description {
+            // Force the fixed conversion and replay all exposed rows once after an incomplete write.
+            *self.ty.sh.lay.borrow_mut() = LayMemo::default();
+        }
+        self.retry_description = true;
+        self.ty.sh.full.set(full);
+        self.world.redescribe(&self.ty);
+        self.retry_description = false;
+        self.ty.sh.full.set(false);
+        if full {
+            self.full_at = pass;
+        }
+    }
+
     /// After author code ran: the façade's contract is that the owner is described again (the legacy runtime
     /// does so after every handler and every `turn`; plain fields are state, and only a description reads
     /// them). The description is an update: the fixed part's texts against the tape, its layout words against
@@ -2147,16 +2193,7 @@ impl<V: View> App<V> {
             && self.world.changed_words(&self.ty) & !(1 << HOVER) != 0;
         if ran && !self.once && !skip {
             self.ty.sh.pass.set(PassStats::default());
-            // Every run shown is asked for again at least every 128 descriptions (the run store drops a run
-            // nobody asked for in 256): the rows are then described and compared whether logged or not.
-            let pass = self.text.borrow().pass();
-            let full = pass.wrapping_sub(self.full_at) >= 128;
-            if full {
-                self.full_at = pass;
-            }
-            self.ty.sh.full.set(full);
-            self.world.redescribe(&self.ty);
-            self.ty.sh.full.set(false);
+            self.update_description();
             {
                 let refused = self.ty.sh.refused.borrow();
                 assert!(
@@ -2188,7 +2225,7 @@ impl<V: View> App<V> {
         self.world.repick(&mut self.ty);
         if self.ty.ran.replace(false) && !self.once {
             self.lists_sync();
-            self.world.redescribe(&self.ty);
+            self.update_description();
         } else {
             self.world.settle(&self.ty);
         }
@@ -2265,7 +2302,7 @@ impl<V: View> App<V> {
         self.lists_sync();
         self.ty.sh.pass.set(PassStats::default());
         let motion = self.world.motion().wrapping_sub(1);
-        self.world.redescribe(&self.ty);
+        self.update_description();
         self.rehover(motion);
     }
     /// Where a typed description's instructions go, measured apart (thread instructions, bracket subtracted):
@@ -2278,7 +2315,7 @@ impl<V: View> App<V> {
         let ot = bough_sys::perf::tinstr_overhead();
         let t0 = bough_sys::perf::thread_instructions();
         let mut acc = 0f32;
-        enter(&self.ty.sh, || {
+        enter(&self.ty.sh, (&raw const self.ty.v).cast(), || {
             for _ in 0..1000 {
                 acc += std::hint::black_box(with(|sh| sh.scale.get()));
             }
@@ -2307,7 +2344,7 @@ impl<V: View> App<V> {
     pub fn profile(&mut self) -> (u64, u64) {
         let ot = bough_sys::perf::tinstr_overhead();
         let t0 = bough_sys::perf::thread_instructions();
-        enter(&self.ty.sh, || {
+        enter(&self.ty.sh, (&raw const self.ty.v).cast(), || {
             self.ty.sh.row.set((0, 0, 0, 0));
             self.ty.sh.ord.set(0);
             self.ty.sh.ti.set(0);
@@ -2316,7 +2353,7 @@ impl<V: View> App<V> {
             std::hint::black_box(&e);
         });
         let t1 = bough_sys::perf::thread_instructions();
-        self.world.redescribe(&self.ty);
+        self.update_description();
         let t2 = bough_sys::perf::thread_instructions();
         ((t1 - t0).saturating_sub(ot), (t2 - t1).saturating_sub(ot))
     }
@@ -2345,7 +2382,7 @@ impl<V: View> App<V> {
         let over = bough_sys::perf::tinstr_overhead();
         bough_x::probe::HOOK.with(|h| h.set(Some(phase_hook)));
         PHASES.with(|c| c.set(([0; ph::N], bough_sys::perf::thread_instructions(), over)));
-        self.world.redescribe(&self.ty);
+        self.update_description();
         bough_x::probe::HOOK.with(|h| h.set(None));
         PHASES.with(|c| c.get().0)
     }
