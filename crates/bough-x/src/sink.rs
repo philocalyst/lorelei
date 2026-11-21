@@ -1751,20 +1751,23 @@ fn list_plan(
     // count where `replace` stores one)
     cx.changed += ((lo != olo) | (hi != ohi) | (from != u32::MAX) | rigid) as u32;
     cx.moved += ((lo != olo) | (hi != ohi) | (from != u32::MAX) | rigid) as u32;
-    if (lo == olo) & (hi == ohi) & (from == u32::MAX) & !all & !rigid {
-        // only updates of single rows: those and nothing else
-        for &r in &upd[..nupd] {
-            if (r >= lo) & (r < hi) {
-                st.plan.push(r);
+    if (lo == olo) & (hi == ohi) & (from == u32::MAX) & !rigid {
+        if all {
+            // Every currently exposed record is compared. With the same window and no
+            // structural edit, no damage or new exposure can arise from planning these rows.
+            st.plan.extend(lo..hi);
+        } else {
+            for &r in &upd[..nupd] {
+                if (r >= lo) & (r < hi) {
+                    st.plan.push(r);
+                }
             }
         }
         return mk;
     }
-    // rows that left: what they showed is gone (a no-op when they left by scrolling out of the clip)
-    for r in olo..ohi {
-        if (r < lo) | (r >= hi) {
-            cx.tiles.mark(row_rect(r));
-        }
+    // Only the intervals outside the new window lost pixels.
+    for r in (olo..ohi.min(lo)).chain(olo.max(hi)..ohi) {
+        cx.tiles.mark(row_rect(r));
     }
     for r in lo..hi {
         let fresh = (r < olo) | (r >= ohi) | ((r >= dirty.0) & (r < dirty.1));

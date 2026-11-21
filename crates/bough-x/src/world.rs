@@ -1580,14 +1580,18 @@ impl<V: View, B: Backend> World<V, B> {
     }
     /// Save what the hovered places denote before a write can replace them. Stateful
     /// hover records are saved on entry because their delta may write before a pass.
-    #[inline(never)]
+    #[inline(always)]
     fn capture_hover(&mut self) {
-        if self.hov_kept.is_empty() {
-            for i in 0..self.hov.len() {
-                let p = self.hov[i];
-                self.hov_what.push(self.stamp_at(p));
-                self.keep(p);
-            }
+        if !self.hov.is_empty() && self.hov_kept.is_empty() {
+            self.capture_hover_lanes();
+        }
+    }
+    #[inline(never)]
+    fn capture_hover_lanes(&mut self) {
+        for i in 0..self.hov.len() {
+            let p = self.hov[i];
+            self.hov_what.push(self.stamp_at(p));
+            self.keep(p);
         }
     }
 
