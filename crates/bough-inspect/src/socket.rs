@@ -193,7 +193,8 @@ impl Conn {
 }
 
 impl Server {
-    /// Bind a user-only socket. If the path already exists, choose another or remove a known stale socket yourself.
+    /// Bind a user-only socket. A socket file left by a process that died (the path exists, is a socket, is
+    /// ours, and nothing is listening) is reclaimed; anything else at the path is left alone and bind fails.
     pub fn bind(path: impl AsRef<Path>) -> io::Result<Server> {
         let path = path.as_ref();
         let parent = path
@@ -203,6 +204,7 @@ impl Server {
         let parent = parent.canonicalize()?;
         let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
         let path = parent.join(name);
+        reclaim_stale(&path)?;
         let listener = UnixListener::bind(&path)?;
         let identity = socket_identity(&path)?;
         let server = Server {
@@ -316,6 +318,47 @@ impl Server {
             }
         }
         Ok(())
+    }
+}
+
+/// Remove a socket file that no process is listening on, when it is this user's. A live socket is an
+/// `AddrInUse` error; a socket of another user is a permission error; a regular file is left for `bind` to
+/// refuse.
+fn reclaim_stale(path: &Path) -> io::Result<()> {
+    let meta = match std::fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(_) => return Ok(()),
+    };
+    if !meta.file_type().is_socket() {
+        return Ok(());
+    }
+    use std::os::unix::fs::MetadataExt;
+    // SAFETY: geteuid takes no arguments and returns the current process's effective user ID.
+    let mine = meta.uid() == unsafe { libc::geteuid() };
+    match UnixStream::connect(path) {
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::AddrInUse,
+            "another process is listening on this socket",
+        )),
+        Err(e)
+            if mine
+                && matches!(
+                    e.kind(),
+                    io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+                ) =>
+        {
+            // nobody is listening: the owner's previous process is gone
+            match std::fs::remove_file(path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(e),
+            }
+        }
+        Err(e) if !mine => Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("the socket belongs to another user: {e}"),
+        )),
+        Err(e) => Err(e),
     }
 }
 
