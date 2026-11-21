@@ -7,7 +7,7 @@
 //! staged primitives, in paint order, the kind of each call fixed by the type. The tile rasteriser, the
 //! flat-row classifier, the window pass, the per-pixel specification, the oracle's stager and the pick are
 //! six sinks; each is monomorphised per archetype, so none of them tests a kind.
-use crate::expr::{Alpha, Code, Cx, Expr, Ty, U_TIME, Val, Words};
+use crate::expr::{Alpha, Code, Cx, Expr, Ty, U_TIME, Val, Words, time_range};
 use bough_expr::latest;
 use crate::ops::ops as x;
 use bough_kernel::Cmd;
@@ -142,6 +142,11 @@ pub trait Paint: Words {
     /// From which value of `Time` on the record no longer changes with time alone (`Expr::until`: 0 at
     /// rest, `u32::MAX` never). A time-only frame visits only the records still ahead of it.
     fn until(&self, cx: &Cx) -> u32;
+    /// The pixel window and halo can never leave this box while only `Time` changes.
+    /// The box is in frame coordinates before the stager's global clip. `None` leaves motion active.
+    fn motion_hull(&self, _cx: &Cx) -> Option<Vec4i> {
+        None
+    }
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk);
     /// The pixels a change of block words `mask` can alter without moving anything: the windows (under
     /// `new`) of the layers one of whose operands has a different value under the two blocks. A hovered
@@ -160,11 +165,18 @@ pub trait Paint: Words {
     fn memo(&mut self, _cx: &Cx, _m: &mut dyn FnMut(i32, i32) -> u32) {}
 }
 
+fn swept_window<B: Expr<Out = Vec4i>>(b: &B, cx: &Cx, margin: i32) -> Option<Vec4i> {
+    let (lo, hi) = time_range(b, cx)?;
+    let lower = |q: i32| Some(q.checked_sub(margin)?.checked_add(127)? >> 8);
+    let upper = |q: i32| Some(q.checked_add(margin)?.checked_add(127)? >> 8);
+    Some(Vec4 { x: lower(lo.x)?, y: lower(lo.y)?, z: upper(hi.z)?, w: upper(hi.w)? })
+}
+
 /// A primitive from its stager leaf and its shade leaf:
 /// `prim!(Name: sink_method = mk_leaf, p_leaf(field: Type: Out: moves_window, ..); full = [colour operands
 /// whose full alpha makes the core a cover, with their positions]; cover = ..; cost = ..)`.
 macro_rules! prim {
-    ($(#[$m:meta])* $name:ident : $sink:ident = $mk:ident, $p:ident ( $($f:ident : $T:ident : $ty:ty : $geom:literal),* ); full = [$($ff:ident : $FT:ident = $fi:literal),*]; cover = $cov:literal; cost = $cost:expr; glyph = $gl:literal) => {
+    ($(#[$m:meta])* $name:ident : $sink:ident = $mk:ident, $p:ident ( $($f:ident : $T:ident : $ty:ty : $geom:literal),* ); full = [$($ff:ident : $FT:ident = $fi:literal),*]; cover = $cov:literal; cost = $cost:expr; glyph = $gl:literal; window = $b:ident + $margin:literal) => {
         $(#[$m])*
         #[repr(C)]
         #[derive(Clone, Copy)]
@@ -181,6 +193,9 @@ macro_rules! prim {
             const COST: Cost = $cost;
             const LAYERS: usize = 1;
             const CODE: &'static PCode = &PCode::Prim { mk: stringify!($mk), p: stringify!($p), args: &[$($T::CODE),*], tys: &[$(<$ty as Val>::TY),*], glyph: $gl, opaque: Self::OPAQUE_CORE, full: &[$($fi),*], tab: false, glue: Glue::None };
+            fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
+                swept_window(&self.$b, cx, $margin)
+            }
             #[inline(always)]
             fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
                 s.$sink(x::$mk($(self.$f.eval(cx)),*, clip))
@@ -209,11 +224,11 @@ macro_rules! prim {
 }
 
 prim!(/// A solid box (no antialiasing: pixels whose centres it holds).
-    Solid: solid = mk_solid, p_solid(b: B: Vec4i: true, c: C: Vec4u: false); full = [c: C = 1]; cover = true; cost = Cost::Flat; glyph = false);
+    Solid: solid = mk_solid, p_solid(b: B: Vec4i: true, c: C: Vec4u: false); full = [c: C = 1]; cover = true; cost = Cost::Flat; glyph = false; window = b + 0);
 prim!(/// A rounded box.
-    RRect: rrect = mk_rrect, p_rrect(b: B: Vec4i: true, r: R: i32: true, c: C: Vec4u: false); full = [c: C = 2]; cover = true; cost = Cost::Edge; glyph = false);
+    RRect: rrect = mk_rrect, p_rrect(b: B: Vec4i: true, r: R: i32: true, c: C: Vec4u: false); full = [c: C = 2]; cover = true; cost = Cost::Edge; glyph = false; window = b + 256);
 prim!(/// A rounded box of colour `fill` with a border of width `w` in colour `c` inside its edge.
-    Border: border = mk_border, p_border(b: B: Vec4i: true, r: R: i32: true, w: W: i32: true, c: C: Vec4u: false, fill: F: Vec4u: false); full = [fill: F = 4]; cover = true; cost = Cost::Edge; glyph = false);
+    Border: border = mk_border, p_border(b: B: Vec4i: true, r: R: i32: true, w: W: i32: true, c: C: Vec4u: false, fill: F: Vec4u: false); full = [fill: F = 4]; cover = true; cost = Cost::Edge; glyph = false; window = b + 256);
 /// A table handle operand of a primitive that can memoise part of its coverage (`Shadow`'s corners).
 pub trait TabOp: Expr<Out = u32> + Words {
     /// The record owns a handle word.
@@ -290,6 +305,11 @@ impl<
         tab: T::ON,
         glue: Glue::None,
     };
+    fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
+        let (_, blur) = time_range(&self.blur, cx)?;
+        let bw = blur.clamp(16, 32768);
+        swept_window(&self.b, cx, bw + bw / 2 + 256)
+    }
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
         let now = cx.u.w[U_TIME];
@@ -356,14 +376,14 @@ impl<
     }
 }
 prim!(/// A two-stop linear gradient in a rounded box.
-    Grad: grad = mk_grad, p_grad(b: B: Vec4i: true, r: R: i32: true, dx: X: i32: false, dy: Y: i32: false, c: C: Vec4u: false, c2: D: Vec4u: false); full = [c: C = 4, c2: D = 5]; cover = true; cost = Cost::PerPixel; glyph = false);
+    Grad: grad = mk_grad, p_grad(b: B: Vec4i: true, r: R: i32: true, dx: X: i32: false, dy: Y: i32: false, c: C: Vec4u: false, c2: D: Vec4u: false); full = [c: C = 4, c2: D = 5]; cover = true; cost = Cost::PerPixel; glyph = false; window = b + 256);
 prim!(/// One glyph: `b` is its texels' box, `texel` its first texel in the atlas.
-    Glyph: glyph = mk_glyph, p_glyph(b: B: Vec4i: true, texel: T: u32: false, c: C: Vec4u: false); full = []; cover = false; cost = Cost::Flat; glyph = true);
+    Glyph: glyph = mk_glyph, p_glyph(b: B: Vec4i: true, texel: T: u32: false, c: C: Vec4u: false); full = []; cover = false; cost = Cost::Flat; glyph = true; window = b + 0);
 
 prim!(/// An author shader node filling a rounded box: `id` picks the function (`bough_kernel::fx::user_shade`),
     /// `now` is its clock (any expression: the frame clock, a scaled clock, a constant for a still), `c`
     /// and `c2` its two colours. It is damaged where it shows and only when one of these moves.
-    Shader: user = mk_user, p_user(b: B: Vec4i: true, r: R: i32: true, id: I: u32: false, now: N: u32: false, c: C: Vec4u: false, c2: D: Vec4u: false); full = []; cover = false; cost = Cost::PerPixel; glyph = false);
+    Shader: user = mk_user, p_user(b: B: Vec4i: true, r: R: i32: true, id: I: u32: false, now: N: u32: false, c: C: Vec4u: false, c2: D: Vec4u: false); full = []; cover = false; cost = Cost::PerPixel; glyph = false; window = b + 256);
 
 /// A video frame scaled into a rounded box. `slot` names the leased frame in the media pool
 /// (`media::Pool::publish` rewrites this word, which is the whole of "a new frame arrived"), `dims` its luma
@@ -386,6 +406,9 @@ impl<B: Expr<Out = Vec4i> + Words, R: Expr<Out = i32> + Words, S: Expr<Out = u32
     const COST: Cost = Cost::PerPixel;
     const LAYERS: usize = 1;
     const CODE: &'static PCode = &PCode::Prim { mk: "mk_video", p: "p_video", args: &[B::CODE, R::CODE, S::CODE, M::CODE, O::CODE], tys: &[Ty::V4i, Ty::I32, Ty::U32, Ty::U32, Ty::U32], glyph: false, opaque: false, full: &[], tab: false, glue: Glue::Video };
+    fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
+        swept_window(&self.b, cx, 256)
+    }
     #[inline(always)]
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
         s.video(x::mk_video(self.b.eval(cx), self.r.eval(cx), self.slot.eval(cx), self.dims.eval(cx), self.op.eval(cx), clip))
@@ -430,6 +453,14 @@ impl<B: Expr<Out = Vec4i> + Words, R: Expr<Out = i32> + Words, S: Expr<Out = i32
     const LAYERS: usize = 1;
     const LAYER: bool = true;
     const CODE: &'static PCode = &PCode::Prim { mk: "mk_backdrop", p: "p_bdrop", args: &[B::CODE, R::CODE, S::CODE, F::CODE], tys: &[Ty::V4i, Ty::I32, Ty::I32, Ty::V4u], glyph: false, opaque: false, full: &[], tab: false, glue: Glue::Backdrop };
+    fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
+        let (_, blur) = time_range(&self.blur, cx)?;
+        // Increasing blur can only add a coarser read. Derive the halo from the outer window
+        // without clamping it to the staging coordinates, since the pan index needs world rows.
+        let mut cmd = x::mk_backdrop(EMPTY, 0, blur, Vec4 { x: 256, y: 256, z: 256, w: 0 }, NO_CLIP);
+        cmd.win = swept_window(&self.b, cx, 256)?;
+        Some(crate::layer::halo(cmd))
+    }
     #[inline(always)]
     fn paint<Sk: Sink>(&self, cx: &Cx, clip: Vec4i, s: &mut Sk) {
         s.backdrop(x::mk_backdrop(self.b.eval(cx), self.r.eval(cx), self.blur.eval(cx), self.f.eval(cx), clip))
@@ -473,6 +504,9 @@ impl<A: Paint, B: Paint> Paint for Over<A, B> {
         assert!(!B::LAYER, "a backdrop must be the bottom layer of its record");
         A::LAYER
     };
+    fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
+        Some(x::x_union(self.0.motion_hull(cx)?, self.1.motion_hull(cx)?))
+    }
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
         latest(self.0.until(cx), self.1.until(cx), cx.u.w[U_TIME])
@@ -542,6 +576,14 @@ impl<P: Paint, K: Expr<Out = Vec4i> + Words> Paint for Clip<P, K> {
     const LAYERS: usize = P::LAYERS;
     const HIT: bool = P::HIT;
     const LAYER: bool = P::LAYER;
+    fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
+        let w = self.p.motion_hull(cx)?;
+        if P::LAYER {
+            // A backdrop flattens over its halo, including outside the clip.
+            return Some(w);
+        }
+        Some(x::x_and(w, swept_window(&self.k, cx, 0)?))
+    }
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
         latest(self.p.until(cx), self.k.until(cx), cx.u.w[U_TIME])
@@ -591,6 +633,9 @@ impl<P: Paint, I: Expr<Out = u32> + Words> Paint for Hit<P, I> {
     const LAYERS: usize = P::LAYERS;
     const HIT: bool = true;
     const LAYER: bool = P::LAYER;
+    fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
+        self.p.motion_hull(cx)
+    }
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
         latest(self.p.until(cx), self.id.until(cx), cx.u.w[U_TIME])

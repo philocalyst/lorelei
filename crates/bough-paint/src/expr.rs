@@ -12,7 +12,7 @@
 //! operands' trees. The CPU kernel is `eval` monomorphised and inlined; the GPU function is `CODE` rendered
 //! (`emit.rs`). Neither can say something the other does not.
 use crate::ops::ops as x;
-pub use bough_expr::{Code, Cx, Expr, Pal, Frame, JoinAll, K, Ki, Lens, Mount, Rec, Stage, StageId, U, U_PICK, U_PTR_X, U_PTR_Y, U_TIME, Un, Uw, Words, lens, un};
+pub use bough_expr::{Code, Cx, Expr, Frame, JoinAll, K, Ki, Lens, Mount, Pal, Rec, Stage, StageId, U, U_PICK, U_PTR_X, U_PTR_Y, U_TIME, Un, Uw, Words, lens, un};
 use wgsl_rs::std::{Vec4, Vec4i, Vec4u};
 
 /// The type of an expression's value, for generated code.
@@ -55,9 +55,19 @@ impl Expr for Lane {
     }
 }
 
+/// A time-independent operand needs no range implementation of its own.
+pub(crate) fn time_range<E: Expr>(e: &E, cx: &Cx) -> Option<(E::Out, E::Out)> {
+    if E::READS & (1 << U_TIME) == 0 {
+        let value = e.eval(cx);
+        Some((value, value))
+    } else {
+        e.time_hull(cx)
+    }
+}
+
 /// A combinator from a leaf: `op!(Name = leaf(field: Type: OperandOut, ..) -> Out; opaque = <const expr>)`.
 macro_rules! op {
-    ($(#[$m:meta])* $name:ident = $leaf:ident ( $($f:ident : $T:ident : $ty:ty),* ) -> $out:ty ; opaque = $opq:expr) => {
+    ($(#[$m:meta])* $name:ident = $leaf:ident ( $($f:ident : $T:ident : $ty:ty),* ) -> $out:ty ; opaque = $opq:expr $(; hull = $hull:ident)?) => {
         $(#[$m])*
         #[repr(C)]
         #[derive(Clone, Copy)]
@@ -77,6 +87,7 @@ macro_rules! op {
             fn eval(&self, cx: &Cx) -> $out {
                 x::$leaf($(self.$f.eval(cx)),*)
             }
+            op!(@maybe_hull ($($hull)?), $out, $($f),*);
             /// At rest when every operand is: a combinator adds no time of its own.
             #[inline(always)]
             fn until(&self, cx: &Cx) -> u32 {
@@ -87,6 +98,13 @@ macro_rules! op {
             }
         }
     };
+    (@maybe_hull (), $out:ty, $($f:ident),*) => {};
+    (@maybe_hull ($hull:ident), $out:ty, $($f:ident),*) => {
+        fn time_hull(&self, cx: &Cx) -> Option<($out, $out)> {
+            $hull($(time_range(&self.$f, cx)?),*)
+        }
+    };
+
 }
 
 op!(/// 1 when two words are equal.
@@ -143,6 +161,13 @@ where
     fn eval(&self, cx: &Cx) -> u32 {
         x::x_prog(self.now.eval(cx), self.t0.eval(cx), self.dur.eval(cx))
     }
+    fn time_hull(&self, cx: &Cx) -> Option<(u32, u32)> {
+        if (A::READS | D::READS) & (1 << U_TIME) != 0 {
+            return Some((0, 32768));
+        }
+        let low = if matches!(N::CODE, Code::U(n) if *n == U_TIME) { self.eval(cx) } else { 0 };
+        Some((low, 32768))
+    }
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
         let now = cx.u.w[U_TIME];
@@ -179,6 +204,46 @@ where
     fn eval(&self, cx: &Cx) -> i32 {
         x::x_spring(self.now.eval(cx), self.t0.eval(cx), self.dur.eval(cx), self.to.eval(cx), self.a0.eval(cx), self.b0.eval(cx), self.decay.eval(cx), self.omega.eval(cx))
     }
+    fn time_hull(&self, cx: &Cx) -> Option<(i32, i32)> {
+        if !matches!(N::CODE, Code::U(n) if *n == U_TIME) || (A::READS | D::READS | T::READS | P::READS | Q::READS | E::READS | W::READS) & (1 << U_TIME) != 0 {
+            return None;
+        }
+        let t0 = self.t0.eval(cx);
+        let dur = self.dur.eval(cx).min(65535);
+        let to = self.to.eval(cx);
+        let a = self.a0.eval(cx);
+        let b = self.b0.eval(cx);
+        let decay = self.decay.eval(cx).min(65535);
+        let omega = self.omega.eval(cx);
+        let e = self.now.eval(cx).wrapping_sub(t0) as i32;
+        if cfg!(feature = "mutant_hull_small") {
+            let now = self.eval(cx);
+            return Some((now, now));
+        }
+        // The leaf returns the unclamped start before launch, and the target from the settle tick.
+        let mut low = to;
+        let mut high = to;
+        if e < 0 {
+            let start = to.checked_add(a)?;
+            let start = if omega >= 0x8000_0000 { start.checked_add(b)? } else { start };
+            low = low.min(start);
+            high = high.max(start);
+        }
+        let end = dur.min(spring_tail(decay, omega));
+        if (a != 0 || b != 0) && (e.max(0) as u32) < end {
+            // Check the full arithmetic envelope before calling the leaf. Unusual operands that can
+            // wrap an i32 are ineligible for this certificate.
+            let amp = i64::from(a.clamp(-2097151, 2097151)).abs() + i64::from(b.clamp(-2097151, 2097151)).abs() * if omega == 0 { (i64::from(end) + 1023) >> 10 } else { 1 };
+            i32::try_from(i64::from(to) - amp).ok()?;
+            i32::try_from(i64::from(to) + amp).ok()?;
+            for tick in e.max(0) as u32..end {
+                let value = x::x_spring(tick, 0, dur, to, a, b, decay, omega);
+                low = low.min(value);
+                high = high.max(value);
+            }
+        }
+        Some((low, high))
+    }
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
         let now = cx.u.w[U_TIME];
@@ -191,15 +256,52 @@ where
         t
     }
 }
-op!(EIn = x_ein(t: T: u32) -> u32; opaque = false);
-op!(EOut = x_eout(t: T: u32) -> u32; opaque = false);
-op!(EInOut = x_einout(t: T: u32) -> u32; opaque = false);
+// x_exp returns zero after 17 halvings. The slower of two decays controls the tail.
+fn spring_tail(decay: u32, omega: u32) -> u32 {
+    let decay = if omega >= 0x8000_0000 { decay.min(omega & 65535) } else { decay };
+    if decay == 0 { 65535 } else { (17u32 * 45426).div_ceil(decay) }
+}
+
+fn ein((lo, hi): (u32, u32)) -> Option<(u32, u32)> {
+    Some((x::x_ein(lo), x::x_ein(hi)))
+}
+fn eout((lo, hi): (u32, u32)) -> Option<(u32, u32)> {
+    Some((x::x_eout(lo), x::x_eout(hi)))
+}
+fn einout((lo, hi): (u32, u32)) -> Option<(u32, u32)> {
+    Some((x::x_einout(lo), x::x_einout(hi)))
+}
+fn off((a, b): (Vec4i, Vec4i), (xl, xh): (i32, i32), (yl, yh): (i32, i32)) -> Option<(Vec4i, Vec4i)> {
+    let add = |v: Vec4i, x, y| Some(Vec4 { x: v.x.checked_add(x)?, y: v.y.checked_add(y)?, z: v.z.checked_add(x)?, w: v.w.checked_add(y)? });
+    Some((add(a, xl, yl)?, add(b, xh, yh)?))
+}
+fn mixi((a0, a1): (i32, i32), (b0, b1): (i32, i32), (t0, t1): (u32, u32)) -> Option<(i32, i32)> {
+    // At fixed t, a mix is monotone in both endpoints. Each pair's range is achieved at t0 or t1.
+    // Refuse differences that can wrap in the leaf and its downward-rounded intermediate.
+    for a in [a0, a1] {
+        for b in [b0, b1] {
+            let d = b.checked_sub(a)?;
+            a.checked_add(d & !32767)?;
+        }
+    }
+    Some((x::x_mixi(a0, b0, t0).min(x::x_mixi(a0, b0, t1)), x::x_mixi(a1, b1, t0).max(x::x_mixi(a1, b1, t1))))
+}
+fn mixr((a0, a1): (Vec4i, Vec4i), (b0, b1): (Vec4i, Vec4i), t: (u32, u32)) -> Option<(Vec4i, Vec4i)> {
+    let (xl, xh) = mixi((a0.x, a1.x), (b0.x, b1.x), t)?;
+    let (yl, yh) = mixi((a0.y, a1.y), (b0.y, b1.y), t)?;
+    let (zl, zh) = mixi((a0.z, a1.z), (b0.z, b1.z), t)?;
+    let (wl, wh) = mixi((a0.w, a1.w), (b0.w, b1.w), t)?;
+    Some((Vec4 { x: xl, y: yl, z: zl, w: wl }, Vec4 { x: xh, y: yh, z: zh, w: wh }))
+}
+op!(EIn = x_ein(t: T: u32) -> u32; opaque = false; hull = ein);
+op!(EOut = x_eout(t: T: u32) -> u32; opaque = false; hull = eout);
+op!(EInOut = x_einout(t: T: u32) -> u32; opaque = false; hull = einout);
 op!(/// A rect from four words (Q8 x0, y0, x1, y1).
     RectW = x_rect(a: A: u32, b: B: u32, c: C: u32, d: D: u32) -> Vec4i; opaque = false);
-op!(Off = x_off(b: B: Vec4i, dx: X: i32, dy: Y: i32) -> Vec4i; opaque = false);
+op!(Off = x_off(b: B: Vec4i, dx: X: i32, dy: Y: i32) -> Vec4i; opaque = false; hull = off);
 op!(Grow = x_grow(b: B: Vec4i, d: D: i32) -> Vec4i; opaque = false);
-op!(MixR = x_mixr(a: A: Vec4i, b: B: Vec4i, t: T: u32) -> Vec4i; opaque = false);
-op!(MixI = x_mixi(a: A: i32, b: B: i32, t: T: u32) -> i32; opaque = false);
+op!(MixR = x_mixr(a: A: Vec4i, b: B: Vec4i, t: T: u32) -> Vec4i; opaque = false; hull = mixr);
+op!(MixI = x_mixi(a: A: i32, b: B: i32, t: T: u32) -> i32; opaque = false; hull = mixi);
 op!(Top = x_top(b: B: Vec4i, h: H: i32) -> Vec4i; opaque = false);
 op!(And = x_and(a: A: Vec4i, b: B: Vec4i) -> Vec4i; opaque = false);
 op!(/// Three words as a vector (a backdrop's filter factors).

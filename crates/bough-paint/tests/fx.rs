@@ -1119,3 +1119,128 @@ fn palette_run(mutate: bool) -> (usize, usize, usize, usize, bool) {
     assert!(!s.animating(), "a finished fade still owes frames");
     (bad, bad_gpu, fades, switches, gpu.is_some())
 }
+
+#[test]
+fn spring_hull_matches_discrete_extrema() {
+    let mut rng = Rng(0xf510);
+    let mut cases = 0;
+    for (decay, omega) in [(852, 21_889), (961, 0), (204, 0x8000_059b), (100, 4_000_000), (0, 0)] {
+        let response = Response { decay, omega };
+        for i in 0..20u32 {
+            let t0 = if i % 2 == 0 { 1000 } else { u32::MAX - 10 };
+            let from = (rng.next() % 50_000) as i32 - 25_000;
+            let target = (rng.next() % 100_000) as i32 - 50_000;
+            let mut spring = Spring::launch(response, t0, from, 20.0 - f64::from(i), target);
+            if i % 3 == 0 {
+                spring.retarget(response, t0.wrapping_add(230), target + 5120);
+            }
+            let operand: Spr<Uw<63>, Rec, Rec, I<Rec>, I<Rec>, I<Rec>, Rec, Rec> = Spr { now: Uw, t0: Rec(spring.t0), dur: Rec(spring.dur), to: ri(spring.to), a0: ri(spring.a0), b0: ri(spring.b0), decay: Rec(decay), omega: Rec(omega) };
+            for elapsed in [-77, 0, (spring.dur / 2) as i32, spring.dur as i32 + 1] {
+                let mut u = U::default();
+                u.w[U_TIME] = spring.t0.wrapping_add_signed(elapsed);
+                let actual = operand.time_hull(&Cx::of(&u));
+                let mut expected = (spring.to, spring.to);
+                for tick in elapsed..spring.dur as i32 {
+                    u.w[U_TIME] = spring.t0.wrapping_add_signed(tick);
+                    let v = operand.eval(&Cx::of(&u));
+                    expected = (expected.0.min(v), expected.1.max(v));
+                }
+                assert_eq!(actual, Some(expected), "elapsed {elapsed}, {spring:?}, {response:?}");
+                cases += 1;
+            }
+        }
+    }
+    eprintln!("spring hull: {cases} remaining-motion intervals match the discrete leaf extrema");
+}
+
+#[test]
+fn spring_hull_parks_and_wakes_at_output_ages_one_to_four() {
+    type DotPaint = RRect<Sprung, Ki<768>, Pmo<K<0xffe0_8040>>>;
+    let paint = |sy| DotPaint { b: sprung(&Spring::rest(0), &sy), r: Ki, c: Pmo { c: K } };
+    let rect = [q(12.0), q(800.0), q(32.0), q(812.0)];
+    let initial = Spring::launch(KS, 800, 0, 0.0, q(-568.0));
+    let (fw, fh, stride) = (64, 96, 69);
+    let words = stride * fh as usize;
+    let pool = Pool::new(1);
+    let make = |motion, indexed| {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        let col = scene.column::<DotPaint>(1);
+        scene.push(col, rect, paint(motion));
+        if indexed {
+            scene.scroll(col, 0, 1);
+        }
+        (scene, col)
+    };
+    for age in 1..=4 {
+        let (mut cpu, col) = make(initial, true);
+        let (mut metal, metal_col) = make(initial, true);
+        metal.route_off = true;
+        // SAFETY: `metal` outlives the executor. Writes take place between synchronous calls.
+        let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 16) }.expect("headless Metal");
+        let mut ring = vec![vec![0; words]; age];
+        let mut pending: Vec<_> = (0..age)
+            .map(|_| {
+                let mut d = bough_paint::scene::Damage::new(cpu.tx, cpu.ty);
+                d.all();
+                d
+            })
+            .collect();
+        let mut era = 0;
+        let mut tiles = Vec::new();
+        let mut u = U::default();
+        let mut motion = initial;
+        let mut fresh = vec![0; words];
+        for step in 0..60 {
+            let i = step % age;
+            u.w[U_TIME] = if step < 3 { 100 + step as u32 } else { 800 + (step as u32 - 3) * 24 };
+            if step == 2 {
+                u.w[1] = q(-160.5) as u32;
+            }
+            if step == 39 {
+                u.w[1] = 0;
+            }
+            if step == 40 {
+                motion.retarget(KS, u.w[U_TIME] + 48, q(-760.0));
+                cpu.set(col, 0, rect, paint(motion));
+                metal.set(metal_col, 0, rect, paint(motion));
+            }
+            let stats = cpu.update(&u);
+            if step == 0 || step == 39 {
+                assert!(!cpu.animating(), "age {age}, tick {step} should be parked");
+            }
+            if step == 1 {
+                assert_eq!(stats.recs_visited, 0);
+            }
+            if step == 2 || step == 40 {
+                assert_eq!(cpu.active_records(), 1, "age {age}, tick {step} should wake by its new hull");
+            }
+            let block = *cpu.block();
+            cpu.prepare(&block);
+            for d in &mut pending {
+                for (a, b) in d.bits.iter_mut().zip(&cpu.damage.bits) {
+                    *a |= *b;
+                }
+            }
+            cpu.damage.clear();
+            pending[i].tiles(&mut tiles);
+            pending[i].clear();
+            cpu.shade(&block, &tiles, &mut ring[i], stride, &pool, 0);
+            let (mut oracle, _) = make(motion, false);
+            oracle.frame(&u, &mut fresh, stride, &pool, 0);
+            assert_eq!(diff(&ring[i], &fresh), 0, "CPU age {age}, tick {step}");
+            metal.update(&u);
+            metal.damage.tiles(&mut tiles);
+            metal.damage.clear();
+            let block = *metal.block();
+            let draw = (step + 1) % age == 0;
+            if !tiles.is_empty() || draw {
+                let next = gpu.resident(&mut metal, &block, &tiles, draw.then_some(era), stride).1;
+                if draw {
+                    era = next;
+                    assert_eq!(diff(gpu.out(words), &fresh), 0, "Metal age {age}, tick {step}");
+                }
+            }
+        }
+    }
+    eprintln!("motion hull: 240 CPU frames and 125 Metal draws at ages 1..4, zero mismatching words");
+}

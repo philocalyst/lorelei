@@ -190,7 +190,7 @@ pub struct Desc {
     /// The backdrop command of a record that owns a layer.
     pub(crate) lay: fn(ColView, i: u32, u: &U) -> Option<Cmd>,
     /// The record's window joined with its halo under `u` (unpacked: for the scroll index).
-    pub(crate) reach: fn(ColView, i: u32, u: &U) -> [i32; 4],
+    pub(crate) reach: fn(ColView, i: u32, u: &U) -> Option<Vec4i>,
     /// The record as the generic kernel's commands.
     pub(crate) stage: fn(ColView, i: u32, u: &U, out: &mut bough_kernel::stage::Scene),
     pub(crate) pick: fn(ColView, i: u32, u: &U) -> u32,
@@ -227,6 +227,21 @@ impl Pass<'_> {
     fn shows(&self, z: usize) -> bool {
         let (w, fh) = (self.win[z], if cfg!(feature = "mutant_park") { self.frame[1] / 2 } else { self.frame[1] });
         w[0] < w[2] && w[1] < w[3] && w[0] < self.frame[0] && w[1] < fh && w[2] > 0 && w[3] > 0
+    }
+    fn clock_visible<P: Paint>(&self, p: &P, z: usize, cx: &Cx) -> bool {
+        if self.shows(z) {
+            return true;
+        }
+        if P::GEOM_READS & (1 << U_TIME) == 0 {
+            return false;
+        }
+        let [x, y, r, b] = self.halo[z];
+        if P::LAYER && x < r && y < b && x < self.frame[0] && y < self.frame[1] && r > 0 && b > 0 {
+            return true;
+        }
+        p.motion_hull(cx).is_none_or(|w| {
+            w.x < w.z && w.y < w.w && w.x < i32::from(self.frame[0]) && w.y < i32::from(self.frame[1]) && w.z > 0 && w.w > 0
+        })
     }
     /// A layer record's halo is now `h`. The halo is where the record flattens the accumulator, so the
     /// tiles a changed halo left and entered are damaged (and are events for the layers above). Returns
@@ -277,9 +292,6 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
             }
             still = !rests;
         }
-        // a reader the clock does not move and whose window is outside the frame is parked: in no set.
-        // Whatever brings it into view is a geometry pass, which decides again
-        let moves = P::GEOM_READS >> U_TIME & 1 != 0;
         if geom {
             let mut ws = WinSink(EMPTY, EMPTY);
             p.paint(&cn, NO_CLIP, &mut ws);
@@ -303,14 +315,14 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
                 (ps.win[z], ps.cover[z]) = (w, cv);
                 ps.rebin.push(z as u32);
                 moved = true;
-                if still && (moves || ps.shows(z)) {
+                if still && ps.clock_visible(p, z, &cn) {
                     ps.active.push(i);
                 }
                 continue;
             }
             moved |= ps.rebin.last() == Some(&(z as u32));
         }
-        if still && (moves || ps.shows(z)) {
+        if still && ps.clock_visible(p, z, &cn) {
             ps.active.push(i);
         }
         if !first {
@@ -344,7 +356,7 @@ fn rewin_one<P: Paint>(c: ColView, i: u32, u: &U, ps: &mut Pass) -> bool {
     if moved {
         ps.rebin.push(z as u32);
     }
-    if P::READS >> U_TIME & 1 != 0 && ahead(p.until(&cx), u.w[U_TIME]) && (P::GEOM_READS >> U_TIME & 1 != 0 || ps.shows(z)) {
+    if P::READS >> U_TIME & 1 != 0 && ahead(p.until(&cx), u.w[U_TIME]) && ps.clock_visible(p, z, &cx) {
         ps.active.push(i);
     }
     moved
@@ -365,12 +377,22 @@ fn shade_run<P: Paint>(c: ColView, zs: &[u32], first: usize, order: &[u32], u: &
         unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut Shade(t, fx, lid));
     }
 }
-fn reach_one<P: Paint>(c: ColView, i: u32, u: &U) -> [i32; 4] {
+fn reach_one<P: Paint>(c: ColView, i: u32, u: &U) -> Option<Vec4i> {
+    // SAFETY: as `window_pass`, this descriptor is only used for its own column's records.
+    let p = unsafe { c.rec::<P>(i) };
+    let cx = Cx { u, rect: c.rect(i), pal: c.pal() };
+    if P::GEOM_READS & (1 << U_TIME) != 0 {
+        let mut w = p.motion_hull(&cx)?;
+        if P::LAYER {
+            // The halo is aligned to the frame tile grid. A fractional pan changes that alignment.
+            w.y -= 32;
+            w.w += 32;
+        }
+        return Some(w);
+    }
     let mut ws = WinSink(EMPTY, EMPTY);
-    // SAFETY: as `window_pass`.
-    unsafe { c.rec::<P>(i) }.paint(&Cx { u, rect: c.rect(i), pal: c.pal() }, NO_CLIP, &mut ws);
-    let w = crate::ops::ops::x_union(ws.0, ws.1);
-    [w.x, w.y, w.z, w.w]
+    p.paint(&cx, NO_CLIP, &mut ws);
+    Some(crate::ops::ops::x_union(ws.0, ws.1))
 }
 fn lay_one<P: Paint>(c: ColView, i: u32, u: &U) -> Option<Cmd> {
     let mut s = LaySink(None);
@@ -723,10 +745,22 @@ struct Scroll {
     rows: std::collections::HashMap<i32, Vec<u32>>,
     /// Per record: the rows it is listed in (first, one past last); empty when it has no reach.
     at: Vec<(i32, i32)>,
+    /// Records without a local pan certificate. Every pan must reconsider them.
+    unbounded: std::collections::BTreeSet<u32>,
 }
 impl Scroll {
     /// Record `i` reaches rows `r` (of the scrolled space) now.
-    fn place(&mut self, i: u32, r: (i32, i32)) {
+    fn place(&mut self, i: u32, rows: Option<(i32, i32)>) {
+        let r = match rows {
+            Some(r) if r.1 - r.0 <= 256 => {
+                self.unbounded.remove(&i);
+                r
+            }
+            _ => {
+                self.unbounded.insert(i);
+                (0, 0)
+            }
+        };
         if self.at.len() <= i as usize {
             self.at.resize(i as usize + 1, (0, 0));
         }
@@ -963,7 +997,7 @@ impl Scene {
     /// to the undeclared one).
     pub fn scroll<P: Paint>(&mut self, col: ColId<P>, wx: usize, wy: usize) {
         assert!(wx < 64 && wy < 64 && wx != wy);
-        self.scrolls[col.0] = Some(Scroll { wx, wy, rows: Default::default(), at: Vec::new() });
+        self.scrolls[col.0] = Some(Scroll { wx, wy, rows: Default::default(), at: Vec::new(), unbounded: Default::default() });
         self.first = true;
     }
     /// Declare that column `col`'s records depend on block word `word` only by comparing it with their own
@@ -994,8 +1028,13 @@ impl Scene {
         let (px, py) = (-(rect[0] >> 8), -(rect[1] >> 8));
         let mut at = *u;
         (at.w[scroll.wx], at.w[scroll.wy]) = ((px << 8) as u32, (py << 8) as u32);
-        let w = (d.reach)(v, i, &at);
-        let rows = if w[0] < w[2] && w[1] < w[3] { ((w[1] - py) >> 8, ((w[3] - py - 1) >> 8) + 1) } else { (0, 0) };
+        let rows = (d.reach)(v, i, &at).map(|w| {
+            if w.x < w.z && w.y < w.w {
+                ((w.y - py - 1) >> 8, ((w.w - py) >> 8) + 1)
+            } else {
+                (0, 0)
+            }
+        });
         scroll.place(i, rows);
     }
     /// Append a record: its rect lanes (Q8) and its value. Paint order is mount order. Returns its key.
@@ -1165,7 +1204,8 @@ impl Scene {
         if !self.tab_jobs.is_empty() {
             self.fill_tabs();
         }
-        let first = self.first;
+        // A backward seek invalidates future-only hulls. Ordinary unsigned wrap is forward time.
+        let first = self.first || (u.w[U_TIME].wrapping_sub(self.prev.w[U_TIME]) as i32) < 0;
         let mask = if first { u64::MAX } else { self.prev.diff(u, 64) };
         fs.mask = mask;
         if first {
@@ -1193,10 +1233,14 @@ impl Scene {
                 act.clear();
                 moved |= (self.cols[ci].desc.rewin)(v, o & IDX_MASK, u, &mut pass!());
                 // a rewritten record that now depends on the clock joins its column's active set
-                if let Some(&i) = act.first() {
-                    if !self.cols[ci].active.contains(&i) {
-                        self.cols[ci].active.push(i);
+                let i = o & IDX_MASK;
+                let active = &mut self.cols[ci].active;
+                if act.is_empty() {
+                    if let Some(at) = active.iter().position(|&j| i == j) {
+                        active.swap_remove(at);
                     }
+                } else if !active.contains(&i) {
+                    active.push(i);
                 }
                 if let Some(sc) = self.scrolls[ci].as_mut() {
                     Self::reindex(sc, self.cols[ci].desc, view_of(&self.arena, self.pal_base, &self.cols[ci]), o & IDX_MASK, u);
@@ -1227,6 +1271,7 @@ impl Scene {
                 let (mut rest, mut c) = (bits, Vec::new());
                 if let Some(sc) = self.scrolls[ci].as_ref() {
                     if rest & (1 << sc.wx | 1 << sc.wy) != 0 {
+                        c.extend(sc.unbounded.iter().copied());
                         // the rows of the scrolled space the frame showed and shows
                         for (k, b) in [&self.prev, u].into_iter().enumerate() {
                             if k == 0 && cfg!(feature = "mutant_scroll_band") {
@@ -1269,8 +1314,9 @@ impl Scene {
             if !full && !indexed && !timed {
                 continue;
             }
-            // a pan-only visit leaves a record where it is in the scrolled space; any other visit may move it
-            let pan_only = indexed && self.scrolls[ci].as_ref().is_some_and(|sc| bits & !(1 << sc.wx | 1 << sc.wy) == 0) && !timed;
+            // The index already includes future motion. Refresh it only for changes that can move that
+            // sweep within the scrolled space, rather than when the record moves inside its sweep.
+            let reindex = self.scrolls[ci].as_ref().is_some_and(|sc| first || bits & d.geom_reads & !(1 << sc.wx | 1 << sc.wy) != 0);
             let keep_active = indexed && !timed;
             let only = if full { None } else if indexed { cand } else { Some(std::mem::take(&mut self.cols[ci].active)) };
             fs.cols_visited += 1;
@@ -1279,16 +1325,17 @@ impl Scene {
             act.clear();
             moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
             if keep_active {
-                // the visit was by index: records in motion that it did not reach stay in the set
-                for &i in &act {
-                    if !self.cols[ci].active.contains(&i) && !cfg!(feature = "mutant_park_wake") {
-                        self.cols[ci].active.push(i);
-                    }
+                // Reconsider what was visited and preserve the unvisited indices.
+                let active = &mut self.cols[ci].active;
+                let visited = only.as_deref().unwrap();
+                active.retain(|i| visited.binary_search(i).is_err());
+                if !cfg!(feature = "mutant_park_wake") {
+                    active.extend_from_slice(&act);
                 }
             } else {
                 std::mem::swap(&mut self.cols[ci].active, &mut act);
             }
-            if !pan_only {
+            if reindex {
                 if let Some(sc) = self.scrolls[ci].as_mut() {
                     let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
                     match only.as_deref() {
