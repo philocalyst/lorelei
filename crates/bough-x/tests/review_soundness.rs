@@ -210,6 +210,52 @@ fn a_click_on_a_row_never_written_runs_nothing() {
     assert_eq!(v.hit, 1, "row 0 was written before the panic");
 }
 
+// ---- S13: rows of a list that hold a scrolled box ---------------------------------------------------------
+
+mod holes {
+    use bough_x::el::App;
+    use bough_x::el::prelude::*;
+    use bough_x::soft::Soft;
+    struct Nested {
+        y: Signal<f32>,
+        inner: Signal<f32>,
+    }
+    impl View for Nested {
+        fn view(&self) -> impl Element<Self> + '_ {
+            column(each((0..5usize).map(|_| {
+                div()
+                    .h(20.0)
+                    .w(50.0)
+                    .bg(rgb(0x00ff00))
+                    .scroll(sig!(self.inner))
+            })))
+            .h(100.0)
+            .scroll(sig!(self.y))
+        }
+    }
+    /// A row's hole site (the scrolled box's content space) has no page: laying the row out and entering
+    /// it into the window wrote its rect through a null pointer at 71ee3be.
+    #[test]
+    fn list_rows_holding_a_scrolled_box_lay_out() {
+        let mut app = App::<Nested, Soft>::new(
+            Nested {
+                y: Signal::new(0.0),
+                inner: Signal::new(0.0),
+            },
+            64,
+            128,
+            1.0,
+        );
+        app.turn(|v| {
+            v.y.set(10.0);
+        });
+        let mut s = Soft::new(64, 128);
+        app.world.paint(&mut s);
+        let (records, _, _) = app.world.root().stats();
+        assert!(records >= 5, "{records} records for five exposed rows");
+    }
+}
+
 // ---- S07: `each` over a trusted-random-access iterator ----------------------------------------------------
 
 mod each {

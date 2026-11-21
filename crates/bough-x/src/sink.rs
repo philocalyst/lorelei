@@ -877,8 +877,12 @@ impl bough_lay::Out for Lanes {
     #[inline(always)]
     fn put(&mut self, k: usize, r: [i32; 4]) {
         // SAFETY: `k` is under the row's leaves (the layout and the row count alike, checked when the list's
-        // columns were made); the site is a record's and holds `slot`.
+        // columns were made), so `sites + k` is a site of the row. A hole (a scrolled box in the row) has no
+        // page: it is skipped (soundness review S13); any other site is a record's and holds `slot`.
         unsafe {
+            if (*self.sites.add(k)).col == u32::MAX {
+                return;
+            }
             (*self.sites.add(k)).set_rect(
                 self.slot,
                 Rect {
@@ -1285,7 +1289,11 @@ fn list_plan(
             if fresh {
                 let at = (l.x, l.y + r as i32 * l.row_h);
                 for (s, t) in st.sites[..leaves].iter().zip(l.shape) {
-                    // SAFETY: a site of this list; the slot is under `cap`.
+                    if s.col == u32::MAX {
+                        // a hole (a scrolled box in the row) has no page (soundness review S13)
+                        continue;
+                    }
+                    // SAFETY: a record's site of this list; the slot is under `cap`.
                     unsafe { s.set_rect(r & mask, t.shift(at)) }
                 }
             }
