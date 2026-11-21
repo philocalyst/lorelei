@@ -101,8 +101,8 @@ def main():
     parser.add_argument("--require-same-cells", action="store_true", help="fail on added or missing measurement rows")
     parser.add_argument("--cells", default="", help="comma-separated exact cell or cell/operation names")
     args = parser.parse_args()
-    if args.require_same_cells and (args.cells or args.allow_missing):
-        parser.error("complete coverage cannot be combined with filtering or --allow-missing")
+    if args.require_same_cells and args.allow_missing:
+        parser.error("strict coverage cannot be combined with --allow-missing")
     base, head = read(args.base), read(args.head)
     validate(base)
     validate(head)

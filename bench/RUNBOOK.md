@@ -73,6 +73,8 @@ bench/baseline/gate.sh
 
 The command checks the font digest before building, runs the complete native suite and compares its receipt with `bench/baselines/native/reference.json` using the checked-in limits. An unexplained regression, an invalid fixture, or a changed set of operation names makes it exit nonzero. Treat an added fixture as a reference update requiring a measured receipt. The gate writes a fresh output directory under `runtime/baseline/` for each invocation. The native performance gate runs alongside the existing `bench/gate.sh` code gate.
 
+For a focused replay, run `bench/baseline/gate.sh --cells sheet_x/rows10000`. The gate still requires every operation in each requested fixture. Use the default invocation for full integration coverage.
+
 Use the separate commands for historical source comparisons:
 
 ```sh

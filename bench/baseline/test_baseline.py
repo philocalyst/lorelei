@@ -100,6 +100,9 @@ class CompareTests(unittest.TestCase):
         strict = self.compare(self.doc, head, "--require-same-cells")
         self.assertEqual(strict.returncode, 1)
         self.assertIn("ADDED", strict.stdout)
+        focused = self.compare(self.doc, head, "--require-same-cells", "--cells", self.cid)
+        self.assertEqual(focused.returncode, 1)
+        self.assertIn("ADDED", focused.stdout)
 
     def test_failures_abstentions_and_bad_counts(self):
         self.assertEqual(self.compare(self.doc, self.doc).returncode, 0)
