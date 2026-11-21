@@ -1294,3 +1294,55 @@ fn resident_layers_have_no_dispatch_when_all_events_are_above_them() {
     }
     eprintln!("rank seeds: 4 above-glass frames used 3 output/reset dispatches each, 8 exact frames");
 }
+
+#[test]
+fn resident_commands_follow_changed_slots() {
+    use bough_paint::metal::Gpu;
+    use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice, MTLGPUFamily};
+    type Pane = Backdrop<Lane, Ki<1024>, Ki<1024>, Filt<K<256>, K<240>, K<256>>>;
+    let pane = || Pane { b: Lane, r: Ki, blur: Ki, f: V3 { a: K, b: K, c: K } };
+    let (fw, fh) = (640, 192);
+    let words = (fw * fh) as usize;
+    let pool = Pool::new(1);
+    let left = |width| [q(96.0), q(64.0), q(96.0 + width), q(128.0)];
+    let right = |width| [q(416.0), q(64.0), q(416.0 + width), q(128.0)];
+    let make = |switched| {
+        let mut s = Scene::new(fw, fh, 16_384);
+        s.broad = 1 << 4;
+        let bg = s.column::<Solid<Lane, Pmo<Uw<4>>>>(1);
+        s.push(bg, [0, 0, q(640.0), q(192.0)], Solid { b: Lane, c: Pmo { c: Uw } });
+        let col = s.column::<Pane>(3);
+        s.push(col, left(32.0), pane());
+        s.push(col, if switched { right(128.0) } else { left(128.0) }, pane());
+        s.push(col, if switched { left(32.0) } else { right(32.0) }, pane());
+        (s, col)
+    };
+    let (mut s, col) = make(false);
+    s.route_off = true;
+    let device = MTLCreateSystemDefaultDevice().expect("headless Metal");
+    // SAFETY: `s` outlives the executor and changes only between its synchronous calls.
+    let mut gpu = unsafe { Gpu::new(&s, words, 64) }.expect("headless Metal");
+    let mut u = U::default();
+    let (mut era, mut tiles, mut expected) = (0, Vec::new(), vec![0; words]);
+    for step in 0..5u32 {
+        let switched = step % 2 == 1;
+        u.w[4] = 0x00e0_2040 - 0x0010_0703 * step;
+        if step > 0 {
+            s.set(col, 1, if switched { right(128.0) } else { left(128.0) }, pane());
+            s.set(col, 2, if switched { left(32.0) } else { right(32.0) }, pane());
+        }
+        s.update(&u);
+        s.damage.tiles(&mut tiles);
+        s.damage.clear();
+        let block = *s.block();
+        era = gpu.resident(&mut s, &block, &tiles, Some(era), fw as usize).1;
+        let (mut oracle, _) = make(switched);
+        oracle.frame(&u, &mut expected, fw as usize, &pool, 0);
+        assert_eq!(diff(gpu.out(words), &expected), 0, "slot reassignment at step {step}");
+        assert_eq!(gpu.resident_shape().0, 2);
+        if device.supportsFamily(MTLGPUFamily::Apple4) {
+            assert_eq!(gpu.resident_stats()[3], 5, "the admitted frame did not use the cached sequence");
+        }
+    }
+    eprintln!("resident commands: 5 exact frames through two ranks and four slot reassignments");
+}

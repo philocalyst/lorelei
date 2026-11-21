@@ -1360,7 +1360,7 @@ impl Gpu {
     }
     /// Upper bound of dispatches a resident frame encodes (0 before its plan is built).
     pub fn resident_dispatches(&self) -> usize {
-        self.res.max_dispatches
+        if self.res.commands.is_some() { 5 } else { self.res.max_dispatches }
     }
     /// Ranks in the resident plan's stage order, and its slots.
     pub fn resident_shape(&self) -> (u32, usize) {
@@ -1420,7 +1420,12 @@ impl Gpu {
             sw[8 * i + 3..8 * i + 6].copy_from_slice(&[s.2, s.1, s.0]);
         }
         self.buf(25, most.max(self.nt).max(1) * 32);
-        if !cfg!(feature = "mutant_rank_stale") || self.res.command_at.len() != stages.len() + 1 {
+        // The stale-shape mutant deliberately retains only a command buffer with identical stage kinds.
+        // The guards in the kernels keep old grid lengths within the new stage's storage.
+        let stale_shape = cfg!(feature = "mutant_rank_stale")
+            && self.res.stages.len() == stages.len()
+            && self.res.stages.iter().zip(&stages).all(|(old, new)| old.0 == new.0);
+        if !stale_shape {
             self.res.commands = None;
         }
         self.res.max_dispatches = stages.iter().map(|s| if s.0 == 0 { 2 } else { 1 }).sum::<usize>() + 3;
