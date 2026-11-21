@@ -240,3 +240,34 @@ fn pointer_change_without_damage_has_bounded_record_work() {
         "evaluations at 32 and 256 exposed rows: {counts:?}"
     );
 }
+
+#[test]
+fn packed_places_still_require_a_live_slot() {
+    let mut v = Rows {
+        u: U::default(),
+        items: Rel::new(vec![0xff00_0000; 130]),
+        height: 8,
+    };
+    let mut world = World::<_, Soft>::new(16, 8, 1);
+    world.mount(&v);
+    let path = Path { at: [0; 6], n: 2 };
+    let live = world.place(&path, 0, 0);
+    let hole = world.place(&path, 0, 1);
+    assert!(world.at_place(live).is_some());
+    assert!(world.at_place(hole).is_none());
+    v.u.w[0] = 8;
+    world.settle(&v);
+    assert!(world.at_place(live).is_none());
+    assert!(world.at_place(hole).is_some());
+}
+
+#[test]
+#[should_panic(expected = "the world has not been mounted")]
+fn settle_still_refuses_an_unmounted_world() {
+    let view = Rows {
+        u: U::default(),
+        items: Rel::new(vec![]),
+        height: 0,
+    };
+    World::<_, Soft>::new(16, 8, 1).settle(&view);
+}
