@@ -1,0 +1,6 @@
+    Finished `release` profile [optimized + debuginfo] target(s) in 11.75s
+clean build of bough + slice + deep view: 11.91 s   load: { 16.75 19.44 21.32 }
+    Finished `release` profile [optimized + debuginfo] target(s) in 3.48s
+incremental leaf edit (deep view example): 3.61 s   load: { 16.85 19.42 21.30 }
+deep_view binary bytes: Users
+deep view: 132 records, 1 describes, legacy passes 0

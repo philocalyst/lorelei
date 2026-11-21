@@ -19,5 +19,5 @@ trap 'mv "$F.orig" "$F"' EXIT
 sed -i.bak 's/row((text("leaf"),/row((text("leaf edited"),/' "$F" && rm -f "$F.bak"
 t0=$(now); nice -n 15 cargo build --release -p bough --example deep_view -j "$J" 2>&1 | tail -1
 t1=$(now); echo "incremental leaf edit (deep view example): $(python3 -c "print(round($t1-$t0,2))") s   load: $(load)"
-ls -l "${CARGO_TARGET_DIR:-target}/release/examples/deep_view" | awk '{print "deep_view binary bytes: " $5}'
+echo "deep_view binary bytes: $(wc -c < "${CARGO_TARGET_DIR:-target}/release/examples/deep_view" | tr -d " ")"
 "${CARGO_TARGET_DIR:-target}/release/examples/deep_view"
