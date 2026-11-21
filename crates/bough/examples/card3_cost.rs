@@ -205,6 +205,21 @@ fn run<R: Rt>() -> Vec<(&'static str, u64, u64)> {
 }
 
 fn main() {
+    if std::env::var("CARD3_SPIN").is_ok() {
+        // a loop to sample: the typed path's conversion of the fixed part, over and over
+        let Ok(mut t) = bough::typed::App::new(Slice::new(1000), cfg()) else {
+            return;
+        };
+        let t0 = std::time::Instant::now();
+        let mut n = 0u64;
+        while t0.elapsed().as_secs() < 12 {
+            for _ in 0..1000 {
+                n += t.profile().0;
+            }
+        }
+        println!("{n}");
+        return;
+    }
     let tsv = std::env::args().any(|a| a == "tsv");
     let (old, low, new) = (run::<Legacy>(), run::<Lowered>(), run::<Typed>());
     let load = std::process::Command::new("sysctl")
@@ -276,6 +291,17 @@ fn main() {
         t.frame();
         let mut v: Vec<(u64, u64)> = (0..41).map(|_| t.profile()).collect();
         v.sort();
+        let mut vv: Vec<u64> = (0..41).map(|_| t.profile_view()).collect();
+        vv.sort();
+        println!(
+            "{}typed: the author's view() alone {}",
+            if tsv { "# " } else { "" },
+            vv[20]
+        );
+        println!(
+            "units x1000 (context read, spec convert+pack): {:?}",
+            t.profile_units()
+        );
         let (c, d) = v[20];
         let line = format!(
             "typed, thread instructions: view + conversion of the fixed part {c}; a re-description of an unchanged view {d}"
@@ -285,6 +311,33 @@ fn main() {
         } else {
             println!("{line}");
         }
+    }
+    #[cfg(feature = "phase_probe")]
+    if let Ok(mut t) = bough::typed::App::new(Slice::new(1000), cfg()) {
+        t.frame();
+        let mut v: Vec<[u64; bough_x::probe::ph::N]> = (0..41).map(|_| t.phases()).collect();
+        let mut line =
+            String::from("typed re-description of an unchanged view by phase (medians):");
+        for (k, name) in bough_x::probe::ph::NAMES.iter().enumerate() {
+            v.sort_by_key(|a| a[k]);
+            line += &format!(" {name} {};", v[20][k]);
+        }
+        println!("{}{line}", if tsv { "# " } else { "" });
+        let mut k = 0;
+        let mut v: Vec<[u64; bough_x::probe::ph::N]> = (0..41)
+            .map(|_| {
+                k += 1;
+                t.phases_of(|s| {
+                    s.title.set(format!("Slice {k}"));
+                })
+            })
+            .collect();
+        let mut line = String::from("typed re-description after a title write by phase (medians):");
+        for (k, name) in bough_x::probe::ph::NAMES.iter().enumerate() {
+            v.sort_by_key(|a| a[k]);
+            line += &format!(" {name} {};", v[20][k]);
+        }
+        println!("{}{line}", if tsv { "# " } else { "" });
     }
     // where a lowered turn's instructions go (the title edit): view and lowering, layout and emission, the world
     let mut app = bough::lower::App::new(Slice::new(1000), cfg());

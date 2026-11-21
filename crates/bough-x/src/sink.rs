@@ -81,6 +81,22 @@ pub trait Sink<V>: Sized + for<'r> ScopeOf<'r, V> {
     ) -> i32 {
         unimplemented!("this sink does not take lists of elements")
     }
+    /// As [`Sink::rows`], for rows that are a relation's: `edits` is its journal, and a pass describes the rows
+    /// the journal names and the rows that enter exposure, not every exposed row. `all` asks for every exposed
+    /// row to be described and compared anyway (a pass after which nothing kept from an earlier description
+    /// may be relied on). A sink that keeps nothing between passes describes what it always does.
+    #[track_caller]
+    #[inline(always)]
+    fn rows_j<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
+        &mut self,
+        n: u32,
+        geo: Option<Geo>,
+        _edits: &Journal,
+        _all: bool,
+        f: F,
+    ) -> i32 {
+        self.rows(n, geo, f)
+    }
     /// A row of the fixed shape: its layout (one rect per record, in order) and its operands. The closure is
     /// only called by a sink that wants the row; after a turn that changed no opaque state, none does.
     ///
@@ -128,6 +144,10 @@ pub struct Journal {
     watch: std::sync::OnceLock<std::sync::Arc<AtomicU32>>,
     pub ver: u32,
     pub log: [Edit; 8],
+    /// The rows the list reading this journal exposed at its last pass (`lo << 32 | hi`): what whoever keeps
+    /// the relation needs to turn "this item changed" into "this exposed row changed" without searching the
+    /// whole order. Written by the list pass; one list per journal is assumed by its reader.
+    pub win: core::sync::atomic::AtomicU64,
 }
 impl Journal {
     pub const fn new() -> Journal {
@@ -135,6 +155,7 @@ impl Journal {
             watch: std::sync::OnceLock::new(),
             ver: 0,
             log: [Edit::Update(0); 8],
+            win: core::sync::atomic::AtomicU64::new(0),
         }
     }
     fn watch(&self) -> std::sync::Arc<AtomicU32> {
@@ -161,6 +182,12 @@ impl Journal {
         }
     }
     /// The rows that changed since version `seen`: every row from `.0` on, and the `.2` rows listed in `.1`.
+    /// The window the reading list exposed at its last pass.
+    #[inline(always)]
+    pub fn window(&self) -> (u32, u32) {
+        let w = self.win.load(Ordering::Relaxed);
+        ((w >> 32) as u32, w as u32)
+    }
     #[inline]
     pub fn since(&self, seen: u32) -> (u32, [u32; 8], usize) {
         let pending = self.ver.wrapping_sub(seen);
@@ -690,12 +717,36 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
     ) -> i32 {
         let q = self.sub as usize;
         self.sub += 1;
+        let all = self.cx.all;
         rows_sync::<V, R, F, B>(
             self.st,
             q,
             self.cx,
             n,
             geo,
+            (&FIXED, all),
+            f,
+            core::panic::Location::caller(),
+        )
+    }
+    #[inline(always)]
+    fn rows_j<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
+        &mut self,
+        n: u32,
+        geo: Option<Geo>,
+        edits: &Journal,
+        all: bool,
+        f: F,
+    ) -> i32 {
+        let q = self.sub as usize;
+        self.sub += 1;
+        rows_sync::<V, R, F, B>(
+            self.st,
+            q,
+            self.cx,
+            n,
+            geo,
+            (edits, all),
             f,
             core::panic::Location::caller(),
         )
@@ -733,12 +784,36 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Patch<'w, 'c, V, B> {
     ) -> i32 {
         let q = self.sub as usize;
         self.sub += 1;
+        let all = self.cx.all;
         rows_sync::<V, R, F, B>(
             self.st,
             q,
             self.cx,
             n,
             None,
+            (&FIXED, all),
+            f,
+            core::panic::Location::caller(),
+        )
+    }
+    #[inline(always)]
+    fn rows_j<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
+        &mut self,
+        n: u32,
+        _: Option<Geo>,
+        edits: &Journal,
+        all: bool,
+        f: F,
+    ) -> i32 {
+        let q = self.sub as usize;
+        self.sub += 1;
+        rows_sync::<V, R, F, B>(
+            self.st,
+            q,
+            self.cx,
+            n,
+            None,
+            (edits, all),
             f,
             core::panic::Location::caller(),
         )
@@ -864,6 +939,7 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
         space,
         R::LEAVES as usize,
         (at, R::LEAVES, size_of::<R>() as u32),
+        cx.all,
     );
     let (sites, mask) = (st.sites.as_ptr(), st.cap - 1);
     let plan = core::mem::take(&mut st.plan);
@@ -1027,6 +1103,7 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     cx: &mut Cx<'_>,
     n: u32,
     geo: Option<Geo>,
+    (edits, all): (&Journal, bool),
     mut f: F,
     at: &'static core::panic::Location<'static>,
 ) -> i32 {
@@ -1084,10 +1161,13 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
         x: gx,
         y: gy,
         shape: &row0,
-        edits: &FIXED,
+        edits,
     };
     let (lo, hi) = exposed(&l, org, space.clip);
-    if (lo == st.lo) & (hi == st.hi) & !cx.all {
+    edits
+        .win
+        .store((lo as u64) << 32 | hi as u64, Ordering::Relaxed);
+    if (lo == st.lo) & (hi == st.hi) & (st.seen == edits.ver) & !all {
         st.row0 = row0;
         return n as i32 * row_h;
     }
@@ -1110,6 +1190,7 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
         space,
         <R as Row<V>>::LEAVES as usize,
         src,
+        all,
     );
     st.row0 = row0;
     let (sites, mask) = (st.sites.as_ptr(), st.cap - 1);
@@ -1328,6 +1409,7 @@ fn list_plan(
     space: Space,
     leaves: usize,
     src: crate::store::RowSrc,
+    all: bool,
 ) -> Mk {
     l.edits.follow(&mut st.journal);
     let (from, upd, nupd) = l.edits.since(st.seen);
@@ -1386,7 +1468,7 @@ fn list_plan(
     // rows entered, left or became other rows: what a reader of the stores sees moved (rows only compared
     // count where `replace` stores one)
     cx.changed += ((lo != olo) | (hi != ohi) | (from != u32::MAX)) as u32;
-    if (lo == olo) & (hi == ohi) & (from == u32::MAX) & !cx.all {
+    if (lo == olo) & (hi == ohi) & (from == u32::MAX) & !all {
         // only updates of single rows: those and nothing else
         for &r in &upd[..nupd] {
             if (r >= lo) & (r < hi) {
@@ -1420,7 +1502,7 @@ fn list_plan(
             }
             cx.tiles.mark(row_rect(r));
             st.plan.push(r | 1 << 31 | (fresh as u32) << 30);
-        } else if cx.all | upd[..nupd].contains(&r) {
+        } else if all | upd[..nupd].contains(&r) {
             st.plan.push(r);
         }
     }

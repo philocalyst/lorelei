@@ -76,6 +76,10 @@ fn font_file(path: &str) -> Option<&'static [u8]> {
 struct FaceD {
     rb: rustybuzz::Face<'static>,
     upem: f32,
+    /// The shape plans made for this face, by what a plan is made from (direction, script, language). Making a
+    /// plan is most of what shaping a short string costs (`rustybuzz::shape` makes one per call); the plan for
+    /// the same properties is the same plan.
+    plans: Vec<(rustybuzz::Direction, rustybuzz::Script, Option<rustybuzz::Language>, rustybuzz::ShapePlan)>,
 }
 
 /// One glyph of a run: which face, which glyph, where its origin is relative to the run's pen origin (device
@@ -132,6 +136,8 @@ pub struct TextSys {
     memo: HashMap<u32, HashMap<Box<str>, u32>>,
     glyphs: HashMap<(u8, u16, u32), Bitmap>,
     pass: u32,
+    /// The shaping buffer, kept between runs.
+    buf: Option<rustybuzz::UnicodeBuffer>,
     pub stats: TextStats,
 }
 
@@ -175,6 +181,7 @@ impl TextSys {
             memo: HashMap::new(),
             glyphs: HashMap::new(),
             pass: 0,
+            buf: None,
             stats: TextStats::default(),
         };
         assert!(
@@ -191,7 +198,7 @@ impl TextSys {
         match rustybuzz::Face::from_slice(data, 0) {
             Some(rb) if self.faces.len() < 255 => {
                 let upem = rb.units_per_em() as f32;
-                self.faces.push(FaceD { rb, upem });
+                self.faces.push(FaceD { rb, upem, plans: Vec::new() });
                 true
             }
             _ => false,
@@ -295,6 +302,16 @@ impl TextSys {
         self.memo.entry(bits).or_default().insert(key.0, i);
         (i, self.runs[i as usize].generation)
     }
+    /// The run at `i` was asked for in this pass (by whoever kept its handle from an earlier one).
+    #[inline(always)]
+    pub fn touch(&mut self, i: u32) {
+        self.runs[i as usize].stamp = self.pass;
+    }
+    /// The number of the description pass under way.
+    #[inline(always)]
+    pub fn pass(&self) -> u32 {
+        self.pass
+    }
     /// The run a record names, if it is still that run.
     pub fn get(&self, i: u32, generation: u32) -> Option<&Run> {
         self.runs
@@ -338,12 +355,24 @@ impl TextSys {
         let mut out = Vec::new();
         let mut pen = 0f32;
         for (face, a, b) in segs {
-            let f = &self.faces[face as usize];
+            let f = &mut self.faces[face as usize];
             let k = size / f.upem;
-            let mut buf = rustybuzz::UnicodeBuffer::new();
+            let mut buf = self.buf.take().unwrap_or_default();
             buf.push_str(&text[a..b]);
             buf.guess_segment_properties();
-            let shaped = rustybuzz::shape(&f.rb, &[], buf);
+            let key = (buf.direction(), buf.script(), buf.language());
+            let pi = match f.plans.iter().position(|p| (p.0, p.1, &p.2) == (key.0, key.1, &key.2)) {
+                Some(i) => i,
+                None => {
+                    // exactly the plan `rustybuzz::shape` would make for this buffer (an unset script is
+                    // reported as UNKNOWN by the buffer's accessor)
+                    let script = (key.1 != rustybuzz::script::UNKNOWN).then_some(key.1);
+                    let plan = rustybuzz::ShapePlan::new(&f.rb, key.0, script, key.2.as_ref(), &[]);
+                    f.plans.push((key.0, key.1, key.2, plan));
+                    f.plans.len() - 1
+                }
+            };
+            let shaped = rustybuzz::shape_with_plan(&f.rb, &f.plans[pi].3, buf);
             for (info, pos) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
                 out.push(G {
                     face,
@@ -353,6 +382,7 @@ impl TextSys {
                 });
                 pen += pos.x_advance as f32 * k;
             }
+            self.buf = Some(shaped.clear());
         }
         (out, pen)
     }

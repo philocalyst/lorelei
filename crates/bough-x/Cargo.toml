@@ -15,6 +15,8 @@ bough-face = { path = "../bough-face" }
 bough-mem = { path = "../bough-mem" }
 
 [features]
+# phase marks for splitting a pass's cost (`probe.rs`); off: a mark is nothing
+phase_probe = []
 mutant_repair_bounds = []
 # Mutants the pixel gates (tests/sheet.rs) must fail with:
 # the derivative forgets every other record of a page

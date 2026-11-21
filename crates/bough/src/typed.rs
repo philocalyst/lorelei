@@ -34,13 +34,30 @@ use bough_x::el::{Boxy, Flow, Hd, Paints, Part, Scroll, Seg};
 use bough_x::event::{Event, Handler, kind};
 use bough_x::expr::{APP_WORDS, Code, Color as XColor, Cx as ECx, Expr, StageId, Turn, U};
 use bough_x::prim::{P_BOX, P_TEXT, Prim};
-use bough_x::sink::{Cx, Geo, Leaf, Mk, Row, Sink};
+use bough_x::probe::{mark, ph};
+use bough_x::sink::{Cx, Edit, Geo, Journal, Leaf, Mk, Row, Sink};
 use bough_x::store::{Arch, Backend, ColRef, NO_WORD, Rect, Site, Tiles};
 use bough_x::world::World;
 use std::any::TypeId;
 use std::cell::{Cell, RefCell};
 use std::marker::PhantomData;
 use std::rc::Rc;
+
+#[cfg(feature = "phase_probe")]
+thread_local! {
+    /// Thread instructions charged to each phase, and the counter at the last mark.
+    static PHASES: Cell<([u64; ph::N], u64, u64)> = const { Cell::new(([0; ph::N], 0, 0)) };
+}
+#[cfg(feature = "phase_probe")]
+fn phase_hook(p: u32) {
+    let now = bough_sys::perf::thread_instructions();
+    PHASES.with(|c| {
+        let (mut a, last, over) = c.get();
+        a[p as usize] += (now - last).saturating_sub(over);
+        // the hook's own work after reading the counter is charged to the next phase: read again
+        c.set((a, bough_sys::perf::thread_instructions(), over));
+    })
+}
 
 /// The hidden block word that says which `hover_bg` record is hovered.
 const HOVER: usize = APP_WORDS - 1;
@@ -69,6 +86,98 @@ struct Shared {
     /// `hover_bg` boxes described so far in this row (or in the fixed part).
     ord: Cell<u32>,
     describes: Cell<u64>,
+    /// What the last description said of each text of the fixed part, in description order (the tape), and
+    /// the text the description under way is at.
+    tape: RefCell<Vec<TapeEnt>>,
+    ti: Cell<usize>,
+    /// The layout words of the fixed part as last solved, with the rects they gave.
+    lay: RefCell<LayMemo>,
+    /// The lists of the view in description order: each one's journal, fed from the `List`'s own log.
+    lists: RefCell<Vec<ListEnt>>,
+    li: Cell<usize>,
+    /// A pass that consults nothing kept (the oracles: an immediate description, a fresh mount).
+    plain: Cell<bool>,
+    /// A pass in which every exposed row is described and compared (so every run shown is asked for again
+    /// before the run store collects).
+    full: Cell<bool>,
+    pass: Cell<PassStats>,
+}
+
+/// What one description did (count bands of the gates).
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub struct PassStats {
+    /// List rows described (converted from the item's view).
+    pub rows: u32,
+    /// Times the fixed part's layout was solved (0: the kept rects were the answer).
+    pub layouts: u32,
+    /// Texts looked up in the run store by their bytes (a hash; 0 for a text the tape answered).
+    pub lookups: u32,
+    /// Texts the tape answered.
+    pub taped: u32,
+}
+
+struct TapeEnt {
+    text: Box<str>,
+    /// A projection of a word-sized signal by a function that captures nothing: the word (plus one).
+    key: u64,
+    size: u32,
+    lh: u32,
+    run: (u32, u32),
+    w: f32,
+    base: i32,
+}
+#[derive(Default)]
+struct LayMemo {
+    words: Vec<bough_lay::shape::Nd>,
+    rects: Vec<Rect>,
+    env: (u32, [u32; 2]),
+}
+struct ListEnt {
+    off: u32,
+    /// Boxed: list stores and rows hold its address between passes.
+    journal: Box<Journal>,
+    /// The list's log of this turn as journal edits (`ops::<T>`), and the end of its turn.
+    ops: unsafe fn(*const u8, &mut Journal),
+    end: unsafe fn(*mut u8, bool),
+}
+/// The log of the `List<T>` at `p` since its last `end_turn`, as edits of `j`. An edited item is an update of
+/// the row it is at, if the list reading `j` exposes it (`Journal::window`).
+///
+/// SAFETY: `p` is a live `List<T>`, not mutably borrowed.
+unsafe fn list_ops<T>(p: *const u8, j: &mut Journal) {
+    use crate::list::Op;
+    // SAFETY: the caller's contract.
+    let l = unsafe { &*(p as *const List<T>) };
+    let (log, _) = l.log();
+    for op in log {
+        match *op {
+            Op::Insert { at, .. } => j.push(Edit::Insert(at)),
+            Op::Remove { at, .. } => j.push(Edit::Remove(at)),
+            Op::Move { from, to } => j.push(Edit::Shift(from.min(to))),
+            Op::Permute { at, .. } => j.push(Edit::Shift(at)),
+            Op::Edit { slot } => {
+                let order = l.order_slots();
+                let (lo, hi) = j.window();
+                let (lo, hi) = (
+                    (lo as usize).min(order.len()),
+                    (hi as usize).min(order.len()),
+                );
+                if let Some(i) = order[lo..hi].iter().position(|&s| s == slot) {
+                    j.push(Edit::Update((lo + i) as u32));
+                }
+            }
+        }
+    }
+}
+/// The end of the turn for the `List<T>` at `p`: its log is dropped and it is shown as displayed (`on`) or as
+/// not displayed, with no log kept.
+///
+/// SAFETY: `p` is a live `List<T>`, exclusively borrowed.
+unsafe fn list_end<T>(p: *mut u8, on: bool) {
+    // SAFETY: the caller's contract.
+    let l = unsafe { &mut *(p as *mut List<T>) };
+    l.end_turn();
+    l.head().set(on as u32);
 }
 thread_local! {
     static CX: Cell<*const Shared> = const { Cell::new(std::ptr::null()) };
@@ -487,11 +596,16 @@ impl<V: View> bough_x::sink::View for Ty<V> {
         enter(&self.sh, || {
             self.sh.row.set((0, 0, 0, 0));
             self.sh.ord.set(0);
-            if S::FIXED {
+            self.sh.ti.set(0);
+            self.sh.li.set(0);
+            if S::FIXED && !self.sh.plain.get() {
                 self.sh.describes.set(self.sh.describes.get() + 1);
                 self.sh.text.borrow_mut().begin_pass();
             }
-            drive(root_el(&self.v), s)
+            mark(ph::ENTER);
+            let e = root_el(&self.v);
+            mark(ph::VIEW);
+            drive(e, s)
         })
     }
 }
@@ -723,15 +837,7 @@ impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Pa
             refuse("para (wrapped text)");
         }
         let (size, lh) = (self.size * scale, self.lh * scale);
-        let (run, w, base) = self.s.with_str(|t| {
-            let mut ts = text.borrow_mut();
-            let run = ts.run(t, size);
-            (
-                run,
-                ts.get(run.0, run.1).map_or(0.0, |r| r.w).ceil(),
-                ts.baseline(size, lh),
-            )
-        });
+        let (run, w, base) = line_run(&text, self.s, size, lh);
         TLine {
             spec: crate::lower::lay_spec(&self.spec, scale),
             w,
@@ -743,6 +849,137 @@ impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Pa
             },
         }
     }
+}
+
+/// Whether a text source is a function of one word, and that word: a projection of a word-sized signal by a
+/// function that captures nothing. Its text is then the same whenever the word is, and the projection (a
+/// `format!`, usually) need not run to know it.
+trait TKey<O>: TextSrc<O> {
+    fn key(&self) -> u64;
+}
+impl<O, S: TextSrc<O>> TKey<O> for S {
+    #[inline(always)]
+    default fn key(&self) -> u64 {
+        0
+    }
+}
+impl<'a, T: Wordy, O, F: Fn(&T) -> String + Copy + 'static> TKey<O> for WMap<'a, T, O, F> {
+    #[inline(always)]
+    fn key(&self) -> u64 {
+        if size_of::<F>() == 0 {
+            1 << 32 | self.w.get().to_w() as u64
+        } else {
+            0
+        }
+    }
+}
+
+/// The run of a line of text, its width and where its baseline is.
+///
+/// In the fixed part of a view the k-th text is the same call site in every description, so what the last
+/// description said of it is kept (the tape): if this description says the same bytes at the same size (or,
+/// for a projection of a word, the same word) the kept run is the answer and nothing is hashed, shaped or
+/// formatted. A text of a list row, a text that differs and every text of an oracle's pass go to the run
+/// store by their bytes.
+fn line_run<O, S: TextSrc<O>>(
+    text: &Rc<RefCell<TextSys>>,
+    src: S,
+    size: f32,
+    lh: f32,
+) -> ((u32, u32), f32, i32) {
+    let fresh = |t: &str| {
+        let mut ts = text.borrow_mut();
+        mark(ph::VIEW);
+        let run = ts.run(t, size);
+        mark(ph::SHAPE);
+        (
+            run,
+            ts.get(run.0, run.1).map_or(0.0, |r| r.w).ceil(),
+            ts.baseline(size, lh),
+        )
+    };
+    let k = with(|sh| {
+        if sh.plain.get() || sh.row.get().3 != 0 {
+            let mut p = sh.pass.get();
+            p.lookups += 1;
+            sh.pass.set(p);
+            return None;
+        }
+        let k = sh.ti.get();
+        sh.ti.set(k + 1);
+        Some(k)
+    });
+    let Some(k) = k else {
+        return src.with_str(fresh);
+    };
+    let key = <S as TKey<O>>::key(&src);
+    let (sb, lb) = (size.to_bits(), lh.to_bits());
+    let hit = |e: &TapeEnt| {
+        text.borrow_mut().touch(e.run.0);
+        with(|sh| {
+            let mut p = sh.pass.get();
+            p.taped += 1;
+            sh.pass.set(p);
+        });
+        (e.run, e.w, e.base)
+    };
+    if key != 0 {
+        let kept = with(|sh| {
+            sh.tape
+                .borrow()
+                .get(k)
+                .filter(|e| e.key == key && (e.size, e.lh) == (sb, lb))
+                .map(hit)
+        });
+        if let Some(r) = kept {
+            return r;
+        }
+    }
+    src.with_str(|t| {
+        let kept = with(|sh| {
+            sh.tape
+                .borrow()
+                .get(k)
+                .filter(|e| {
+                    (e.size, e.lh) == (sb, lb)
+                        && (cfg!(feature = "mutant_typed_tape") || *e.text == *t)
+                })
+                .map(hit)
+        });
+        if let Some(r) = kept {
+            // the same bytes under another word: the entry answers that word too from now on
+            if key != 0 {
+                with(|sh| sh.tape.borrow_mut()[k].key = key);
+            }
+            return r;
+        }
+        let (run, w, base) = fresh(t);
+        with(|sh| {
+            let mut p = sh.pass.get();
+            p.lookups += 1;
+            sh.pass.set(p);
+            let ent = TapeEnt {
+                text: t.into(),
+                key,
+                size: sb,
+                lh: lb,
+                run,
+                w,
+                base,
+            };
+            let mut tape = sh.tape.borrow_mut();
+            assert!(
+                k <= tape.len(),
+                "the fixed part's texts are described in one order"
+            );
+            if k == tape.len() {
+                tape.push(ent);
+            } else {
+                tape[k] = ent;
+            }
+        });
+        (run, w, base)
+    })
 }
 
 fn at_row() -> (u32, u32, u32) {
@@ -801,7 +1038,13 @@ impl<V: View, R: Reach<V>, Bg: TColor<R::O>, Ch: TKids<V, R>> Typed<V, R>
         let id = with(|sh| {
             let n = sh.ord.get() + 1;
             sh.ord.set(n);
-            (sh.row.get().3 << 10 | n & 0x3ff) + 1
+            let r = sh.row.get();
+            // a row's boxes are named by its item's slot (a row keeps its records when it moves)
+            let item = if r.3 == 0 { 0 } else { r.1 + 1 };
+            if item >= 1 << 21 || n >= 1 << 10 {
+                refuse("more than 2^21 list items or 2^10 hover paints in one row");
+            }
+            (item << 10 | n & 0x3ff) + 1
         });
         let c = HSel {
             id,
@@ -842,6 +1085,9 @@ where
 pub struct TRows<'a, V, T> {
     list: &'a List<T>,
     off: u32,
+    /// The list's journal (`Shared::lists`), and whether every exposed row is to be described again.
+    journal: *const Journal,
+    all: bool,
     _v: PhantomData<fn(&V)>,
 }
 /// An item type's view as a row of a world of root view `V`.
@@ -872,13 +1118,20 @@ impl<'a, V: View, T: View> Seg<Ty<V>> for TRows<'a, V, T> {
         } else {
             None
         };
-        f.y += s.rows(n as u32, geo, |r| {
+        // SAFETY: the journal is boxed in `Shared::lists`, which only grows and outlives every pass (the
+        // world's stores are dropped with the `App` that holds the `Shared`); nothing writes it while a
+        // pass runs (`App::after` feeds it before the pass).
+        let edits = unsafe { &*self.journal };
+        f.y += s.rows_j(n as u32, geo, edits, self.all, |r| {
             assert!(r < n);
             let slot = list.slot(r).expect("a row under the list's length");
             with(|sh| {
                 sh.row
                     .set((off, slot.index(), slot.generation(), r as u32 + 1));
                 sh.ord.set(0);
+                let mut p = sh.pass.get();
+                p.rows += 1;
+                sh.pass.set(p);
             });
             let el = list.get(r).expect("a row under the list's length").row_el();
             with(|sh| sh.row.set((0, 0, 0, 0)));
@@ -919,10 +1172,44 @@ impl<'a, V: View, R: Reach<V>, T: View> Typed<V, R> for LList<'a, ListRows<'a, T
                 self.radius,
                 None,
             )),
-            content: TRows {
-                list: self.src.list.list,
-                off: self.src.list.off,
-                _v: PhantomData,
+            content: {
+                let (list, off) = (self.src.list.list, self.src.list.off);
+                let (journal, all) = with(|sh| {
+                    let k = sh.li.get();
+                    sh.li.set(k + 1);
+                    let mut lists = sh.lists.borrow_mut();
+                    assert!(
+                        k <= lists.len(),
+                        "the view's lists are described in one order"
+                    );
+                    if k == lists.len() {
+                        // The list is displayed from now on: it keeps the log its journal is fed from.
+                        if list.head().get() == 0 {
+                            list.head().set(1);
+                        }
+                        lists.push(ListEnt {
+                            off,
+                            journal: Box::new(Journal::new()),
+                            ops: list_ops::<T>,
+                            end: list_end::<T>,
+                        });
+                    }
+                    assert!(
+                        lists[k].off == off,
+                        "the view's lists are described in one order"
+                    );
+                    (
+                        &*lists[k].journal as *const Journal,
+                        sh.full.get() || sh.plain.get(),
+                    )
+                });
+                TRows {
+                    list,
+                    off,
+                    journal,
+                    all,
+                    _v: PhantomData,
+                }
             },
             word,
         }
@@ -972,6 +1259,95 @@ fn root_ok<V: View>(v: &V) -> bool {
     ok::<V, _>(&v.view())
 }
 
+/// The rects of the fixed part. Its layout words are compared, as they are emitted, with the words last
+/// solved: the same words at the same viewport and scale are the kept rects (layout is a function of exactly
+/// those; no word of the block is read by a spec on this path). Anything else is solved by the heap tree and
+/// kept. An oracle's pass always solves.
+fn fixed_rects<E: Shape>(e: &E, scale: f32, u: &U, size: [f32; 2]) -> LayMemo {
+    struct Cmp<'k> {
+        kept: &'k [bough_lay::shape::Nd],
+        k: usize,
+        same: bool,
+    }
+    impl<'a> bough_lay::shape::Sink<'a> for Cmp<'_> {
+        #[inline(always)]
+        fn node(&mut self, nd: bough_lay::shape::Nd) {
+            self.same &= self.kept.get(self.k) == Some(&nd);
+            self.k += 1;
+        }
+    }
+    struct Keep<'k>(&'k mut Vec<bough_lay::shape::Nd>);
+    impl<'a> bough_lay::shape::Sink<'a> for Keep<'_> {
+        fn node(&mut self, nd: bough_lay::shape::Nd) {
+            self.0.push(nd);
+        }
+    }
+    let env = (scale.to_bits(), [size[0].to_bits(), size[1].to_bits()]);
+    // The memo is taken for the length of the pass (an oracle's pass takes nothing and so always solves): a
+    // pass that unwinds leaves none, never a half-written one.
+    let mut m = with(|sh| {
+        if sh.plain.get() {
+            LayMemo::default()
+        } else {
+            std::mem::take(&mut *sh.lay.borrow_mut())
+        }
+    });
+    let mut c = Cmp {
+        kept: &m.words,
+        k: 0,
+        same: m.env == env && !m.words.is_empty(),
+    };
+    e.emit(&mut c);
+    if !(c.same && c.k == m.words.len()) {
+        with(|sh| {
+            let mut p = sh.pass.get();
+            p.layouts += 1;
+            sh.pass.set(p);
+        });
+        // Kept rects as the solver's output lanes (`[i32; 4]` per element), then as rects.
+        struct Out<'r>(&'r mut Vec<Rect>);
+        impl bough_lay::Out for Out<'_> {
+            #[inline(always)]
+            fn put(&mut self, k: usize, r: [i32; 4]) {
+                self.0[k] = Rect {
+                    x0: r[0],
+                    y0: r[1],
+                    x1: r[2],
+                    y1: r[3],
+                };
+            }
+        }
+        m.rects.clear();
+        m.rects.resize(
+            E::LEAVES,
+            Rect {
+                x0: 0,
+                y0: 0,
+                x1: 0,
+                y1: 0,
+            },
+        );
+        if E::LEAVES <= bough_lay::shape::MAXN {
+            // the layout words through the one layout function, on the stack (as a list row is laid out)
+            bough_lay::place_root(
+                &bough_lay::shape::Flat::of(e).root(),
+                scale,
+                u,
+                size,
+                &mut Out(&mut m.rects),
+            );
+        } else {
+            // past the flat form's element limit: the heap tree (no element or child limit)
+            let tree = bough_lay::heap::Tree::of_shape(e);
+            tree.place_root(0, scale, u, size, &mut Out(&mut m.rects));
+        }
+        m.words.clear();
+        e.emit(&mut Keep(&mut m.words));
+        m.env = env;
+    }
+    m
+}
+
 /// Drive a converted element: its layout words through the heap tree (no element or child limit), its records
 /// as one row, then its scrolled boxes. A pass after a turn takes no fixed rows and reaches only the lists.
 fn drive<W, E: Part<W> + Shape, S: Sink<W>>(mut e: E, s: &mut S) {
@@ -985,20 +1361,16 @@ fn drive<W, E: Part<W> + Shape, S: Sink<W>>(mut e: E, s: &mut S) {
         return e.holes(None, &mut 0, s);
     }
     let env = s.env();
-    let tree = bough_lay::heap::Tree::of_shape(&e);
-    let mut out = vec![[0i32; 4]; tree.els.len()];
-    tree.place_root(0, env.scale, env.u, env.size, &mut out[..]);
-    let rects: Vec<Rect> = out
-        .iter()
-        .map(|r| Rect {
-            x0: r[0],
-            y0: r[1],
-            x1: r[2],
-            y1: r[3],
-        })
-        .collect();
-    s.row(|| (&rects[..], bough_x::el::ByRef(&e)));
-    e.holes(Some(&rects), &mut 0, s);
+    let memo = fixed_rects(&e, env.scale, env.u, env.size);
+    mark(ph::LAYOUT);
+    s.row(|| (&memo.rects[..], bough_x::el::ByRef(&e)));
+    mark(ph::ROW);
+    e.holes(Some(&memo.rects[..]), &mut 0, s);
+    with(|sh| {
+        if !sh.plain.get() {
+            *sh.lay.borrow_mut() = memo;
+        }
+    });
 }
 
 // ---- the application ------------------------------------------------------------------------------------------------
@@ -1020,8 +1392,8 @@ pub struct App<V: View> {
     size_pt: (f32, f32),
     scale: f32,
     once: bool,
-    /// `signal::writes()` as of the last turn.
-    writes: u64,
+    /// The run store's pass at the last description that asked for every exposed row's runs.
+    full_at: u32,
     ring: Vec<(Canvas, Tiles)>,
     next: usize,
     shown: usize,
@@ -1052,6 +1424,14 @@ impl<V: View> App<V> {
             row: Cell::new((0, 0, 0, 0)),
             ord: Cell::new(0),
             describes: Cell::new(0),
+            tape: RefCell::new(Vec::new()),
+            ti: Cell::new(0),
+            lay: RefCell::new(LayMemo::default()),
+            lists: RefCell::new(Vec::new()),
+            li: Cell::new(0),
+            plain: Cell::new(false),
+            full: Cell::new(false),
+            pass: Cell::new(PassStats::default()),
         });
         let mut world = World::<Ty<V>, Canvas>::new(w, h, APP_WORDS);
         world.set_scale(cfg.scale);
@@ -1070,7 +1450,7 @@ impl<V: View> App<V> {
             size_pt: (cfg.width_pt, cfg.height_pt),
             scale: cfg.scale,
             once: cfg.mount_once,
-            writes: 0,
+            full_at: 0,
             ring: Vec::new(),
             next: 0,
             shown: 0,
@@ -1079,9 +1459,11 @@ impl<V: View> App<V> {
         app.surfaces(if cfg.ring == 0 { 4 } else { cfg.ring });
         app.world.mount(&app.ty);
         count(|c| c.world_mount += 1);
-        app.writes = crate::signal::writes();
+        app.lists_end(true);
         let refused = app.ty.sh.refused.borrow().clone();
         if !refused.is_empty() {
+            // the view goes back as it came: its lists not displayed, no log kept
+            app.lists_end(false);
             return Err((app.ty.v, refused));
         }
         Ok(app)
@@ -1110,21 +1492,57 @@ impl<V: View> App<V> {
     pub fn view(&self) -> &V {
         &self.ty.v
     }
-    /// After author code ran: the façade's contract is a re-description (a typed compare of what is exposed);
-    /// under `Config::mount_once` only the block is compared.
+    /// The end of a turn for the view's lists: `on`, they stay displayed (their logs start empty).
+    fn lists_end(&mut self, on: bool) {
+        let base = &mut self.ty.v as *mut V as *mut u8;
+        let lists = self.ty.sh.lists.borrow();
+        for (k, e) in lists.iter().enumerate() {
+            if lists[..k].iter().all(|o| o.off != e.off) {
+                // SAFETY: `off` came from an `LWired<'_, T, V>` (only `sig!` makes one) and `end` was
+                // instantiated for that `T`; `self.ty.v` is that `V`, exclusively borrowed.
+                unsafe { (e.end)(base.add(e.off as usize), on) }
+            }
+        }
+    }
+    /// What the turn did to the view's lists, into their journals (each list's own log, read once).
+    fn lists_sync(&mut self) {
+        {
+            let base = &self.ty.v as *const V as *const u8;
+            let mut lists = self.ty.sh.lists.borrow_mut();
+            for e in lists.iter_mut() {
+                if cfg!(feature = "mutant_typed_log") {
+                    continue;
+                }
+                // SAFETY: as `lists_end`; the view is not mutably borrowed here.
+                unsafe { (e.ops)(base.add(e.off as usize), &mut e.journal) }
+            }
+        }
+        self.lists_end(true);
+    }
+    /// What the last description did (count bands).
+    pub fn pass_stats(&self) -> PassStats {
+        self.ty.sh.pass.get()
+    }
+    /// After author code ran: the façade's contract is that the owner is described again (the legacy runtime
+    /// does so after every handler and every `turn`; plain fields are state, and only a description reads
+    /// them). The description is an update: the fixed part's texts against the tape, its layout words against
+    /// the words last solved, its records against their columns, and of each list the rows its log names.
+    /// Under `Config::mount_once` only the block is compared, as on the legacy runtime.
     fn after(&mut self, ran: bool) {
         self.ty.ran.set(false);
-        let now = crate::signal::writes();
-        let sets = now.wrapping_sub(self.writes);
-        self.writes = now;
-        // The turn wrote only bound words when every signal borrowed mutably in it is a block word that
-        // changed: then the block's compare accounts for all of it and nothing is described. A signal
-        // written to the value it had, a signal that is not a block word (a `String`, a list), or author
-        // code that wrote no signal at all (plain fields are state too) each leave the counts unequal, and
-        // the view is described again, which is the façade's contract.
-        let bound = (self.world.changed_words(&self.ty) & !(1 << HOVER)).count_ones() as u64;
-        if ran && !self.once && !(sets > 0 && sets == bound) {
+        self.lists_sync();
+        if ran && !self.once {
+            self.ty.sh.pass.set(PassStats::default());
+            // Every run shown is asked for again at least every 128 descriptions (the run store drops a run
+            // nobody asked for in 256): the rows are then described and compared whether logged or not.
+            let pass = self.text.borrow().pass();
+            let full = pass.wrapping_sub(self.full_at) >= 128;
+            if full {
+                self.full_at = pass;
+            }
+            self.ty.sh.full.set(full);
             self.world.redescribe(&self.ty);
+            self.ty.sh.full.set(false);
             let refused = self.ty.sh.refused.borrow();
             assert!(
                 refused.is_empty(),
@@ -1200,18 +1618,54 @@ impl<V: View> App<V> {
         self.world.resize(w, h);
         let n = self.ring.len();
         self.surfaces(n);
+        self.lists_sync();
+        self.ty.sh.pass.set(PassStats::default());
         self.world.redescribe(&self.ty);
     }
     /// Where a typed description's instructions go, measured apart (thread instructions, bracket subtracted):
     /// (running the view and converting its fixed part with no sink; one whole re-description; the same with
     /// every list row's conversion and compare skipped because nothing is exposed is not measurable from here,
     /// so the third number is a re-description of an unchanged view, for comparison with a changed one).
+    /// Thread instructions of 1,000 reads of the description context, and of 1,000 conversions of a layout
+    /// spec (two of the conversion's unit costs).
+    pub fn profile_units(&mut self) -> (u64, u64) {
+        let ot = bough_sys::perf::tinstr_overhead();
+        let t0 = bough_sys::perf::thread_instructions();
+        let mut acc = 0f32;
+        enter(&self.ty.sh, || {
+            for _ in 0..1000 {
+                acc += std::hint::black_box(with(|sh| sh.scale.get()));
+            }
+        });
+        let t1 = bough_sys::perf::thread_instructions();
+        let spec = std::hint::black_box(crate::layout::Spec::new(false, false));
+        let mut n = 0u32;
+        for _ in 0..1000 {
+            let l = crate::lower::lay_spec(std::hint::black_box(&spec), std::hint::black_box(2.0));
+            let nd =
+                bough_lay::shape::Nd::pack(&l, bough_lay::shape::K_BOX, true, 1, 0.0, 0.0, [0; 2]);
+            n = n.wrapping_add(std::hint::black_box(nd).0[3]);
+        }
+        let t2 = bough_sys::perf::thread_instructions();
+        std::hint::black_box((acc, n));
+        ((t1 - t0).saturating_sub(ot), (t2 - t1).saturating_sub(ot))
+    }
+    pub fn profile_view(&mut self) -> u64 {
+        let ot = bough_sys::perf::tinstr_overhead();
+        let t0 = bough_sys::perf::thread_instructions();
+        let e = self.ty.v.view();
+        std::hint::black_box(&e);
+        let t1 = bough_sys::perf::thread_instructions();
+        (t1 - t0).saturating_sub(ot)
+    }
     pub fn profile(&mut self) -> (u64, u64) {
         let ot = bough_sys::perf::tinstr_overhead();
         let t0 = bough_sys::perf::thread_instructions();
         enter(&self.ty.sh, || {
             self.ty.sh.row.set((0, 0, 0, 0));
             self.ty.sh.ord.set(0);
+            self.ty.sh.ti.set(0);
+            self.ty.sh.li.set(0);
             let e = root_el(&self.ty.v);
             std::hint::black_box(&e);
         });
@@ -1219,6 +1673,24 @@ impl<V: View> App<V> {
         self.world.redescribe(&self.ty);
         let t2 = bough_sys::perf::thread_instructions();
         ((t1 - t0).saturating_sub(ot), (t2 - t1).saturating_sub(ot))
+    }
+    /// Thread instructions of one re-description of the view as it is, by phase (`bough_x::probe::ph`), each
+    /// net of the counter's own cost. Feature `phase_probe`; the marks cost nothing without it.
+    #[cfg(feature = "phase_probe")]
+    pub fn phases(&mut self) -> [u64; ph::N] {
+        self.phases_of(|_| {})
+    }
+    /// As [`App::phases`], after `f` changed the state.
+    #[cfg(feature = "phase_probe")]
+    pub fn phases_of(&mut self, f: impl FnOnce(&mut V)) -> [u64; ph::N] {
+        f(&mut self.ty.v);
+        self.lists_sync();
+        let over = bough_sys::perf::tinstr_overhead();
+        bough_x::probe::HOOK.with(|h| h.set(Some(phase_hook)));
+        PHASES.with(|c| c.set(([0; ph::N], bough_sys::perf::thread_instructions(), over)));
+        self.world.redescribe(&self.ty);
+        bough_x::probe::HOOK.with(|h| h.set(None));
+        PHASES.with(|c| c.get().0)
     }
     pub fn lifecycle(&self) -> (u32, u32) {
         self.world.lifecycle()
@@ -1270,12 +1742,12 @@ impl<V: View> App<V> {
     pub fn immediate_pixels(&self) -> Vec<u8> {
         let (w, h) = self.px();
         let mut c = self.canvas();
-        let d = self.ty.sh.describes.get();
+        self.ty.sh.plain.set(true);
         bough_x::sink::View::view(
             &self.ty,
             &mut bough_x::soft::Immediate::on(&mut c, &self.world.shown, w, h),
         );
-        self.ty.sh.describes.set(d);
+        self.ty.sh.plain.set(false);
         c.bytes()
     }
     /// The same state mounted into a new world.
@@ -1284,9 +1756,9 @@ impl<V: View> App<V> {
         let mut world = World::<Ty<V>, Canvas>::new(w, h, APP_WORDS);
         world.set_scale(self.scale);
         world.tick(self.world.now().max(1));
-        let d = self.ty.sh.describes.get();
+        self.ty.sh.plain.set(true);
         world.mount(&self.ty);
-        self.ty.sh.describes.set(d);
+        self.ty.sh.plain.set(false);
         let mut c = self.canvas();
         world.paint(&mut c);
         c.bytes()

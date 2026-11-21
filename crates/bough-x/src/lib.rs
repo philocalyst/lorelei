@@ -20,6 +20,7 @@ pub mod event;
 pub mod index;
 pub mod kinds;
 pub mod prim;
+pub mod probe;
 pub mod ops;
 pub mod reflect;
 pub mod rel;

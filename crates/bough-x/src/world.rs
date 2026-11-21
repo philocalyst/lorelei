@@ -927,6 +927,7 @@ impl<V: View, B: Backend> World<V, B> {
         if ch != 0 {
             self.delta(u, ch);
         }
+        crate::probe::mark(crate::probe::ph::BLOCK);
         self.wrote += 1;
         self.epoch = self.relation_epoch();
         let mut cx = Cx {
@@ -939,6 +940,7 @@ impl<V: View, B: Backend> World<V, B> {
             scale: f32::from_bits(u.w[U_SCALE]),
         };
         let shape = core::mem::replace(&mut self.shape, STALE);
+        crate::probe::mark(crate::probe::ph::ENTER);
         crate::el::track_inputs(&self.inputs, || {
             v.view(&mut Write::<V, B>::new(&mut self.root, &mut cx, false))
         });
@@ -946,7 +948,9 @@ impl<V: View, B: Backend> World<V, B> {
         self.lists |= cx.lists;
         let regroup = cx.regroup;
         self.revision = self.revision.wrapping_add(cx.changed);
+        crate::probe::mark(crate::probe::ph::LISTS);
         self.rederive();
+        crate::probe::mark(crate::probe::ph::REDERIVE);
         if self.root.timed {
             self.root.resweep(u, &mut self.tiles);
         }
@@ -962,7 +966,9 @@ impl<V: View, B: Backend> World<V, B> {
             self.mount(v);
         }
         self.learn(v);
+        crate::probe::mark(crate::probe::ph::LEARN);
         self.refocus();
+        crate::probe::mark(crate::probe::ph::REFOCUS);
     }
 
     // ---- events: the dataflow run backwards (`event.rs`) -----------------------------------------------------
