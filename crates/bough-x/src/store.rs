@@ -442,6 +442,38 @@ impl<'a, A> ColRef<'a, A> {
             }
         }
     }
+    /// Every live record whose rect meets `cut` (in the store's space), page by page, in the order of
+    /// [`ColRef::each`]. For a painter that draws nothing outside a record's rect and is cut to `cut`: the
+    /// records passed over are the ones it would have drawn nothing of. A page costs four compares a lane,
+    /// whatever the painter does with a record.
+    #[inline(always)]
+    pub fn each_in(&self, cut: Rect, mut f: impl FnMut(Rect, &A)) {
+        if (cut.x0 >= cut.x1) | (cut.y0 >= cut.y1) {
+            return;
+        }
+        for (pi, pg) in self.pages.iter().enumerate() {
+            let live = self.live.page(pi);
+            if live == 0 {
+                continue;
+            }
+            let mut b = [0u8; 64];
+            for i in 0..64 {
+                b[i] = ((pg.x0[i] < cut.x1)
+                    & (pg.x1[i] > cut.x0)
+                    & (pg.y0[i] < cut.y1)
+                    & (pg.y1[i] > cut.y0)) as u8;
+            }
+            #[cfg(not(feature = "mutant_each_in"))]
+            let mut m = pack(&b) & live;
+            #[cfg(feature = "mutant_each_in")]
+            let mut m = pack(&b) & live & 0x7fff_ffff_ffff_ffff;
+            while m != 0 {
+                let i = m.trailing_zeros() as usize;
+                m &= m - 1;
+                f(pg.rect(i), pg.record(i));
+            }
+        }
+    }
 }
 
 /// Which records of a column are live. Liveness is the store's: a row is live or not, for all of its records.

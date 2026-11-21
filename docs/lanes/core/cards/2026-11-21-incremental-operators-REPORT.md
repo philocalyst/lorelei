@@ -158,3 +158,39 @@ half) is un-ignored and passes. Negative control: `--features mutant_uniform` fa
 `tests/uniform.rs`. After: 113 passed, 0 failed, 4 ignored; `sheet_x` and `anim_x` cells unchanged within noise
 (no column of those fixtures is constant-free). Not done: a record whose expression has a block-only
 *sub*expression beside record constants still evaluates it per record.
+
+## Amendment 2 (2026-11-21): a painter cut to a rectangle walks the records under it
+
+The measurement lane's effects benchmark showed one colour transition on the typed core costing 758,671 /
+3,093,972 / 14,809,342 instructions per step at 200 / 1,000 / 5,000 cards with flat tick and settle phases (about
+140 and 120): the cost was `Soft::repair` painting the whole store once per dirty tile. Two changes:
+
+* the measurement lane's patch (`soft-repair-bounds.patch`, applied unchanged with its test and its
+  `mutant_repair_bounds`): damage whose tiles fill their bounding rectangle is repaired in one walk;
+* `ColRef::each_in(cut, f)` (`store.rs`): a clipped walk that tests a page's rect lanes against the cut (four
+  compares a lane) and visits only the records that meet it; `Soft`'s `fill`, `num`, `line` and `label`
+  (painters that draw nothing outside the record's rect) use it with the painter's clip taken into the
+  column's space. `draws` and `outline` (which may draw displaced) keep `each`.
+
+Gate: `tests/each_in.rs`: a 32 px repair visits the same records (at most 9) at 64, 512 and 4,096 rows; over
+120 steps of scrolls, pointer moves, edits and theme changes on the sheet fixture, retained == full redraw ==
+`Immediate` (painting while describing, which walks no column). The first version of this gate compared the
+repair with a full redraw only and **did not catch `mutant_each_in`** (both sides walk the same clipped
+iterator); the comparison with `Immediate` was added for that and both tests now fail under the mutant.
+
+Measured (`typed-core measure <cards> <cell>`, release, the instruction column, three steps each, this host):
+
+| cell | 200 | 1,000 | 5,000 |
+|---|---:|---:|---:|
+| one, before (measurement lane's trace) | 758,671 | 3,093,972 | 14,809,342 |
+| one, with the bounds patch alone (their number) | 167,156 | 460,819 | 1,926,249 |
+| one, with both | 12,144 | 33,073 | 138,444 |
+| many, with both | 610,370 | 2,224,294 | 10,304,461 |
+| theme, with both | 611,001 | 2,226,179 | 10,303,307 |
+
+**Not flat**: `one` still grows 11.4x over 25x the cards, the four compares a lane of every page. A box per page
+(maintained where records are written) would make it follow the pages the cut meets; that needs the
+written-pages hook the active set also needs, and is the next piece. `many` and `theme` repaint 85 % of the
+frame and are the painter's cost. `bough-span`'s `Backend for Spans` has the same whole-column walk and is not
+changed here (another lane's crate). `cargo test --release -p bough-x -p bough-expr -p bough-span`: 119 passed,
+0 failed, 4 ignored.

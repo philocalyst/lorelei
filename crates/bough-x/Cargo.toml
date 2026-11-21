@@ -15,6 +15,7 @@ bough-face = { path = "../bough-face" }
 bough-mem = { path = "../bough-mem" }
 
 [features]
+mutant_repair_bounds = []
 # Mutants the pixel gates (tests/sheet.rs) must fail with:
 # the derivative forgets every other record of a page
 mutant_delta = []
@@ -47,3 +48,5 @@ mutant_near = []
 mutant_swept = []
 # the column-wide derivative of a constant-free archetype answers "unchanged" (tests/uniform.rs must fail)
 mutant_uniform = []
+# the clipped column walk loses the last record of every page (tests/each_in.rs must fail)
+mutant_each_in = []
