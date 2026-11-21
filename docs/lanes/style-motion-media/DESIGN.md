@@ -233,3 +233,50 @@ permission prompt; it was run here rendering silence.
 | ports, port iteration, connections between other applications' ports, loopback and application capture | **not taken yet**: only the default output exists. `Flow::Sends` is declared so capture, loopback and application capture have their place; device enumeration is the next step |
 | JACK's process callback as the model of a low-latency backend | CoreAudio's render callback is the same shape |
 | (absent: the application keeps time) | the explicit `Clock`, the latency in every block, and the pacer: what a UI needs to put pictures on sound |
+
+## 8. The resident plan (slice 7): the damage is the dispatch, for layers too
+
+Until slice 7 a Metal frame with layers needed the whole schedule before it ran, so the CPU assumed every
+repair changes everything it can reach (`Scene::plan_eager`) and built jobs for it: at depth, hundreds of
+millions of frame-thread instructions for a plan that the CPU kernel's compare-on-write showed to be 99%
+unnecessary. The reformulation: the schedule is not data the CPU computes, it is a property of stamps the
+GPU writes while it works.
+
+* **Slots.** Every (layer, level, block) the layer's storage can hold has a slot; slots are ordered by
+  (rank, level). A layer's rank is above that of every layer beneath it whose level-0 tiles meet its own
+  (`Layers::ranks`, one sweep of a tile grid), so layers of one rank write disjoint tiles. The table depends
+  on the layers' storage and ranks only: not on the bins, not on where a layer sits inside its storage. A
+  moved layer rewrites its 32-word row; the slots are rebuilt only when storage is re-allocated or a move
+  breaks the rank order (checked against the layers listed on its own tiles).
+* **Stamps.** `CHG[slot]` holds the generation of the last frame in which a word of that block changed.
+  `FORCE[slot]` is the CPU's: blocks whose storage holds nothing yet (a fresh layer, pixels that entered a
+  moved window). Per tile: the least and the greatest key of this frame's events, the generation of its
+  last output damage, and the bins' floor. No stamp is ever cleared: a frame is a new generation. (The two
+  event keys are reset by the frame's last dispatch.)
+* **A frame** is the same command sequence whatever changed. Per rank: `k_rc0`, a thread per level-0 slot,
+  decides which prefix tiles are due (an event key beneath the record on that tile, unless an opaque cover
+  of the whole tile lies above every event; or forced), derives the job's range and starting prefix from
+  the tile's list (`Scene::seg`, in the kernel) and appends it; `k_segr` runs the jobs through an indirect
+  dispatch and compares before it writes. Then one dispatch per pyramid level, a thread per pixel of every
+  slot (`k_downr`): it returns at once unless a block beneath that its four taps touch is stamped. A write
+  at a level the record reads marks the tiles that read reaches: `min`/`max` of the record's key into the
+  tile keys (so the layers above find it in their own `k_rc0`) and the output generation where the record
+  shows. Last, `k_rcout` compacts the tiles whose output generation is after the one the surface last
+  showed and the tile program draws them.
+* **What the CPU uploads** is the damage: per event, its key into the tiles of its window; a generation for
+  its own damaged tiles; forced stamps; the lanes of the keys that changed (`Scene::take_lane_dirty`), the
+  lists of the tiles that changed (`Bins::take_changed`, into per-tile slabs), and moved table rows.
+* **Surface age** is a comparison: tiles stamped after generation g. Nothing is read back to schedule.
+
+What it costs: the dispatches are encoded every frame, seven per rank (2 for level 0, 5 levels), about
+2.5 K frame-thread instructions each in Metal's encoder, whatever they find. Ranks grow with how deep
+layers overlap, not with how many there are. A first version compacted every level and ran a separate
+reach pass (13 per rank); folding the test into the pyramid kernel's threads removed six. What would remove
+the multiplier is a GPU-decided rank (a wavefront over a dependency mask) or encoding the sequence once
+(Metal's indirect command buffers execute compute commands concurrently, so they cannot hold an ordered
+plan); neither is built.
+
+The CPU side of the same idea (slice 7): an event stops, per tile, at the first record above it whose opaque
+cover holds the event's window there (`Bins::cover_above`), and a repair keeps what changed as boxes of the
+words that differ and dilates them in pixels, not blocks (a block is a tile at every level, so block-grain
+dilation grew a change by a tile ring per level).
