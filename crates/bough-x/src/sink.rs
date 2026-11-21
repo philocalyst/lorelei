@@ -867,9 +867,12 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
     if (lo == st.lo) & (hi == st.hi) & (st.seen == l.edits.ver) & !cx.all {
         return;
     }
-    if lo < hi && !st.rows.is_empty() {
-        // Admission, once per pass: the rows about to be written are of the record types the columns were made
-        // for, leaf by leaf, and the window fits. If not, the list's columns are made again for these rows.
+    if lo < hi
+        && !st.rows.is_empty()
+        && (hi - lo > st.cap || st.rows[0].0 != tid::<R>() || st.sites.len() != R::LEAVES as usize)
+    {
+        // A row of the discovered type has the same site layout by the unsafe Row contract. Another
+        // sink monomorphization may produce a different type. Compare its layout before reuse.
         let mut same = Same {
             st: &*st,
             k: 0,
