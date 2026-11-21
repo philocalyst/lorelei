@@ -351,3 +351,42 @@ fn the_operator_fixture_paints_what_the_scanning_fixture_paints() {
         }
     }
 }
+
+/// A backspace returns to a result the operator kept, across two typing sessions (the kept results are
+/// bounded by the table's size in ids, oldest dropped first).
+#[test]
+fn a_backspace_is_answered_from_a_kept_result() {
+    let n = 20_000u32;
+    let t: Table<String> = Table::from_vec((0..n).map(search::label).collect());
+    let mut q = Substring::new();
+    let mut routes = Vec::new();
+    let mut ask = |q: &mut Substring, s: &str| {
+        q.set_needle(&t, text, s);
+        assert_eq!(q.ids().collect::<Vec<_>>(), naive(&t, s), "needle {s:?}");
+        routes.push((s.to_string(), q.route, q.kept_ids()));
+    };
+    for word in ["amber river", "ivory"] {
+        for i in 1..=word.len() {
+            ask(&mut q, &word[..i]);
+        }
+        for i in (0..word.len()).rev() {
+            ask(&mut q, &word[..i]);
+        }
+    }
+    for (s, r, kept) in &routes {
+        assert!(*kept <= n as usize, "kept ids {kept} over the table's {n}");
+        let _ = (s, r);
+    }
+    let back: Vec<_> = routes.iter().rev().take(5).rev().collect();
+    // back through "ivor", "ivo", "iv": kept; "i" and "" are over half the table and are scanned for
+    assert_eq!(
+        back.iter().map(|b| b.1).collect::<Vec<_>>(),
+        [
+            Route::Kept,
+            Route::Kept,
+            Route::Kept,
+            Route::Scan,
+            Route::Scan
+        ]
+    );
+}

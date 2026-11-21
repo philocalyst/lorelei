@@ -244,8 +244,16 @@ impl Filter {
         if old_n.abs_diff(new_n) > Log::DEFAULT_CAP / 2 {
             // more changes than a log is asked to keep: whoever reads it recomputes, so none is listed
             self.member.clear();
-            for &id in &next {
-                set_bit(&mut self.member, id, true);
+            if next.last().is_some_and(|&l| l as usize + 1 == new_n) {
+                // every id up to the last: whole words
+                self.member.resize(new_n / 64, !0);
+                if new_n % 64 != 0 {
+                    self.member.push((1u64 << (new_n % 64)) - 1);
+                }
+            } else {
+                for &id in &next {
+                    set_bit(&mut self.member, id, true);
+                }
             }
             self.log.reset();
         } else {

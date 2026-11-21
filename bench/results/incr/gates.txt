@@ -1,0 +1,61 @@
+# gates, 2026-11-21T09:58:33Z, cargo test --release, features as named
+## cargo test --release -p bough-x -p bough-expr
+     Running unittests src/lib.rs (release/build/bough-expr/31e1c758a9687b19/out/bough_expr-31e1c758a9687b19)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (release/build/bough-x/7fdc7f8afd5c646e/out/bough_x-7fdc7f8afd5c646e)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/anim.rs (release/build/bough-x/13bd536f5f46e948/out/anim-13bd536f5f46e948)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+     Running tests/card1_soundness_and_sparse.rs (release/build/bough-x/0b34a95754bfc197/out/card1_soundness_and_sparse-0b34a95754bfc197)
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/el_small.rs (release/build/bough-x/6a2c64ef899931d8/out/el_small-6a2c64ef899931d8)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+     Running tests/events.rs (release/build/bough-x/0219afd81462caf3/out/events-0219afd81462caf3)
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+     Running tests/ops.rs (release/build/bough-x/c75d559912056409/out/ops-c75d559912056409)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s
+     Running tests/reflect.rs (release/build/bough-x/8ecd39811c136576/out/reflect-8ecd39811c136576)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/review.rs (release/build/bough-x/251fa398be852196/out/review-251fa398be852196)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/review_core.rs (release/build/bough-x/ae576a9a92755b0b/out/review_core-ae576a9a92755b0b)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/search_ops.rs (release/build/bough-x/bffa499637f36d11/out/search_ops-bffa499637f36d11)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+     Running tests/select.rs (release/build/bough-x/ac6f29ac153a8eac/out/select-ac6f29ac153a8eac)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.62s
+     Running tests/sheet.rs (release/build/bough-x/b91e166d3058a5ca/out/sheet-b91e166d3058a5ca)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 54.79s
+     Running tests/sheet_el.rs (release/build/bough-x/0c61f41d96e60444/out/sheet_el-0c61f41d96e60444)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 52.53s
+     Running tests/table.rs (release/build/bough-x/7cf410bea6067010/out/table-7cf410bea6067010)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/text.rs (release/build/bough-x/fc15fa94c0b0dc00/out/text-fc15fa94c0b0dc00)
+test the_glyph_memo_is_collected_and_frames_stay_exact ... FAILED
+thread 'the_glyph_memo_is_collected_and_frames_stay_exact' (6099760) panicked at crates/bough-x/tests/text.rs:308:5:
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
+error: test failed, to rerun pass `-p bough-x --test text`
+## negative control: --features mutant_lane --lib --test ops (must fail)
+thread 'rel::lane::tests::a_lane_is_a_vec_under_random_edits' (6101725) panicked at crates/bough-x/src/rel/lane.rs:308:25:
+thread 'rel::lane::tests::lower_bound_is_partition_point' (6101726) panicked at crates/bough-x/src/rel/lane.rs:131:35:
+test result: FAILED. 6 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+## negative control: --features mutant_ops --test ops (must fail)
+thread 'operators_equal_a_recompute_after_every_step' (6103610) panicked at crates/bough-x/tests/ops.rs:240:13:
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+## negative control: --features mutant_tri --test search_ops (must fail)
+thread 'hits_equal_a_scan_on_unique_strings' (6105863) panicked at crates/bough-x/tests/search_ops.rs:141:9:
+thread 'hits_equal_a_scan_on_a_repetitive_corpus' (6105862) panicked at crates/bough-x/tests/search_ops.rs:141:9:
+thread 'the_operator_fixture_paints_what_the_scanning_fixture_paints' (6105866) panicked at crates/bough-x/tests/search_ops.rs:324:9:
+thread 'a_backspace_is_answered_from_a_kept_result' (6105861) panicked at crates/bough-x/tests/search_ops.rs:365:9:
+test result: FAILED. 2 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+## negative control: --features mutant_keyed --test select (must fail)
+thread 'a_selection_change_evaluates_two_records_whatever_is_exposed' (6107484) panicked at crates/bough-x/tests/select.rs:263:9:
+thread 'bounded_deltas_leave_the_scans_damage_and_the_same_pixels' (6107485) panicked at crates/bough-x/tests/select.rs:77:9:
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+## negative control: --features mutant_near --test select (must fail)
+thread 'the_anim_fixture_with_declared_reach_paints_the_same' (6109033) panicked at crates/bough-x/tests/select.rs:388:9:
+thread 'bounded_deltas_leave_the_scans_damage_and_the_same_pixels' (6109031) panicked at crates/bough-x/tests/select.rs:77:9:
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+## negative control: --features mutant_swept --test select (must fail)
+thread 'swept_rects_are_the_tiles_of_the_other_mode' (6110556) panicked at crates/bough-x/tests/select.rs:330:9:
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.29s

@@ -555,7 +555,7 @@ impl<V: View, B: Backend> World<V, B> {
         if e.skip & ch != 0 {
             return;
         }
-        if self.fast_of[k] != u32::MAX && !self.no_fast && self.delta_fast(k, u, ch) {
+        if self.fast_of[k] != u32::MAX && self.delta_fast(k, u, ch) {
             // answered from the records the change concerns
         } else {
             let e = &self.cols[k];
@@ -577,6 +577,9 @@ impl<V: View, B: Backend> World<V, B> {
     #[inline(never)]
     fn delta_fast(&mut self, k: usize, u: &U, ch: u64) -> bool {
         const PTR: u64 = 1 << U_PTR_X | 1 << U_PTR_Y;
+        if self.no_fast {
+            return false;
+        }
         let e = &self.cols[k];
         let f = &mut self.fast[self.fast_of[k] as usize];
         let rd = ch & e.reads;
@@ -636,7 +639,11 @@ impl<V: View, B: Backend> World<V, B> {
             0
         });
         if !self.tiles.sweeps.is_empty() {
-            self.tiles.tick(self.shown.w[U_TIME], &self.shown);
+            if self.tiles.sweep_rects {
+                self.tiles.tick_rects(self.shown.w[U_TIME], &self.shown);
+            } else {
+                self.tiles.tick(self.shown.w[U_TIME], &self.shown);
+            }
         }
     }
 

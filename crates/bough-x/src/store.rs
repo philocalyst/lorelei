@@ -34,8 +34,8 @@ pub struct Tiles {
     /// With [`Tiles::sweep_rects`] set: the boxes of the records in motion this frame, in screen space, for a
     /// raster that takes rects. They are damage like the bits are; `clear` empties them.
     pub swept: Vec<Rect>,
-    /// Hand the boxes of records in motion over as rects ([`Tiles::swept`]) instead of marking their tiles
-    /// each frame: a frame with motion then costs a push per column in motion, whatever its box covers.
+    /// Hand the boxes of records in motion over as rects ([`Tiles::swept`], by [`Tiles::tick_rects`]) instead
+    /// of marking their tiles each frame: a frame with motion then costs a push per column in motion, whatever its box covers.
     pub sweep_rects: bool,
 }
 
@@ -81,15 +81,26 @@ impl Tiles {
         while i < self.sweeps.len() {
             let s = self.sweeps[i];
             #[cfg(not(feature = "mutant_sweep"))]
-            {
-                let r = s.rect.shift(s.space.origin(u)).and(s.space.clip);
-                if !self.sweep_rects {
-                    self.mark(r);
-                } else if (r.x0 < r.x1) & (r.y0 < r.y1) {
-                    #[cfg(not(feature = "mutant_swept"))]
-                    self.swept.push(r);
-                }
+            self.mark(s.rect.shift(s.space.origin(u)).and(s.space.clip));
+            if !crate::expr::ahead(s.until, now) {
+                self.sweeps.swap_remove(i);
+            } else {
+                i += 1;
             }
+        }
+    }
+    /// As [`Tiles::tick`], with the boxes handed over as rects ([`Tiles::swept`]) and no tile marked.
+    #[inline(never)]
+    pub fn tick_rects(&mut self, now: u32, u: &U) {
+        let mut i = 0;
+        while i < self.sweeps.len() {
+            let s = self.sweeps[i];
+            let r = s.rect.shift(s.space.origin(u)).and(s.space.clip);
+            #[cfg(not(any(feature = "mutant_sweep", feature = "mutant_swept")))]
+            if (r.x0 < r.x1) & (r.y0 < r.y1) {
+                self.swept.push(r);
+            }
+            let _ = r;
             if !crate::expr::ahead(s.until, now) {
                 self.sweeps.swap_remove(i);
             } else {

@@ -225,11 +225,12 @@ pub fn holds(hay: &[u8], needle: &[u8]) -> bool {
     if n == 1 {
         return hay.contains(&needle[0]);
     }
-    let (first, rest) = (needle[0], &needle[1..]);
+    // two bytes decide nearly every position before the rest is compared
+    let (a, b, rest) = (needle[0], needle[1], &needle[2..]);
     let last = hay.len() - n;
     let mut i = 0;
     while i <= last {
-        if hay[i] == first && &hay[i + 1..i + n] == rest {
+        if hay[i] == a && hay[i + 1] == b && hay[i + 2..i + n] == *rest {
             return true;
         }
         i += 1;
@@ -435,12 +436,9 @@ impl Substring {
             needle: self.needle.clone(),
             hits: self.hits.ids().collect(),
         });
-        while self.kept.len() > 8 || self.kept_ids() > self.budget {
-            // the largest costs the most and narrows the least
-            let big = (0..self.kept.len())
-                .max_by_key(|&i| self.kept[i].hits.len())
-                .expect("not empty");
-            self.kept.remove(big);
+        while self.kept.len() > 16 || self.kept_ids() > self.budget {
+            // the oldest: a backspace returns to the needles asked last
+            self.kept.remove(0);
         }
     }
 }
