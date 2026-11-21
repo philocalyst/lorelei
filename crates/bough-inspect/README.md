@@ -24,9 +24,23 @@ One `Snapshot` (`src/schema.rs`) describes one world at one moment:
 - `pointers`: the pointer position, pick, press and focus, each named as a node of the same snapshot;
 - `ax`: the accessibility projection (`bough-ax`) with roles, names, bounds, states, actions and location.
 
-`to_json` is canonical (insertion order, no whitespace); `stable_json` drops the process-specific world identity
-and the timings, and is what the golden (`crates/bough-inspect-app/tests/golden/rows.json`) holds. `from_json`
-reads a snapshot back, so a description can be recorded, stored and analysed offline.
+`to_json` retains the full live snapshot. `stable_json` serializes the description contract in canonical order
+for the golden and the replay description digest. `from_json` reads both forms and supplies defaults for
+omitted diagnostics.
+
+The description contract covers app identity and geometry, host remount epoch, node and operand IDs, kinds,
+source sites, properties, rectangles, text, logical store and list relations, registered state, pointer
+targets and accessibility. The remount epoch begins at zero for each new host and advances when the host
+replaces its world. It serves as an identity input. `lists[].shape` describes row geometry.
+
+`schema::VOLATILE_SNAPSHOT_FIELDS` defines the live diagnostic fields omitted from comparisons.
+
+- `app.world`, `app.revision`, `app.input_revision` and `app.shape` track the live instance and its revisions.
+- `counters`, `damage` and `ax.projected` describe the work a turn performed, including its timings.
+- Store capacity, seen rows, move history and retained storage totals describe materialization. Column page,
+  record and byte counts, list capacity and seen rows, and word reader counts describe the same runtime work.
+- `col` and `rec` on node and pointer keys name current materialization slots. Logical paths, rows and
+  positions stay in the comparison. The live snapshot publishes no raw addresses.
 
 ## Session and mutation
 
@@ -59,9 +73,11 @@ Start recording on a fresh app before injecting turns. `record_stop` returns the
 Use that object as the `log` parameter to `replay`. Replay compares a fresh app with the same startup
 configuration, even if the app that recorded the log has since been resized.
 
-A `Command` is a turn: pointer, button, key, text, wheel, tick, resize, settle, typed set. `record` runs a script
-and keeps each command's description digest and pixel digest; `replay` runs it on a fresh application and compares
-every description, every pixel and every refusal. The app must be deterministic (the benchmark apps are).
+A `Command` injects pointer, button, key, text, wheel, tick, resize, settle or typed set. Replay compares the
+description digest, pixel digest and refusal code after each command. The log retains damage, revision and
+refusal text for diagnostics. Log schema 2 uses the description contract above. Log schema 1 remains readable
+and compares the historical digest, which includes core revision values. Replay a version 1 log on its original
+core to check that recording, or create a new version 2 log to carry comparisons across core refactors.
 
 ## Pixels
 
