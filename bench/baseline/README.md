@@ -44,3 +44,7 @@ Use `--thresholds limits.json` for preregistered per-fixture and per-operation o
 ```json
 {"sheet_x/rows10000/hover": {"instructions": 1.03}}
 ```
+
+`../baselines/native/r3-historical-limits.json` applies when comparing typed-core R3 against `71ee3be`. `anim_x/208/pointer_words` permits 1.025× for the remaining 96 instructions in the checked page-delta path. The cap still rejects the pre-recovery 4,345. Dropping the dense partial-page path recovered the pointer count and raised sheet hover from about 5.3k to 12.9k in the control.
+
+The historical cold mounts permit 1.10× at 1,000 rows and 1.05× at 10,000 rows. The recovered 1,000-row instruction median ranged from 366,552 to 384,092 across two three-process replays, compared with a 356,808 historical median. At 10,000 rows the recovered medians were 365,094 and 366,044, compared with 359,070 historically. A cold probe at 1,000, 3,000 and 10,000 rows found a similar fixed increase of about 15k in the nine-process minima. Reusing capacity reduced the measured delta to roughly 0.4–1.8k at 1,000 and 3,000 rows. macOS includes kernel work in this count. The evidence identifies a cold-start boundary and leaves the exact kernel cause open. The default integration caps apply against the current reference.
