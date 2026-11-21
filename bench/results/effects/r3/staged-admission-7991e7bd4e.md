@@ -37,3 +37,5 @@ Wall timings include all observed virtual ticks. The count gives output submissi
 | 5,000 | video | pending | — | — | — |
 
 [Raw per-tick rows, gate receipts, and mutant output](staged-final)
+
+The remount diagnostic passed at all three sizes with 240/240 submissions. The retained resize cells still require a resizable scene. [Remount timing and gates](staged-remount-7991e7bd4e.md)

@@ -1,0 +1,11 @@
+ 7:43  up 4 days, 10:36, 1 user, load averages: 68.38 63.95 55.31
+fx_refused,resize,5000,png_tile,no image paint in the seam: shared PNG tile not drawn
+fx_refused,resize,5000,group_filter,no subtree group: blur/saturate/brightness/drop-shadow group not composited
+fx_refused,resize,5000,path_mask,no path or alpha-mask primitive; clip is rectangular only
+fx_refused,resize,5000,shader_exact,plasma, SDF and sine-ramp shaders absent; built-in stripes/ripple substituted
+fx_refused,resize,5000,resize_retained,fixed-size Scene: resize remounts, retained resize unsupported
+gfx gate resize cards=5000 ages=1..4 steps=48 probes=196 changed_frames=48 fresh=ok
+check_exit=0
+mutant_input=killed
+mutant_damage=killed
+mutation_check_exit=0

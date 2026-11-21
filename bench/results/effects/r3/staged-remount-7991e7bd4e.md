@@ -7,7 +7,7 @@ Successful rows killed both dropped-input and dropped-damage mutants. Each timed
 | Cards | Remount p50/p95/p99 (ms) | Output frames / observations |
 |---:|---:|---:|
 | 200 | 73.483/117.762/144.097 | 240/240 |
-| 1,000 | Pending | — |
-| 5,000 | Pending | — |
+| 1,000 | 235.911/489.383/535.408 | 240/240 |
+| 5,000 | 685.033/825.706/912.011 | 240/240 |
 
 [Executable and raw receipts](staged-remount)
