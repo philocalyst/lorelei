@@ -128,6 +128,8 @@ pub struct Glyphs {
     ents: Vec<u64>,
     slot: Vec<u16>,
     x: Vec<i32>,
+    staged_slots: Vec<u16>,
+    staged_pens: Vec<i32>,
     /// Texts shaped (misses) and found (hits).
     pub shaped: u64,
     pub found: u64,
@@ -159,6 +161,8 @@ impl Glyphs {
             ents: vec![0; 8],
             slot: Vec::new(),
             x: Vec::new(),
+            staged_slots: Vec::new(),
+            staged_pens: Vec::new(),
             shaped: 0,
             found: 0,
             cleared: 0,
@@ -203,6 +207,8 @@ impl Glyphs {
             + self.ents.capacity() * 8
             + self.slot.capacity() * 2
             + self.x.capacity() * 4
+            + self.staged_slots.capacity() * 2
+            + self.staged_pens.capacity() * 4
             + self.runs.capacity() * core::mem::size_of::<RunSlot>()
     }
     /// Low epoch bits for diagnostics; handle authority uses full epochs and per-slot generations.
@@ -235,6 +241,8 @@ impl Glyphs {
         self.slot.shrink_to(1 << 12);
         self.x.clear();
         self.x.shrink_to(1 << 12);
+        self.staged_slots = Vec::new();
+        self.staged_pens = Vec::new();
         self.cleared += 1;
     }
 
@@ -282,12 +290,23 @@ impl Glyphs {
     /// [`Glyphs::line`] with the key known ([`key`] of a literal is a constant).
     #[inline]
     pub fn line_keyed(&mut self, h: u64, id: u16, face: &Face, text: &str) -> Option<(Run, i32)> {
-        self.line_with(h, id, text.as_bytes(), |slot, x| {
-            face.shape(text.as_bytes(), |t, pen, _| {
-                slot.push(t as u16);
-                x.push(pen);
-            })
-        })
+        let text = text.as_bytes();
+        if let Some(hit) = self.find_hit(h, id, text) {
+            return Some(hit);
+        }
+        let start = self.slot.len();
+        let width = face.shape(text, |token, pen, _| {
+            self.slot.push(token as u16);
+            self.x.push(pen);
+        });
+        match width {
+            Some(width) => Some(self.enter(h, id, text, start, width)),
+            None => {
+                self.slot.truncate(start);
+                self.x.truncate(start);
+                None
+            }
+        }
     }
     /// The line of (`id`, `text`) if it has been shaped: a hit and nothing else.
     #[inline(always)]
@@ -311,10 +330,16 @@ impl Glyphs {
             w as u32 as i32,
         ))
     }
-    /// The line of (`id`, `text`), shaped on a miss by `shape`: any shaper. It appends the line's glyph slots
-    /// and pens to the lanes it is given and returns the advance, or `None` to refuse (what it appended is
-    /// discarded). This is the one memo: the prepared face, the table shaper and the full shaper differ only
-    /// in the closure.
+    #[inline(always)]
+    fn find_hit(&mut self, h: u64, id: u16, text: &[u8]) -> Option<(Run, i32)> {
+        let hit = self.get(h, id, text)?;
+        self.found += 1;
+        Some(hit)
+    }
+
+    /// The line of (`id`, `text`), shaped on a miss by `shape`. The callback
+    /// receives two empty staging vectors and returns an advance to publish the
+    /// glyphs and pens. Refusal leaves previously published runs intact.
     #[inline]
     pub fn line_with(
         &mut self,
@@ -323,21 +348,21 @@ impl Glyphs {
         text: &[u8],
         shape: impl FnOnce(&mut Vec<u16>, &mut Vec<i32>) -> Option<i32>,
     ) -> Option<(Run, i32)> {
-        if let Some(hit) = self.get(h, id, text) {
-            self.found += 1;
+        if let Some(hit) = self.find_hit(h, id, text) {
             return Some(hit);
         }
-        let g0 = self.slot.len();
-        let Some(width) = shape(&mut self.slot, &mut self.x) else {
-            self.slot.truncate(g0);
-            self.x.truncate(g0);
-            return None;
-        };
-        assert!(
-            self.slot.len() == self.x.len(),
-            "a shaper appends one pen per glyph slot"
+        self.staged_slots.clear();
+        self.staged_pens.clear();
+        let width = shape(&mut self.staged_slots, &mut self.staged_pens)?;
+        assert_eq!(
+            self.staged_slots.len(),
+            self.staged_pens.len(),
+            "a shaper emits one pen per glyph slot"
         );
-        Some(self.enter(h, id, text, g0, width))
+        let start = self.slot.len();
+        self.slot.extend_from_slice(&self.staged_slots);
+        self.x.extend_from_slice(&self.staged_pens);
+        Some(self.enter(h, id, text, start, width))
     }
     /// Whether what the memo holds has outgrown `budget` bytes: time to [`Glyphs::clear`] and describe what
     /// is exposed again. Counts what [`Glyphs::bytes`] counts.
