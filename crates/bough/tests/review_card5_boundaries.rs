@@ -246,7 +246,6 @@ impl View for ListChoice {
 }
 
 #[test]
-#[ignore = "Card 5 requires the same source field at each list site"]
 fn one_typed_list_site_can_switch_between_root_fields() {
     let mut app = App::new(
         ListChoice {
@@ -261,6 +260,22 @@ fn one_typed_list_site_can_switch_between_root_fields() {
     app.pointer_down(4.0, 4.0, Button::Primary);
     app.pointer_up(4.0, 4.0, Button::Primary);
     assert_eq!(app.view().a.get(0).unwrap().0, 0);
+    assert_eq!(app.view().b.get(0).unwrap().0, 11);
+    app.check().unwrap();
+    app.turn(|v| {
+        let hidden = v.a.slot(0).unwrap();
+        v.a.remove(0);
+        let new = v.a.push(Row(60));
+        assert_eq!(
+            hidden.index(),
+            new.index(),
+            "the previous source is no longer displayed"
+        );
+        v.first = true;
+    });
+    app.pointer_down(4.0, 4.0, Button::Primary);
+    app.pointer_up(4.0, 4.0, Button::Primary);
+    assert_eq!(app.view().a.get(0).unwrap().0, 61);
     assert_eq!(app.view().b.get(0).unwrap().0, 11);
     app.check().unwrap();
 }

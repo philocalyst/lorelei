@@ -101,6 +101,8 @@ pub struct Shared {
     lay: RefCell<LayMemo>,
     /// The lists of the view in description order: each one's journal, fed from the `List`'s own log.
     lists: RefCell<Vec<ListEnt>>,
+    retired_lists: RefCell<Vec<ListEnt>>,
+    next_list_tag: Cell<u32>,
     li: Cell<usize>,
     /// A pass that consults nothing kept (the oracles: an immediate description, a fresh mount).
     plain: Cell<bool>,
@@ -1660,20 +1662,29 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
                     }
                     let k = sh.li.get();
                     sh.li.set(k + 1);
+                    let site = (k + 1).try_into().expect("too many list sites");
+                    if sh.plain.get() {
+                        return (&raw const bough_x::sink::FIXED, true, site);
+                    }
                     let mut lists = sh.lists.borrow_mut();
                     assert!(
                         k <= lists.len(),
                         "the view's lists are described in one order"
                     );
-                    if k == lists.len() {
-                        // The list is displayed from now on: it keeps the log its journal is fed from. Its
-                        // head says which list of the view it is (the first description site of the field).
-                        let tag = lists
-                            .iter()
-                            .find(|e| e.off == off)
-                            .map_or(k as u32 + 1, |e| e.tag);
+                    if k == lists.len() || lists[k].off != off {
+                        // Every occurrence of one root field uses the same tag. A newly displayed
+                        // field gets a fresh tag even when it takes over an existing site.
+                        let tag = lists.iter().find(|e| e.off == off).map_or_else(
+                            || {
+                                let tag = sh.next_list_tag.get();
+                                assert!(tag < crate::signal::QUEUED, "list tags exhausted");
+                                sh.next_list_tag.set(tag + 1);
+                                tag
+                            },
+                            |e| e.tag,
+                        );
                         list.head().set(tag);
-                        lists.push(ListEnt {
+                        let entry = ListEnt {
                             off,
                             journal: Box::new(Journal::by_item()),
                             ops: list_ops::<T>,
@@ -1681,17 +1692,15 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
                             pubs: list_pubs::<T>,
                             shown: 0,
                             tag,
-                        });
+                        };
+                        if k == lists.len() {
+                            lists.push(entry);
+                        } else {
+                            let old = std::mem::replace(&mut lists[k], entry);
+                            sh.retired_lists.borrow_mut().push(old);
+                        }
                     }
-                    assert!(
-                        lists[k].off == off,
-                        "the view's lists are described in one order"
-                    );
-                    (
-                        &*lists[k].journal as *const Journal,
-                        sh.full.get() || sh.plain.get(),
-                        (k + 1).try_into().expect("too many list sites"),
-                    )
+                    (&*lists[k].journal as *const Journal, sh.full.get(), site)
                 });
                 TRows {
                     list,
@@ -1991,6 +2000,8 @@ impl<V: View> App<V> {
             ops: RefCell::new(Vec::new()),
             lay: RefCell::new(LayMemo::default()),
             lists: RefCell::new(Vec::new()),
+            retired_lists: RefCell::new(Vec::new()),
+            next_list_tag: Cell::new(1),
             li: Cell::new(0),
             plain: Cell::new(false),
             full: Cell::new(false),
@@ -2136,6 +2147,22 @@ impl<V: View> App<V> {
     pub fn pass_stats(&self) -> PassStats {
         self.ty.sh.pass.get()
     }
+    fn retire_lists(&mut self) {
+        let mut retired = self.ty.sh.retired_lists.borrow_mut();
+        if retired.is_empty() {
+            return;
+        }
+        let active = self.ty.sh.lists.borrow();
+        let base = (&raw mut self.ty.v).cast::<u8>();
+        for entry in retired.drain(..) {
+            if active.iter().all(|list| list.off != entry.off) {
+                // SAFETY: admission proved that offset and callback against this root type. No
+                // description or other borrow of the view is active during retirement.
+                unsafe { (entry.end)(base.add(entry.off as usize), 0) };
+            }
+        }
+    }
+
     /// Refresh the runs of kept rows before the text store can evict them. Every fixed description,
     /// including resize and hover-handler descriptions, advances the text store's clock.
     fn update_description(&mut self) {
@@ -2148,6 +2175,7 @@ impl<V: View> App<V> {
         self.retry_description = true;
         self.ty.sh.full.set(full);
         self.world.redescribe(&self.ty);
+        self.retire_lists();
         self.retry_description = false;
         self.ty.sh.full.set(false);
         if full {
