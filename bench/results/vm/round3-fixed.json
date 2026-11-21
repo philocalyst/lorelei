@@ -1,0 +1,110 @@
+{
+  "runs": [
+    {
+      "cells": 6,
+      "contract": {
+        "app-bough-sha256": "30b75f19b8a8b66240f08b93c371947d4c3841bc865bc5c0a42b91d2237af7bb",
+        "app-bough-x-sha256": "1e242bb2b1155b77768b3744815095aad622eb92c71766a886e47bb228dfd713",
+        "app-zgui-sha256": "2a4dd32435f5bd7bd0ef076df4b00bf280cd6f7b088f3d8077346e7aa14b7115",
+        "check-exit": "0",
+        "guest": "Linux 7.3.0-9-generic aarch64",
+        "guest-cpus": "10",
+        "host-cpu": "Apple M3 Ultra",
+        "host-macos": "26.7.3",
+        "load-after": "0.22 0.24 0.56 1/288 149709",
+        "load-before": "5.22 3.32 1.43 2/293 149035",
+        "lorelei-head": "cda302287b11a3abb5daf0493c1f0c9ea5552c67 (dirty)",
+        "pinning": "taskset -c 0-5 for the runner and every app it launches",
+        "runner-exit": "0",
+        "runner-sha256": "6274f2858aac778bfd30a58e20fe642937d60fd73b2505759b9370b62d0f5042",
+        "timing": "fixed (GB_TIMING; fixed = fakeland fixed rate of each cell, 60 Hz by default)",
+        "toolchain-gui-bench": "nightly-2026-04-16 (its rust-toolchain.toml)",
+        "toolchain-lorelei": "rustc 1.101.0-nightly (5d8fec066 2026-10-16)"
+      },
+      "coverage": {
+        "rows/bough": 2,
+        "rows/bough-x": 2,
+        "rows/zgui": 2
+      },
+      "failures": 0,
+      "interactive_wake_max_ms": {},
+      "invalid_reports": 14,
+      "reports": 20,
+      "unchecked_reports": 0,
+      "valid_reports": 6,
+      "verdicts": {
+        "rows/bough-x/idle": {
+          "valid": 2
+        },
+        "rows/bough-x/interactive": {
+          "invalid": 4
+        },
+        "rows/bough/idle": {
+          "valid": 2
+        },
+        "rows/bough/interactive": {
+          "invalid": 4
+        },
+        "rows/zgui/idle": {
+          "valid": 2
+        },
+        "rows/zgui/interactive": {
+          "invalid": 6
+        }
+      }
+    },
+    {
+      "cells": 3,
+      "contract": {
+        "app-bough-sha256": "796ac4dd0c86bae8680d662fcd4752f7573bee41a7006f8d938785a309d877d0",
+        "app-bough-x-sha256": "8dbfd7501f89628f1d484a75490adf5e90e344c18b000c2dc65a40d7b14ff720",
+        "app-zgui-sha256": "63d22b5d81fa1dff3b2bf4f1cb1bfbc661e8dc885e2df879c0b8eae92cfdea36",
+        "check-exit": "4",
+        "guest": "Linux 7.3.0-9-generic aarch64",
+        "guest-cpus": "4",
+        "host-cpu": "Apple M3 Ultra",
+        "host-macos": "26.7.3",
+        "load-after": "0.64 0.29 0.52 1/210 38468",
+        "load-before": "2.81 2.35 1.19 1/213 38141",
+        "lorelei-head": "cda302287b11a3abb5daf0493c1f0c9ea5552c67 (dirty)",
+        "pinning": "taskset -c 0-3 for the runner and every app it launches",
+        "runner-exit": "0",
+        "runner-sha256": "4259e623873ed59218075b3ae726019e6eb1e73cfd5d3c352906be0e356006e1",
+        "timing": "fixed (GB_TIMING; fixed = fakeland fixed rate of each cell, 60 Hz by default)",
+        "toolchain-gui-bench": "nightly-2026-04-16 (its rust-toolchain.toml)",
+        "toolchain-lorelei": "rustc 1.101.0-nightly (5d8fec066 2026-10-16)"
+      },
+      "coverage": {
+        "rows/bough": 1,
+        "rows/bough-x": 1,
+        "rows/zgui": 1
+      },
+      "failures": 0,
+      "interactive_wake_max_ms": {},
+      "invalid_reports": 7,
+      "reports": 10,
+      "unchecked_reports": 0,
+      "valid_reports": 3,
+      "verdicts": {
+        "rows/bough-x/idle": {
+          "valid": 1
+        },
+        "rows/bough-x/interactive": {
+          "invalid": 2
+        },
+        "rows/bough/idle": {
+          "valid": 1
+        },
+        "rows/bough/interactive": {
+          "invalid": 2
+        },
+        "rows/zgui/idle": {
+          "valid": 1
+        },
+        "rows/zgui/interactive": {
+          "invalid": 3
+        }
+      }
+    }
+  ]
+}
