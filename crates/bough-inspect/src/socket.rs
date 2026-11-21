@@ -490,4 +490,38 @@ mod tests {
         );
         assert!(reply.recv_timeout(Duration::from_secs(5)).unwrap().is_ok());
     }
+
+    #[test]
+    fn ten_thousand_random_and_truncated_frames_keep_bounded_read_buffers() {
+        let mut seed = 19u32;
+        let mut byte = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 24) as u8
+        };
+        let (mut writer, reader) = UnixStream::pair().unwrap();
+        reader.set_nonblocking(true).unwrap();
+        let mut conn = Conn::new(reader);
+        for i in 0..10_000 {
+            let length = usize::from(byte());
+            let data: Vec<u8> = (0..length).map(|_| byte()).collect();
+            let mut frame = Vec::new();
+            write_frame(&mut frame, &data).unwrap();
+            let split = i % frame.len();
+            writer.write_all(&frame[..split]).unwrap();
+            assert!(conn.read_request().unwrap().is_none());
+            assert!(conn.input.capacity() <= 1024);
+            writer.write_all(&frame[split..]).unwrap();
+            let decoded = conn.read_request().unwrap().unwrap();
+            assert_eq!(&decoded[4..], &data);
+            if let Ok(text) = std::str::from_utf8(&decoded[4..]) {
+                let _ = json::parse(text);
+            }
+        }
+        writer.write_all(&[0xde, 0, 0, 0]).unwrap();
+        assert_eq!(
+            conn.read_request().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        assert!(conn.input.len() <= 4);
+    }
 }

@@ -616,3 +616,48 @@ fn fresh_processes_compute_equal_ids_and_recover_a_killed_apps_socket() {
     assert_eq!(ids(&before), ids(&after));
     call(&mut other, "shutdown", J::obj());
 }
+
+#[test]
+fn selector_dimensions_are_conjunctive_and_store_indices_are_admitted() {
+    let app = spawn("selector-dimensions", "rows", 100);
+    let mut c = Client::open(&app.path).unwrap();
+    for query in [
+        J::obj()
+            .set("kind", "text")
+            .set("text", "Row 00002")
+            .set("within", 2),
+        J::obj()
+            .set("within", 2)
+            .set("text", "Row 00002")
+            .set("kind", "text"),
+    ] {
+        assert_eq!(
+            call(&mut c, "find", query).get("total").and_then(J::as_u32),
+            Some(1)
+        );
+    }
+    assert_eq!(
+        call(
+            &mut c,
+            "find",
+            J::obj().set("kind", "fill").set("text", "Row 00002")
+        )
+        .get("total")
+        .and_then(J::as_u32),
+        Some(0)
+    );
+    assert_eq!(
+        refusable(&mut c, "find", J::obj().set("within", 9999)).0,
+        -32602
+    );
+    assert_eq!(
+        refusable(
+            &mut c,
+            "find",
+            J::obj().set("role", "list-item").set("kind", "fill")
+        )
+        .0,
+        -32602
+    );
+    call(&mut c, "shutdown", J::obj());
+}

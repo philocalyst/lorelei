@@ -545,7 +545,16 @@ fn find<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
     let ty = p.get("ty").and_then(J::as_str);
     let text = p.get("text").and_then(J::as_str);
     let role = p.get("role").and_then(J::as_str);
-    let within = int(p, "within").map(|s| subtree(snap, s as usize));
+    let within = p
+        .get("within")
+        .map(|value| {
+            value
+                .as_usize()
+                .filter(|i| *i < snap.stores.len())
+                .map(|i| subtree(snap, i))
+                .ok_or_else(|| RpcError::params("store index out of range"))
+        })
+        .transpose()?;
     let focused = flag(p, "focused", false);
     let hovered = flag(p, "hovered", false);
     let pressed = flag(p, "pressed", false);
@@ -555,11 +564,23 @@ fn find<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
     // role searches the accessibility tree, which knows roles; everything else searches records
     let mut out: Vec<(usize, J)> = Vec::new();
     if let Some(role) = role {
+        if kind.is_some()
+            || ty.is_some()
+            || within.is_some()
+            || hovered
+            || pressed
+            || visible.is_some()
+            || handler.is_some()
+        {
+            return Err(RpcError::params(
+                "accessibility role cannot be combined with paint-only filters",
+            ));
+        }
         let Some(ax) = &snap.ax else {
             return Err(RpcError::new(INVALID_PARAMS, "no accessibility projection"));
         };
         for (i, n) in ax.nodes.iter().enumerate() {
-            if n.role != role || !n.name.contains(text.unwrap_or("")) {
+            if n.role != role || !n.name.contains(text.unwrap_or("")) || (focused && !n.focused) {
                 continue;
             }
             out.push((

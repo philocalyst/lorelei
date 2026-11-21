@@ -350,7 +350,10 @@ fn the_http_transport_accepts_the_same_client() {
         let mut golden = None;
         let mut fails = Vec::new();
         for t in &tools {
-            let args = tool_args(&t.name, &mut log, &mut golden);
+            let mut args = tool_args(&t.name, &mut log, &mut golden);
+            if matches!(t.name.as_ref(), "deps" | "set_field") {
+                args.insert("field".into(), json!("selected"));
+            }
             match client
                 .call_tool(CallToolRequestParams::new(t.name.to_string()).with_arguments(args))
                 .await
