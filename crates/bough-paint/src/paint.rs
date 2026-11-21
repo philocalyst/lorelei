@@ -428,7 +428,7 @@ impl<B: Expr<Out = Vec4i> + Words, R: Expr<Out = i32> + Words, S: Expr<Out = u32
     #[inline(always)]
     fn until(&self, cx: &Cx) -> u32 {
         let now = cx.u.w[U_TIME];
-        latest(latest(self.b.until(cx), self.r.until(cx), now), latest(self.slot.until(cx), self.op.until(cx), now), now)
+        latest(latest(self.b.until(cx), self.r.until(cx), now), latest(latest(self.slot.until(cx), self.dims.until(cx), now), self.op.until(cx), now), now)
     }
     #[inline(always)]
     fn changed_win(&self, old: &Cx, new: &Cx, mask: u64, clip: Vec4i) -> Vec4i {
@@ -443,6 +443,10 @@ impl<B: Expr<Out = Vec4i> + Words, R: Expr<Out = i32> + Words, S: Expr<Out = u32
         EMPTY
     }
 }
+
+/// Sample a retained premultiplied BGRA image from the scene's media pool.
+/// `slot` comes from [`crate::media::Pool::publish_bgra`] and `dims` packs width and height in two 16-bit fields.
+pub type Image<B, R, S, M, O> = Video<B, R, S, M, O>;
 
 /// What is beneath the rounded box `b`, blurred by `blur` (Q8 px, a standard deviation; 0: sharp) and passed
 /// through brightness, saturation and contrast (`f`: a `Vec4u` of Q8 factors, 256 each for none). Frosted

@@ -91,7 +91,20 @@ static metal::uint4 bd_px(const device uint* POOL, const device uint* LT, const 
     return p_bdrop(a, c, x, y, bl);
 }
 static inline uint fx_byte(const device uint* M, uint i) { return (M[metal::min(i >> 2u, MEDIALIM)] >> ((i & 3u) * 8u)) & 255u; }
+static metal::uint4 bgra_px(const device uint* M, Cmd c, int px, int py) {
+    uint at = c_slot(c) & 0x7FFFFFFFu;
+    int width = c_vw(c), height = c_vh(c);
+    uint words = uint(width * height);
+    if (at > MEDIALIM - 7u || words > MEDIALIM - at - 7u || M[at + 7u] != 0x41524742u || M[at] != uint(width) || M[at + 1u] != uint(height)) {
+        return metal::uint4(0u);
+    }
+    const device uint* pixels = M + at + 8u;
+    metal::int2 t = vd_pos(c, px, py);
+    uint x0 = vd_ix(t.x, 0, width), x1 = vd_ix(t.x, 1, width), y0 = vd_ix(t.y, 0, height), y1 = vd_ix(t.y, 1, height);
+    return bd_bil(pixels[y0 * uint(width) + x0], pixels[y0 * uint(width) + x1], pixels[y1 * uint(width) + x0], pixels[y1 * uint(width) + x1], uint(t.x & 255), uint(t.y & 255));
+}
 static metal::uint4 vd_px(const device uint* POOL, const device uint* LT, const device uint* M, Cmd c, int px, int py) {
+    if (c_slot(c) >= 0x80000000u) { return bgra_px(M, c, px, py); }
     uint at = metal::min(c_slot(c), MEDIALIM - 7u);
     uint yoff = M[at + 2u], coff = M[at + 3u], ys = M[at + 4u], cs = M[at + 5u];
     int vw = c_vw(c), vh = c_vh(c);

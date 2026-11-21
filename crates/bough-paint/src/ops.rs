@@ -603,8 +603,9 @@ pub mod ops {
     pub fn mk_video(b: Vec4i, r0: i32, slot: u32, dims: u32, op: u32, clip: Vec4i) -> Cmd {
         let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
         let r = radius_in(b, r0);
-        let vw = clamp(dims & 65535u32, 2u32, 2047u32) as i32;
-        let vh = clamp(dims >> 16u32, 2u32, 2047u32) as i32;
+        let smallest = select(2u32, 1u32, slot >= 0x80000000u32);
+        let vw = clamp(dims & 65535u32, smallest, 2047u32) as i32;
+        let vh = clamp(dims >> 16u32, smallest, 2047u32) as i32;
         let kx = min((vw << 20u32) / max(b.z() - b.x(), 1i32), 8388607i32);
         let ky = min((vh << 20u32) / max(b.w() - b.y(), 1i32), 8388607i32);
         mk(K_VIDEO, shift_of(r), win, core_of(b, max(r, 128i32) + 136i32, win), b, vec4i(r, 0i32, kx, ky), slot, vec4u(min(op, ONE), vw as u32, vh as u32, 0u32), splat(0u32))

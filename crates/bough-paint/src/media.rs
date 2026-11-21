@@ -17,6 +17,8 @@ use bough_kernel::Cmd;
 use wgsl_rs::std::Vec4u;
 
 pub const HDR: usize = 8;
+const BGRA_BIT: u32 = 1 << 31;
+const BGRA_MAGIC: u32 = u32::from_le_bytes(*b"BGRA");
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum State {
@@ -65,10 +67,19 @@ impl Pool {
     pub fn lease(&mut self, w: u32, h: u32) -> Option<Lease> {
         assert!((2..=2047).contains(&w) && (2..=2047).contains(&h), "a video plane of {w} x {h}");
         let need = frame_words(w, h);
+        let slot = self.allocate(need)?;
+        let at = self.slots[slot].at;
+        let (ys, cs) = (w.next_multiple_of(4), (w.div_ceil(2) * 2).next_multiple_of(4));
+        let yoff = (at + HDR) as u32 * 4;
+        let hdr = [w, h, yoff, yoff + ys * h, ys, cs, 0, 0];
+        self.arena_mut()[at..at + HDR].copy_from_slice(&hdr);
+        Some(Lease { slot, at: at as u32, w, h })
+    }
+    fn allocate(&mut self, need: usize) -> Option<usize> {
         let slot = match self.slots.iter().position(|s| s.state == State::Free && s.words == need) {
             Some(i) => i,
             None => {
-                if self.used + need > self.arena.words().len() {
+                if self.used.checked_add(need)? > self.arena.words().len().min(BGRA_BIT as usize) {
                     return None;
                 }
                 self.slots.push(Slot { at: self.used, words: need, state: State::Free });
@@ -77,13 +88,29 @@ impl Pool {
             }
         };
         self.slots[slot].state = State::Leased;
-        let at = self.slots[slot].at;
-        let (ys, cs) = (w.next_multiple_of(4), (w.div_ceil(2) * 2).next_multiple_of(4));
-        let yoff = (at + HDR) as u32 * 4;
-        let hdr = [w, h, yoff, yoff + ys * h, ys, cs, 0, 0];
-        self.arena_mut()[at..at + HDR].copy_from_slice(&hdr);
-        Some(Lease { slot, at: at as u32, w, h })
+        Some(slot)
     }
+    /// Publish device-ready premultiplied BGRA8 pixels. A rejected publication leaves `previous` live.
+    pub fn publish_bgra(&mut self, width: u32, height: u32, pixels: &[u32], sequence: u32, previous: Option<u32>) -> Option<u32> {
+        if !(1..=2047).contains(&width) || !(1..=2047).contains(&height) || pixels.len() != (width * height) as usize {
+            return None;
+        }
+        if pixels.iter().any(|&p| {
+            let a = p >> 24;
+            (p & 255) > a || ((p >> 8) & 255) > a || ((p >> 16) & 255) > a
+        }) {
+            return None;
+        }
+        let slot = self.allocate(HDR + pixels.len())?;
+        let at = self.slots[slot].at;
+        let m = self.arena_mut();
+        m[at..at + HDR].copy_from_slice(&[width, height, 0, 0, 0, 0, sequence, BGRA_MAGIC]);
+        m[at + HDR..][..pixels.len()].copy_from_slice(pixels);
+        self.slots[slot].state = State::Shown;
+        self.retire(previous);
+        Some(at as u32 | BGRA_BIT)
+    }
+
     fn arena_mut(&mut self) -> &mut [u32] {
         // SAFETY: the arena's words are initialised and this pool owns them; `&mut self` is exclusive.
         unsafe { std::slice::from_raw_parts_mut(self.arena.ptr(), self.arena.words().len()) }
@@ -103,12 +130,16 @@ impl Pool {
     pub fn publish(&mut self, l: Lease, seq: u32, prev: Option<u32>) -> u32 {
         self.arena_mut()[l.at as usize + 6] = seq;
         self.slots[l.slot].state = State::Shown;
-        if let Some(p) = prev {
-            if let Some(s) = self.slots.iter_mut().find(|s| s.at == p as usize && s.state == State::Shown) {
+        self.retire(prev);
+        l.at
+    }
+    fn retire(&mut self, previous: Option<u32>) {
+        if let Some(handle) = previous {
+            let at = (handle & !BGRA_BIT) as usize;
+            if let Some(s) = self.slots.iter_mut().find(|s| s.at == at && s.state == State::Shown) {
                 s.state = State::Retired;
             }
         }
-        l.at
     }
     /// Call after a frame has been drawn (on every executor that reads this pool): frames retired before
     /// it are no longer read by anything and become leasable.
@@ -133,6 +164,9 @@ fn byte(m: &[u32], i: u32) -> u32 {
 /// Every index is clamped to the pool, so a stale or forged slot word reads pool words, never beyond.
 #[inline(always)]
 pub fn sample(m: &[u32], c: Cmd, px: i32, py: i32) -> Vec4u {
+    if c.par.z & BGRA_BIT != 0 {
+        return sample_bgra(m, c, px, py);
+    }
     let at = (c.par.z as usize).min(m.len() - HDR);
     let (yoff, coff, ys, cs) = (m[at + 2], m[at + 3], m[at + 4], m[at + 5]);
     let (vw, vh) = (c.pm.y as i32, c.pm.z as i32);
@@ -147,6 +181,26 @@ pub fn sample(m: &[u32], c: Cmd, px: i32, py: i32) -> Vec4u {
     let cb = x::vd_bil(ca(u0, v0, 0), ca(u1, v0, 0), ca(u0, v1, 0), ca(u1, v1, 0), ux, uy);
     let cr = x::vd_bil(ca(u0, v0, 1), ca(u1, v0, 1), ca(u0, v1, 1), ca(u1, v1, 1), ux, uy);
     x::vd_rgb(y, cb, cr)
+}
+
+fn sample_bgra(m: &[u32], c: Cmd, px: i32, py: i32) -> Vec4u {
+    let clear = Vec4u { x: 0, y: 0, z: 0, w: 0 };
+    let at = (c.par.z & !BGRA_BIT) as usize;
+    let Some(header) = m.get(at..at + HDR) else { return clear };
+    let (width, height) = (c.pm.y, c.pm.z);
+    if header[7] != BGRA_MAGIC || header[0] != width || header[1] != height {
+        return clear;
+    }
+    let Some(pixels) = m.get(at + HDR..at + HDR + (width * height) as usize) else { return clear };
+    let t = x::vd_pos(c, px, py);
+    let (x0, x1) = (x::vd_ix(t.x, 0, width as i32), x::vd_ix(t.x, 1, width as i32));
+    let (y0, y1) = (x::vd_ix(t.y, 0, height as i32), x::vd_ix(t.y, 1, height as i32));
+    let pixel = |x, y| pixels[(y * width + x) as usize];
+    let mut colour = x::bd_bil(pixel(x0, y0), pixel(x1, y0), pixel(x0, y1), pixel(x1, y1), (t.x & 255) as u32, (t.y & 255) as u32);
+    if cfg!(feature = "mutant_bgra_channels") {
+        std::mem::swap(&mut colour.x, &mut colour.z);
+    }
+    colour
 }
 
 /// A deterministic frame source: moving colour bars and a bouncing box, a function of (seed, sequence).

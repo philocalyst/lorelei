@@ -1510,3 +1510,63 @@ fn a_rigid_world_pans_with_no_record_or_list_rewrites() {
     }
     eprintln!("world scroll: {pans} pans visited zero records, 7 exact CPU and Metal frames, 2 uploads across 2 geometry epochs");
 }
+
+#[test]
+fn retained_bgra_publication_preserves_alpha_channels_and_slot_bounds() {
+    let (fw, fh, stride) = (19, 17, 22usize);
+    let words = stride * fh as usize;
+    let pool = Pool::new(1);
+    let make = || {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        let col = scene.column::<Image<Lane, Ki<0>, Rec, Rec, K<32768>>>(1);
+        scene.push(col, [q(4.0), q(4.0), q(6.0), q(6.0)], Image { b: Lane, r: Ki, slot: Rec(u32::MAX), dims: Rec(2 | 2 << 16), op: K });
+        (scene, col)
+    };
+    let sequence = [[0xffd1_2a18, 0x8014_6749, 0x400f_1401, 0x0000_0000], [0x803d_5a66, 0xff04_901c, 0x3d24_0403, 0xffba_3714], [0; 4]];
+    for age in 1..=4 {
+        let (mut cpu, cc) = make();
+        let (mut metal, cm) = make();
+        metal.route_off = true;
+        // SAFETY: metal outlives the GPU and pool writes occur between synchronous frames.
+        let mut gpu = unsafe { bough_paint::metal::Gpu::new(&metal, words, 16) }.expect("headless Metal");
+        let mut ring = vec![vec![0; words]; age];
+        let mut expected = vec![0; words];
+        let mut tiles = Vec::new();
+        let mut era = 0;
+        let mut prev = None;
+        let u = U::default();
+        for step in 0..12 {
+            let pixels = sequence[step % sequence.len()];
+            let handle = if step % 3 == 2 { u32::MAX } else { cpu.media.publish_bgra(2, 2, &pixels, step as u32, prev).unwrap() };
+            let handle_gpu = if step % 3 == 2 { u32::MAX } else { metal.media.publish_bgra(2, 2, &pixels, step as u32, prev).unwrap() };
+            assert_eq!(handle, handle_gpu);
+            assert_eq!(cpu.media.publish_bgra(2, 2, &[0x0000_00ff; 4], 0, prev), None);
+            if handle != u32::MAX {
+                prev = Some(handle);
+            }
+            let image = Image { b: Lane, r: Ki, slot: Rec(handle), dims: Rec(2 | 2 << 16), op: K };
+            let rect = [q(4.0), q(4.0), q(6.0), q(6.0)];
+            cpu.set(cc, 0, rect, image);
+            metal.set(cm, 0, rect, image);
+            expected.fill(0);
+            expected[stride * 4 + 4..][..2].copy_from_slice(&pixels[..2]);
+            expected[stride * 5 + 4..][..2].copy_from_slice(&pixels[2..]);
+            let retained = &mut ring[step % age];
+            let fs = cpu.frame(&u, retained, stride, &pool, 0);
+            assert!(step == 0 || !fs.rebinned);
+            assert_eq!(diff(retained, &expected), 0, "CPU BGRA age {age}, step {step}");
+            metal.update(&u);
+            metal.damage.tiles(&mut tiles);
+            metal.damage.clear();
+            let draw = (step + 1) % age == 0;
+            let (_, next) = gpu.resident(&mut metal, &u, &tiles, draw.then_some(era), stride);
+            if draw {
+                era = next;
+                assert_eq!(diff(gpu.out(words), &expected), 0, "Metal BGRA age {age}, step {step}");
+            }
+            cpu.media.reclaim();
+            metal.media.reclaim();
+        }
+    }
+    eprintln!("BGRA publication: 48 CPU frames and 25 Metal draws at ages 1..4 match independent bytes");
+}
