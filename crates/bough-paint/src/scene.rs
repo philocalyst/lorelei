@@ -873,6 +873,8 @@ pub struct Scene {
     /// already has), handles by key, and the tables allocated but not yet filled.
     /// Give memoisable layers their tables (on by default; off: every such layer takes its closed form).
     pub memoise: bool,
+    /// Admit complete shadow patches when mounting or rewriting a record.
+    pub memoise_coverage: bool,
     tab_base: usize,
     /// The palette tables' first word in the arena (they end where the corner tables begin).
     pal_base: usize,
@@ -938,6 +940,7 @@ impl Scene {
             clocks: Vec::new(),
             block: U::default(),
             memoise: std::env::var("BOUGH_NO_TABS").is_err(),
+            memoise_coverage: true,
             tab_base: arena_words + PAL_WORDS,
             tab_used: 0,
             tab_map: Default::default(),
@@ -1131,7 +1134,9 @@ impl Scene {
                 (words[tb + j.base as usize], words[tb + j.base as usize + 1]) = (u32::MAX, u32::MAX);
             }
         }
-        p.memo_coverage(&Cx::at(&zero, rect), &mut |cmd| self.shadow_patch(cmd));
+        if self.memoise_coverage {
+            p.memo_coverage(&Cx::at(&zero, rect), &mut |cmd| self.shadow_patch(cmd));
+        }
         p
     }
     fn shadow_patch(&mut self, cmd: Cmd) -> Option<u32> {
