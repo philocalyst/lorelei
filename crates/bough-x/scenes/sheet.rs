@@ -86,7 +86,13 @@ impl Sheet {
         let mut u = U::default();
         u.set::<Hover>(NO_HOVER);
         for c in 0..COLS {
-            u.set_at::<Sum>(c, items.iter().map(|row| cents(row[c])).sum());
+            // The fixture stores totals modulo one block word. Match the release
+            // sum in debug when a large sheet exceeds the signed range.
+            #[cfg(debug_assertions)]
+            let sum = items.iter().map(|row| cents(row[c])).fold(0i32, i32::wrapping_add);
+            #[cfg(not(debug_assertions))]
+            let sum = items.iter().map(|row| cents(row[c])).sum();
+            u.set_at::<Sum>(c, sum);
         }
         Sheet { u, rows: Rel::new(items) }
     }
@@ -111,7 +117,7 @@ impl Sheet {
         self.total(c, cents(v) - cents(old));
     }
     fn total(&mut self, c: usize, d: i32) {
-        let s = self.u.at::<Sum>(c) + d;
+        let s = self.u.at::<Sum>(c).wrapping_add(d);
         self.u.set_at::<Sum>(c, s);
     }
     /// Select a cell at time `now`: the outline glides there from wherever it is.

@@ -159,6 +159,19 @@ mod sheet_el;
 
 #[test]
 fn sheet_el_retained_ledger() {
+    if cfg!(debug_assertions) {
+        std::thread::Builder::new()
+            .stack_size(32 << 20)
+            .spawn(sheet_el_retained_ledger_body)
+            .unwrap()
+            .join()
+            .unwrap();
+    } else {
+        sheet_el_retained_ledger_body();
+    }
+}
+
+fn sheet_el_retained_ledger_body() {
     assert!(!core::mem::needs_drop::<sheet_el::Sheet>());
     let app = bough_x::el::App::<sheet_el::Sheet, Soft>::new(
         *sheet_el::Sheet::with_rows(10_000),

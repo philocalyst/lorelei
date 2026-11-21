@@ -14,6 +14,7 @@ bough-glyph = { path = "../../crates/bough-glyph" }
 bough-host = { path = "../../crates/bough-host" }
 
 [features]
+inspect-metadata = ["bough-span/inspect-metadata"]
 mutant_straddle = ["bough-span/mutant_straddle"]
 mutant_age = ["bough-host/mutant_age"]
 mutant_superseded = ["bough-host/mutant_superseded"]
