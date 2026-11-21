@@ -1,0 +1,28 @@
+[package]
+name = "bough-inspect"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The inspector, agent/test socket and schema over the typed core (bough-x) reflection: a versioned serialisable tree with source locations, typed operands and their staged expressions, layout, damage, focus/hover/press, accessibility, counters; validated mutation; record and replay; pixel diff; typed selectors for tests; an element-layer overlay"
+
+[dependencies]
+libc = "0.2"
+bough-x = { path = "../bough-x", features = ["inspect-metadata"] }
+bough-expr = { path = "../bough-expr" }
+bough-ax = { path = "../bough-ax" }
+
+[features]
+mutant-inline-reply = []
+# The negative control of G1: the schema writer drops a field the golden holds.
+mutant_schema = []
+# The negative control of G2: a node is reported without its source location.
+mutant_drop_site = []
+# The negative control of G4: replay skips every fourth command.
+mutant_replay = []
+# The negative control of G5: an invalid mutation is accepted.
+mutant_accept = []
+# The negative control of G7: an idle refresh rebuilds the snapshot instead of reusing it.
+mutant_inspector_cache = []
+# The negative control of G3: a PNG is written with one pixel changed.
+mutant_png = []

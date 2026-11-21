@@ -52,25 +52,21 @@ impl Tiles {
     /// Replace column `col`'s entry: `until == 0` means none of its records is in motion.
     #[inline]
     pub fn set_sweep(&mut self, col: u32, space: Space, (until, rect): (u32, Rect)) {
-        match self.sweeps.iter().position(|s| s.col == col) {
-            Some(i) if until == 0 => {
+        if until == 0 {
+            if let Some(i) = self.sweeps.iter().position(|s| s.col == col) {
                 self.sweeps.swap_remove(i);
             }
-            Some(i) => {
-                self.sweeps[i] = Sweep {
-                    col,
-                    until,
-                    rect,
-                    space,
-                }
-            }
-            None if until != 0 => self.sweeps.push(Sweep {
+        } else if let Some(sweep) = self.sweeps.iter_mut().find(|s| s.col == col) {
+            sweep.until = until;
+            sweep.rect = rect;
+            sweep.space = space;
+        } else {
+            self.sweeps.push(Sweep {
                 col,
                 until,
                 rect,
                 space,
-            }),
-            None => {}
+            });
         }
     }
     /// A frame at time `now` under block `u`: damage where records in motion may be. The frame in which a
@@ -140,20 +136,62 @@ impl Tiles {
             (y0 >> TILE_SHIFT) as usize,
             ((y1 - 1) >> TILE_SHIFT) as usize,
         );
-        self.lo = self.lo.min(c);
-        self.hi = self.hi.max(d + 1);
+        if self.stride == 1 {
+            if (b >= 64) | (d >= self.bits.len()) {
+                invalid_damage();
+            }
+            self.lo = self.lo.min(c);
+            self.hi = self.hi.max(d + 1);
+            let mask = (!0u64 << (a & 63)) & (!0u64 >> (63 - (b & 63)));
+            // SAFETY: clipping a nonempty rect proves c <= d and the check above proves
+            // d < bits.len(). A stride of one places every affected row in this slice.
+            let rows = unsafe { self.bits.get_unchecked_mut(c..d + 1) };
+            for word in rows {
+                *word |= mask;
+            }
+            return;
+        }
+        if self.stride == 2 {
+            let end = 2 * (d + 1);
+            if (b >= 128) | (end > self.bits.len()) {
+                invalid_damage();
+            }
+            self.lo = self.lo.min(c);
+            self.hi = self.hi.max(d + 1);
+            let first = !0u64 << (a & 63);
+            let last = !0u64 >> (63 - (b & 63));
+            let masks = if a >= 64 {
+                [0, first & last]
+            } else if b < 64 {
+                [first & last, 0]
+            } else {
+                [first, last]
+            };
+            // SAFETY: c <= d after clipping, the row stride is two, and end was checked
+            // against the current bitmap. The tile coordinates come from nonnegative i32s.
+            let rows = unsafe { self.bits.get_unchecked_mut(2 * c..end) };
+            for row in rows.as_chunks_mut::<2>().0 {
+                row[0] |= masks[0];
+                row[1] |= masks[1];
+            }
+            return;
+        }
+        self.mark_wide(a, b, c, d);
+    }
+
+    #[inline(never)]
+    fn mark_wide(&mut self, a: usize, b: usize, c: usize, d: usize) {
         let (wa, wb) = (a >> 6, b >> 6);
-        let (ma, mb) = (!0u64 << (a & 63), !0u64 >> (63 - (b & 63)));
         // Every field of `Tiles` is public (and so is `World::tiles`): the rect was cut to `w` x `h`, but
         // nothing ties `w`, `h`, `stride` and `bits` together, so the bound is checked against the bitmap
         // itself (soundness review S02; it was a `debug_assert!`). One compare per mark.
-        let end = (d + 1)
-            .checked_mul(self.stride)
-            .expect("tile damage outside its bitmap");
-        assert!(
-            wb < self.stride && end <= self.bits.len(),
-            "tile damage outside its bitmap"
-        );
+        let (end, overflow) = (d + 1).overflowing_mul(self.stride);
+        if overflow | (wb >= self.stride) | (end > self.bits.len()) {
+            invalid_damage();
+        }
+        self.lo = self.lo.min(c);
+        self.hi = self.hi.max(d + 1);
+        let (ma, mb) = (!0u64 << (a & 63), !0u64 >> (63 - (b & 63)));
         // SAFETY: checked just above: rows `c..=d` of `stride` words end at `end <= bits.len()`, and the
         // words written in a row are `wa..=wb < stride`. `p` advances at most to `end`, one past the last row.
         unsafe {
@@ -745,6 +783,33 @@ impl RawCol {
         };
         mask & (1 << (rec & 63)) != 0
     }
+    /// Resolve a handler's record and capture lanes after one bounds and initialization check.
+    #[inline]
+    pub(crate) fn handler_data(&self, rec: u32, kind: u32) -> Option<(Hov, *const u8, *const u8)> {
+        let handler = self.hover?;
+        if handler.kinds & kind == 0 || rec >= self.nrec {
+            return None;
+        }
+        let layout = self.desc;
+        // SAFETY: `rec < nrec <= npages * 64`. The page is allocated and its mask is always
+        // initialized. The record lane's layout and offset belong to this column's archetype.
+        let record = unsafe {
+            let page = self.pages.add((rec as usize >> 6) * layout.page.size());
+            let index = rec as usize & 63;
+            if page.add(layout.init_off).cast::<u64>().read() & (1 << index) == 0 {
+                return None;
+            }
+            page.add(layout.rec_off + index * layout.rec_size)
+        };
+        let captures = if handler.caps == 0 {
+            core::ptr::without_provenance(handler.caps_align as usize)
+        } else {
+            // SAFETY: this column allocates one capture per record-capacity slot for this handler.
+            unsafe { self.caps.add(rec as usize * handler.caps as usize) }
+        };
+        Some((handler, captures, record))
+    }
+
     /// The constants of record `rec`, untyped (for a handler that knows the type).
     pub fn rec_ptr(&self, rec: u32) -> *const u8 {
         assert!(rec < self.npages * 64);
@@ -862,6 +927,24 @@ impl Site {
             (*pg).initialized & (1 << ((self.base + slot) as usize & 63)) != 0
         }
     }
+    /// Return the record address only if its initialization bit is set.
+    ///
+    /// # Safety
+    /// As `set_rect`, and `A` is the archetype of the site's column.
+    #[inline(always)]
+    pub(crate) unsafe fn initialized_record<A>(&self, slot: u32) -> Option<*mut A> {
+        let index = (self.base + slot) as usize & 63;
+        // SAFETY: the caller supplies the current page and an in-bounds slot of A. Use one raw
+        // page address for the mask and the record. The mask is initialized even if the record is absent.
+        unsafe {
+            let page = self.page.cast::<Page<A>>().add((slot >> 6) as usize);
+            if (*page).initialized & (1 << index) == 0 {
+                return None;
+            }
+            Some((&raw mut (*page).rec).cast::<A>().add(index))
+        }
+    }
+
     /// The record at `slot`.
     ///
     /// SAFETY: as `set_rect`, and `A` is the archetype of the site's column.
@@ -873,6 +956,12 @@ impl Site {
                 .add((self.base + slot) as usize & 63)
         }
     }
+}
+
+#[cold]
+#[inline(never)]
+fn invalid_damage() -> ! {
+    panic!("tile damage outside its bitmap")
 }
 
 /// Which store, from the root: the child index at each level.
@@ -892,6 +981,96 @@ pub enum Pass {
 pub type RowSrc = (&'static core::panic::Location<'static>, u32, u32);
 
 ///
+/// Owns one store allocation. Moving the handle leaves the allocation and its raw provenance intact.
+pub struct StoreOwner(core::ptr::NonNull<Store>);
+
+impl StoreOwner {
+    pub(crate) fn new(store: Store) -> Self {
+        Self(core::ptr::NonNull::from(Box::leak(Box::new(store))))
+    }
+
+    /// The owning pointer itself. Borrowing the store for a view pass does not replace it.
+    pub(crate) fn as_ptr(&self) -> *const Store {
+        self.0.as_ptr()
+    }
+}
+
+impl core::ops::Deref for StoreOwner {
+    type Target = Store;
+
+    #[inline(always)]
+    fn deref(&self) -> &Store {
+        // SAFETY: the allocation remains owned until this handle is dropped. Access borrows the owner.
+        unsafe { self.0.as_ref() }
+    }
+}
+
+impl core::ops::DerefMut for StoreOwner {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Store {
+        // SAFETY: a unique borrow of the owner allows a unique reborrow of its allocation. The world
+        // suppresses table reads during view passes, so its owning pointers are dormant during this borrow.
+        unsafe { self.0.as_mut() }
+    }
+}
+
+impl Drop for StoreOwner {
+    fn drop(&mut self) {
+        // SAFETY: this handle alone owns the allocation it created in `new`.
+        drop(unsafe { Box::from_raw(self.0.as_ptr()) });
+    }
+}
+
+/// A store's children in paint discovery order. Each child owns an independent allocation.
+#[derive(Default)]
+pub struct StoreChildren(Vec<StoreOwner>);
+
+impl StoreChildren {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub fn get(&self, index: usize) -> Option<&Store> {
+        self.0.get(index).map(|owner| &**owner)
+    }
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut Store> {
+        self.0.get_mut(index).map(|owner| &mut **owner)
+    }
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &Store> + DoubleEndedIterator {
+        self.into_iter()
+    }
+    pub(crate) fn push(&mut self, store: Store) {
+        self.0.push(StoreOwner::new(store));
+    }
+    pub(crate) fn owner(&self, index: usize) -> &StoreOwner {
+        &self.0[index]
+    }
+}
+
+impl<'a> IntoIterator for &'a StoreChildren {
+    type Item = &'a Store;
+    type IntoIter =
+        core::iter::Map<core::slice::Iter<'a, StoreOwner>, fn(&'a StoreOwner) -> &'a Store>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter().map(|owner| &**owner)
+    }
+}
+
+impl core::ops::Index<usize> for StoreChildren {
+    type Output = Store;
+    fn index(&self, index: usize) -> &Store {
+        &self.0[index]
+    }
+}
+
+impl core::ops::IndexMut<usize> for StoreChildren {
+    fn index_mut(&mut self, index: usize) -> &mut Store {
+        &mut self.0[index]
+    }
+}
+
 /// A store is made and changed only by the world that owns it (soundness review S01): its sites and column
 /// headers hold raw pointers that its safe passes dereference, so outside code may read a store
 /// ([`crate::world::World::root`]) but never own one or reach it mutably.
@@ -907,12 +1086,14 @@ pub struct Store {
     pub(crate) world: Option<crate::world::WorldId>,
     pub cols: Vec<RawCol>,
     pub sites: Vec<Site>,
-    pub subs: Vec<Store>,
+    pub(crate) has_holes: bool,
+    pub subs: StoreChildren,
     /// Paint order: columns and child stores in the order the view first described them.
     pub order: Vec<Pass>,
     /// Row slots: 1 for a fixed shape, a power of two of at least 64 for a list's window.
     pub cap: u32,
     pub row_live: Vec<u64>,
+    pub(crate) initialized_window: Option<(u32, u32)>,
     pub space: Space,
     disc: Vec<(u32, Rect)>,
     /// A list's materialised window of rows, `lo..hi`; row `r` is at slot `(r + bias) mod cap`
@@ -1001,6 +1182,12 @@ impl Store {
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
             .expect("structure revision exhausted");
     }
+    pub(crate) fn set_space(&mut self, space: Space) {
+        if self.space.reads() != space.reads() {
+            self.bump_structure();
+        }
+        self.space = space;
+    }
     pub(crate) fn new(cap: u32, space: Space) -> Store {
         assert!(cap == 1 || (cap >= 64 && cap.is_power_of_two()));
         assert!(
@@ -1009,15 +1196,17 @@ impl Store {
         );
         Store {
             column_count: Default::default(),
-            structure: Default::default(),
+            structure: std::sync::Arc::new(core::sync::atomic::AtomicU64::new(1)),
             journal: None,
             world: None,
             cols: Vec::new(),
             sites: Vec::new(),
-            subs: Vec::new(),
+            has_holes: false,
+            subs: StoreChildren::default(),
             order: Vec::new(),
             cap,
             row_live: vec![0; (cap as usize / 64).max(1)],
+            initialized_window: None,
             space,
             disc: Vec::new(),
             lo: 0,
@@ -1071,6 +1260,7 @@ impl Store {
         arch: TypeId,
         hover: Option<Hov>,
     ) {
+        self.initialized_window = None;
         let seg = self.subs.len() as u32;
         let mut pick = None;
         for (j, c) in self.cols.iter().enumerate() {
@@ -1137,6 +1327,7 @@ impl Store {
     /// so the positions of a row and of its layout count alike.
     #[cold]
     pub(crate) fn hole(&mut self) {
+        self.has_holes = true;
         self.sites.push(Site {
             page: core::ptr::null_mut(),
             page_size: 0,
@@ -1294,7 +1485,7 @@ impl Store {
         n += (self.tmpl.capacity() + self.row0.capacity()) * size_of::<Rect>()
             + self.plan.capacity() * 4;
         n + self.subs.iter().map(|s| s.bytes_all()).sum::<usize>()
-            + (self.subs.capacity() - self.subs.len()) * size_of::<Store>()
+            + self.subs.0.capacity() * size_of::<StoreOwner>()
     }
     /// The block words read by some column of this store or of the stores under it.
     pub fn reads_all(&self) -> u64 {
@@ -1453,7 +1644,27 @@ pub fn changed_mask<A: Arch>(pg: &Page<A>, old: &U, new: &U) -> u64 {
     let span = initialized >> first;
     let len = span.trailing_ones() as usize;
     if len != span.count_ones() as usize {
-        return changed_sparse(pg, initialized, old, new);
+        // gapped: every slot is read only if its bit says it was initialized (checked, as before the span path)
+        let mut b = [0u8; 64];
+        for i in 0..64 {
+            if initialized & (1 << i) == 0 {
+                continue;
+            }
+            #[cfg(feature = "mutant_gap")]
+            if i == 0 {
+                continue;
+            }
+            b[i] = pg.record(i).changed(old, new) as u8;
+        }
+        if A::MOVES {
+            for i in 0..64 {
+                if initialized & (1 << i) == 0 {
+                    continue;
+                }
+                b[i] |= (pg.record(i).offset(old) != pg.record(i).offset(new)) as u8;
+            }
+        }
+        return pack(&b);
     }
 
     let cells = &pg.rec[first..first + len];

@@ -22,6 +22,8 @@ naga = { version = "29.0.4", features = ["wgsl-in", "msl-out"] }
 
 [dev-dependencies]
 bough-mem = { path = "../bough-mem" }
+# the media benchmark gives each video tile an audio clock (examples and tests only: the library has no audio)
+bough-audio = { path = "../bough-audio" }
 naga = { version = "29.0.4", features = ["wgsl-in", "msl-out"] }
 # the `#[wgsl]` macro's generated `__validate_wgsl` tests (naga validation of each module); tests only
 wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false, features = ["validation"] }
@@ -51,3 +53,21 @@ mutant_layer_weights = []
 mutant_settle = []
 # a rewritten record that did not move (a video showing a new frame) damages nothing
 mutant_video = []
+# a layer record's changed halo damages nothing (tests/fx.rs must fail)
+mutant_halo_damage = []
+# a moved window is not inserted in the bins of the tiles it entered (tests/fx.rs must fail; leaving a
+# stale entry behind instead cannot be seen: a record shades nothing outside its window)
+mutant_bins_stale = []
+# a broad change does not mark the layers for repair (tests/fx.rs must fail)
+mutant_broad_layers = []
+# the resident whole-frame jobs are reused after the bins or the layer table changed (tests/fx.rs must fail)
+mutant_full_stale = []
+# a repaired block in an even column counts as unchanged whatever it holds (tests/fx.rs must fail)
+mutant_prune = []
+# a pan visits the records near the new viewport only, not those near the old one (tests/fx.rs must fail)
+mutant_scroll_band = []
+# a change of a key word visits the records of its new value only (tests/fx.rs must fail)
+mutant_key_old = []
+mutant_cert = []
+mutant_slab_stale = []
+mutant_forced = []

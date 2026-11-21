@@ -1,0 +1,27 @@
+[package]
+name = "bough-dev"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The lorelei developer loop: watch, rebuild, reload or restart with state preserved, and serve the MCP endpoint. Models the CLI architecture of gpui-ce/cli at 6774184. See NOTICE and README"
+
+[dependencies]
+bough-inspect = { path = "../bough-inspect" }
+bough-mcp = { path = "../bough-mcp" }
+# The hot-patch demo is a real element-layer view (the binary below); the loop itself does not need it.
+bough-x = { path = "../bough-x" }
+libc = { version = "0.2", optional = true }
+
+[features]
+hot-view = ["dep:libc"]
+# Negative control of the hot-patch gate: the new dylib is installed but the view is not re-described.
+mutant_no_redescribe = ["hot-view"]
+
+[[bin]]
+name = "bough-dev"
+path = "src/main.rs"
+
+[[bin]]
+name = "hotdemo"
+path = "src/bin/hotdemo.rs"

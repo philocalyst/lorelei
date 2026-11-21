@@ -11,6 +11,7 @@ bough-expr = { path = "../bough-expr" }
 bough-glyph = { path = "../bough-glyph" }
 
 [features]
+inspect-metadata = ["bough-x/inspect-metadata"]
 # Mutants the pixel gates must fail with:
 # a glyph that straddles a damaged and an undamaged tile is blended into both
 mutant_straddle = []

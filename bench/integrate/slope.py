@@ -20,7 +20,11 @@ def instr(fw, scene, mode, render, n):
     env = dict(os.environ, ZGX_MODE=mode, RENDER=str(render), ZGX_FONT_FILE=FONT)
     env["FRAMES" if scene == "animate" else "TICKS"] = str(n)
     p = subprocess.run(["/usr/bin/time", "-l", BIN[(fw, scene)]], env=env, capture_output=True, text=True)
+    if p.returncode != 0:
+        sys.exit(f"slope: {BIN[(fw, scene)]} exited {p.returncode}: {p.stderr.strip()[-300:]}")
     m = re.search(r"(\d+)\s+instructions retired", p.stderr)
+    if not m:
+        sys.exit("slope: no 'instructions retired' line from /usr/bin/time -l")
     return int(m.group(1))
 
 def slope(fw, scene, mode, render, reps=3):

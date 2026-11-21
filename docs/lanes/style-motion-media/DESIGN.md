@@ -46,19 +46,23 @@ the scene, not the change.
    pyramid level (dirty blocks); then the output tiles. On the CPU `Scene::prepare` runs the stages; on
    Metal `Gpu::staged` encodes them as dispatches of two kernels (`k_seg`, `k_down`) in one command buffer.
    The schedule's cost is O(events x layers) in the first cut (a tile index would make it O(reached)).
-6. *A stored prefix is also a place to restart.* Inside its window a backdrop record flattens the
-   accumulator, so the stored prefix *is* the accumulator there. A tile wholly inside the window of a layer
-   record starts from that layer's stored tile instead of from the bottom of its list: everything above a
-   glass panel is repaired without shading anything beneath the panel. This is roadmap X14 (tile prefix
-   caching) arriving as a consequence, for the tiles a layer happens to cover.
+6. *A stored prefix is the place every job restarts* (slice 3; D1's first condition). A backdrop record
+   flattens the accumulator over the whole tiles of its halo, which are exactly the tiles it is listed in, so
+   its stored prefix *is* the accumulator on each of them. Every prefix job and every output tile therefore
+   starts at the topmost layer record of its range: a reader costs the records between it and the reader
+   beneath, and everything above a glass panel is repaired without shading anything beneath it. This is
+   roadmap X14 for every tile under any halo. The halo's tile set is visible state (a quantisation), so a
+   halo that changes damages the tiles it left and entered: once per tile crossed.
 7. *Idle pays nothing.* No event, no geometry change: no schedule, no stage, no tile.
 
 **Semantics chosen along the way** (each is in the specification, `Scene::spec`):
 
-* *Flatten.* Inside a backdrop record's window the accumulator is quantised to 8 bits before the record
-  composites (`x_flat`). That is what makes the prefix storable in the surface's own format and the restart
-  exact. It was first applied over the whole halo; that was wrong (quantisation one LSB outside the window
-  moved with the record and was not damaged; the gate caught it) and is now confined to the window.
+* *Flatten.* Over the whole tiles of a backdrop record's halo the accumulator is quantised to 8 bits
+  (`x_flat`) before the record composites. That is what makes the prefix storable in the surface's own
+  format and the restart exact on every tile. History: first applied over the halo with no damage for a
+  moving halo (wrong: the gate caught one-LSB differences); then confined to the window (exact, but restart
+  only on tiles inside a window, and depth multiplied cost); now over the halo's tiles with the halo's
+  changes damaged.
 * *Edges.* Reads beyond the frame clamp to the frame's edge at every level.
 * *Sampling outside the box.* A blur reads what is beneath beyond its own box (not a clamp at the box edge).
   That costs a halo, and buys a pyramid that does not depend on where the box is.
@@ -84,8 +88,7 @@ it unused.
 
 **Refused by the fast path, and what happens instead (the fallbacks).**
 
-* A tile not wholly inside a layer record's window recomputes its list from the bottom (or from a lower
-  layer that does hold it).
+* A tile with no layer record in its list is shaded from the bottom of its (cut) list, as before.
 * The GPU-resident frame (`Gpu::frame`: window pass and bins on the GPU) does not schedule layers: it
   panics on a scene with layer columns, and such scenes run `Gpu::staged` (the CPU schedules, the GPU
   executes). A resident schedule needs the event algebra on the GPU; not built.
@@ -187,3 +190,93 @@ Neither system's numbers for these effects were run here (the zgx checkout is sh
 drivers did not build in the measurement lane's run; zgui's effects benchmarks need its own harness): the
 comparisons above are of mechanisms, and the column on the right is this implementation measured against
 its own control, not against them.
+
+## 7. Audio (slice 2): a callback, a clock, and audio as the master of video
+
+Crate `bough-audio` (no dependencies; `bough-paint` does not depend on it, only its benchmark does). Card and
+report: `cards/2026-11-21-audio-seam-slice2*.md`.
+
+**The interface.** A stream has a `Spec` (rate, channels), a `Flow`, and one callback (`Render`, any
+`FnMut(&mut Block) + Send`). A `Block` is the interleaved samples for this call only (zeroed on entry), the
+stream position of its first frame, and the latency to the ear in frames. That is the whole playback
+surface. A decoder on another thread reaches the callback through `ring` (single producer, single consumer,
+samples as atomics: safe code; the producer leases slots the callback cannot see and commits them; the
+callback never waits, and what is missing is silence).
+
+**The clock.** The sink stamps a `Clock` after every block: frames delivered, the host time of the stamp,
+rate, latency, and the block's length. `Clock::audible_frame(host_ns)` is the delivered count less the
+latency, carried forward at the stream's rate by at most one block: a stream whose callback stopped coming
+is not playing, so its position holds. A sequence lock over atomics, sequentially consistent (the weaker
+orderings tore a stamp on arm64 under the gate).
+
+**A/V sync through the output-paced clock.** At each refresh the host has one instant: when the frame it is
+drawing will be shown. `motion::FrameClock::present(instant)` makes it the `Time` word; `sync::Pacer::at(clock,
+instant)` makes it "which video frame belongs to the sound heard at that instant". A changed index is a frame
+to publish (one record word; the video's window is damaged); an unchanged one is nothing: no record visited,
+no tile. The video never reads a wall clock, so a device 0.5 % fast drags the video with it, a stall holds the
+frame, and a seek is a change of the pacer's origin. Many videos are many clocks and many pacers; each costs a
+few dozen instructions per refresh and nothing in the raster unless its frame changed.
+
+**Sinks.** `NullSink` has no device and no thread: the test pumps it at host times of its choosing, which is
+what makes every gate deterministic (rate skew, jitter, stalls are scripted). `coreaudio::Output` (feature
+`coreaudio`, macOS) is the default output unit with the same callback and the same clock; output only, so no
+permission prompt; it was run here rendering silence.
+
+**What was taken from Boilerpipe** (`src/root.zig`, `src/Callback.zig`, `src/linux/jack.zig`), and what was not:
+
+| Boilerpipe | here |
+|---|---|
+| one callback started on the session; the buffer is acquired inside it and must not be cached across calls (`Connection.getBuffer`) | `Render` over a `Block` that borrows the samples for the call: the borrow checker enforces what Boilerpipe documents |
+| `Callback.init(pointer, function)`: a typed pointer and a function, to avoid globals | a closure: its captures are the typed state; `Send` is the thread contract |
+| `Flow { receives, sends }` from the port's side; one session-wide sample rate; a small fixed channel limit | `Flow` with the same words; one `Spec` per stream |
+| "boilerplate-less": default port, connect, start | `Output::start(spec, callback)`: one call to sound |
+| ports, port iteration, connections between other applications' ports, loopback and application capture | **not taken yet**: only the default output exists. `Flow::Sends` is declared so capture, loopback and application capture have their place; device enumeration is the next step |
+| JACK's process callback as the model of a low-latency backend | CoreAudio's render callback is the same shape |
+| (absent: the application keeps time) | the explicit `Clock`, the latency in every block, and the pacer: what a UI needs to put pictures on sound |
+
+## 8. The resident plan (slice 7): the damage is the dispatch, for layers too
+
+Until slice 7 a Metal frame with layers needed the whole schedule before it ran, so the CPU assumed every
+repair changes everything it can reach (`Scene::plan_eager`) and built jobs for it: at depth, hundreds of
+millions of frame-thread instructions for a plan that the CPU kernel's compare-on-write showed to be 99%
+unnecessary. The reformulation: the schedule is not data the CPU computes, it is a property of stamps the
+GPU writes while it works.
+
+* **Slots.** Every (layer, level, block) the layer's storage can hold has a slot; slots are ordered by
+  (rank, level). A layer's rank is above that of every layer beneath it whose level-0 tiles meet its own
+  (`Layers::ranks`, one sweep of a tile grid), so layers of one rank write disjoint tiles. The table depends
+  on the layers' storage and ranks only: not on the bins, not on where a layer sits inside its storage. A
+  moved layer rewrites its 32-word row; the slots are rebuilt only when storage is re-allocated or a move
+  breaks the rank order (checked against the layers listed on its own tiles).
+* **Stamps.** `CHG[slot]` holds the generation of the last frame in which a word of that block changed.
+  `FORCE[slot]` is the CPU's: blocks whose storage holds nothing yet (a fresh layer, pixels that entered a
+  moved window). Per tile: the least and the greatest key of this frame's events, the generation of its
+  last output damage, and the bins' floor. No stamp is ever cleared: a frame is a new generation. (The two
+  event keys are reset by the frame's last dispatch.)
+* **A frame** is the same command sequence whatever changed. Per rank: `k_rc0`, a thread per level-0 slot,
+  decides which prefix tiles are due (an event key beneath the record on that tile, unless an opaque cover
+  of the whole tile lies above every event; or forced), derives the job's range and starting prefix from
+  the tile's list (`Scene::seg`, in the kernel) and appends it; `k_segr` runs the jobs through an indirect
+  dispatch and compares before it writes. Then one dispatch per pyramid level, a thread per pixel of every
+  slot (`k_downr`): it returns at once unless a block beneath that its four taps touch is stamped. A write
+  at a level the record reads marks the tiles that read reaches: `min`/`max` of the record's key into the
+  tile keys (so the layers above find it in their own `k_rc0`) and the output generation where the record
+  shows. Last, `k_rcout` compacts the tiles whose output generation is after the one the surface last
+  showed and the tile program draws them.
+* **What the CPU uploads** is the damage: per event, its key into the tiles of its window; a generation for
+  its own damaged tiles; forced stamps; the lanes of the keys that changed (`Scene::take_lane_dirty`), the
+  lists of the tiles that changed (`Bins::take_changed`, into per-tile slabs), and moved table rows.
+* **Surface age** is a comparison: tiles stamped after generation g. Nothing is read back to schedule.
+
+What it costs: the dispatches are encoded every frame, seven per rank (2 for level 0, 5 levels), about
+2.5 K frame-thread instructions each in Metal's encoder, whatever they find. Ranks grow with how deep
+layers overlap, not with how many there are. A first version compacted every level and ran a separate
+reach pass (13 per rank); folding the test into the pyramid kernel's threads removed six. What would remove
+the multiplier is a GPU-decided rank (a wavefront over a dependency mask) or encoding the sequence once
+(Metal's indirect command buffers execute compute commands concurrently, so they cannot hold an ordered
+plan); neither is built.
+
+The CPU side of the same idea (slice 7): an event stops, per tile, at the first record above it whose opaque
+cover holds the event's window there (`Bins::cover_above`), and a repair keeps what changed as boxes of the
+words that differ and dilates them in pixels, not blocks (a block is a tile at every level, so block-grain
+dilation grew a change by a tile ring per level).

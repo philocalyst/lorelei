@@ -1,0 +1,39 @@
+[package]
+name = "asm-harness"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Instantiates the hot monomorphisations of the new core so cargo asm can show their bodies (bench/asm)"
+
+# Its own workspace: bench/ is not a member of the repository workspace.
+[workspace]
+
+[features]
+# The negative control: the control wrappers do real extra work (asm.py check).
+asm_mutant = []
+
+[dependencies]
+bough-guibench-x = { path = "../../../comparisons/bough-guibench-x" }
+bough-x = { path = "../../../crates/bough-x" }
+bough-expr = { path = "../../../crates/bough-expr" }
+bough-span = { path = "../../../crates/bough-span" }
+bough-paint = { path = "../../../crates/bough-paint" }
+bough-lay = { path = "../../../crates/bough-lay" }
+bough-kernel = { path = "../../../crates/bough-kernel" }
+bough-host = { path = "../../../crates/bough-host" }
+
+[[bin]]
+name = "asm-harness"
+path = "src/main.rs"
+
+[[bin]]
+name = "asm-mutant"
+path = "src/main.rs"
+required-features = ["asm_mutant"]
+
+[[bin]]
+name = "reflect"
+path = "src/bin/reflect.rs"
+
+[profile.release]
+debug = 1

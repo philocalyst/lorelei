@@ -105,6 +105,20 @@ impl Blocks {
             }
         }
     }
+    /// Empty, over the blocks of level `level` that `r` touches.
+    pub fn new(r: [i32; 4], level: u32) -> Blocks {
+        let mut b = Blocks::default();
+        b.over(r, level);
+        b
+    }
+    pub fn has(&self, bx: i32, by: i32) -> bool {
+        let (ix, iy) = (bx - self.x0, by - self.y0);
+        if ix < 0 || iy < 0 || ix >= self.w || iy >= self.h {
+            return false;
+        }
+        let i = (iy * self.w + ix) as usize;
+        self.bits[i / 64] >> (i % 64) & 1 != 0
+    }
     pub fn each(&self, mut f: impl FnMut(i32, i32)) {
         for (k, &wd) in self.bits.iter().enumerate() {
             let mut m = wd;
@@ -140,7 +154,7 @@ pub fn halo(c: Cmd) -> Vec4i {
     let r = rects(c)[0];
     Vec4 { x: r[0], y: r[1], z: r[2], w: r[3] }
 }
-fn cut(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
+pub fn cut(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
 fn arr(v: Vec4i) -> [i32; 4] {
@@ -161,6 +175,8 @@ pub struct Layer {
     pub lv: [Lvl; LEVELS],
     /// Its storage holds nothing yet (new, re-allocated, or the pool was repacked).
     pub fresh: bool,
+    /// Frame tiles of level 0 that an event beneath the record touched since the last schedule.
+    pub pending: Vec<u32>,
     /// The pixels of each level that entered its window since the last frame (at most four strips).
     entered: [Vec<[i32; 4]>; LEVELS],
 }
@@ -182,6 +198,9 @@ pub struct Plan {
     pub prefix_tiles: u32,
     pub blocks: u32,
     pub px: u64,
+    /// Everything: every layer whole (a broad change). `work` is then empty and stands for
+    /// `Layers::full_plan`: nothing was enumerated to say so.
+    pub full: bool,
 }
 
 /// The scene's layers and their pool.
@@ -194,15 +213,74 @@ pub struct Layers {
     /// Words in use, and words of the live layers (the rest is what moved layers left behind).
     pub used: usize,
     pub live: usize,
-    /// The CPU executor's storage.
-    pub pool: Vec<u32>,
+    /// The layers' storage: one reservation that never moves, so the Metal executor wraps it without a copy
+    /// and both executors repair the same words.
+    pub pool: PoolMem,
     /// Bumped when the table changed (the GPU re-uploads it).
     pub epoch: u64,
+    /// Bumped when some layer's storage changed (mount, new storage, repack): slots made from the storage
+    /// are stale.
+    pub alloc_epoch: u64,
+    /// Layers whose row of the table changed since `take_moved` (empty and `moved_all`: assume all).
+    moved: Vec<u32>,
+    moved_all: bool,
     dirty: [Blocks; LEVELS],
 }
 pub const NONE: u32 = u32::MAX;
 
+/// Words reserved for the layers' pool (address space: pages are touched only where a layer is stored).
+pub const POOL_WORDS: usize = 1 << 27;
+/// The pool's memory: nothing until a scene has a layer, then one page-aligned reservation.
+#[derive(Default)]
+pub struct PoolMem(Option<crate::scene::Arena>);
+impl PoolMem {
+    /// Make room for `words` (the reservation is made once; a scene that outgrows it is refused).
+    pub fn ensure(&mut self, words: usize) {
+        assert!(words <= POOL_WORDS, "the layers need {words} words, more than the pool's reservation of {POOL_WORDS}");
+        if self.0.is_none() && words > 0 {
+            self.0 = Some(crate::scene::Arena::new(POOL_WORDS));
+        }
+    }
+    pub fn words(&self) -> &[u32] {
+        self.0.as_ref().map_or(&[], |a| a.words())
+    }
+    pub fn words_mut(&mut self) -> &mut [u32] {
+        self.0.as_mut().map_or(&mut [], |a| a.words_mut())
+    }
+    pub fn arena(&self) -> Option<&crate::scene::Arena> {
+        self.0.as_ref()
+    }
+}
+
 impl Layers {
+    /// The layers whose table row changed since the last call (`None`: assume every one).
+    pub fn take_moved(&mut self) -> Option<Vec<u32>> {
+        let m = std::mem::take(&mut self.moved);
+        if std::mem::take(&mut self.moved_all) { None } else { Some(m) }
+    }
+    /// A stage order: a layer's rank is above the rank of every layer beneath it whose level 0 shares a
+    /// tile with its own, so layers of one rank touch disjoint tiles and can be repaired in one dispatch.
+    pub fn ranks(&self, tx: usize, ty: usize) -> Vec<u32> {
+        let mut grid = vec![0u32; tx * ty];
+        let mut out = Vec::with_capacity(self.list.len());
+        for l in &self.list {
+            let r = l.lv[0].r;
+            let (x0, y0, x1, y1) = ((r[0] >> 5).max(0) as usize, (r[1] >> 5).max(0) as usize, (((r[2] + 31) >> 5).max(0) as usize).min(tx), (((r[3] + 31) >> 5).max(0) as usize).min(ty));
+            let mut k = 0;
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    k = k.max(grid[y * tx + x]);
+                }
+            }
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    grid[y * tx + x] = k + 1;
+                }
+            }
+            out.push(k);
+        }
+        out
+    }
     pub fn any(&self) -> bool {
         !self.list.is_empty()
     }
@@ -218,6 +296,7 @@ impl Layers {
         self.of[z as usize] = self.list.len() as u32;
         self.list.push(Layer { z, fresh: true, ..Default::default() });
         self.epoch += 1;
+        self.alloc_epoch += 1;
     }
     /// Bring layer `lid` to its record's backdrop command under the current block: new level windows; the
     /// storage is kept when the windows still fit (a move), re-allocated otherwise.
@@ -239,6 +318,16 @@ impl Layers {
             return;
         }
         self.epoch += 1;
+        if self.moved.len() >= self.list.len() {
+            (self.moved_all, self.moved) = (true, Vec::new());
+        }
+        if !self.moved_all {
+            self.moved.push(lid);
+        }
+        if !fits {
+            self.alloc_epoch += 1;
+        }
+        let l = &mut self.list[lid as usize];
         if fits {
             for k in 0..LEVELS {
                 let (o, n) = (l.lv[k].r, lv[k].r);
@@ -291,26 +380,72 @@ impl Layers {
         }
         self.live = self.used;
         self.epoch += 1;
+        self.alloc_epoch += 1;
         true
     }
-    /// The table as the GPU reads it: per layer `ROW` words.
+    /// Every layer's whole repair, in paint order: what a broad change schedules, enumerated only by the
+    /// executor that needs the jobs (and cached there while the bins and the table stand).
+    pub fn full_plan(&self, tx: usize) -> Plan {
+        let mut plan = Plan::default();
+        for (lid, l) in self.list.iter().enumerate() {
+            if l.lv[0].empty() {
+                continue;
+            }
+            let mut w = Work { lid: lid as u32, ..Default::default() };
+            let r = l.lv[0].r;
+            for by in r[1] >> 5..(r[3] + 31) >> 5 {
+                for bx in r[0] >> 5..(r[2] + 31) >> 5 {
+                    w.prefix.push(by as u32 * tx as u32 + bx as u32);
+                }
+            }
+            plan.prefix_tiles += w.prefix.len() as u32;
+            for k in 1..=l.top {
+                let (r, bs) = (l.lv[k as usize].r, bshift(k));
+                if r[0] >= r[2] {
+                    continue;
+                }
+                let m = (1 << bs) - 1;
+                let mut v = Vec::new();
+                for by in r[1] >> bs..(r[3] + m) >> bs {
+                    for bx in r[0] >> bs..(r[2] + m) >> bs {
+                        v.push((bx, by));
+                    }
+                }
+                plan.blocks += v.len() as u32;
+                plan.px += ((r[2] - r[0]) * (r[3] - r[1])) as u64;
+                w.blocks.push((k, v));
+            }
+            plan.work.push(w);
+        }
+        plan
+    }
+    /// The table as the GPU reads it: per layer `ROW` words (key, levels read, per level its window, storage
+    /// size and first word, then the record's ink window).
     pub fn table(&self, out: &mut Vec<u32>) {
         out.clear();
-        for l in &self.list {
-            out.extend([l.z, l.lvl, l.frac, l.top]);
-            for v in &l.lv {
-                let p = |a: i32, b: i32| (a as u16 as u32) | (b as u16 as u32) << 16;
-                out.extend([p(v.r[0], v.r[1]), p(v.r[2], v.r[3]), v.cw | v.ch << 16, v.base]);
-            }
-            out.resize(out.len().div_ceil(ROW) * ROW, 0);
+        let mut row = Vec::new();
+        for lid in 0..self.list.len() as u32 {
+            self.row(lid, &mut row);
+            out.extend_from_slice(&row);
         }
     }
+    /// One layer's row of the table.
+    pub fn row(&self, lid: u32, out: &mut Vec<u32>) {
+        out.clear();
+        let l = &self.list[lid as usize];
+        let p = |a: i32, b: i32| (a as u16 as u32) | (b as u16 as u32) << 16;
+        out.extend([l.z, l.lvl, l.frac, l.top]);
+        for v in &l.lv {
+            out.extend([p(v.r[0], v.r[1]), p(v.r[2], v.r[3]), v.cw | v.ch << 16, v.base]);
+        }
+        out.extend([p(l.win[0], l.win[1]), p(l.win[2], l.win[3])]);
+        out.resize(ROW, 0);
+    }
 
-    /// Turn this frame's events into layer `lid`'s work, and its consequences for what is above it:
-    /// `out(rect)` receives the frame-pixel rects of the record's ink whose blurred value changed.
-    /// `events`: (window, key) of every record change this frame, those of lower layers' consequences
-    /// included (the caller appends what `out` reports before the next layer).
-    pub fn schedule(&mut self, lid: u32, events: &[([i32; 4], u32)], tx: usize, plan: &mut Plan, mut out: impl FnMut([i32; 4])) {
+    /// Turn what reached layer `lid` this frame (its pending tiles, the pixels that entered its windows)
+    /// into its work, and its consequences for what is above it: `out(rect)` receives the frame-pixel rects
+    /// of the record's ink whose blurred value changed (the caller routes them to the layers above).
+    pub fn schedule(&mut self, lid: u32, tx: usize, plan: &mut Plan, mut out: impl FnMut([i32; 4])) {
         let l = &mut self.list[lid as usize];
         let d = &mut self.dirty;
         let top = l.top as usize;
@@ -318,6 +453,7 @@ impl Layers {
             d[k].over(l.lv[k].r, k as u32);
         }
         if l.lv[0].empty() {
+            l.pending.clear();
             l.fresh = false;
             l.entered.iter_mut().for_each(Vec::clear);
             return;
@@ -333,30 +469,17 @@ impl Layers {
                 }
             }
             if !cfg!(feature = "mutant_layer_event") {
-                for &(w, z) in events {
-                    if z < l.z {
-                        d[0].add_px(cut(w, l.lv[0].r));
-                    }
+                for &t in &l.pending {
+                    d[0].set((t as usize % tx) as i32, (t as usize / tx) as i32);
                 }
             }
         }
+        l.pending.clear();
         l.fresh = false;
         l.entered.iter_mut().for_each(Vec::clear);
-        // a dirty block reaches the blocks one level up whose taps touch it: pixel p of a level is read by
-        // pixels ceil((p - 2) / 2) ..= floor((p + 1) / 2) of the next
         for k in 1..=top {
             let (lo, hi) = d.split_at_mut(k);
-            let (src, dst) = (&lo[k - 1], &mut hi[0]);
-            let (bs, ds) = (bshift(k as u32 - 1), bshift(k as u32));
-            src.each(|bx, by| {
-                let span = |b: i32| if cfg!(feature = "mutant_layer_dilate") { ((b << bs) >> 1, (((b + 1) << bs) - 1) >> 1) } else { (((b << bs) - 1) >> 1, ((b + 1) << bs) >> 1) };
-                let ((x0, x1), (y0, y1)) = (span(bx), span(by));
-                for py in y0 >> ds..=y1 >> ds {
-                    for px in x0 >> ds..=x1 >> ds {
-                        dst.set(px, py);
-                    }
-                }
-            });
+            dilate(&lo[k - 1], &mut hi[0], k as u32);
         }
         if d[..=top].iter().all(|b| b.n == 0) {
             return;
@@ -378,18 +501,8 @@ impl Layers {
                 w.blocks.push((k as u32, v));
             }
         }
-        // the frame pixels whose read (taps i, i + 1 at each level read) reaches a dirty block
         for k in [l.lvl as usize, top] {
-            let s = k as u32;
-            let bs = bshift(s);
-            let lo = |b: i32| (((((b << bs) - 1) << (s + 1)) + (1 << s) - 1) + 1) >> 1;
-            let hi = |b: i32| (((((b + 1) << bs) << (s + 1)) + (1 << s) - 1) + 1) >> 1;
-            d[k].each(|bx, by| {
-                let r = cut([lo(bx), lo(by), hi(bx), hi(by)], l.win);
-                if r[0] < r[2] && r[1] < r[3] {
-                    out(r);
-                }
-            });
+            reach(l, k as u32, &d[k], &mut out);
             if l.lvl as usize == top {
                 break;
             }
@@ -398,6 +511,48 @@ impl Layers {
     }
 }
 
+/// A dirty block reaches the blocks one level up whose taps touch it: pixel p of a level is read by pixels
+/// ceil((p - 2) / 2) ..= floor((p + 1) / 2) of the next. `src` is level `k - 1`, `dst` level `k`.
+pub fn dilate(src: &Blocks, dst: &mut Blocks, k: u32) {
+    let (bs, ds) = (bshift(k - 1), bshift(k));
+    src.each(|bx, by| {
+        let span = |b: i32| if cfg!(feature = "mutant_layer_dilate") { ((b << bs) >> 1, (((b + 1) << bs) - 1) >> 1) } else { (((b << bs) - 1) >> 1, ((b + 1) << bs) >> 1) };
+        let ((x0, x1), (y0, y1)) = (span(bx), span(by));
+        for py in y0 >> ds..=y1 >> ds {
+            for px in x0 >> ds..=x1 >> ds {
+                dst.set(px, py);
+            }
+        }
+    });
+}
+/// The frame pixels of layer `l`'s record whose read at level `k` (taps i, i + 1) reaches a block of
+/// `blocks`, as rects cut to the record's window.
+pub fn reach(l: &Layer, k: u32, blocks: &Blocks, out: &mut impl FnMut([i32; 4])) {
+    let bs = bshift(k);
+    let lo = |b: i32| (((((b << bs) - 1) << (k + 1)) + (1 << k) - 1) + 1) >> 1;
+    let hi = |b: i32| (((((b + 1) << bs) << (k + 1)) + (1 << k) - 1) + 1) >> 1;
+    blocks.each(|bx, by| {
+        let r = cut([lo(bx), lo(by), hi(bx), hi(by)], l.win);
+        if r[0] < r[2] && r[1] < r[3] {
+            out(r);
+        }
+    });
+}
+/// What is due for one layer, taken out of it (its flags and lists are cleared): the level-0 tiles an event
+/// touched, the strips that entered each level, and whether it is to be repaired whole.
+pub struct Due {
+    pub fresh: bool,
+    pub pending: Vec<u32>,
+    pub entered: [Vec<[i32; 4]>; LEVELS],
+}
+impl Layers {
+    pub fn take_due(&mut self, lid: u32) -> Due {
+        let l = &mut self.list[lid as usize];
+        let d = Due { fresh: l.fresh, pending: std::mem::take(&mut l.pending), entered: std::mem::take(&mut l.entered) };
+        l.fresh = false;
+        d
+    }
+}
 /// Level-`k` pixel (x, y) of a layer (inside the level and the layer's window).
 #[inline(always)]
 pub fn at(v: &Lvl, x: i32, y: i32) -> usize {
@@ -421,12 +576,28 @@ pub fn sample(pool: &[u32], l: &Layer, fw: u32, fh: u32, c: Cmd, x: i32, y: i32)
     }
     bough_kernel::k::mix4u(a, read(pool, l, c.rad.y as u32 + 1, fw, fh, x, y), c.rad.z as u32)
 }
-/// Downsample block (bx, by) of level `k` (`32 >> k` pixels a side) of a layer from level `k - 1` (the pixels inside its window).
-pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: i32) {
+/// The pixels of level `k` whose [1 3 3 1] taps (2x - 1 ..= 2x + 2) reach the pixel rect `r` of level
+/// `k - 1`. Not cut to the level's window.
+pub fn up_px(r: [i32; 4]) -> [i32; 4] {
+    if cfg!(feature = "mutant_layer_dilate") {
+        return [r[0] >> 1, r[1] >> 1, ((r[2] - 1) >> 1) + 1, ((r[3] - 1) >> 1) + 1];
+    }
+    [(r[0] - 1) >> 1, (r[1] - 1) >> 1, (r[2] >> 1) + 1, (r[3] >> 1) + 1]
+}
+/// The frame pixels of layer `l`'s record whose read at level `k` reaches the level's pixel rect `r`, cut
+/// to the record's window (empty: none).
+pub fn reach_px(l: &Layer, k: u32, r: [i32; 4]) -> [i32; 4] {
+    let lo = |p: i32| ((((p - 1) << (k + 1)) + (1 << k) - 1) + 1) >> 1;
+    let hi = |p: i32| (((p << (k + 1)) + (1 << k) - 1) + 1) >> 1;
+    cut([lo(r[0]), lo(r[1]), hi(r[2]), hi(r[3])], l.win)
+}
+/// Downsample the pixels `r` of level `k` of a layer from level `k - 1` (cut to its window). Returns the
+/// box of the words that were not already there (`None`: all of them were).
+pub fn down_rect(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, r: [i32; 4]) -> Option<[i32; 4]> {
     let (dst, src) = (l.lv[k as usize], l.lv[k as usize - 1]);
     let (sw, sh) = (x::bd_dim(fw, k - 1), x::bd_dim(fh, k - 1));
-    let bs = bshift(k);
-    let r = cut([bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs], dst.r);
+    let r = cut(r, dst.r);
+    let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
     for y in r[1]..r[3] {
         for xx in r[0]..r[2] {
             let mut rows = [Vec4 { x: 0, y: 0, z: 0, w: 0 }; 4];
@@ -436,7 +607,18 @@ pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: 
                 *row = x::dn_row(t(0), t(1), t(2), t(3));
             }
             let v = x::dn_fin(rows[0], rows[1], rows[2], rows[3]);
-            pool[at(&dst, xx, y)] = if cfg!(feature = "mutant_layer_weights") { v ^ 1 } else { v };
+            let v = if cfg!(feature = "mutant_layer_weights") { v ^ 1 } else { v };
+            if pool[at(&dst, xx, y)] != v {
+                pool[at(&dst, xx, y)] = v;
+                bb = [bb[0].min(xx), bb[1].min(y), bb[2].max(xx + 1), bb[3].max(y + 1)];
+            }
         }
     }
+    (bb[0] < bb[2]).then_some(bb)
+}
+/// Downsample block (bx, by) of level `k` (`32 >> k` pixels a side) of a layer from level `k - 1` (the
+/// pixels inside its window). Returns whether every word it wrote was already there.
+pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: i32) -> bool {
+    let bs = bshift(k);
+    down_rect(pool, l, k, fw, fh, [bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs]).is_none()
 }

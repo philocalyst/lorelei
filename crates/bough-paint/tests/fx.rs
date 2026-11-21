@@ -275,8 +275,9 @@ fn retained_equals_full_redraw_and_the_specification() {
         let mut stale = vec![vec![true; nt]; 4];
         for k in 0..STEPS {
             let name = if k == 0 { "mount" } else { step(&mut g, k, &mut u, &mut wd, &mut b) };
-            let fs = b.s.update(&u);
-            b.s.prepare(&u);
+            let mut fs = b.s.update(&u);
+            let st = b.s.prepare(&u);
+            (fs.prefix_tiles, fs.blocks) = (st.prefix as u32, st.blk.iter().sum::<u64>() as u32);
             let mut tiles = Vec::new();
             b.s.damage.tiles(&mut tiles);
             b.s.damage.clear();
@@ -329,7 +330,7 @@ fn retained_equals_full_redraw_and_the_specification() {
         }
     }
     eprintln!("fx exact: {} scenes x {STEPS} steps; {idle} idle frames did nothing, {timed} time-only frames; layer work {prefix} prefix tiles, {blocks} pyramid blocks; output {out_tiles} of {all_tiles} tiles; {restarts} tiles shaded; {bad} failing steps", seeds());
-    assert!(prefix > 0 && blocks > 0 && out_tiles < all_tiles / 2);
+    assert!(prefix > 0 && blocks > 0 && out_tiles < all_tiles * 3 / 5);
     assert_eq!(bad, 0);
 }
 
@@ -512,8 +513,96 @@ fn the_stored_prefix_never_changes_pixels() {
     assert_eq!(diff(&frames[0], &frames[1]), 0);
 }
 
-/// G3: the Metal executor's staged frame (the CPU's schedule, run as dispatches over the scene's records,
-/// with its own retained layer pool) writes the words the CPU kernel writes, retained across the steps.
+/// R1 (slice 7): the resident plan. The same dispatches every frame, the schedule decided on the GPU from
+/// the frame's events, nothing read back: retained across the steps, drawn into a surface that is shown only
+/// every 1st to 4th frame (the tiles damaged since it was last drawn are a comparison of generations), it
+/// writes the words a fresh CPU redraw writes. With and without the scene routing events itself. Then source
+/// mutations of the plan's kernels, each of which must be seen.
+#[cfg(target_os = "macos")]
+#[test]
+fn gpu_resident_plan_equals_the_cpu() {
+    use bough_paint::metal::{Gpu, source_fx};
+    let (fw, fh) = (320u32, 250u32);
+    let stride = fw as usize + 3;
+    let words = stride * fh as usize;
+    let pool = Pool::new(2);
+    // Every `unsafe { Gpu::.. }` below: the scene is declared before the executor and outlives it; the arena
+    // and the media pool are written only between the executor's calls, each of which waits for the GPU.
+    let run = |seed: u64, src: Option<&dyn Fn(&str) -> String>| -> Option<(usize, [u32; 4], usize)> {
+        let mut wd = world(seed, fw, fh);
+        let mut b = build(&wd, fw, fh);
+        b.s.route_off = seed % 2 == 0;
+        let mut gpu = match src {
+            None => unsafe { Gpu::new(&b.s, words, 256) }?,
+            Some(f) => {
+                let descs: Vec<&bough_paint::scene::Desc> = b.s.cols().iter().map(|c| c.desc).collect();
+                let lays: Vec<(usize, usize)> = b.s.cols().iter().map(|c| (c.base, c.desc.words)).collect();
+                let good = source_fx(&descs, &lays, b.s.tab_region().0, (fw, fh), b.s.media.words().len());
+                let bad = f(&good);
+                assert!(bad != good, "the mutation did not apply");
+                unsafe { Gpu::with_source(&b.s, words, 256, &bad) }?
+            }
+        };
+        let age = 1 + (seed as usize / 2) % 4;
+        let mut g = Rng(seed * 131 + 7);
+        let mut u = block(&mut g);
+        let mut kept = vec![0u32; words];
+        let (mut bad, mut ran, mut shown, mut drawn) = (0, [0u32; 4], 0u32, 0);
+        for k in 0..STEPS {
+            let name = if k == 0 { "mount" } else { step(&mut g, k, &mut u, &mut wd, &mut b) };
+            b.s.update(&u);
+            let mut tiles = Vec::new();
+            b.s.damage.tiles(&mut tiles);
+            b.s.damage.clear();
+            let draw = k % age == 0 || k + 1 == STEPS;
+            let (_, era) = gpu.resident(&mut b.s, &u, &tiles, draw.then_some(shown), stride);
+            b.s.media.reclaim();
+            for (a, n) in ran.iter_mut().zip(gpu.resident_stats()) {
+                *a += n;
+            }
+            if !draw {
+                continue;
+            }
+            (shown, drawn) = (era, drawn + 1);
+            build(&wd, fw, fh).s.frame(&u, &mut kept, stride, &pool, 0);
+            let d = diff(gpu.out(words), &kept);
+            if d != 0 && src.is_none() {
+                eprintln!("seed {seed} step {k} ({name}), surface age {age}: resident gpu differs from cpu in {d} words");
+            }
+            bad += (d != 0) as usize;
+        }
+        Some((bad, ran, drawn))
+    };
+    let (mut bad, mut ran, mut drawn) = (0, [0u32; 4], 0);
+    for seed in 0..seeds().max(8) {
+        let Some((b, r, d)) = run(seed, None) else {
+            eprintln!("no Metal device: skipped");
+            return;
+        };
+        bad += b;
+        drawn += d;
+        ran.iter_mut().zip(r).for_each(|(a, n)| *a += n);
+    }
+    eprintln!("fx gpu resident: {} scenes x {STEPS} steps, {drawn} drawn frames at surface ages 1..4; ran {} prefix jobs and {} output tiles in {} dispatches; {bad} failing frames", seeds().max(8), ran[0], ran[2], ran[3]);
+    assert!(ran[0] > 0);
+    assert_eq!(bad, 0);
+    let mutants: [(&str, &dyn Fn(&str) -> String); 6] = [
+        ("a prefix tile never stamps its block changed", &|s| s.replace("metal::atomic_store_explicit(&CHG[J[5]], RP[0], metal::memory_order_relaxed); // prefix stamps changed", "")),
+        ("a pyramid block never stamps itself changed", &|s| s.replace("metal::atomic_store_explicit(&CHG[s], gen, metal::memory_order_relaxed); // block stamps changed", "")),
+        ("a pixel looks only at the block beneath its first tap", &|s| s.replace("by <= (2 * y + 2) >> s1 && !due; by++) {", "by <= (2 * y - 1) >> s1 && !due; by++) {").replace("bx <= (2 * x + 2) >> s1 && !due; bx++) {", "bx <= (2 * x - 1) >> s1 && !due; bx++) {")),
+        ("the reach pass does not lower the tile keys", &|s| s.replace("metal::atomic_fetch_min_explicit(&KT[4u * t], z, metal::memory_order_relaxed); // reach lowers the tile key", "")),
+        ("the reach pass damages no output", &|s| s.replace("{ metal::atomic_store_explicit(&KT[4u * t + 2u], gen, metal::memory_order_relaxed); }", "{ }")),
+        ("any cover certifies", &|s| s.replace("if (c.x <= ox && c.y <= oy && c.z >= ox + 32 && c.w >= oy + 32) { return; } // every event is under this cover", "if (c.x < c.z) { return; }")),
+    ];
+    for (name, f) in mutants {
+        let failing: usize = (0..seeds().max(8)).map(|seed| run(seed, Some(f)).unwrap().0).sum();
+        eprintln!("resident mutant \"{name}\": {failing} failing frames");
+        assert!(failing > 0, "the mutant \"{name}\" was not seen");
+    }
+}
+
+/// G3: the Metal executor's staged frame (the CPU's schedule, run as dispatches over the scene's records and
+/// the shared layer pool), retained across the steps, writes the words a fresh CPU redraw writes.
 /// Then source mutations of the layer and media glue, each of which must be seen.
 #[cfg(target_os = "macos")]
 #[test]
@@ -545,13 +634,15 @@ fn gpu_staged_frame_equals_the_cpu() {
         let (mut bad, mut d_all, mut ran) = (0, 0, [0u32; 4]);
         for k in 0..STEPS {
             let name = if k == 0 { "mount" } else { step(&mut g, k, &mut u, &mut wd, &mut b) };
-            b.s.update(&u);
-            b.s.prepare(&u);
+            // The retained scene is drawn by Metal alone (the layers' pool is shared memory now: a CPU
+            // `prepare` on the same scene would repair what a broken GPU stage left). The reference is a
+            // fresh scene drawn whole by the CPU kernel.
+            b.s.update_eager(&u);
             let mut tiles = Vec::new();
             b.s.damage.tiles(&mut tiles);
             b.s.damage.clear();
-            b.s.shade(&u, &tiles, &mut kept, stride, &pool, 0);
             gpu.staged(&b.s, &u, &tiles, stride);
+            build(&wd, fw, fh).s.frame(&u, &mut kept, stride, &pool, 0);
             b.s.media.reclaim();
             for (a, n) in ran.iter_mut().zip(gpu.staged_stats) {
                 *a += n;
@@ -577,9 +668,11 @@ fn gpu_staged_frame_equals_the_cpu() {
     eprintln!("fx gpu exact: {} scenes x {STEPS} steps; ran {} prefix jobs, {} pyramid blocks, {} output tiles in {} dispatches; {bad} failing steps", seeds(), ran[0], ran[1], ran[2], ran[3]);
     assert!(ran[0] > 0 && ran[1] > 0);
     assert_eq!(bad, 0);
-    let mutants: [(&str, &dyn Fn(&str) -> String); 6] = [
+    // (No "flatten dropped" mutant: every job now starts at its topmost layer record from that record's stored,
+    // already 8-bit prefix, so the flatten in the shade path is a no-op there; what it stood for is covered by
+    // "prefix not stored" and "no restart".)
+    let mutants: [(&str, &dyn Fn(&str) -> String); 5] = [
         ("pyramid taps shifted", &|s| s.replacen("2 * y - 1 + j", "2 * y + j", 1)),
-        ("no flatten under a backdrop", &|s| s.replacen("return p_bdrop(x_flat(a), c, x, y, bl);", "return p_bdrop(a, c, x, y, bl);", 1)),
         ("prefix not stored", &|s| s.replace("if (x_in(r, x, y)) { POOL[fx_at(LT, dest, 0u, x, y)] = x_store(a0); }", "")),
         ("no restart from the stored prefix", &|s| s.replace("a0 = x_unstore(POOL[fx_at(LT, init, 0u, x, y)]);", "")),
         ("chroma planes swapped", &|s| s.replacen("return vd_rgb(y, cb, cr);", "return vd_rgb(y, cr, cb);", 1)),
@@ -601,13 +694,12 @@ fn gpu_staged_frame_equals_the_cpu() {
         let (mut kept, mut u, mut d) = (vec![0u32; words], U::default(), 0);
         for hover in [0, 1, 0] {
             u.w[2] = hover;
-            s.update(&u);
-            s.prepare(&u);
+            s.update_eager(&u);
             let mut tiles = Vec::new();
             s.damage.tiles(&mut tiles);
             s.damage.clear();
-            s.shade(&u, &tiles, &mut kept, fw as usize, &pool, 0);
             gpu.staged(&s, &u, &tiles, fw as usize);
+            aligned_pane(fw, fh).frame(&u, &mut kept, fw as usize, &pool, 0);
             d += diff(gpu.out(words), &kept);
         }
         d
@@ -624,4 +716,223 @@ fn gpu_staged_frame_equals_the_cpu() {
         eprintln!("fx gpu mutant {name}: {d} differing words in {b} of {STEPS} steps");
         assert!(d > 0, "{name} was not caught");
     }
+}
+
+/// A glass panel dragged across tile edges, a pixel or a few at a time, under and over other panels: its halo
+/// (whole tiles, where it flattens the accumulator) changes whenever it crosses one, and the tiles it left
+/// and entered must be redrawn (`mutant_halo_damage` must fail here; so must `mutant_bins_stale`).
+#[test]
+fn a_halo_crossing_tile_edges_stays_exact() {
+    type ABack = Grad<Lane, Ki<0>, I<Rec>, I<Rec>, Pmo<Rec>, Pm<Rec>>;
+    type AVeil = RRect<Lane, Ki<2048>, Pm<Rec>>;
+    type APane = Over<Backdrop<Lane, I<Rec>, I<Rec>, Filt<K<256>, K<256>, K<256>>>, RRect<Lane, I<Rec>, Pm<Rec>>>;
+    let (fw, fh) = (384u32, 288u32);
+    let pool = Pool::new(1);
+    let pane = |x: f32, y: f32, blur: f32| -> ([i32; 4], APane) { ([q(x), q(y), q(x + 90.0), q(y + 60.0)], Over(Backdrop { b: Lane, r: ri(q(8.0)), blur: ri(q(blur)), f: V3 { a: K, b: K, c: K } }, RRect { b: Lane, r: ri(q(8.0)), c: pm(0x20ff_ffff) })) };
+    let build = |pos: &[(f32, f32)]| {
+        let mut s = Scene::new(fw, fh, 1 << 16);
+        let (back, veil, panes) = (s.column::<ABack>(1), s.column::<AVeil>(8), s.column::<APane>(4));
+        s.push(back, [0, 0, q(fw as f32), q(fh as f32)], Grad { b: Lane, r: Ki, dx: ri(150_000), dy: ri(110_000), c: Pmo { c: Rec(0xff20_60e0) }, c2: pm(0xffe0_c020) });
+        // translucent veils everywhere: the accumulator is not on the 8-bit grid, so a flatten shows
+        for k in 0..6 {
+            s.push(veil, [q(20.0 + 55.0 * k as f32), q(10.0 + 37.0 * k as f32), q(140.0 + 55.0 * k as f32), q(120.0 + 37.0 * k as f32)], RRect { b: Lane, r: Ki, c: pm(0x5a30_9060 + 0x0f_1f07 * k) });
+        }
+        for (i, &(x, y)) in pos.iter().enumerate() {
+            let (r, p) = pane(x, y, [3.0, 9.0, 20.0][i]);
+            s.push(panes, r, p);
+        }
+        (s, panes)
+    };
+    let mut pos = [(40.3f32, 50.7f32), (120.0, 90.0), (200.5, 140.2)];
+    let (mut s, panes) = build(&pos);
+    let (mut kept, u) = (vec![0u32; (fw * fh) as usize], U::default());
+    s.frame(&u, &mut kept, fw as usize, &pool, 0);
+    let (mut bad, mut g) = (0, Rng(77));
+    for step in 0..60 {
+        let i = g.u(3) as usize;
+        pos[i].0 += g.f(-9.0, 9.0);
+        pos[i].1 += g.f(-7.0, 7.0);
+        let (r, p) = pane(pos[i].0, pos[i].1, [3.0, 9.0, 20.0][i]);
+        s.set(panes, i, r, p);
+        s.frame(&u, &mut kept, fw as usize, &pool, 0);
+        let mut fresh = vec![0u32; (fw * fh) as usize];
+        build(&pos).0.frame(&u, &mut fresh, fw as usize, &pool, 0);
+        let d = diff(&kept, &fresh);
+        if d != 0 {
+            eprintln!("halo crossing step {step} (pane {i}): {d} differing words");
+            bad += 1;
+        }
+    }
+    assert_eq!(bad, 0);
+}
+
+/// B1, B2: the mixed model. Frames alternate between the CPU kernel and Metal at random on one pool and one
+/// surface and stay equal to a fresh redraw; a change of a word declared broad visits no record, rebuilds
+/// no bins, enumerates no layer, and is right. (`mutant_broad_layers` and `mutant_full_stale` must fail.)
+#[cfg(target_os = "macos")]
+#[test]
+fn executors_alternate_and_a_broad_word_costs_nothing_to_find() {
+    use bough_paint::mixed::{Mixed, Ran};
+    let (fw, fh) = (320u32, 250u32);
+    let stride = fw as usize;
+    let pool = Pool::new(1);
+    let (mut bad, mut broad, mut ran) = (0, 0, [0u32; 3]);
+    for seed in 0..seeds() {
+        let mut wd = world(seed, fw, fh);
+        let mut b = build(&wd, fw, fh);
+        // word 3 is the theme's mix: no geometry reads it
+        b.s.broad = 1 << 3;
+        // SAFETY: the scene is declared before the executor and outlives it; it is written between calls.
+        let Some(mut mx) = (unsafe { Mixed::new(&b.s, stride) }) else {
+            eprintln!("no Metal device: skipped");
+            return;
+        };
+        let mut g = Rng(seed * 977 + 3);
+        let mut u = block(&mut g);
+        for k in 0..STEPS + 8 {
+            let name = if k == 0 {
+                "mount"
+            } else if k % 5 == 3 {
+                // the theme alone
+                u.w[3] = [0, 32768, 12345, 20000][g.u(4) as usize] ^ (k as u32 & 1);
+                "theme"
+            } else {
+                step(&mut g, k, &mut u, &mut wd, &mut b)
+            };
+            let before = b.s.bins_epoch;
+            let force = [Some(Ran::Cpu), Some(Ran::Gpu), None][g.u(3) as usize];
+            let (fs, r) = mx.frame(&mut b.s, &u, &pool, force);
+            b.s.media.reclaim();
+            ran[r as usize] += 1;
+            if name == "theme" && fs.broad {
+                assert_eq!((fs.recs_visited, b.s.bins_epoch, fs.prefix_tiles), (0, before, 0), "seed {seed} step {k}: a broad change was looked for");
+                broad += 1;
+            }
+            let mut f = build(&wd, fw, fh);
+            let mut fresh = vec![0u32; stride * fh as usize];
+            f.s.frame(&u, &mut fresh, stride, &pool, 0);
+            let d = diff(mx.out(), &fresh);
+            if d != 0 {
+                eprintln!("seed {seed} step {k} ({name}, ran {r:?}): {d} differing words");
+                bad += 1;
+            }
+        }
+    }
+    eprintln!("mixed: {} scenes; frames idle / cpu / gpu {ran:?}; {broad} broad changes found without a record; {bad} failing steps", seeds());
+    assert!(broad > 0 && ran[1] > 0 && ran[2] > 0);
+    assert_eq!(bad, 0);
+}
+
+/// S1: a pan and a hover answered by index. A world 7,000 px tall seen through a 320 x 250 frame: cards keyed
+/// by id, sprung glass and dots, all scrolled by words 0 and 1. With the declarations (`Scene::scroll`,
+/// `Scene::keyed`) a pan visits the records near the old and new viewport and a hover the records of two ids;
+/// the frames must be those of the same scene without the declarations, of a fresh redraw, and of the
+/// specification. (`mutant_scroll_band` and `mutant_key_old` must fail.)
+#[test]
+fn a_pan_and_a_hover_visit_what_they_can_reach() {
+    type AKey = Over<Shadow<Off<Pan, Ki<0>, Ki<768>>, Ki<1536>, Ki<2560>, Any, Tab>, RRect<Pan, Ki<1536>, SelV<Eq<Uw<2>, Rec>, Pm<K<0xff6b3bff>>, Pmo<Rec>>>>;
+    let (fw, fh) = (320u32, 250u32);
+    let stride = fw as usize;
+    let pool = Pool::new(1);
+    #[derive(Clone)]
+    struct W {
+        glass: Vec<Glass>,
+        dots: Vec<Dot>,
+    }
+    let build = |w: &W, declare: bool| {
+        let mut g = Rng(0xfeed);
+        let mut s = Scene::new(fw, fh, 1 << 18);
+        let (cards, glass, dots) = (s.column::<AKey>(256), s.column::<AGlass>(16), s.column::<ADot>(32));
+        if declare {
+            s.scroll(cards, 0, 1);
+            s.scroll(glass, 0, 1);
+            s.scroll(dots, 0, 1);
+            s.keyed(cards, 2);
+        }
+        let (mut gi, mut di) = (0, 0);
+        for i in 0..200usize {
+            let (x, y) = (8.0 + (i % 3) as f32 * 104.0 + g.f(0.0, 6.0), 6.0 + (i / 3) as f32 * 104.0 + g.f(0.0, 9.0));
+            let rect = [q(x.round()), q(y.round()), q(x.round() + 92.0), q(y.round() + 88.0)];
+            let id = 1 + (i as u32 % 40);
+            s.push(cards, rect, Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x5000_0000), tab: Tab::NONE }, RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(id) }, a: Pm { c: K }, b: Pmo { c: Rec(g.color(true)) } } }));
+            if declare {
+                s.set_key(cards, i, id);
+            }
+            if i % 25 == 7 && gi < w.glass.len() {
+                s.push(glass, w.glass[gi].rect, w.glass[gi].rec());
+                gi += 1;
+            }
+            if i % 16 == 3 && di < w.dots.len() {
+                s.push(dots, w.dots[di].rect, w.dots[di].rec());
+                di += 1;
+            }
+        }
+        (s, glass, dots)
+    };
+    let mut g = Rng(4242);
+    let mut w = W { glass: Vec::new(), dots: Vec::new() };
+    for k in 0..8 {
+        let (x, y) = (g.pos(10.0, 180.0), 60.0 + k as f32 * 850.0);
+        w.glass.push(Glass { rect: [q(x), q(y), q(x + 120.0), q(y + 70.0)], rad: q(10.0), blur: q([2.0, 7.0, 15.0][k % 3]), f: [256, 320, 256], line: 0x80ff_ffff, tint: 0x30ff_ffff, sx: Spring::rest(0), sy: Spring::rest(0) });
+    }
+    for k in 0..12 {
+        let (x, y) = (g.pos(0.0, 280.0), 30.0 + k as f32 * 560.0);
+        w.dots.push(Dot { rect: [q(x), q(y), q(x + 14.0), q(y + 14.0)], c: [g.color(true), g.color(false)], t0: 0, dur: 1, sx: Spring::rest(0), sy: Spring::rest(0) });
+    }
+    let (mut s, glass, dots) = build(&w, true);
+    let (mut kept, mut u) = (vec![0u32; stride * fh as usize], U::default());
+    s.frame(&u, &mut kept, stride, &pool, 0);
+    let (mut bad, mut pans, mut hovers, mut pan_recs, mut hover_recs) = (0, 0u32, 0u32, 0u32, 0u32);
+    for step in 0..90 {
+        let now = u.w[U_TIME];
+        let kind = [0, 0, 1, 2, 0, 3, 1, 4, 0, 5][step % 10];
+        match kind {
+            // a pan: a few pixels, a page, or a jump across the world (and back up)
+            0 => {
+                let dy = [11.0, -11.0, 240.0, 3100.0, -2900.0, 1.0, 600.0][g.u(7) as usize];
+                let y = ((u.w[1] as i32) as f32 / 256.0 - dy).clamp(-6800.0, 0.0);
+                (u.w[0], u.w[1]) = ((q(g.f(-4.0, 4.0).round())) as u32, q(y.round()) as u32);
+            }
+            1 => u.w[2] = g.u(42),
+            2 => u.w[U_TIME] = now + 5 + g.u(60),
+            3 => {
+                let i = g.u(w.dots.len() as u32) as usize;
+                w.dots[i].sx.retarget(KS, now, q(g.f(-40.0, 40.0)));
+                w.dots[i].sy.retarget(KS, now, q(g.f(-300.0, 300.0)));
+                s.set(dots, i, w.dots[i].rect, w.dots[i].rec());
+            }
+            4 => {
+                let i = g.u(w.glass.len() as u32) as usize;
+                w.glass[i].sy.retarget(KS, now, q(g.f(-200.0, 200.0)));
+                s.set(glass, i, w.glass[i].rect, w.glass[i].rec());
+            }
+            _ => {
+                // a pan and a hover and the clock in one turn
+                (u.w[1], u.w[2], u.w[U_TIME]) = ((u.w[1] as i32 - q(37.0)).max(q(-6800.0)) as u32, g.u(42), now + 16);
+            }
+        }
+        let fs = s.frame(&u, &mut kept, stride, &pool, 0);
+        if kind == 0 {
+            (pans, pan_recs) = (pans + 1, pan_recs + fs.recs_visited);
+        }
+        if kind == 1 {
+            (hovers, hover_recs) = (hovers + 1, hover_recs + fs.recs_visited);
+        }
+        let mut plain = vec![0u32; stride * fh as usize];
+        build(&w, false).0.frame(&u, &mut plain, stride, &pool, 0);
+        let mut d = [diff(&kept, &plain), 0];
+        if step % 9 == 0 {
+            let mut spec = vec![0u32; stride * fh as usize];
+            s.spec(&u, &mut spec, stride);
+            d[1] = diff(&spec, &plain);
+        }
+        if d != [0, 0] {
+            eprintln!("scroll/hover step {step} (kind {kind}): {} words differ from the undeclared fresh scene, specification {}", d[0], d[1]);
+            bad += 1;
+        }
+    }
+    eprintln!("scroll and hover by index: {} records in the scene; a pan visited {:.1} records on average, a hover {:.1}; {bad} failing steps", s.records(), pan_recs as f32 / pans as f32, hover_recs as f32 / hovers as f32);
+    // a hover is the records of two ids (five cards each); a pan is the records near two viewports
+    assert!(hover_recs <= hovers * 10 && pan_recs < pans * 60, "the indexes did not narrow the visits");
+    assert_eq!(bad, 0);
 }

@@ -25,7 +25,11 @@ use crate::expr::{
     APP_WORDS, Code, Color, Cx as ECx, Expr, Lens, Slot, Turn, U, U_SCALE, U_TIME, Un, Word, Words,
 };
 use crate::kinds::{Fill, LabelArch, Motion, NumArch, OutlineArch, Txt};
+#[cfg(feature = "inspect-metadata")]
+use crate::reflect::Val;
 use crate::sink::{Cx, Geo, Leaf, Mk, Row, Sink};
+#[cfg(feature = "inspect-metadata")]
+use crate::store::Op;
 use crate::store::{Arch, Backend, ColRef, POINTS, Rect, Site, Space};
 use bough_lay::flex::{Dim, Spec};
 use bough_lay::shape::{Flat, K_BOX, K_LINE, Nd, Sink as LSink};
@@ -791,6 +795,7 @@ impl<V, C: Expr<Out = Color> + Rooted<V>, T: Motion + Rooted<V>> Paints<V> for B
 /// The façade's calls on a box that are paint, not layout.
 pub trait Deco<P, C, H>: Sized {
     /// A border of `w` points. (First cut: a bordered box has no fill.)
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     fn border<Cl>(self, w: f32, c: Cl) -> LBox<Rec1<Bord<Cl, Still>>, C, H>;
     /// Positioned by its parent's layout as usual. (The façade's marker for an `abs` child's container.)
     fn relative(self) -> Self {
@@ -798,24 +803,42 @@ pub trait Deco<P, C, H>: Sized {
     }
 }
 impl<P, C, H> Deco<P, C, H> for LBox<P, C, H> {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     fn border<Cl>(self, w: f32, c: Cl) -> LBox<Rec1<Bord<Cl, Still>>, C, H> {
-        self.bg(Bord { w, c, t: Still })
+        #[cfg(feature = "inspect-metadata")]
+        {
+            return self.bg_at(Bord { w, c, t: Still }, core::panic::Location::caller());
+        }
+        #[cfg(not(feature = "inspect-metadata"))]
+        {
+            self.bg(Bord { w, c, t: Still })
+        }
     }
 }
 /// `.translate(offset in points)` on a bordered box: it moves without layout.
 pub trait Translate<Cl, C, H> {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     fn translate<E: Expr<Out = (f32, f32)>>(self, e: E) -> LBox<Rec1<Bord<Cl, Px<E>>>, C, H>;
 }
 impl<Cl: Copy, C, H> Translate<Cl, C, H> for LBox<Rec1<Bord<Cl, Still>>, C, H> {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     fn translate<E: Expr<Out = (f32, f32)>>(self, e: E) -> LBox<Rec1<Bord<Cl, Px<E>>>, C, H> {
         let b = self.paint.0;
-        self.bg(Bord {
+        let painted = Bord {
             w: b.w,
             c: b.c,
             t: Px(e),
-        })
+        };
+        #[cfg(feature = "inspect-metadata")]
+        {
+            return self.bg_at(painted, core::panic::Location::caller());
+        }
+        #[cfg(not(feature = "inspect-metadata"))]
+        {
+            self.bg(painted)
+        }
     }
 }
 
@@ -885,6 +908,7 @@ pub struct StrRec<C> {
 // SAFETY: `repr(C)` over `Words` fields.
 unsafe impl<C: Words> Words for StrRec<C> {}
 
+#[cfg(not(feature = "inspect-metadata"))]
 macro_rules! color_arch {
     ($t:ident, $name:literal, $method:ident, |$s:ident, $o:ident| $eq:expr) => {
         impl<C: Expr<Out = Color>> Arch for $t<C> {
@@ -922,9 +946,143 @@ macro_rules! color_arch {
         }
     };
 }
+#[cfg(not(feature = "inspect-metadata"))]
 color_arch!(NumRec, "num", num, |s, o| (s.v == o.v) & (s.d == o.d));
+#[cfg(not(feature = "inspect-metadata"))]
 color_arch!(StrRec, "label", label, |s, o| (s.at == o.at)
     & (s.len == o.len));
+#[cfg(feature = "inspect-metadata")]
+impl<C: Expr<Out = Color>> Arch for NumRec<C> {
+    const OPS: &'static [Op] = &[
+        Op {
+            name: "value",
+            code: &Code::Rec,
+            ty: core::any::type_name::<i32>,
+            stage: crate::expr::StageId::Mount,
+            reads: 0,
+            word: 0,
+            words: 1,
+        },
+        Op {
+            name: "decimals",
+            code: &Code::Rec,
+            ty: core::any::type_name::<u32>,
+            stage: crate::expr::StageId::Mount,
+            reads: 0,
+            word: 1,
+            words: 1,
+        },
+        Op {
+            name: "color",
+            code: C::CODE,
+            ty: core::any::type_name::<C>,
+            stage: C::STAGE,
+            reads: C::READS,
+            word: (core::mem::offset_of!(NumRec<C>, c) / 4) as u16,
+            words: (core::mem::size_of::<C>() / 4) as u16,
+        },
+    ];
+    const READS: u64 = C::READS;
+    const NAME: &'static str = "num";
+    const STAGE: crate::expr::StageId = C::STAGE;
+    const TIMED: bool = C::READS >> U_TIME & 1 != 0;
+    const ENDLESS: bool = !C::RESTS;
+    const STATE: bool = C::STATE;
+    #[inline(always)]
+    fn eq_ops(&self, o: &Self) -> bool {
+        (self.v == o.v) & (self.d == o.d) & self.c.eq_ops(&o.c)
+    }
+    #[inline(always)]
+    fn carry(&mut self, was: &Self, old: &U, new: &U) {
+        self.c.carry(&was.c, &ECx::of(old), &ECx::of(new));
+    }
+    #[inline]
+    fn slots(f: &mut dyn FnMut(Slot)) {
+        C::slots(f)
+    }
+    #[inline(always)]
+    fn until(&self, u: &U) -> u32 {
+        self.c.until(&ECx::of(u))
+    }
+    #[inline(always)]
+    fn changed(&self, old: &U, new: &U) -> bool {
+        self.c.eval(&ECx::of(old)) != self.c.eval(&ECx::of(new))
+    }
+    #[inline(always)]
+    fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
+        b.num(col, u)
+    }
+    #[inline]
+    fn val(&self, op: usize, u: &U) -> Val {
+        match op {
+            0 => Val::Num(self.v, self.d as u8),
+            1 => Val::Num(self.d as i32, 0),
+            2 => Val::Color(self.c.eval(&ECx::of(u)).0),
+            _ => Val::None,
+        }
+    }
+}
+#[cfg(feature = "inspect-metadata")]
+impl<C: Expr<Out = Color>> Arch for StrRec<C> {
+    const OPS: &'static [Op] = &[
+        Op {
+            name: "text",
+            code: &Code::Rec,
+            ty: core::any::type_name::<Txt>,
+            stage: crate::expr::StageId::Mount,
+            reads: 0,
+            word: 0,
+            words: 0,
+        },
+        Op {
+            name: "color",
+            code: C::CODE,
+            ty: core::any::type_name::<C>,
+            stage: C::STAGE,
+            reads: C::READS,
+            word: (core::mem::offset_of!(StrRec<C>, c) / 4) as u16,
+            words: (core::mem::size_of::<C>() / 4) as u16,
+        },
+    ];
+    const READS: u64 = C::READS;
+    const NAME: &'static str = "label";
+    const STAGE: crate::expr::StageId = C::STAGE;
+    const TIMED: bool = C::READS >> U_TIME & 1 != 0;
+    const ENDLESS: bool = !C::RESTS;
+    const STATE: bool = C::STATE;
+    #[inline(always)]
+    fn eq_ops(&self, o: &Self) -> bool {
+        (self.at == o.at) & (self.len == o.len) & self.c.eq_ops(&o.c)
+    }
+    #[inline(always)]
+    fn carry(&mut self, was: &Self, old: &U, new: &U) {
+        self.c.carry(&was.c, &ECx::of(old), &ECx::of(new));
+    }
+    #[inline]
+    fn slots(f: &mut dyn FnMut(Slot)) {
+        C::slots(f)
+    }
+    #[inline(always)]
+    fn until(&self, u: &U) -> u32 {
+        self.c.until(&ECx::of(u))
+    }
+    #[inline(always)]
+    fn changed(&self, old: &U, new: &U) -> bool {
+        self.c.eval(&ECx::of(old)) != self.c.eval(&ECx::of(new))
+    }
+    #[inline(always)]
+    fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
+        b.label(col, u)
+    }
+    #[inline]
+    fn val(&self, op: usize, u: &U) -> Val {
+        match op {
+            0 => Val::Text(Txt::from_bytes(self.str())),
+            1 => Val::Color(self.c.eval(&ECx::of(u)).0),
+            _ => Val::None,
+        }
+    }
+}
 impl<C: Expr<Out = Color>> NumArch for NumRec<C> {
     const DECIMALS: u8 = 0;
     #[inline(always)]
@@ -1047,8 +1205,12 @@ pub struct Text<K, C> {
     c: C,
     /// Line height in points (0: the content's).
     line: f32,
+    /// Where the `text(..)` call was written: cold, and only for the inspector.
+    #[cfg(feature = "inspect-metadata")]
+    loc: &'static core::panic::Location<'static>,
 }
 /// `text("label")`, `text(format!(..))`, `text(sig!(self.cells).at(i).num(|v| *v, FMT))`.
+#[cfg_attr(feature = "inspect-metadata", track_caller)]
 #[inline(always)]
 pub fn text<T: IntoContent>(t: T) -> Text<T::K, Color> {
     Text {
@@ -1056,6 +1218,8 @@ pub fn text<T: IntoContent>(t: T) -> Text<T::K, Color> {
         k: t.content(),
         c: Color(0),
         line: 0.0,
+        #[cfg(feature = "inspect-metadata")]
+        loc: core::panic::Location::caller(),
     }
 }
 impl<K, C> Text<K, C> {
@@ -1072,6 +1236,8 @@ impl<K, C> Text<K, C> {
             k: self.k,
             c,
             line: self.line,
+            #[cfg(feature = "inspect-metadata")]
+            loc: self.loc,
         }
     }
 }
@@ -1105,6 +1271,8 @@ unsafe impl<V, K: Content, C: Expr<Out = Color> + Rooted<V>> Row<V> for Text<K, 
     const LEAVES: u32 = 1;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
+        #[cfg(feature = "inspect-metadata")]
+        l.at(self.loc);
         <K::A<C> as Row<V>>::visit(&self.k.arch(self.c), l)
     }
     #[inline(always)]
@@ -1179,6 +1347,8 @@ unsafe impl<V, P: Paints<V>, C: Row<V>, H> Row<V> for LBox<Rec1<P>, C, H> {
     const LEAVES: u32 = 1 + C::LEAVES;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
+        #[cfg(feature = "inspect-metadata")]
+        l.at(self.loc);
         <P::A as Row<V>>::visit(&self.paint.0.arch(), l);
         self.kids.visit(l)
     }
@@ -1359,12 +1529,17 @@ pub struct Scroll<P, C> {
     pub content: C,
     /// The block word of the scroll offset (an `f32` of points).
     pub word: u8,
+    /// Where `.scroll(..)` was written: cold, and only for the inspector.
+    #[cfg(feature = "inspect-metadata")]
+    loc: &'static core::panic::Location<'static>,
 }
 /// `.scroll(sig!(self.y))` on a box: its children scroll by the field's value (points).
 pub trait Scrolls<P, C>: Sized {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     fn scroll<V: 'static, const OFF: usize>(self, y: Sig<'_, V, Signal<f32>, OFF>) -> Scroll<P, C>;
 }
 impl<P, C, H> Scrolls<P, C> for LBox<P, C, H> {
+    #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     fn scroll<V: 'static, const OFF: usize>(self, y: Sig<'_, V, Signal<f32>, OFF>) -> Scroll<P, C> {
         Scroll {
@@ -1372,6 +1547,8 @@ impl<P, C, H> Scrolls<P, C> for LBox<P, C, H> {
             paint: self.paint,
             content: self.kids,
             word: y.word(),
+            #[cfg(feature = "inspect-metadata")]
+            loc: core::panic::Location::caller(),
         }
     }
 }
@@ -1412,6 +1589,8 @@ unsafe impl<V, P: Paints<V>, C> Row<V> for Scroll<Rec1<P>, C> {
     const LEAVES: u32 = 2;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
+        #[cfg(feature = "inspect-metadata")]
+        l.at(self.loc);
         <P::A as Row<V>>::visit(&self.paint.0.arch(), l);
         l.hole()
     }

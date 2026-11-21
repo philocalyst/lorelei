@@ -1,0 +1,7 @@
+# Round 4: recover typed-core soundness costs
+
+Freeze `bba2ca5447`, which joins the soundness merge `3b9238cdf1` and the measurement branch. Use `3b9238cdf1^1` and `3b9238cdf1` as separate controls for the soundness delta. Carry the three Round 3 recovery commits onto the freeze before modifying the table representation. Use distinct worktrees and targets. Record binary digests and host load. Instructions use three process repetitions without the timing lock.
+
+Measure the 10,000-row `sheet_x` and `events_x` phases, `anim_x` at height 208, and `text_x` at 3,000 rows. The owner's targets are 2,622 for exposed edit, 6,721 for three-row scroll, and 17,514 for idle re-description. The dispatch targets, dispatch then step, are 1,302/2,177 for pointer onto row, 3,551/4,497 for click, 117/368 for unfocused key and 235/1,394 for focused text. Report hover, hover move, theme and insert alongside them.
+
+Prediction: storing an identity for each store and deriving access from the current tree will remove the full refresh of pointers after a view pass. A structural update must invalidate a published index even if the view unwinds. A safe dispatch must reject an unwritten record. Check Stacked Borrows and Tree Borrows on the audit's `review`, `review_soundness`, and `events` targets. Retest retained pixels, hole layouts, and the unchanged 24,576-byte glyph allowance. Reject any candidate that fails these checks.

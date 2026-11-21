@@ -53,6 +53,13 @@ pub struct Stats {
     pub px_corner: u64,
     /// Of those, the ones answered from a corner table.
     pub px_table: u64,
+    /// Layer repair that changed nothing: prefix tiles stored, and of them those whose every word was
+    /// already there; pyramid blocks per level, and of them those left byte-identical. (Counters: what
+    /// compare-on-write would stop.)
+    pub prefix: u64,
+    pub prefix_same: u64,
+    pub blk: [u64; 6],
+    pub blk_same: [u64; 6],
 }
 impl Stats {
     pub fn add(&mut self, o: &Stats) {
@@ -63,6 +70,12 @@ impl Stats {
         self.px_shadow += o.px_shadow;
         self.px_corner += o.px_corner;
         self.px_table += o.px_table;
+        self.prefix += o.prefix;
+        self.prefix_same += o.prefix_same;
+        for k in 0..6 {
+            self.blk[k] += o.blk[k];
+            self.blk_same[k] += o.blk_same[k];
+        }
     }
 }
 
@@ -183,19 +196,29 @@ impl<'a> Tile<'a> {
             }
         }
     }
-    /// Store the tile's pixels that lie in a layer's level 0 as its prefix there.
-    pub fn store_layer(&mut self, pool: &mut [u32], v: &Lvl) {
+    /// Store the tile's pixels that lie in a layer's level 0 as its prefix there. Returns the box (frame
+    /// pixels) of the words that were not already there: `None` when the tile came out as it was.
+    pub fn store_layer(&mut self, pool: &mut [u32], v: &Lvl) -> Option<[i32; 4]> {
         debug_assert!(self.need == self.all);
         let (x0, x1) = ((v.r[0] - self.ox).max(0), (v.r[2] - self.ox).min(self.cols));
         let mut m = self.all & rows(v.r[1] - self.oy, v.r[3] - self.oy);
+        let mut bb = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
         while m != 0 {
             let y = m.trailing_zeros() as i32;
             m &= m - 1;
             for xx in x0..x1 {
-                pool[layer::at(v, self.ox + xx, self.oy + y)] = k::store8(ld(&self.acc[(y * 32 + xx) as usize]));
+                let (at, w) = (layer::at(v, self.ox + xx, self.oy + y), k::store8(ld(&self.acc[(y * 32 + xx) as usize])));
+                if pool[at] != w {
+                    pool[at] = w;
+                    bb = [bb[0].min(xx), bb[1].min(y), bb[2].max(xx + 1), bb[3].max(y + 1)];
+                }
             }
         }
+        let same = bb[0] > bb[2];
         self.st.tiles += 1;
+        self.st.prefix += 1;
+        self.st.prefix_same += same as u64;
+        (!same).then_some([self.ox + bb[0], self.oy + bb[1], self.ox + bb[2], self.oy + bb[3]])
     }
     /// Write the tile: shaded rows from the accumulator, flat rows from the row above.
     ///
@@ -411,8 +434,20 @@ impl Sink for Shade<'_, '_, '_> {
     fn backdrop(&mut self, c: Cmd) {
         let (t, fx) = (&mut *self.0, self.1);
         let Some(lay) = fx.layers.get(self.2 as usize) else { return };
-        // inside its window: the accumulator flattened (what the layer's level 0 holds there), then the
-        // blurred prefix through the filter under the box's coverage
+        // over its halo (whole tiles): the accumulator becomes what the layer's level 0 holds
+        let h = lay.lv[0].r;
+        let (hx0, hx1) = ((h[0] - t.ox).max(0), (h[2] - t.ox).min(t.cols));
+        let mut m = rows(h[1] - t.oy, h[3] - t.oy) & t.need;
+        while m != 0 && hx0 < hx1 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            for (a, b) in t.runs(y, hx0, hx1) {
+                for p in &mut t.acc[(y * 32 + a) as usize..(y * 32 + b) as usize] {
+                    *p = st(crate::ops::ops::x_flat(ld(p)));
+                }
+            }
+        }
+        // inside its window: the blurred prefix through the filter under the box's coverage
         let (x0, x1, mut m) = t.span(&c);
         while m != 0 && x0 < x1 {
             let y = m.trailing_zeros() as i32;

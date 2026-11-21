@@ -15,6 +15,12 @@ static NEXT_GENERATION: AtomicU32 = AtomicU32::new(1);
 const GENERATION_LIMIT: u32 = 1 << 20;
 const SLOT_BITS: u32 = 20;
 const SLOT_MASK: u32 = (1 << SLOT_BITS) - 1;
+/// Capacity kept across a [`Glyphs::clear`], in elements: ents (words), glyph slots, pens, run descriptors.
+/// A re-description of what is exposed starts inside it instead of growing from nothing (about 5 KiB in all,
+/// bounded, so a budget is not reached by what a clear keeps); everything above it is released.
+const KEEP_ENTS: usize = 256;
+const KEEP_GLYPHS: usize = 512;
+const KEEP_RUNS: usize = 64;
 use alloc::vec::Vec;
 
 const MUL: u128 = 0x9E37_79B9_7F4A_7C15_F39C_C060_5CED_C835;
@@ -220,10 +226,15 @@ impl Glyphs {
         self.table.resize(64, EMPTY);
         self.table.shrink_to(64);
         self.used = 0;
-        self.ents = vec![0; 8];
-        self.slot = Vec::new();
-        self.x = Vec::new();
-        self.runs = Vec::new();
+        self.ents.clear();
+        self.ents.resize(8, 0);
+        self.ents.shrink_to(KEEP_ENTS);
+        self.slot.clear();
+        self.slot.shrink_to(KEEP_GLYPHS);
+        self.x.clear();
+        self.x.shrink_to(KEEP_GLYPHS);
+        self.runs.clear();
+        self.runs.shrink_to(KEEP_RUNS);
         self.staged_slots = Vec::new();
         self.staged_pens = Vec::new();
         self.cleared += 1;
@@ -282,10 +293,16 @@ impl Glyphs {
     /// [`Glyphs::line`] with the key known ([`key`] of a literal is a constant).
     #[inline]
     pub fn line_keyed(&mut self, h: u64, id: u16, face: &Face, text: &str) -> Option<(Run, i32)> {
-        let text = text.as_bytes();
-        if let Some(hit) = self.find_hit(h, id, text) {
+        if let Some(hit) = self.find_hit(h, id, text.as_bytes()) {
             return Some(hit);
         }
+        self.shape_miss(h, id, face, text)
+    }
+    /// The miss of [`Glyphs::line_keyed`], out of line so a caller that mostly hits carries only the hit.
+    #[cold]
+    #[inline(never)]
+    fn shape_miss(&mut self, h: u64, id: u16, face: &Face, text: &str) -> Option<(Run, i32)> {
+        let text = text.as_bytes();
         let start = self.slot.len();
         let width = face.shape(text, |token, pen, _| {
             self.slot.push(token as u16);
@@ -343,6 +360,18 @@ impl Glyphs {
         if let Some(hit) = self.find_hit(h, id, text) {
             return Some(hit);
         }
+        self.line_with_miss(h, id, text, shape)
+    }
+    /// The miss of [`Glyphs::line_with`], out of line.
+    #[cold]
+    #[inline(never)]
+    fn line_with_miss(
+        &mut self,
+        h: u64,
+        id: u16,
+        text: &[u8],
+        shape: impl FnOnce(&mut Vec<u16>, &mut Vec<i32>) -> Option<i32>,
+    ) -> Option<(Run, i32)> {
         self.staged_slots.clear();
         self.staged_pens.clear();
         let width = shape(&mut self.staged_slots, &mut self.staged_pens)?;
@@ -456,7 +485,7 @@ mod handle_tests {
         .0
     }
     #[test]
-    fn clear_releases_descriptors_and_reuses_slot_indices() {
+    fn clear_reuses_slot_indices_and_keeps_only_a_bounded_floor() {
         let mut glyphs = Glyphs::new();
         let first = line(&mut glyphs);
         assert!(glyphs.of(Run::default()).0.is_empty());
@@ -464,13 +493,35 @@ mod handle_tests {
         for _ in 0..301 {
             let used = glyphs.bytes();
             glyphs.clear();
-            assert_eq!(glyphs.runs.capacity(), 0);
-            assert!(glyphs.bytes() < used);
+            assert!(glyphs.runs.capacity() <= KEEP_RUNS);
+            assert!(glyphs.bytes() <= used);
             let fresh = line(&mut glyphs);
             assert_eq!(first.g0 & SLOT_MASK, fresh.g0 & SLOT_MASK);
             assert_eq!(glyphs.of(fresh).0, &[7]);
             assert!(glyphs.of(first).0.is_empty());
         }
+    }
+    /// A clear gives back what a long session grew: what is held afterwards is the floor, not the high-water.
+    #[test]
+    fn clear_releases_everything_above_the_floor() {
+        let mut glyphs = Glyphs::new();
+        for i in 0..20_000u64 {
+            let text = i.to_le_bytes();
+            glyphs
+                .line_with(i + 1, 0, &text, |s, x| {
+                    s.extend_from_slice(&[1, 2, 3]);
+                    x.extend_from_slice(&[0, 10, 20]);
+                    Some(30)
+                })
+                .unwrap();
+        }
+        let grown = glyphs.bytes();
+        assert!(grown > 1 << 20);
+        glyphs.clear();
+        let floor = 64 * 64
+            + (KEEP_ENTS * 8 + KEEP_GLYPHS * 6 + KEEP_RUNS * core::mem::size_of::<RunSlot>());
+        assert!(glyphs.bytes() <= floor, "{} bytes after clear, floor {floor}", glyphs.bytes());
+        assert!(glyphs.is_empty());
     }
     #[test]
     fn stale_and_foreign_runs_are_refused() {
