@@ -33,6 +33,11 @@ Set `BOUGH_FONT` to a known TrueType face for the façade and effects comparison
 
 `--no-build` reuses binaries listed in a previous build receipt in the chosen target. The source, toolchain and binary fingerprints must still match. A failed compile, pixel gate, process launch, counter parse or incomplete repetition set makes the command exit nonzero. Build and counter diagnostics are in `raw/`.
 
+The façade no-change search fixture takes 15 blocks. Interleaved replays on the same input gave
+842,925, 842,931 and 843,069 instructions at `71ee3be`, `fbf6a2637b` and `bba2ca5447`. The older
+three-block fixture samples the initial cost as it decays, and its median can differ by several
+percent across launches of one executable. Replay both revisions with the same block count.
+
 ## Thresholds
 
 The gate allows a 2% increase in the primary instruction counters by default. Process wall time and RSS are secondary. Their default limits are 10% and 5%. They are unqualified for unlocked captures or above the load ceiling and wall is unqualified when either run already spreads more than its tolerance. A positive allocation count where the baseline is zero fails.
