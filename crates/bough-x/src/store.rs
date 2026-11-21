@@ -140,6 +140,26 @@ impl Tiles {
             (y0 >> TILE_SHIFT) as usize,
             ((y1 - 1) >> TILE_SHIFT) as usize,
         );
+        if self.stride == 1 {
+            if (b >= 64) | (d >= self.bits.len()) {
+                invalid_damage();
+            }
+            self.lo = self.lo.min(c);
+            self.hi = self.hi.max(d + 1);
+            let mask = (!0u64 << (a & 63)) & (!0u64 >> (63 - (b & 63)));
+            // SAFETY: clipping a nonempty rect proves c <= d and the check above proves
+            // d < bits.len(). A stride of one places every affected row in this slice.
+            let rows = unsafe { self.bits.get_unchecked_mut(c..d + 1) };
+            for word in rows {
+                *word |= mask;
+            }
+            return;
+        }
+        self.mark_wide(a, b, c, d);
+    }
+
+    #[inline(never)]
+    fn mark_wide(&mut self, a: usize, b: usize, c: usize, d: usize) {
         let (wa, wb) = (a >> 6, b >> 6);
         // Every field of `Tiles` is public (and so is `World::tiles`): the rect was cut to `w` x `h`, but
         // nothing ties `w`, `h`, `stride` and `bits` together, so the bound is checked against the bitmap

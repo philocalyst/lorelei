@@ -138,10 +138,8 @@ pub struct World<V, B> {
     pub tiles: Tiles,
     /// The words the application uses; the compare stops there.
     nwords: usize,
-    /// The block words that move some list's exposure (scroll offsets), and the relation epoch as of the last
-    /// pass: the two things besides the block that can make the view worth driving.
+    /// The block words that move a list's exposure. A watched relation changing also drives the view.
     lists: u64,
-    epoch: u32,
     /// The block words some column reads: a pointer event that no record reads costs nothing.
     reads: u64,
     /// Every column of the world in paint order: the words each reads (dense, scanned on a block change), its
@@ -222,7 +220,6 @@ impl<V: View, B: Backend> World<V, B> {
             tiles: Tiles::new(w, h),
             nwords,
             lists: 0,
-            epoch: 0,
             reads: 0,
             col_reads: Vec::new(),
             by_word: [0; 65],
@@ -257,19 +254,14 @@ impl<V: View, B: Backend> World<V, B> {
         }
     }
 
-    fn relation_epoch(&self) -> u32 {
-        if self.shape == STALE {
-            return self.epoch.wrapping_add(1);
-        }
-        if self.relations.iter().any(|(store, watch)| {
-            // SAFETY: the published table is current, and the shared world borrow excludes a view
-            // pass. Each pointer is an owning store address recorded when the table was built.
-            watch.load(Ordering::Relaxed) != unsafe { (**store).seen }
-        }) {
-            self.epoch.wrapping_add(1)
-        } else {
-            self.epoch
-        }
+    #[inline]
+    fn relations_changed(&self) -> bool {
+        self.shape == STALE
+            || self.relations.iter().any(|(store, watch)| {
+                // SAFETY: the published table is current, and the shared world borrow excludes a view
+                // pass. Each pointer is an owning store address recorded when the table was built.
+                watch.load(Ordering::Relaxed) != unsafe { (**store).seen }
+            })
     }
 
     pub fn input_revision(&self) -> u64 {
@@ -373,7 +365,6 @@ impl<V: View, B: Backend> World<V, B> {
         self.shown = self.block(v);
         self.tiles.mark_all();
         self.root.row_live[0] = 1;
-        self.epoch = self.relation_epoch();
         let mut cx = Cx {
             tiles: &mut self.tiles,
             u: &self.shown,
@@ -414,7 +405,7 @@ impl<V: View, B: Backend> World<V, B> {
             if ch == 0 {
                 return;
             }
-            self.changed(v, ch, self.epoch);
+            self.changed(v, ch, false);
         }
         // eight rounds and the shape still moved: the table must not outlive the tree it was built from
         if self.shape == STALE {
@@ -763,22 +754,21 @@ impl<V: View, B: Backend> World<V, B> {
             .shown
             .diff(v.gathered(&self.slots, &mut scratch), self.nwords)
             & !HOT;
-        let epoch = self.relation_epoch();
-        if (ch == 0) & (epoch == self.epoch) {
+        let journals = self.relations_changed();
+        if (ch == 0) & !journals {
             return;
         }
-        if self.changed(v, ch, epoch) {
+        if self.changed(v, ch, journals) {
             self.learn(v);
         }
     }
     #[inline(never)]
-    fn changed(&mut self, v: &V, ch: u64, epoch: u32) -> bool {
+    fn changed(&mut self, v: &V, ch: u64, journals: bool) -> bool {
         let u = &self.block(v);
         if ch != 0 {
             self.delta(u, ch);
         }
-        if (epoch != self.epoch) | (ch & self.lists != 0) {
-            self.epoch = epoch;
+        if journals | (ch & self.lists != 0) {
             // a list pass may write records and move windows: what was built from them is nothing now
             self.wrote += 1;
             let mut cx = Cx {
@@ -833,7 +823,6 @@ impl<V: View, B: Backend> World<V, B> {
             self.delta(u, ch);
         }
         self.wrote += 1;
-        self.epoch = self.relation_epoch();
         let mut cx = Cx {
             tiles: &mut self.tiles,
             u,
