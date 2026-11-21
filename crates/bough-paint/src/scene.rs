@@ -217,8 +217,17 @@ pub(crate) struct Pass<'a> {
     pub active: &'a mut Vec<u32>,
     /// Keys of the records whose window, halo or cover changed: the bins are edited for these.
     pub rebin: &'a mut Vec<u32>,
+    /// The frame's size in pixels.
+    pub frame: [i16; 2],
 }
 impl Pass<'_> {
+    /// Record `z`'s window meets the frame: what it does with the clock can be seen. (The mutant parks a
+    /// reader in the lower half of the frame.)
+    #[inline(always)]
+    fn shows(&self, z: usize) -> bool {
+        let (w, fh) = (self.win[z], if cfg!(feature = "mutant_park") { self.frame[1] / 2 } else { self.frame[1] });
+        w[0] < w[2] && w[1] < w[3] && w[0] < self.frame[0] && w[1] < fh && w[2] > 0 && w[3] > 0
+    }
     /// A layer record's halo is now `h`. The halo is where the record flattens the accumulator, so the
     /// tiles a changed halo left and entered are damaged (and are events for the layers above). Returns
     /// whether it changed.
@@ -260,15 +269,17 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
         // active set holds indices below the column's length (`Scene::update` keeps it so).
         let (rect, z, p) = (c.rect(i), c.z(i) as usize, unsafe { c.rec::<P>(i) });
         let cn = Cx { u: new, rect, pal: c.pal() };
+        let mut still = false;
         if timed {
             let rests = !ahead(p.until(&cn), now);
             if cfg!(feature = "mutant_settle") && only.is_some() && rests {
                 continue;
             }
-            if !rests {
-                ps.active.push(i);
-            }
+            still = !rests;
         }
+        // a reader the clock does not move and whose window is outside the frame is parked: in no set.
+        // Whatever brings it into view is a geometry pass, which decides again
+        let moves = P::GEOM_READS >> U_TIME & 1 != 0;
         if geom {
             let mut ws = WinSink(EMPTY, EMPTY);
             p.paint(&cn, NO_CLIP, &mut ws);
@@ -292,9 +303,15 @@ fn window_pass<P: Paint>(c: ColView, old: &U, new: &U, mask: u64, first: bool, o
                 (ps.win[z], ps.cover[z]) = (w, cv);
                 ps.rebin.push(z as u32);
                 moved = true;
+                if still && (moves || ps.shows(z)) {
+                    ps.active.push(i);
+                }
                 continue;
             }
             moved |= ps.rebin.last() == Some(&(z as u32));
+        }
+        if still && (moves || ps.shows(z)) {
+            ps.active.push(i);
         }
         if !first {
             let cw = p.changed_win(&Cx { u: old, rect, pal: c.pal() }, &cn, mask, NO_CLIP);
@@ -327,7 +344,7 @@ fn rewin_one<P: Paint>(c: ColView, i: u32, u: &U, ps: &mut Pass) -> bool {
     if moved {
         ps.rebin.push(z as u32);
     }
-    if P::READS >> U_TIME & 1 != 0 && ahead(p.until(&cx), u.w[U_TIME]) {
+    if P::READS >> U_TIME & 1 != 0 && ahead(p.until(&cx), u.w[U_TIME]) && (P::GEOM_READS >> U_TIME & 1 != 0 || ps.shows(z)) {
         ps.active.push(i);
     }
     moved
@@ -1165,7 +1182,7 @@ impl Scene {
         let track = self.layers.any() && !first;
         macro_rules! pass {
             () => {
-                Pass { win: &mut self.win, cover: &mut self.cover, halo: &mut self.halo, dmg: &mut self.damage, floor: &self.bins.floor, events: &mut events, track, regeo: &mut regeo, active: &mut act, rebin: &mut rebin }
+                Pass { win: &mut self.win, cover: &mut self.cover, halo: &mut self.halo, dmg: &mut self.damage, floor: &self.bins.floor, events: &mut events, track, regeo: &mut regeo, active: &mut act, rebin: &mut rebin, frame: [self.fw as i16, self.fh as i16] }
             };
         }
         if !first {
@@ -1264,7 +1281,7 @@ impl Scene {
             if keep_active {
                 // the visit was by index: records in motion that it did not reach stay in the set
                 for &i in &act {
-                    if !self.cols[ci].active.contains(&i) {
+                    if !self.cols[ci].active.contains(&i) && !cfg!(feature = "mutant_park_wake") {
                         self.cols[ci].active.push(i);
                     }
                 }

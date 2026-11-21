@@ -843,7 +843,11 @@ fn a_pan_and_a_hover_visit_what_they_can_reach() {
         let mut g = Rng(0xfeed);
         let mut s = Scene::new(fw, fh, 1 << 18);
         let (cards, glass, dots) = (s.column::<AKey>(256), s.column::<AGlass>(16), s.column::<ADot>(32));
+        // endless paints all through the world: the clock does not move them, so those outside the frame
+        // are parked (slice 9) and must animate again once a pan brings them into view
+        let loops = s.column::<ALoop>(64);
         if declare {
+            s.scroll(loops, 0, 1);
             s.scroll(cards, 0, 1);
             s.scroll(glass, 0, 1);
             s.scroll(dots, 0, 1);
@@ -857,6 +861,9 @@ fn a_pan_and_a_hover_visit_what_they_can_reach() {
             s.push(cards, rect, Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x5000_0000), tab: Tab::NONE }, RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(id) }, a: Pm { c: K }, b: Pmo { c: Rec(g.color(true)) } } }));
             if declare {
                 s.set_key(cards, i, id);
+            }
+            if i % 5 == 1 {
+                s.push(loops, [q(x.round() + 10.0), q(y.round() + 60.0), q(x.round() + 50.0), q(y.round() + 80.0)], RRect { b: pan(), r: ri(q(4.0)), c: MixV { a: pm(g.color(true)), b: pm(g.color(true)), t: Tri { now: Uw, phase: Rec(i as u32 * 7), period: Rec(90) } } });
             }
             if i % 25 == 7 && gi < w.glass.len() {
                 s.push(glass, w.glass[gi].rect, w.glass[gi].rec());
@@ -880,6 +887,7 @@ fn a_pan_and_a_hover_visit_what_they_can_reach() {
         w.dots.push(Dot { rect: [q(x), q(y), q(x + 14.0), q(y + 14.0)], c: [g.color(true), g.color(false)], t0: 0, dur: 1, sx: Spring::rest(0), sy: Spring::rest(0) });
     }
     let (mut s, glass, dots) = build(&w, true);
+    let mut most_active = 0;
     let (mut kept, mut u) = (vec![0u32; stride * fh as usize], U::default());
     s.frame(&u, &mut kept, stride, &pool, 0);
     let (mut bad, mut pans, mut hovers, mut pan_recs, mut hover_recs) = (0, 0u32, 0u32, 0u32, 0u32);
@@ -912,6 +920,7 @@ fn a_pan_and_a_hover_visit_what_they_can_reach() {
             }
         }
         let fs = s.frame(&u, &mut kept, stride, &pool, 0);
+        most_active = most_active.max(s.active_records());
         if kind == 0 {
             (pans, pan_recs) = (pans + 1, pan_recs + fs.recs_visited);
         }
@@ -931,6 +940,8 @@ fn a_pan_and_a_hover_visit_what_they_can_reach() {
             bad += 1;
         }
     }
+    eprintln!("parked clock readers: 40 endless paints in the world, at most {most_active} records in an active set");
+    assert!(most_active < 30, "endless paints outside the frame are in the active set");
     eprintln!("scroll and hover by index: {} records in the scene; a pan visited {:.1} records on average, a hover {:.1}; {bad} failing steps", s.records(), pan_recs as f32 / pans as f32, hover_recs as f32 / hovers as f32);
     // a hover is the records of two ids (five cards each); a pan is the records near two viewports
     assert!(hover_recs <= hovers * 10 && pan_recs < pans * 60, "the indexes did not narrow the visits");
