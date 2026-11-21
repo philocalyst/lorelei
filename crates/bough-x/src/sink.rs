@@ -1059,10 +1059,39 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
     let st = &mut parent.subs[q];
     let org = space.origin(cx.u);
     let (lo, hi) = exposed(l, org, space.clip);
-    if (lo == st.lo) & (hi == st.hi) & (st.seen == l.edits.ver) & !cx.all
-        && l.edits.follows(&st.journal)
-    {
-        return;
+    if (lo == st.lo) & (hi == st.hi) & !cx.all && l.edits.follows(&st.journal) {
+        let pending = l.edits.ver.wrapping_sub(st.seen);
+        if pending == 0 {
+            return;
+        }
+        #[cfg(not(feature = "mutant_journal"))]
+        if pending == 1
+            && let Edit::Update(row) = l.edits.log[st.seen as usize & 7]
+            && st.geo == (l.x, l.y, l.row_h)
+            && st.space == space
+            && st.n == l.n
+            && st.rows.first().is_some_and(|row| row.0 == tid::<R>())
+            && st.src.is_some_and(|src| {
+                src.1 == R::LEAVES && src.2 == size_of::<R>() as u32
+                    && (core::ptr::eq(src.0, at) || *src.0 == *at)
+            })
+            && same_template(&st.tmpl, l.shape)
+        {
+            st.moved.clear();
+            st.moved_ok = true;
+            st.moved_from = st.seen;
+            if (row >= lo) & (row < hi) {
+                let mk = Mk { org, clip: space.clip };
+                // SAFETY: the source, shape and exposure checks above certify
+                // this row's sites and physical slot. `patch` checks initialization.
+                unsafe { f(row as usize).patch(st.sites.as_ptr(), st.slot_of(row), &mk, cx) };
+            }
+            st.seen = l.edits.ver;
+            if st.timed {
+                st.resweep(cx.u, cx.tiles);
+            }
+            return;
+        }
     }
     if lo < hi
         && !st.rows.is_empty()

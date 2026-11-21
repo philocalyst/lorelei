@@ -188,10 +188,9 @@ pub struct World<V, B> {
     /// Every column of the world in paint order: the words each reads (dense, scanned on a block change), its
     /// entry (reached only on a match), and where it came from (cold). Rebuilt when the tree changes shape.
     col_reads: Vec<u64>,
-    /// Per block word, the range of columns in `readers`. Its end has the sign bit set if
-    /// the word admits a shared key index. A write to one
+    /// Per block word, the columns that read it (`by_word[w]..by_word[w + 1]` in `readers`): a write to one
     /// word visits its readers and no other column.
-    by_word: [(u32, u32); 64],
+    by_word: [u32; 65],
     readers: Vec<u32>,
     union_epoch: u32,
     union_seen: Vec<u32>,
@@ -201,6 +200,7 @@ pub struct World<V, B> {
     fast: Vec<Fast>,
     /// Per block word that some delta asked about alone: its records by key across columns.
     word_keys: Vec<WordKeys>,
+    key_words: u64,
     key_scratch: Vec<(u32, u32)>,
     /// The number of the last description pass (mount, a list pass, a re-description): the only things that
     /// write a record's operands or change which records are live.
@@ -283,7 +283,7 @@ impl<V: View, B: Backend> World<V, B> {
             lists: 0,
             reads: 0,
             col_reads: Vec::new(),
-            by_word: [(0, 0); 64],
+            by_word: [0; 65],
             readers: Vec::new(),
             union_epoch: 0,
             union_seen: Vec::new(),
@@ -291,6 +291,7 @@ impl<V: View, B: Backend> World<V, B> {
             fast_stats: FastStats::default(),
             fast: Vec::new(),
             word_keys: Vec::new(),
+            key_words: 0,
             key_scratch: Vec::new(),
             wrote: 1,
             no_fast: false,
@@ -652,20 +653,23 @@ impl<V: View, B: Backend> World<V, B> {
         self.union_seen.clear();
         self.union_seen.resize(cols.len(), 0);
         self.readers.clear();
+        self.key_words = 0;
         for w in 0..64 {
-            let start = self.readers.len() as u32;
+            self.by_word[w] = self.readers.len() as u32;
             self.readers.extend(
                 (0..cols.len())
                     .filter(|&k| self.col_reads[k] >> w & 1 != 0)
                     .map(|k| k as u32),
             );
-            let readers = &self.readers[start as usize..];
-            let keyed = readers.len() >= 2 && readers.iter().all(|&k| {
+            let readers = &self.readers[self.by_word[w] as usize..];
+            if readers.len() >= 2 && readers.iter().all(|&k| {
                 let fast = cols[k as usize].fast;
                 fast != u16::MAX && matches!(self.fast[fast as usize].fns.key, Some((word, ..)) if word as usize == w)
-            });
-            self.by_word[w] = (start, (self.readers.len() as u32) | (u32::from(keyed) << 31));
+            }) {
+                self.key_words |= 1 << w;
+            }
         }
+        self.by_word[64] = self.readers.len() as u32;
         // The root view's fields the columns' lenses name. Two fields in one word cannot both be Frame state.
         self.slots.clear();
         for route in &cols {
@@ -723,14 +727,13 @@ impl<V: View, B: Backend> World<V, B> {
         if relevant & relevant.wrapping_sub(1) == 0 {
             // A single reader list contains each column at most once.
             let word = relevant.trailing_zeros() as usize;
-            let (start, end) = self.by_word[word];
-            let start = start as usize;
-            let stop = (end & i32::MAX as u32) as usize;
-            if (end as i32) < 0 && self.delta_word_keys(word, start, stop, u) {
+            let start = self.by_word[word] as usize;
+            let end = self.by_word[word + 1] as usize;
+            if self.key_words & relevant != 0 && self.delta_word_keys(word, start, end, u) {
                 return;
             }
-            self.delta_stats.visited_incidences = stop - start;
-            for i in start..stop {
+            self.delta_stats.visited_incidences = end - start;
+            for i in start..end {
                 self.delta_one(self.readers[i] as usize, u, ch);
             }
             return;
@@ -740,8 +743,7 @@ impl<V: View, B: Backend> World<V, B> {
         let mut incidences = 0usize;
         while words != 0 {
             let w = words.trailing_zeros() as usize;
-            let (start, end) = self.by_word[w];
-            incidences += ((end & i32::MAX as u32) - start) as usize;
+            incidences += (self.by_word[w + 1] - self.by_word[w]) as usize;
             words &= words - 1;
         }
         // Compare the exact number of edges with the number of dense entries.
@@ -767,8 +769,7 @@ impl<V: View, B: Backend> World<V, B> {
             }
             while words != 0 {
                 let w = words.trailing_zeros() as usize;
-                let (start, end) = self.by_word[w];
-                for i in start as usize..(end & i32::MAX as u32) as usize {
+                for i in self.by_word[w] as usize..self.by_word[w + 1] as usize {
                     self.delta_stats.visited_incidences += 1;
                     let k = self.readers[i] as usize;
                     if self.union_seen[k] != self.union_epoch {
