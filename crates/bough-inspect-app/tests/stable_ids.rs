@@ -1,7 +1,7 @@
 //! TASK 1: a node's id is its identity, not its paint index.
 //!
-//! The id is derived from the leaf's call site, the store path, the row/pos slots and the store's creation
-//! generation. Two descriptions of the same view agree; a scroll that recycles materialisation slots does not
+//! The id is derived from the leaf's call site, the store path, the row/pos slots and the host's remount epoch.
+//! Two descriptions of the same view agree; a scroll that recycles materialisation slots does not
 //! change it; two nodes do not share one.
 use bough_guibench_x::rows::Rows;
 use bough_inspect::schema::{Key, PropValue, stable_id};

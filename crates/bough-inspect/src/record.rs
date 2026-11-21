@@ -5,7 +5,7 @@
 //! host does. `tick` is a frame, not a turn (nothing is compared).
 use crate::frame::Frame;
 use crate::json::{self, Value as J};
-use crate::schema::{PropValue, SCHEMA_VERSION};
+use crate::schema::PropValue;
 use crate::session::{Input, Outcome, Program, Refusal, Session};
 use bough_x::event::{Button, Key, Mods};
 
@@ -300,7 +300,7 @@ impl PropValue {
     }
 }
 
-/// What one command produced: the record that replay compares.
+/// What one command produced, including volatile damage and revision diagnostics.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Step {
     pub command: Command,
@@ -313,6 +313,9 @@ pub struct Step {
 }
 
 pub(crate) const MAX_LOG_STEPS: usize = 1024;
+/// Log versions are independent of the live snapshot and RPC schema version.
+pub const LOG_SCHEMA_VERSION: u32 = 2;
+pub const LEGACY_LOG_SCHEMA_VERSION: u32 = 1;
 
 /// A session's commands and what each produced.
 #[derive(Clone, Debug, PartialEq)]
@@ -328,7 +331,7 @@ impl Log {
     pub fn new(session: &mut Session<impl Program>) -> Log {
         let snap = session.snapshot();
         Log {
-            schema: SCHEMA_VERSION,
+            schema: LOG_SCHEMA_VERSION,
             app: snap.app.name.clone(),
             w: snap.app.w,
             h: snap.app.h,
@@ -377,9 +380,9 @@ impl Log {
     }
     pub fn from_json(v: &J) -> Result<Log, String> {
         let schema = v.get("schema").and_then(J::as_u32).ok_or("schema")?;
-        if schema != SCHEMA_VERSION {
+        if !matches!(schema, LEGACY_LOG_SCHEMA_VERSION | LOG_SCHEMA_VERSION) {
             return Err(format!(
-                "log is schema {schema}, this build reads {SCHEMA_VERSION}"
+                "log is schema {schema}, this build reads {LEGACY_LOG_SCHEMA_VERSION} and {LOG_SCHEMA_VERSION}"
             ));
         }
         let size = v.get("size").ok_or("size")?;
@@ -429,6 +432,10 @@ impl Log {
 
 /// One command recorded: run it, then take the description and the frame it produced.
 pub fn record_step<P: Program>(s: &mut Session<P>, c: Command) -> Step {
+    replay_step(s, c, LOG_SCHEMA_VERSION)
+}
+
+fn replay_step<P: Program>(s: &mut Session<P>, c: Command, schema: u32) -> Step {
     let refused = match &c {
         Command::Set { field, value } => s.set(field, value).err(),
         _ => {
@@ -436,7 +443,7 @@ pub fn record_step<P: Program>(s: &mut Session<P>, c: Command) -> Step {
             None
         }
     };
-    observe(s, c, refused.as_ref())
+    observe_step(s, c, refused.as_ref(), schema)
 }
 
 pub(crate) fn observe<P: Program>(
@@ -444,8 +451,22 @@ pub(crate) fn observe<P: Program>(
     c: Command,
     refusal: Option<&Refusal>,
 ) -> Step {
+    observe_step(s, c, refusal, LOG_SCHEMA_VERSION)
+}
+
+fn observe_step<P: Program>(
+    s: &mut Session<P>,
+    c: Command,
+    refusal: Option<&Refusal>,
+    schema: u32,
+) -> Step {
     let refused = refusal.map(|e| (e.code().to_owned(), e.reason()));
-    let digest = s.snapshot().digest();
+    let snapshot = s.snapshot();
+    let digest = if schema == LEGACY_LOG_SCHEMA_VERSION {
+        snapshot.legacy_digest()
+    } else {
+        snapshot.digest()
+    };
     let damage = s.damage().tiles;
     let revision = s.app().world().revision();
     let f: Frame = s.shot();
@@ -474,7 +495,7 @@ pub enum Replay {
     },
 }
 
-/// Apply a log's commands to a fresh application of the same kind, in order, comparing every product.
+/// Replay a log on a fresh application. Compare description, pixels and refusal code at each step.
 pub fn replay<P: Program>(log: &Log, app: impl FnOnce() -> P) -> Replay {
     let mut s = Session::new(app());
     let fresh = Log::new(&mut s);
@@ -496,7 +517,7 @@ pub fn replay<P: Program>(log: &Log, app: impl FnOnce() -> P) -> Replay {
             // the negative control of G4: a replay silently skips every fourth command
             continue;
         }
-        let got = record_step(&mut s, want.command.clone());
+        let got = replay_step(&mut s, want.command.clone(), log.schema);
         for (what, e, g) in [
             (
                 "description",
@@ -507,11 +528,6 @@ pub fn replay<P: Program>(log: &Log, app: impl FnOnce() -> P) -> Replay {
                 "pixels",
                 format!("{:016x}", want.pixels),
                 format!("{:016x}", got.pixels),
-            ),
-            (
-                "revision",
-                want.revision.to_string(),
-                got.revision.to_string(),
             ),
         ] {
             if e != g {
