@@ -1232,6 +1232,35 @@ impl<V, X: Boxy<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Boxy<V> for Hd<X,
         self.0.kids()
     }
 }
+/// The one position a scrolled box's content takes in its row: a hole.
+#[derive(Clone, Copy)]
+pub struct HoleRow;
+impl<V> Row<V> for HoleRow {
+    const LEAVES: u32 = 1;
+    #[inline(always)]
+    fn visit<L: Leaf<V>>(&self, l: &mut L) {
+        l.hole()
+    }
+    #[inline(always)]
+    unsafe fn write(&self, _: *const Site, _: u32) {}
+    #[inline(always)]
+    unsafe fn patch(&self, _: *const Site, _: u32, _: &Mk, _: &mut Cx<'_>) {}
+}
+/// A painted scrolled box carries handlers on its own record (a list that hears keys, a port that hears the
+/// wheel): its record, then the hole.
+impl<V, P: Paints<V>, C> Boxy<V> for Scroll<Rec1<P>, C> {
+    type Tgt = P::A;
+    type Kids = HoleRow;
+    #[inline(always)]
+    fn tgt(&self) -> P::A {
+        self.paint.0.arch()
+    }
+    #[inline(always)]
+    fn kids(&self) -> &HoleRow {
+        &HoleRow
+    }
+}
+impl<P, C> Interactive for Scroll<Rec1<P>, C> {}
 impl<V: 'static, X: Boxy<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Row<V> for Hd<X, H> {
     const LEAVES: u32 = 1 + <X::Kids as Row<V>>::LEAVES;
     #[inline(always)]
@@ -1431,7 +1460,7 @@ where
 }
 /// An element in a scrolled box's content: laid out as a row of the content's width, where the flow is.
 #[inline(always)]
-fn seg_el<V, E: Part<V> + Shape, S: Sink<V>>(e: &mut E, s: &mut S, f: &mut Flow) {
+pub fn seg_el<V, E: Part<V> + Shape, S: Sink<V>>(e: &mut E, s: &mut S, f: &mut Flow) {
     if !f.lay {
         return e.holes(None, &mut 0, s);
     }

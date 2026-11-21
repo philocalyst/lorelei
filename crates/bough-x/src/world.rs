@@ -1396,7 +1396,10 @@ impl<V: View, B: Backend> World<V, B> {
                 consumed: false,
             };
         };
-        let word = st.space.scroll as usize;
+        // the offset's word, and whether it is the application's own (an `f32` of points) or device pixels
+        let points = st.space.scroll & crate::store::POINTS != 0;
+        let word = st.space.scroll as usize & 63;
+        let scale = f32::from_bits(self.shown.w[U_SCALE]);
         let lists = st.subs.iter().filter(|s| s.src.is_some());
         let (extent, line) = lists.fold((0i32, 0i32), |(e, l), s| {
             (
@@ -1412,9 +1415,19 @@ impl<V: View, B: Backend> World<V, B> {
                 consumed: false,
             };
         };
-        let at = u.w[word] as i32;
+        let at = if points {
+            (f32::from_bits(u.w[word]) * scale).round() as i32
+        } else {
+            u.w[word] as i32
+        };
         let to = (at + (dy * line.max(1) as f32) as i32).clamp(0, max);
-        u.w[word] = to as u32;
+        if to != at {
+            u.w[word] = if points {
+                (to as f32 / scale).to_bits()
+            } else {
+                to as u32
+            };
+        }
         Dispatch {
             kind: kind::WHEEL,
             place: NONE,

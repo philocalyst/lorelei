@@ -317,19 +317,28 @@ impl Backend for Soft {
 }
 
 /// Paint while describing. No store, no columns: every record is painted where the view says, in view order.
-pub struct Immediate<'s, V> {
-    pub soft: &'s mut Soft,
+pub struct Immediate<'s, V, B: Backend = Soft> {
+    pub soft: &'s mut B,
     pub u: &'s U,
     pub space: Space,
+    /// The window in device pixels.
+    pub size: (i32, i32),
     _p: PhantomData<fn(&mut V)>,
 }
 impl<'s, V> Immediate<'s, V> {
     pub fn new(soft: &'s mut Soft, u: &'s U) -> Self {
-        let space = Space::root(soft.w, soft.h);
+        let (w, h) = (soft.w, soft.h);
+        Immediate::on(soft, u, w, h)
+    }
+}
+impl<'s, V, B: Backend> Immediate<'s, V, B> {
+    /// The immediate-mode oracle over any backend, for a window of `w` x `h` device pixels.
+    pub fn on(soft: &'s mut B, u: &'s U, w: i32, h: i32) -> Self {
         Immediate {
             soft,
             u,
-            space,
+            space: Space::root(w, h),
+            size: (w, h),
             _p: PhantomData,
         }
     }
@@ -355,8 +364,8 @@ impl<'s, V> Immediate<'s, V> {
         );
     }
 }
-struct Now<'a, 'r, 's, V> {
-    im: &'a mut Immediate<'s, V>,
+struct Now<'a, 'r, 's, V, B: Backend> {
+    im: &'a mut Immediate<'s, V, B>,
     rects: &'r [Rect],
     at: (i32, i32),
     k: usize,
@@ -373,7 +382,7 @@ impl bough_lay::Out for Rects {
         };
     }
 }
-impl<V> Leaf<V> for Now<'_, '_, '_, V> {
+impl<V, B: Backend> Leaf<V> for Now<'_, '_, '_, V, B> {
     fn hole(&mut self) {
         self.k += 1;
     }
@@ -382,10 +391,10 @@ impl<V> Leaf<V> for Now<'_, '_, '_, V> {
         self.k += 1;
     }
 }
-impl<'r, 's, V> ScopeOf<'r, V> for Immediate<'s, V> {
-    type Scope = Immediate<'r, V>;
+impl<'r, 's, V, B: Backend> ScopeOf<'r, V> for Immediate<'s, V, B> {
+    type Scope = Immediate<'r, V, B>;
 }
-impl<'s, V> Sink<V> for Immediate<'s, V> {
+impl<'s, V, B: Backend> Sink<V> for Immediate<'s, V, B> {
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, f: F) {
         let (rects, row) = f();
         row.visit(&mut Now {
@@ -404,6 +413,7 @@ impl<'s, V> Sink<V> for Immediate<'s, V> {
             soft: &mut *self.soft,
             u: self.u,
             space,
+            size: self.size,
             _p: PhantomData,
         };
         f(&mut sub);
@@ -411,7 +421,7 @@ impl<'s, V> Sink<V> for Immediate<'s, V> {
     fn env(&self) -> crate::sink::Env<'_> {
         crate::sink::Env {
             scale: f32::from_bits(self.u.w[crate::expr::U_SCALE]),
-            size: [self.soft.w as f32, self.soft.h as f32],
+            size: [self.size.0 as f32, self.size.1 as f32],
             u: self.u,
         }
     }

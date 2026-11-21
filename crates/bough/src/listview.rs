@@ -1542,7 +1542,7 @@ pub struct SrcParts {
 
 /// A `List<T>` field and its row function.
 pub struct ListRows<'a, T, V> {
-    list: LWired<'a, T, V>,
+    pub(crate) list: LWired<'a, T, V>,
     row: fn(&T, &mut Mounter<'_, T>),
     /// The row on the lowered runtime: `T::view` lowered (`list`); a row given as a legacy mount function
     /// (`list_with`) has none and is refused there.
@@ -1595,13 +1595,13 @@ impl<V: 'static> RowSource<V> for IndexRows<V> {
 /// A list region (see the module docs): every item of its source is one row, laid out at the container's
 /// content width; all of them, or (`viewport` / `scroll`) the ones its box shows.
 pub struct LList<'a, S, V> {
-    src: S,
-    spec: Spec,
-    bg: Option<Color>,
-    radius: f32,
-    virt: bool,
-    scroll: Option<Wired<'a, f32, V>>,
-    estimate: f32,
+    pub(crate) src: S,
+    pub(crate) spec: Spec,
+    pub(crate) bg: Option<Color>,
+    pub(crate) radius: f32,
+    pub(crate) virt: bool,
+    pub(crate) scroll: Option<Wired<'a, f32, V>>,
+    pub(crate) estimate: f32,
     overscan: usize,
     animate: Option<Spring>,
 }

@@ -103,6 +103,47 @@ impl Tree {
         self.wraps.push(w);
         self.els.len() - 1
     }
+    /// The tree of an element given as layout words (`Shape::emit`): every element of it must be painted or a
+    /// hole (one rect per record), so element `k` here is record `k` of the element's row. Wrapping leaves are
+    /// refused (their content is borrowed from the element).
+    pub fn of_shape<T: crate::shape::Shape>(t: &T) -> Tree {
+        struct Words(Tree);
+        impl<'a> crate::shape::Sink<'a> for Words {
+            fn node(&mut self, nd: crate::shape::Nd) {
+                assert!(
+                    nd.painted()
+                        && nd.kind() != crate::shape::K_WRAP
+                        && nd.kind() != crate::shape::K_GONE,
+                    "a heap tree from layout words takes painted boxes and lines"
+                );
+                self.0.els.push(El {
+                    spec: nd.spec(),
+                    kind: nd.kind(),
+                    count: nd.count(),
+                    end: 0,
+                    a: f32::from_bits(nd.0[19]),
+                    b: f32::from_bits(nd.0[20]),
+                    wrap: 0,
+                });
+            }
+        }
+        let mut w = Words(Tree::new());
+        t.emit(&mut w);
+        fn ends(els: &mut [El], i: usize) -> usize {
+            let mut j = i + 1;
+            if els[i].kind == K_BOX {
+                for _ in 0..els[i].count {
+                    j = ends(els, j);
+                }
+            }
+            els[i].end = j as u32;
+            j
+        }
+        if !w.0.els.is_empty() {
+            ends(&mut w.0.els, 0);
+        }
+        w.0
+    }
     fn at(&self, i: usize) -> At<'_> {
         At { t: self, i }
     }

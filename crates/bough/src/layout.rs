@@ -1374,14 +1374,14 @@ impl Rt {
 
 /// A layout box: a flex container (`column` / `row`) or a leaf rectangle (`block`), optionally painted.
 pub struct LBox<Bg = Color, Ch = (), X = ()> {
-    spec: Spec,
-    draw: bool,
-    bg: Bg,
-    radius: f32,
-    border: Option<(f32, Color)>,
-    ch: Ch,
+    pub(crate) spec: Spec,
+    pub(crate) draw: bool,
+    pub(crate) bg: Bg,
+    pub(crate) radius: f32,
+    pub(crate) border: Option<(f32, Color)>,
+    pub(crate) ch: Ch,
     /// Reactive operands (`boxops.rs`): opacity, translate, width, height.
-    x: X,
+    pub(crate) x: X,
 }
 
 pub fn column<Ch>(ch: Ch) -> LBox<Color, Ch> {
@@ -1683,13 +1683,13 @@ pub(crate) fn restyle_to(rt: &mut Rt, lid: u32, style: cephal::Style) {
 
 /// Wrapping text (`para`) or a single-line label (`label`), measured by the shaper.
 pub struct Para<S, C = Color> {
-    s: S,
-    spec: Spec,
-    size: f32,
-    lh: f32,
+    pub(crate) s: S,
+    pub(crate) spec: Spec,
+    pub(crate) size: f32,
+    pub(crate) lh: f32,
     /// A colour operand (a constant, `sig!(..)`, `sig!(..).map(f)`): a paint-only write of the lines' colour.
-    color: C,
-    wrap: bool,
+    pub(crate) color: C,
+    pub(crate) wrap: bool,
 }
 
 /// A paragraph that wraps at its width (set `.w(..)`, or it fills the available width).

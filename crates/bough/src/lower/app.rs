@@ -386,23 +386,7 @@ impl<V: View> App<V> {
     /// The shown surface over white, as a PNG file (visual fixtures and debugging).
     pub fn write_png(&self, path: &std::path::Path) -> std::io::Result<()> {
         let (w, h) = self.px();
-        let px = self.presented_pixels();
-        let mut rgb = Vec::with_capacity(px.len() / 4 * 3);
-        for p in px.chunks_exact(4) {
-            let ia = 255 - p[3] as u32;
-            rgb.extend(
-                [p[0] as u32 + ia, p[1] as u32 + ia, p[2] as u32 + ia].map(|c| c.min(255) as u8),
-            );
-        }
-        let mut enc = png::Encoder::new(
-            std::io::BufWriter::new(std::fs::File::create(path)?),
-            w as u32,
-            h as u32,
-        );
-        enc.set_color(png::ColorType::Rgb);
-        enc.set_depth(png::BitDepth::Eight);
-        let mut wr = enc.write_header().map_err(std::io::Error::other)?;
-        wr.write_image_data(&rgb).map_err(std::io::Error::other)
+        png(&self.presented_pixels(), w, h, path)
     }
     /// Records the world holds, live ones (the O(exposed) count band).
     pub fn record_count(&self) -> usize {
@@ -530,7 +514,11 @@ impl<V: View> App<V> {
     /// Run the handlers of kind `kind` on node `at`; returns whether any ran.
     fn fire(&mut self, at: (u32, u32), kind: Kind, e: &Ev) -> bool {
         // a node of a description that has since been replaced by a smaller one (a press held across turns)
-        if self.docs.get(at.0 as usize).is_none_or(|d| d.nodes.len() <= at.1 as usize) {
+        if self
+            .docs
+            .get(at.0 as usize)
+            .is_none_or(|d| d.nodes.len() <= at.1 as usize)
+        {
             return false;
         }
         let (a, n) = self.docs[at.0 as usize].nodes[at.1 as usize].hnd;
@@ -794,4 +782,24 @@ impl<V: View> App<V> {
             return;
         }
     }
+}
+
+/// Premultiplied RGBA8 pixels over white, as a PNG file.
+pub(crate) fn png(px: &[u8], w: i32, h: i32, path: &std::path::Path) -> std::io::Result<()> {
+    let mut rgb = Vec::with_capacity(px.len() / 4 * 3);
+    for p in px.chunks_exact(4) {
+        let ia = 255 - p[3] as u32;
+        rgb.extend(
+            [p[0] as u32 + ia, p[1] as u32 + ia, p[2] as u32 + ia].map(|c| c.min(255) as u8),
+        );
+    }
+    let mut enc = png::Encoder::new(
+        std::io::BufWriter::new(std::fs::File::create(path)?),
+        w as u32,
+        h as u32,
+    );
+    enc.set_color(png::ColorType::Rgb);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut wr = enc.write_header().map_err(std::io::Error::other)?;
+    wr.write_image_data(&rgb).map_err(std::io::Error::other)
 }
