@@ -115,10 +115,15 @@ def staged(out, cards, cell):
     name = "glass" if cell == "video" else cell
     stem = out / f"{name}-{cards}"
     gate = read_lines(stem.with_suffix(".check"))
-    if "check_exit=0" not in gate:
-        return "gate failed" if any(l.startswith("check_exit=") for l in gate) else "pending"
     lines = read_lines(stem.with_suffix(".csv"))
+    resize_boundary = "not expressible (requires remount)"
+    if "check_exit=0" not in gate:
+        if cell == "resize":
+            return resize_boundary
+        return "gate failed" if any(l.startswith("check_exit=") for l in gate) else "pending"
     if "measure_exit=0" not in lines:
+        if cell == "resize":
+            return resize_boundary
         return "measurement failed" if any(l.startswith("measure_exit=") for l in lines) else "pending"
     records = [l.split(",") for l in lines if l.startswith(f"fx_{name},")]
     draws = sum(int(r[15]) for r in records)
@@ -126,7 +131,7 @@ def staged(out, cards, cell):
         return f"{draws} frames" if records else "missing samples"
     value = summarize([int(r[3]) for r in records], draws)
     if cell == "resize":
-        return "not expressible (requires remount)" if len(records) < MIN_SAMPLES else "remount diagnostic " + value
+        return resize_boundary + (f"; remount {value}" if len(records) >= MIN_SAMPLES else "")
     return value
 
 
