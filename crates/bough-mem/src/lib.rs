@@ -428,7 +428,13 @@ impl ColMem {
 
 /// The VM page size (16 KB on Apple silicon).
 pub fn vm_page() -> usize {
-    #[cfg(unix)]
+    // Miri has no `getpagesize`: the interpreter's page is Apple silicon's, so the carving arithmetic runs
+    // under it unchanged (soundness review: Miri coverage of `Region::carve*`).
+    #[cfg(miri)]
+    {
+        16384
+    }
+    #[cfg(all(unix, not(miri)))]
     {
         unsafe extern "C" {
             fn getpagesize() -> i32;
@@ -436,7 +442,7 @@ pub fn vm_page() -> usize {
         // SAFETY: no arguments, no preconditions.
         (unsafe { getpagesize() }) as usize
     }
-    #[cfg(not(unix))]
+    #[cfg(all(not(unix), not(miri)))]
     {
         4096
     }
