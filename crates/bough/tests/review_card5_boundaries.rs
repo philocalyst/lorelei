@@ -133,7 +133,6 @@ impl View for Projection {
 }
 
 #[test]
-#[ignore = "Card 5 treats a zero-sized text projection as pure"]
 fn capture_free_projection_can_read_changed_state() {
     LABEL.set("a");
     let mut app = App::new(

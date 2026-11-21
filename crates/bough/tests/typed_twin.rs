@@ -163,3 +163,85 @@ fn a_handler_that_writes_a_bound_word_and_a_plain_field_shows_both_on_both_runti
     typed.pointer_up(140.0, 20.0, Button::Primary);
     check(&mut legacy, &mut typed, "click on `same_value_and_plain`");
 }
+
+thread_local! {
+    static PROJECTION_LABEL: std::cell::Cell<&'static str> = const { std::cell::Cell::new("i") };
+}
+
+struct Projection {
+    word: Signal<u32>,
+}
+impl Projection {
+    fn new() -> Self {
+        Self {
+            word: Signal::new(0),
+        }
+    }
+}
+impl View for Projection {
+    fn view(&self) -> impl Element<Self> + '_ {
+        row((
+            text(sig!(self.word).map(|_| PROJECTION_LABEL.get().to_owned())).font(16.0, 24.0),
+            block(8.0, 24.0).bg(ON),
+        ))
+        .w(W as f32)
+        .h(24.0)
+        .bg(rgb(0xffffff))
+    }
+}
+
+fn marker_position(pixels: &[u8], bgra: bool) -> usize {
+    let [r, g, b, a] = ON.0.to_le_bytes();
+    let marker = if bgra { [b, g, r, a] } else { [r, g, b, a] };
+    pixels[(12 * W) * 4..(13 * W) * 4]
+        .chunks_exact(4)
+        .position(|pixel| pixel == marker)
+        .expect("the trailing marker was painted")
+}
+
+#[test]
+fn capture_free_text_projection_follows_the_legacy_publication_rule() {
+    PROJECTION_LABEL.set("i");
+    let config = || Config::new(W as f32, 24.0, 1.0, bough::ui::default_font());
+    let mut legacy = bough::raw::App::new(Projection::new(), config(), true);
+    let mut typed = bough::typed::App::new(Projection::new(), config())
+        .unwrap_or_else(|(_, why)| panic!("projection refused: {why:?}"));
+    let mut legacy_positions = Vec::new();
+    let mut typed_positions = Vec::new();
+    type Change = fn(&mut Projection);
+    let turns: [(&str, Change); 5] = [
+        ("i", |_| {}),
+        ("WWWW", |_| {}),
+        ("WWWWWW", |p| {
+            p.word.set(0);
+        }),
+        ("WWWWWWWW", |p| *p.word = 0),
+        ("WWWWWWWWWW", |p| {
+            p.word.set(1);
+        }),
+    ];
+    for (step, (label, turn)) in turns.into_iter().enumerate() {
+        PROJECTION_LABEL.set(label);
+        if step != 0 {
+            legacy.turn(turn);
+            typed.turn(turn);
+        }
+        legacy.frame();
+        legacy.wait_presented();
+        typed.frame();
+        legacy_positions.push(marker_position(&legacy.presented_pixels(), true));
+        typed_positions.push(marker_position(&typed.presented_pixels(), false));
+    }
+    println!("external, equality, explicit same-value write, changed word positions");
+    println!("legacy={legacy_positions:?}; typed={typed_positions:?}");
+    for step in 1..legacy_positions.len() {
+        let legacy_move = legacy_positions[step] - legacy_positions[step - 1];
+        let typed_move = typed_positions[step].saturating_sub(typed_positions[step - 1]);
+        // The renderers can round advances differently. Both must lay out the new text on this turn.
+        assert!(legacy_move >= 15, "legacy marker did not move, step {step}");
+        assert!(
+            typed_move.abs_diff(legacy_move) <= 3,
+            "typed marker differs on step {step}"
+        );
+    }
+}

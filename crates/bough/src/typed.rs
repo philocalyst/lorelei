@@ -124,8 +124,6 @@ pub struct PassStats {
 
 struct TapeEnt {
     text: Box<str>,
-    /// A projection of a word-sized signal by a function that captures nothing: the word (plus one).
-    key: u64,
     size: u32,
     lh: u32,
     run: (u32, u32),
@@ -1117,10 +1115,9 @@ impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Pa
             refuse("para (wrapped text)");
         }
         let (size, lh) = (self.size * scale, self.lh * scale);
-        let key = <S as TKey<R::O>>::key(&self.s);
         let src = self.s;
         let Line { run, w, base, .. } =
-            with(|sh| line_step(sh, key, size, lh, |g| src.with_str(|t| g(t))));
+            with(|sh| line_step(sh, size, lh, |g| src.with_str(|t| g(t))));
         TLine {
             spec: crate::lower::lay_spec(&self.spec, scale),
             w,
@@ -1149,8 +1146,7 @@ impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Pa
         } else {
             let scale = u.sh.scale.get();
             let (size, lh) = (self.size * scale, self.lh * scale);
-            let key = <S as TKey<R::O>>::key(&self.s);
-            let l = line_step(u.sh, key, size, lh, |g| self.s.peek(g));
+            let l = line_step(u.sh, size, lh, |g| self.s.peek(g));
             if !l.same_w {
                 // the text's width is a layout word
                 u.miss = true;
@@ -1168,29 +1164,6 @@ impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Pa
     #[inline(always)]
     fn lists<Sk: Sink<Ty<V>>>(&self, _: Option<&[Rect]>, k: &mut usize, _: &mut Sk) {
         *k += 1;
-    }
-}
-
-/// Whether a text source is a function of one word, and that word: a projection of a word-sized signal by a
-/// function that captures nothing. Its text is then the same whenever the word is, and the projection (a
-/// `format!`, usually) need not run to know it.
-trait TKey<O>: TextSrc<O> {
-    fn key(&self) -> u64;
-}
-impl<O, S: TextSrc<O>> TKey<O> for S {
-    #[inline(always)]
-    default fn key(&self) -> u64 {
-        0
-    }
-}
-impl<'a, T: Wordy, O, F: Fn(&T) -> String + Copy + 'static> TKey<O> for WMap<'a, T, O, F> {
-    #[inline(always)]
-    fn key(&self) -> u64 {
-        if size_of::<F>() == 0 {
-            1 << 32 | self.w.get().to_w() as u64
-        } else {
-            0
-        }
     }
 }
 
@@ -1267,17 +1240,11 @@ struct Line {
 /// The run of a line of text, its width and where its baseline is.
 ///
 /// In the fixed part of a view the k-th text is the same call site in every description, so what the last
-/// description said of it is kept (the tape): if this description says the same bytes at the same size (or,
-/// for a projection of a word, the same word) the kept run is the answer and nothing is hashed, shaped or
-/// formatted. A text of a list row, a text that differs and every text of an oracle's pass go to the run
-/// store by their bytes. `read` lends the text.
-fn line_step(
-    sh: &Shared,
-    key: u64,
-    size: f32,
-    lh: f32,
-    read: impl FnOnce(&mut dyn FnMut(&str)),
-) -> Line {
+/// description said of it is kept (the tape). A description that produces the same bytes at the same size
+/// keeps the run without hashing or shaping. A projection can read external state even if it has no
+/// captures, so the author projection runs on each description, as in the legacy façade.
+/// A list row, a changed text and every oracle pass look the text up by its bytes. `read` lends the text.
+fn line_step(sh: &Shared, size: f32, lh: f32, read: impl FnOnce(&mut dyn FnMut(&str))) -> Line {
     let fresh = |t: &str| {
         let mut ts = sh.text.borrow_mut();
         mark(ph::VIEW);
@@ -1320,23 +1287,12 @@ fn line_step(
             same_w: true,
         }
     };
-    if key != 0 {
-        let tape = sh.tape.borrow();
-        if let Some(e) = tape
-            .get(k)
-            .filter(|e| e.key == key && (e.size, e.lh) == (sb, lb))
-        {
-            return hit(e);
-        }
-    }
     let mut out = None;
     read(&mut |t| {
         let mut tape = sh.tape.borrow_mut();
-        if let Some(e) = tape.get_mut(k).filter(|e| {
+        if let Some(e) = tape.get(k).filter(|e| {
             (e.size, e.lh) == (sb, lb) && (cfg!(feature = "mutant_typed_tape") || *e.text == *t)
         }) {
-            // the same bytes under another word: the entry answers that word too from now on
-            e.key = key;
             out = Some(hit(e));
             return;
         }
@@ -1346,7 +1302,6 @@ fn line_step(
             .is_some_and(|e| (e.lh, e.w.to_bits()) == (lb, w.to_bits()));
         let ent = TapeEnt {
             text: t.into(),
-            key,
             size: sb,
             lh: lb,
             run,
