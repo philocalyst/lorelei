@@ -472,6 +472,10 @@ fn main() {
     let mut bad_total = 0;
     for &cell in cells {
         for (exec, name) in [(Exec::Cpu, "cpu1"), (Exec::CpuNoCache, "cpu1-nocache"), (Exec::Metal, "metal")] {
+            // `NOCONTROL=1`: skip the redraw-every-layer control (seconds per frame in deep scenes)
+            if exec == Exec::CpuNoCache && std::env::var("NOCONTROL").is_ok() {
+                continue;
+            }
             let (r, bad) = run(&*make, cell, exec, reps, &pool);
             bad_total += bad;
             let f = r.frames.max(1) as f64;

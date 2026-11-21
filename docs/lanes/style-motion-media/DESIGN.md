@@ -46,19 +46,23 @@ the scene, not the change.
    pyramid level (dirty blocks); then the output tiles. On the CPU `Scene::prepare` runs the stages; on
    Metal `Gpu::staged` encodes them as dispatches of two kernels (`k_seg`, `k_down`) in one command buffer.
    The schedule's cost is O(events x layers) in the first cut (a tile index would make it O(reached)).
-6. *A stored prefix is also a place to restart.* Inside its window a backdrop record flattens the
-   accumulator, so the stored prefix *is* the accumulator there. A tile wholly inside the window of a layer
-   record starts from that layer's stored tile instead of from the bottom of its list: everything above a
-   glass panel is repaired without shading anything beneath the panel. This is roadmap X14 (tile prefix
-   caching) arriving as a consequence, for the tiles a layer happens to cover.
+6. *A stored prefix is the place every job restarts* (slice 3; D1's first condition). A backdrop record
+   flattens the accumulator over the whole tiles of its halo, which are exactly the tiles it is listed in, so
+   its stored prefix *is* the accumulator on each of them. Every prefix job and every output tile therefore
+   starts at the topmost layer record of its range: a reader costs the records between it and the reader
+   beneath, and everything above a glass panel is repaired without shading anything beneath it. This is
+   roadmap X14 for every tile under any halo. The halo's tile set is visible state (a quantisation), so a
+   halo that changes damages the tiles it left and entered: once per tile crossed.
 7. *Idle pays nothing.* No event, no geometry change: no schedule, no stage, no tile.
 
 **Semantics chosen along the way** (each is in the specification, `Scene::spec`):
 
-* *Flatten.* Inside a backdrop record's window the accumulator is quantised to 8 bits before the record
-  composites (`x_flat`). That is what makes the prefix storable in the surface's own format and the restart
-  exact. It was first applied over the whole halo; that was wrong (quantisation one LSB outside the window
-  moved with the record and was not damaged; the gate caught it) and is now confined to the window.
+* *Flatten.* Over the whole tiles of a backdrop record's halo the accumulator is quantised to 8 bits
+  (`x_flat`) before the record composites. That is what makes the prefix storable in the surface's own
+  format and the restart exact on every tile. History: first applied over the halo with no damage for a
+  moving halo (wrong: the gate caught one-LSB differences); then confined to the window (exact, but restart
+  only on tiles inside a window, and depth multiplied cost); now over the halo's tiles with the halo's
+  changes damaged.
 * *Edges.* Reads beyond the frame clamp to the frame's edge at every level.
 * *Sampling outside the box.* A blur reads what is beneath beyond its own box (not a clamp at the box edge).
   That costs a halo, and buys a pyramid that does not depend on where the box is.
@@ -84,8 +88,7 @@ it unused.
 
 **Refused by the fast path, and what happens instead (the fallbacks).**
 
-* A tile not wholly inside a layer record's window recomputes its list from the bottom (or from a lower
-  layer that does hold it).
+* A tile with no layer record in its list is shaded from the bottom of its (cut) list, as before.
 * The GPU-resident frame (`Gpu::frame`: window pass and bins on the GPU) does not schedule layers: it
   panics on a scene with layer columns, and such scenes run `Gpu::staged` (the CPU schedules, the GPU
   executes). A resident schedule needs the event algebra on the GPU; not built.

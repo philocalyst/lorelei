@@ -462,6 +462,9 @@ pub struct Bins {
     ty: usize,
     /// Tiles whose list or cut changed since `take_changed` (an executor that mirrors the bins).
     changed: Vec<u32>,
+    /// Tiles edited since the last `recut_touched`, and a flag per tile for it.
+    touched: Vec<u32>,
+    mark: Vec<bool>,
 }
 /// The lanes the bins are made from.
 pub struct Lanes<'a> {
@@ -540,6 +543,9 @@ impl Bins {
         self.floor.resize(nt, 0);
         self.binned.clear();
         self.binned.resize(l.win.len(), [0; 4]);
+        self.touched.clear();
+        self.mark.clear();
+        self.mark.resize(nt, false);
         for z in 0..l.win.len() {
             let b = l.bin(z);
             self.binned[z] = b;
@@ -560,7 +566,8 @@ impl Bins {
         }
     }
     /// Record `z`'s window, halo or cover changed: edit the lists of the tiles it left and entered, and
-    /// recompute the cut of every tile it was or is in. Cost: those tiles, not the scene.
+    /// note every tile it was or is in for `recut_touched` (the cut is recomputed once per tile, however many
+    /// records moved there). Cost: those tiles, not the scene.
     pub fn update(&mut self, z: u32, l: &Lanes) {
         let (old, new) = (self.binned[z as usize], l.bin(z as usize));
         let (o, n) = (self.span(&old), self.span(&new));
@@ -577,7 +584,7 @@ impl Bins {
                         self.lay[t].retain(|&k| k != z);
                     }
                 }
-                self.recut(t, l);
+                self.touch(t);
             }
         }
         for y in n.1..n.3 {
@@ -594,10 +601,27 @@ impl Bins {
                         self.lay[t].insert(i, z);
                     }
                 }
-                self.recut(t, l);
+                self.touch(t);
             }
         }
         self.binned[z as usize] = new;
+    }
+    #[inline]
+    fn touch(&mut self, t: usize) {
+        if !self.mark[t] {
+            self.mark[t] = true;
+            self.touched.push(t as u32);
+        }
+    }
+    /// Recompute the cut of the tiles `update` touched since the last call.
+    pub fn recut_touched(&mut self, l: &Lanes) {
+        let touched = std::mem::take(&mut self.touched);
+        for &t in &touched {
+            self.mark[t as usize] = false;
+            self.recut(t as usize, l);
+        }
+        self.touched = touched;
+        self.touched.clear();
     }
     /// The visible lists as one array and an offset per tile (plus the end): what a GPU executor uploads.
     pub fn csr(&self) -> (Vec<u32>, Vec<u32>) {
@@ -990,12 +1014,15 @@ impl Scene {
         }
         if moved {
             let lanes = Lanes { win: &self.win, cover: &self.cover, halo: &self.halo, lay: &self.layers.of, cut: self.cut };
-            if first {
+            // edits pay per moved record and tile; when a good part of the scene moved (a pan) one pass over
+            // every record is cheaper (measured on the canvas's pan: edits alone were 12x the rebuild)
+            if first || rebin.len() * 4 > self.order.len() {
                 self.bins.build(&lanes, self.tx, self.ty);
             } else {
                 for &z in &rebin {
                     self.bins.update(z, &lanes);
                 }
+                self.bins.recut_touched(&lanes);
             }
             self.bins_epoch += 1;
             fs.rebinned = true;
