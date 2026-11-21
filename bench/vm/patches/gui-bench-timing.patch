@@ -1,0 +1,27 @@
+--- a/runner/src/cell.rs	2026-11-21 05:21:14
++++ b/runner/src/cell.rs	2026-11-21 05:21:22
+@@ -154,7 +154,7 @@
+     out: &Path,
+ ) -> anyhow::Result<(Session, App)> {
+     let session = Fakeland::builder()
+-        .output(OutputConfig::new("DP-1").mode(OUTPUT.0, OUTPUT.1, Hz(cell.hz)))
++        .output(OutputConfig::new("DP-1").mode(OUTPUT.0, OUTPUT.1, Hz(cell.hz)).timing(timing_from_env(cell.hz)))
+         .app_marks(fw.marks)
+         .sampling(SamplingConfig::every(SAMPLE_INTERVAL))
+         .start()
+@@ -245,3 +245,15 @@
+     let text = serde_json::to_string_pretty(value)?;
+     std::fs::write(path, text).with_context(|| format!("write {}", path.display()))
+ }
++
++/// The display timing of the cell. `GB_TIMING` = fixed (default) | unthrottled | vrr; anything else
++/// is an error, never a silent fallback to fixed.
++fn timing_from_env(hz: f64) -> fakeland::TimingConfig {
++    use fakeland::TimingConfig;
++    match std::env::var("GB_TIMING").as_deref() {
++        Err(_) | Ok("") | Ok("fixed") => TimingConfig::fixed(Hz(hz)),
++        Ok("unthrottled") => TimingConfig::unthrottled(),
++        Ok("vrr") => TimingConfig::vrr(Hz(48.0), Hz(144.0)),
++        Ok(other) => panic!("GB_TIMING={other}: expected fixed, unthrottled or vrr"),
++    }
++}

@@ -17,7 +17,11 @@ FONT = os.path.expanduser(os.environ.get('BOUGH_REF', '~/projects/_ref')) + "/zg
 def instr(fw, mode, render, ticks):
     env = dict(os.environ, ZGX_MODE=mode, RENDER=str(render), TICKS=str(ticks), ZGX_FONT_FILE=FONT)
     p = subprocess.run(["/usr/bin/time", "-l", BIN[fw]], env=env, capture_output=True, text=True)
+    if p.returncode != 0:
+        sys.exit(f"slope: {BIN[fw]} exited {p.returncode}: {p.stderr.strip()[-300:]}")
     m = re.search(r"(\d+)\s+instructions retired", p.stderr)
+    if not m:
+        sys.exit("slope: no 'instructions retired' line from /usr/bin/time -l")
     return int(m.group(1))
 
 def slope(fw, mode, render, a=int(os.environ.get('A', 600)), b=int(os.environ.get('B', 3600)), reps=int(os.environ.get('REPS', 5))):

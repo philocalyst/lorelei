@@ -1,0 +1,23 @@
+# The asm harness's manifest: the hot functions of the new core, one line each.
+# name	package	artifact-kind	artifact-name	match (a substring of the demangled symbol cargo asm printed)
+#
+# `asm-harness` (bench/asm/harness) instantiates the generic bodies from the gui-bench `rows` scene and
+# the layered canvas. The wrappers `asm_harness::w_*` are `#[inline(never)]` calls into the API so the
+# release build emits one symbol per surface; the generic `World<Rows, Spans>` symbols below them are
+# emitted by the same binary.
+turn_settle	asm-harness	bin	asm-harness	asm_harness::w_settle
+turn_paint	asm-harness	bin	asm-harness	asm_harness::w_paint
+turn_resize	asm-harness	bin	asm-harness	asm_harness::w_resize
+turn_after	asm-harness	bin	asm-harness	Scene<bough_guibench_x::rows::Rows>>::after
+state_compare	asm-harness	bin	asm-harness	World<bough_guibench_x::rows::Rows, bough_span::Spans>>::changed
+block_delta	asm-harness	bin	asm-harness	World<bough_guibench_x::rows::Rows, bough_span::Spans>>::delta
+mount_retable	asm-harness	bin	asm-harness	World<bough_guibench_x::rows::Rows, bough_span::Spans>>::retable
+handler_call	asm-harness	bin	asm-harness	World<bough_guibench_x::rows::Rows, bough_span::Spans>>::call
+column_delta	asm-harness	bin	asm-harness	bough_x::store::delta_col::
+column_paint	asm-harness	bin	asm-harness	bough_x::store::paint_col::
+span_executor	asm-harness	bin	asm-harness	<bough_x::store::Store>::paint::<bough_span::Spans>
+span_text	asm-harness	bin	asm-harness	<bough_span::Spans as bough_x::draw::Prims>::text
+kernel_shade	bough-paint	lib	bough-paint	^Scene>::shade
+kernel_shade_wrap	asm-harness	bin	asm-harness	asm_harness::w_shade
+kernel_pick	bough-paint	lib	bough-paint	^Scene>::pick
+layout_row	asm-harness	bin	asm-harness	asm_harness::w_layout
