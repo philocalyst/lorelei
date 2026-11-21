@@ -1,6 +1,6 @@
 --- a/runner/src/frameworks.rs
 +++ b/runner/src/frameworks.rs
-@@ -67,6 +67,16 @@
+@@ -67,4 +67,14 @@
          marks: false,
          variants: IMMEDIATE,
      },
@@ -15,10 +15,7 @@
 +        variants: RETAINED,
 +    },
  ];
- 
- impl Framework {
-@@ -77,7 +87,11 @@
- 
+@@ -78,4 +88,8 @@
      /// Returns the binary name of the app, `<name>-bench`.
      pub fn binary(&self) -> String {
 -        format!("{}-bench", self.name)
@@ -28,8 +25,6 @@
 +            _ => format!("{}-bench", self.name),
 +        }
      }
- 
-     /// Returns the release binary of the app.
 --- a/runner/src/main.rs
 +++ b/runner/src/main.rs
 @@ -39,7 +39,7 @@
