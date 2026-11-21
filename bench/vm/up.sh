@@ -3,7 +3,7 @@
 #   bench/vm/up.sh
 # Installs lima with Homebrew if it is missing, then creates and starts the VM under Apple
 # Virtualization (vz) if it does not exist. The image is the upstream Ubuntu template; the guest's
-# toolchains are installed by build.sh on first use.
+# toolchains are installed on first use.
 set -eu
 . "$(dirname "$0")/lib.sh"
 
@@ -19,8 +19,10 @@ if limactl list --format '{{.Name}}' | grep -qx "$VM"; then
     limactl start "$VM"
   fi
 else
-  echo "up: creating $VM (Ubuntu, vz, 10 vCPU, 16 GiB, 80 GiB)"
-  limactl start --name="$VM" --vm-type=vz --cpus=10 --memory=16 --disk=80 --tty=false template://ubuntu
+  cpus=${BENCH_VM_CPUS:-10}
+  case "$cpus" in ''|0*|*[!0-9]*) echo 'up: BENCH_VM_CPUS must be a positive integer' >&2; exit 2 ;; esac
+  echo "up: creating $VM (Ubuntu, vz, $cpus vCPU, 16 GiB, 80 GiB)"
+  limactl start --name="$VM" --vm-type=vz --cpus="$cpus" --memory=16 --disk=80 --tty=false template:ubuntu
 fi
 
 # The guest packages every app needs: a C toolchain and lld (the workspace links with lld on

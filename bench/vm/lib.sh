@@ -20,7 +20,7 @@ LOR=$SRC/lorelei
 
 # Run a command in the guest with cargo on PATH and the pinned wrapper cleared.
 guest() {
-  limactl shell "$VM" -- bash -lc "source \$HOME/.cargo/env; export RUSTC_WRAPPER=; $*"
+  limactl shell "$VM" -- bash -lc "set -eo pipefail; if [ -f \"\$HOME/.cargo/env\" ]; then source \"\$HOME/.cargo/env\"; fi; export RUSTC_WRAPPER=; $*"
 }
 
 # A one-line description of a binary: sha256 and bytes.

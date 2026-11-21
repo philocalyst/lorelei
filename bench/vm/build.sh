@@ -6,9 +6,15 @@
 set -eu
 . "$(dirname "$0")/lib.sh"
 FRAMEWORKS=${FRAMEWORKS:-bough,bough-x,zgui}
-JOBS=${JOBS:-8}
+JOBS=${JOBS:-3}
 
-bench/vm/sync.sh
+case ",$FRAMEWORKS," in *,zgui,*)
+  if [ ! -d "$EXTRA/zgui-fakeland-marks" ]; then
+    echo 'build: zgui requires the zgui-fakeland-marks checkout' >&2
+    exit 2
+  fi ;;
+esac
+"$ROOT/bench/vm/sync.sh"
 
 # lorelei's new-core app (its own crate in the workspace).
 # Both crates build a binary named `bough-bench`; stage each one before the next build replaces it
@@ -32,12 +38,8 @@ guest "cd $GUI && export CARGO_TARGET_DIR=$GUI/target && nice -n 15 cargo build 
 
 # zgui's app: its own workspace, path dependencies on the feat/fakeland-marks checkout.
 case ",$FRAMEWORKS," in *,zgui,*)
-  if [ -d "$EXTRA/zgui-fakeland-marks" ]; then
-    echo "build: zgui app (may take 10+ minutes first time)"
-    guest "cd $GUI/apps/zgui && export CARGO_TARGET_DIR=$GUI/apps/zgui/target && nice -n 15 cargo build --release -j $JOBS"
-  else
-    echo "build: zgui app skipped (no zgui-fakeland-marks checkout)" >&2
-  fi ;;
+  echo "build: zgui app (may take 10+ minutes first time)"
+  guest "cd $GUI/apps/zgui && export CARGO_TARGET_DIR=$GUI/apps/zgui/target && nice -n 15 cargo build --release -j $JOBS" ;;
 esac
 
 echo "build: manifest"
