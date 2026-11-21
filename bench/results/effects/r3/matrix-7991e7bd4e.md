@@ -1,10 +1,10 @@
 # Comparison with wave3 7991e7bd4e
 
-Wall p50/p95/p99 in milliseconds. Parentheses give draws or repair steps over sampled virtual ticks. Both Lorelei façade and typed `Soft` use the pinned wave3 capture. Pending cells are listed explicitly. Reference startup percentiles use 240 fresh processes with warm machine caches. These timers start in each child process. zgui counts redraw requests. Its two `many` failures reproduce in retained and forced-full gates. Façade and staged startup here time repeated mounts within a process. See the separate fresh-process captures and workload boundaries in the review report.
+Wall p50/p95/p99 in milliseconds. Parentheses give draws or repair steps over sampled virtual ticks. Both Lorelei façade and typed `Soft` use the pinned wave3 capture. Pending cells are shown explicitly. Reference startup percentiles use 240 fresh processes with warm machine caches. These timers start in each child process. zgui counts redraw requests. Its two `many` failures reproduce in both retained and forced-full gates. Staged startup uses the child mount timer from 240 fresh processes where captured. The façade and remaining staged startup rows time repeated mounts within one process. See the review report for timing and workload boundaries.
 
 | Cards | Cell | Lorelei baseline | Lorelei wave3 | Lorelei typed Soft | Lorelei staged CPU1 | zgui | zgx |
 |---:|---|---:|---:|---:|---:|---:|---:|
-| 200 | startup | 0.617/0.693/0.941 (240/240) | 1.420/2.709/3.972 (240/240) | 0.174 (1 observation) | 35.387/94.376/132.554 (240/240) | 71.433/168.411/305.349 (481/240) | 123.197/267.755/464.859 (240/240) |
+| 200 | startup | 0.617/0.693/0.941 (240/240) | 1.420/2.709/3.972 (240/240) | 0.174 (1 observation) | 31.545/51.466/72.822 (240/240) | 71.433/168.411/305.349 (481/240) | 123.197/267.755/464.859 (240/240) |
 | 200 | idle | 0 frames | 0 frames | 0 repairs | 0 frames | 0 frames | 0 frames |
 | 200 | one | 0.014/0.018/0.256 (240/240) | 0.013/0.024/0.962 (240/240) | 0.001/0.001/0.129 (240/240) | 1.751/2.015/10.813 (238/240) | 0.057/0.764/3.058 (Δ131/240) | 0.415/0.500/0.644 (221/240) |
 | 200 | many | 0.199/0.365/0.471 (240/240) | 0.939/3.296/6.808 (240/240) | 0.051/0.072/0.150 (240/240) | 54.548/97.256/122.522 (240/240) | 6.513/21.206/32.569 (Δ131/240) | 0.479/0.568/0.640 (221/240) |
@@ -13,11 +13,11 @@ Wall p50/p95/p99 in milliseconds. Parentheses give draws or repair steps over sa
 | 200 | scroll | pixel gate failed | 0.534/1.932/2.735 (240/240) | unavailable | 23.081/56.779/77.794 (240/240) | 0.215/0.656/1.008 (Δ239/240) | 0.482/0.679/0.761 (240/240) |
 | 200 | resize | 0.213/0.232/0.280 (240/240) | 0.834/6.523/13.197 (240/240) | unavailable | not expressible (requires remount) | 0.286/0.728/1.007 (Δ239/240) | 0.561/0.676/0.783 (240/240) |
 | 200 | video | unavailable | unavailable | unavailable | 7.390/35.532/61.402 (240/240) | unavailable | 0.676/0.838/1.011 (240/240) |
-| 1,000 | startup | 1.937/2.031/2.223 (240/240) | 4.962/15.197/24.741 (240/240) | 0.814 (1 observation) | pending | 111.561/188.496/343.054 (480/240) | 223.304/405.185/563.491 (240/240) |
-| 1,000 | idle | 0 frames | 0 frames | 0 repairs | pending | 0 frames | 0 frames |
-| 1,000 | one | 0.057/0.061/0.884 (240/240) | 0.056/0.178/2.008 (240/240) | 0.002/0.002/0.241 (240/240) | pending | 0.092/0.566/11.659 (Δ131/240) | 0.467/0.694/1.357 (221/240) |
-| 1,000 | many | 0.877/1.641/1.804 (240/240) | 3.289/12.162/27.994 (240/240) | 0.160/0.198/0.251 (240/240) | pending | gate failed | 0.686/0.886/1.723 (221/240) |
-| 1,000 | hover | pixel gate failed | 0.496/1.672/2.529 (229/240) | unavailable | pending | 0.246/0.452/0.789 (Δ239/240) | 0.479/0.611/0.939 (229/240) |
+| 1,000 | startup | 1.937/2.031/2.223 (240/240) | 4.962/15.197/24.741 (240/240) | 0.814 (1 observation) | 133.796/135.964/148.159 (240/240) | 111.561/188.496/343.054 (480/240) | 223.304/405.185/563.491 (240/240) |
+| 1,000 | idle | 0 frames | 0 frames | 0 repairs | 0 frames | 0 frames | 0 frames |
+| 1,000 | one | 0.057/0.061/0.884 (240/240) | 0.056/0.178/2.008 (240/240) | 0.002/0.002/0.241 (240/240) | 7.911/8.123/8.199 (238/240) | 0.092/0.566/11.659 (Δ131/240) | 0.467/0.694/1.357 (221/240) |
+| 1,000 | many | 0.877/1.641/1.804 (240/240) | 3.289/12.162/27.994 (240/240) | 0.160/0.198/0.251 (240/240) | 150.565/153.921/156.924 (240/240) | gate failed | 0.686/0.886/1.723 (221/240) |
+| 1,000 | hover | pixel gate failed | 0.496/1.672/2.529 (229/240) | unavailable | 4.377/9.159/10.409 (240/240) | 0.246/0.452/0.789 (Δ239/240) | 0.479/0.611/0.939 (229/240) |
 | 1,000 | theme | 0.783/0.823/0.868 (240/240) | 2.555/4.764/12.399 (240/240) | 0.161/0.205/0.234 (240/240) | pending | 14.057/16.185/16.760 (Δ239/240) | 0.636/0.751/0.812 (240/240) |
 | 1,000 | scroll | pixel gate failed | 0.300/0.722/1.405 (240/240) | unavailable | pending | 0.132/0.505/0.723 (Δ239/240) | 0.478/0.647/0.751 (240/240) |
 | 1,000 | resize | 0.881/0.928/0.962 (240/240) | 2.416/4.690/7.216 (240/240) | unavailable | not expressible (requires remount) | 0.190/0.602/1.085 (Δ239/240) | 0.743/1.005/2.031 (240/240) |
