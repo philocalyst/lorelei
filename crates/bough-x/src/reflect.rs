@@ -336,6 +336,49 @@ impl<'a, V> Sink<V> for Learn<'a> {
             sub: 0,
         });
     }
+    /// A list of elements (the element layer's `each` under a scrolled box): the same store a `list` is,
+    /// described from the row's own layout (`rows_sync` kept its first row's rects). Reflection walks the row
+    /// function's first row, as it does for a hand-written list.
+    #[track_caller]
+    fn rows<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
+        &mut self,
+        n: u32,
+        _geo: Option<crate::sink::Geo>,
+        mut f: F,
+    ) -> i32 {
+        let loc = Location::caller();
+        let q = self.sub as usize;
+        self.sub += 1;
+        self.out.seq.push(Part::Sub(q as u32));
+        let Some(st) = self.st.subs.get(q) else {
+            return 0;
+        };
+        let info = ListInfo {
+            n,
+            row_h: st.geo.2,
+            x: st.lay.0,
+            y: st.lay.1,
+            shape: if st.row0.is_empty() {
+                st.tmpl.clone()
+            } else {
+                st.row0.clone()
+            },
+        };
+        let out = self.out.child(q, st, Kind::List(info), loc);
+        if !st.sites.is_empty() && n > 0 {
+            // any row will do: every row has the type the columns were made for
+            let r = if st.hi > st.lo { st.lo } else { 0 };
+            f(r as usize).visit(&mut LearnLeaf {
+                st,
+                out,
+                site: 0,
+                row: 0,
+                pos: 0,
+                loc,
+            });
+        }
+        (n as i32) * st.geo.2
+    }
     #[track_caller]
     fn list<R: Row<V>, F: FnMut(usize) -> R>(&mut self, l: &List<'_>, mut f: F) {
         let loc = Location::caller();

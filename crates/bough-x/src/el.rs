@@ -25,6 +25,8 @@ use crate::expr::{
     APP_WORDS, Code, Color, Cx as ECx, Expr, Lens, Slot, Turn, U, U_SCALE, U_TIME, Un, Word, Words,
 };
 use crate::kinds::{Fill, LabelArch, Motion, NumArch, OutlineArch, Txt};
+use crate::reflect::Val;
+use crate::store::Op;
 use crate::sink::{Cx, Geo, Leaf, Mk, Row, Sink};
 use crate::store::{Arch, Backend, ColRef, POINTS, Rect, Site, Space};
 use bough_lay::flex::{Dim, Spec};
@@ -885,46 +887,96 @@ pub struct StrRec<C> {
 // SAFETY: `repr(C)` over `Words` fields.
 unsafe impl<C: Words> Words for StrRec<C> {}
 
-macro_rules! color_arch {
-    ($t:ident, $name:literal, $method:ident, |$s:ident, $o:ident| $eq:expr) => {
-        impl<C: Expr<Out = Color>> Arch for $t<C> {
-            const READS: u64 = C::READS;
-            const NAME: &'static str = $name;
-            const STAGE: crate::expr::StageId = C::STAGE;
-            const TIMED: bool = C::READS >> U_TIME & 1 != 0;
-            const ENDLESS: bool = !C::RESTS;
-            const STATE: bool = C::STATE;
-            #[inline(always)]
-            fn eq_ops(&self, o: &Self) -> bool {
-                let ($s, $o) = (self, o);
-                $eq & self.c.eq_ops(&o.c)
-            }
-            #[inline(always)]
-            fn carry(&mut self, was: &Self, old: &U, new: &U) {
-                self.c.carry(&was.c, &ECx::of(old), &ECx::of(new));
-            }
-            #[inline]
-            fn slots(f: &mut dyn FnMut(Slot)) {
-                C::slots(f)
-            }
-            #[inline(always)]
-            fn until(&self, u: &U) -> u32 {
-                self.c.until(&ECx::of(u))
-            }
-            #[inline(always)]
-            fn changed(&self, old: &U, new: &U) -> bool {
-                self.c.eval(&ECx::of(old)) != self.c.eval(&ECx::of(new))
-            }
-            #[inline(always)]
-            fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
-                b.$method(col, u)
-            }
+impl<C: Expr<Out = Color>> Arch for NumRec<C> {
+    const OPS: &'static [Op] = &[
+        Op { name: "value", code: &Code::Rec, ty: core::any::type_name::<i32>, stage: crate::expr::StageId::Mount, reads: 0, word: 0, words: 1 },
+        Op { name: "decimals", code: &Code::Rec, ty: core::any::type_name::<u32>, stage: crate::expr::StageId::Mount, reads: 0, word: 1, words: 1 },
+        Op { name: "color", code: C::CODE, ty: core::any::type_name::<C>, stage: C::STAGE, reads: C::READS, word: (core::mem::offset_of!(NumRec<C>, c) / 4) as u16, words: (core::mem::size_of::<C>() / 4) as u16 },
+    ];
+    const READS: u64 = C::READS;
+    const NAME: &'static str = "num";
+    const STAGE: crate::expr::StageId = C::STAGE;
+    const TIMED: bool = C::READS >> U_TIME & 1 != 0;
+    const ENDLESS: bool = !C::RESTS;
+    const STATE: bool = C::STATE;
+    #[inline(always)]
+    fn eq_ops(&self, o: &Self) -> bool {
+        (self.v == o.v) & (self.d == o.d) & self.c.eq_ops(&o.c)
+    }
+    #[inline(always)]
+    fn carry(&mut self, was: &Self, old: &U, new: &U) {
+        self.c.carry(&was.c, &ECx::of(old), &ECx::of(new));
+    }
+    #[inline]
+    fn slots(f: &mut dyn FnMut(Slot)) {
+        C::slots(f)
+    }
+    #[inline(always)]
+    fn until(&self, u: &U) -> u32 {
+        self.c.until(&ECx::of(u))
+    }
+    #[inline(always)]
+    fn changed(&self, old: &U, new: &U) -> bool {
+        self.c.eval(&ECx::of(old)) != self.c.eval(&ECx::of(new))
+    }
+    #[inline(always)]
+    fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
+        b.num(col, u)
+    }
+    #[inline]
+    fn val(&self, op: usize, u: &U) -> Val {
+        match op {
+            0 => Val::Num(self.v, self.d as u8),
+            1 => Val::Num(self.d as i32, 0),
+            2 => Val::Color(self.c.eval(&ECx::of(u)).0),
+            _ => Val::None,
         }
-    };
+    }
 }
-color_arch!(NumRec, "num", num, |s, o| (s.v == o.v) & (s.d == o.d));
-color_arch!(StrRec, "label", label, |s, o| (s.at == o.at)
-    & (s.len == o.len));
+impl<C: Expr<Out = Color>> Arch for StrRec<C> {
+    const OPS: &'static [Op] = &[
+        Op { name: "text", code: &Code::Rec, ty: core::any::type_name::<Txt>, stage: crate::expr::StageId::Mount, reads: 0, word: 0, words: 3 },
+        Op { name: "color", code: C::CODE, ty: core::any::type_name::<C>, stage: C::STAGE, reads: C::READS, word: (core::mem::offset_of!(StrRec<C>, c) / 4) as u16, words: (core::mem::size_of::<C>() / 4) as u16 },
+    ];
+    const READS: u64 = C::READS;
+    const NAME: &'static str = "label";
+    const STAGE: crate::expr::StageId = C::STAGE;
+    const TIMED: bool = C::READS >> U_TIME & 1 != 0;
+    const ENDLESS: bool = !C::RESTS;
+    const STATE: bool = C::STATE;
+    #[inline(always)]
+    fn eq_ops(&self, o: &Self) -> bool {
+        (self.at == o.at) & (self.len == o.len) & self.c.eq_ops(&o.c)
+    }
+    #[inline(always)]
+    fn carry(&mut self, was: &Self, old: &U, new: &U) {
+        self.c.carry(&was.c, &ECx::of(old), &ECx::of(new));
+    }
+    #[inline]
+    fn slots(f: &mut dyn FnMut(Slot)) {
+        C::slots(f)
+    }
+    #[inline(always)]
+    fn until(&self, u: &U) -> u32 {
+        self.c.until(&ECx::of(u))
+    }
+    #[inline(always)]
+    fn changed(&self, old: &U, new: &U) -> bool {
+        self.c.eval(&ECx::of(old)) != self.c.eval(&ECx::of(new))
+    }
+    #[inline(always)]
+    fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
+        b.label(col, u)
+    }
+    #[inline]
+    fn val(&self, op: usize, u: &U) -> Val {
+        match op {
+            0 => Val::Text(Txt::from_bytes(self.str())),
+            1 => Val::Color(self.c.eval(&ECx::of(u)).0),
+            _ => Val::None,
+        }
+    }
+}
 impl<C: Expr<Out = Color>> NumArch for NumRec<C> {
     const DECIMALS: u8 = 0;
     #[inline(always)]
