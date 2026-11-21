@@ -615,13 +615,7 @@ impl<V: View, B: Backend> World<V, B> {
             return;
         }
         if c.reads & ch & self.broad != 0 && !c.desc.state && !self.no_fast {
-            let clip = st.space.clip;
-            #[cfg(not(feature = "mutant_broad"))]
-            if self.broad_last != Some(clip) {
-                self.tiles.mark(clip);
-            }
-            self.broad_last = Some(clip);
-            self.fast_stats.broad_hits += 1;
+            self.damage_broad(st.space.clip);
         } else {
             let e = st.ent(c);
             if route.fast == u16::MAX
@@ -644,6 +638,16 @@ impl<V: View, B: Backend> World<V, B> {
         if c.desc.timed {
             st.resweep_col(c, u, &mut self.tiles);
         }
+    }
+
+    #[inline(never)]
+    fn damage_broad(&mut self, clip: crate::expr::Rect) {
+        #[cfg(not(feature = "mutant_broad"))]
+        if self.broad_last != Some(clip) {
+            self.tiles.mark(clip);
+        }
+        self.broad_last = Some(clip);
+        self.fast_stats.broad_hits += 1;
     }
 
     #[inline(never)]
