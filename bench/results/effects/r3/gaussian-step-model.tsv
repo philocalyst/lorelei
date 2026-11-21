@@ -1,0 +1,9 @@
+# Source-derived scalar model for an opaque vertical step. Renderer comparison pending.
+sigma_px	samples	max_byte_error	rms_byte_error
+0.500000	28	11.9327	10.4310
+1.289062	56	8.0410	4.9460
+3.000000	126	11.4674	4.5205
+6.000000	252	12.2997	4.6192
+12.000000	504	14.0229	4.4155
+24.000000	1008	22.1805	6.7826
+40.000000	1680	51.8750	21.3474
