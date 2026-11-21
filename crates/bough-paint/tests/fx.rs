@@ -1346,3 +1346,39 @@ fn resident_commands_follow_changed_slots() {
     }
     eprintln!("resident commands: 5 exact frames through two ranks and four slot reassignments");
 }
+
+#[test]
+fn a_prefix_change_reaches_the_next_checkpoint_without_a_pyramid_change() {
+    type Pane = Backdrop<Lane, Ki<1024>, Ki<1536>, Filt<K<256>, K<256>, K<256>>>;
+    let pane = || Pane { b: Lane, r: Ki, blur: Ki, f: V3 { a: K, b: K, c: K } };
+    let (fw, fh) = (128, 96);
+    let words = (fw * fh) as usize;
+    let pixel = [q(40.0), q(28.0), q(41.0), q(29.0)];
+    let pool = Pool::new(1);
+    let build = || {
+        let mut scene = Scene::new(fw, fh, 16_384);
+        let bg = scene.column::<Solid<Lane, Pmo<K<0xff40_4040>>>>(1);
+        scene.push(bg, [0, 0, q(128.0), q(96.0)], Solid { b: Lane, c: Pmo { c: K } });
+        let change = scene.column::<Solid<Lane, Pmo<Uw<4>>>>(1);
+        scene.push(change, pixel, Solid { b: Lane, c: Pmo { c: Uw } });
+        let glass = scene.column::<Pane>(2);
+        scene.push(glass, [q(44.0), q(32.0), q(111.0), q(85.0)], pane());
+        scene.push(glass, [q(49.0), q(33.0), q(113.0), q(82.0)], pane());
+        scene
+    };
+    let mut scene = build();
+    let mut u = U::default();
+    u.w[4] = 0x0040_4040;
+    let (mut kept, mut fresh, mut spec) = (vec![0; words], vec![0; words], vec![0; words]);
+    scene.frame(&u, &mut kept, fw as usize, &pool, 0);
+    u.w[4] += 1;
+    let fs = scene.frame(&u, &mut kept, fw as usize, &pool, 0);
+    let mut oracle = build();
+    oracle.frame(&u, &mut fresh, fw as usize, &pool, 0);
+    oracle.spec(&u, &mut spec, fw as usize);
+    assert_eq!(diff(&fresh, &spec), 0);
+    assert_eq!(diff(&kept, &fresh), 0, "the first prefix's unmagnified change must reach the next prefix");
+    assert_eq!(fs.raster.prefix, 2);
+    assert_eq!(fs.raster.blk, fs.raster.blk_same, "a single one-byte impulse should round away in the pyramid");
+    eprintln!("prefix checkpoint: two prefix tiles changed, every recomputed pyramid block was unchanged");
+}
