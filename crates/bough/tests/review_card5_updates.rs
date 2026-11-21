@@ -408,7 +408,6 @@ impl View for TwoLists {
 }
 
 #[test]
-#[ignore = "Card 5 hover key omits the list instance"]
 fn hovering_one_list_does_not_light_the_other_lists_equal_slot() {
     let mut app = mount(
         TwoLists {

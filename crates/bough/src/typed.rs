@@ -85,6 +85,7 @@ pub struct Shared {
     owner: Cell<*const u8>,
     /// The list row being described: (list offset in its owner, slot index, slot generation, row + 1); 0: none.
     row: Cell<(u32, u32, u32, u32)>,
+    row_site: Cell<u32>,
     /// `hover_bg` boxes described so far in this row (or in the fixed part).
     ord: Cell<u32>,
     describes: Cell<u64>,
@@ -1443,18 +1444,36 @@ impl<V: View, R: Reach<V>, Bg: TColor<R::O>, Ch: TKids<V, R>> Typed<V, R>
         self.0.ch.lists_kids(rects, k, s);
     }
 }
-/// The id of the next `hover_bg` box: the same in every description of the same state. A row's boxes are
-/// named by its item's slot (a row keeps its records when it moves), then by their order in the row.
+/// Name a hover paint by list occurrence, stable item slot, and leaf order.
+/// The fixed part and first list keep the bottom half plus its endpoint. Other list sites use the
+/// upper range, with five bits for site, eighteen for slot and eight for the nonzero leaf ordinal.
 fn hover_id() -> u32 {
     with(|sh| {
         let n = sh.ord.get() + 1;
         sh.ord.set(n);
         let r = sh.row.get();
-        let item = if r.3 == 0 { 0 } else { r.1 + 1 };
-        if item >= 1 << 21 || n >= 1 << 10 {
-            refuse("more than 2^21 list items or 2^10 hover paints in one row");
+        let root = r.3 == 0;
+        let site = if root || cfg!(feature = "mutant_hover_scope") {
+            0
+        } else {
+            sh.row_site.get()
+        };
+        if site <= 1 {
+            let item = if root { 0 } else { r.1 + 1 };
+            if item >= 1 << 21 || n >= 1 << 10 {
+                refuse("more than 2^21 list items or 2^10 hover paints in one row");
+                return 0;
+            }
+            return ((item << 10) | n) + 1;
         }
-        (item << 10 | n & 0x3ff) + 1
+        let extra_site = site - 2;
+        if extra_site >= 32 || r.1 >= 1 << 18 || n >= 1 << 8 {
+            refuse(
+                "additional hover lists need a site below 34, a slot below 2^18 and fewer than 256 hover paints per row",
+            );
+            return 0;
+        }
+        0x8000_0000 | (extra_site << 26) | (r.1 << 8) | n
     })
 }
 
@@ -1493,6 +1512,7 @@ where
 pub struct TRows<'a, V, T> {
     list: &'a List<T>,
     off: u32,
+    site: u32,
     /// The list's journal (`Shared::lists`), null when the list was refused.
     journal: *const Journal,
     all: bool,
@@ -1515,7 +1535,7 @@ impl<V: View, T: View> RowView<V> for T {
 }
 impl<'a, V: View, T: View> Seg<Ty<V>> for TRows<'a, V, T> {
     fn seg<S: Sink<Ty<V>>>(&mut self, s: &mut S, f: &mut Flow) {
-        let (list, off) = (self.list, self.off);
+        let (list, off, site) = (self.list, self.off, self.site);
         let n = list.len();
         let geo = if f.lay {
             Some(Geo {
@@ -1543,6 +1563,7 @@ impl<'a, V: View, T: View> Seg<Ty<V>> for TRows<'a, V, T> {
             with(|sh| {
                 sh.row
                     .set((off, slot.index(), slot.generation(), r as u32 + 1));
+                sh.row_site.set(site);
                 sh.ord.set(0);
                 let mut p = sh.pass.get();
                 p.rows += 1;
@@ -1627,14 +1648,14 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
             )),
             content: {
                 let (list, off) = (self_.src.list.list, self_.src.list.off);
-                let (journal, all) = with(|sh| {
+                let (journal, all, site) = with(|sh| {
                     if sh.row.get().3 != 0
                         || TypeId::of::<R::O>() != sh.root
                         || sh.owner.get().wrapping_add(off as usize)
                             != std::ptr::from_ref(list).cast()
                     {
                         refuse("a typed list must be projected from the mounted root");
-                        return (std::ptr::null(), false);
+                        return (std::ptr::null(), false, 0);
                     }
                     let k = sh.li.get();
                     sh.li.set(k + 1);
@@ -1668,11 +1689,13 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
                     (
                         &*lists[k].journal as *const Journal,
                         sh.full.get() || sh.plain.get(),
+                        (k + 1).try_into().expect("too many list sites"),
                     )
                 });
                 TRows {
                     list,
                     off,
+                    site,
                     journal,
                     all,
                     _v: PhantomData,
@@ -1958,6 +1981,7 @@ impl<V: View> App<V> {
             root: TypeId::of::<V>(),
             owner: Cell::new(std::ptr::null()),
             row: Cell::new((0, 0, 0, 0)),
+            row_site: Cell::new(0),
             ord: Cell::new(0),
             describes: Cell::new(0),
             tape: RefCell::new(Vec::new()),
