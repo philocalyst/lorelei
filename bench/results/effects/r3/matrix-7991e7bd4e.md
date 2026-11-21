@@ -1,10 +1,10 @@
 # Comparison with wave3 7991e7bd4e
 
-Wall p50/p95/p99 in milliseconds, followed by draws or repair steps per counted observation. Lorelei façade uses the pinned wave3 capture. The typed `Soft` column uses the older integrated `62d53d3abe` diagnostic until the pinned typed capture completes. The staged rows reflect results as of this capture. The reference gate failures repeat in retained and forced-full runs. The reference startup repeats are still queued. See the review report for timing scope.
+Wall p50/p95/p99 in milliseconds, followed by draws or repair steps per counted observation. Lorelei façade uses the pinned wave3 capture. The typed `Soft` column uses the older integrated `62d53d3abe` diagnostic until the pinned typed capture completes. The staged rows reflect results as of this capture. The reference gate failures repeat in retained and forced-full runs. The reference startup percentiles use 240 fresh-process observations in warm machine caches. The timers start inside each child process. zgui startup counts redraw requests, including initial PNG work. See the review report for timing scope.
 
 | Cards | Cell | Lorelei baseline | Lorelei wave3 | Lorelei typed Soft | Lorelei staged CPU1 | zgui | zgx |
 |---:|---|---:|---:|---:|---:|---:|---:|
-| 200 | startup | 0.617/0.693/0.941 (240/240) | 1.420/2.709/3.972 (240/240) | 0.842 (1 observation) | pending | 41.151 (1 observation) | 38.410 (1 observation) |
+| 200 | startup | 0.617/0.693/0.941 (240/240) | 1.420/2.709/3.972 (240/240) | 0.842 (1 observation) | pending | 71.433/168.411/305.349 (481/240) | 123.197/267.755/464.859 (240/240) |
 | 200 | idle | 0 frames | 0 frames | 0 repairs | pending | 0 frames | 0 frames |
 | 200 | one | 0.014/0.018/0.256 (240/240) | 0.013/0.024/0.962 (240/240) | 0.003/0.004/0.256 (240/240) | pending | 0.057/0.764/3.058 (Δ131/240) | 0.415/0.500/0.644 (221/240) |
 | 200 | many | 0.199/0.365/0.471 (240/240) | 0.939/3.296/6.808 (240/240) | 0.234/0.273/0.297 (240/240) | pending | 6.513/21.206/32.569 (Δ131/240) | 0.479/0.568/0.640 (221/240) |
@@ -13,7 +13,7 @@ Wall p50/p95/p99 in milliseconds, followed by draws or repair steps per counted 
 | 200 | scroll | pixel gate failed | 0.534/1.932/2.735 (240/240) | unavailable | pending | 0.215/0.656/1.008 (Δ239/240) | 0.482/0.679/0.761 (240/240) |
 | 200 | resize | 0.213/0.232/0.280 (240/240) | 0.834/6.523/13.197 (240/240) | unavailable | not expressible (requires remount) | 0.286/0.728/1.007 (Δ239/240) | 0.561/0.676/0.783 (240/240) |
 | 200 | video | unavailable | unavailable | unavailable | pending | unavailable | 0.676/0.838/1.011 (240/240) |
-| 1,000 | startup | 1.937/2.031/2.223 (240/240) | 4.962/15.197/24.741 (240/240) | 1.427 (1 observation) | pending | 82.518 (1 observation) | 43.694 (1 observation) |
+| 1,000 | startup | 1.937/2.031/2.223 (240/240) | 4.962/15.197/24.741 (240/240) | 1.427 (1 observation) | pending | 111.561/188.496/343.054 (480/240) | 223.304/405.185/563.491 (240/240) |
 | 1,000 | idle | 0 frames | 0 frames | 0 repairs | pending | 0 frames | 0 frames |
 | 1,000 | one | 0.057/0.061/0.884 (240/240) | 0.056/0.178/2.008 (240/240) | 0.011/0.012/0.840 (240/240) | pending | 0.092/0.566/11.659 (Δ131/240) | 0.467/0.694/1.357 (221/240) |
 | 1,000 | many | 0.877/1.641/1.804 (240/240) | 3.289/12.162/27.994 (240/240) | 0.960/0.990/1.021 (240/240) | pending | gate failed | 0.686/0.886/1.723 (221/240) |
@@ -22,7 +22,7 @@ Wall p50/p95/p99 in milliseconds, followed by draws or repair steps per counted 
 | 1,000 | scroll | pixel gate failed | 0.300/0.722/1.405 (240/240) | unavailable | pending | 0.132/0.505/0.723 (Δ239/240) | 0.478/0.647/0.751 (240/240) |
 | 1,000 | resize | 0.881/0.928/0.962 (240/240) | 2.416/4.690/7.216 (240/240) | unavailable | not expressible (requires remount) | 0.190/0.602/1.085 (Δ239/240) | 0.743/1.005/2.031 (240/240) |
 | 1,000 | video | unavailable | unavailable | unavailable | pending | unavailable | 0.671/0.839/1.119 (240/240) |
-| 5,000 | startup | 8.047/8.295/8.548 (240/240) | 16.258/35.175/39.611 (240/240) | 18.158 (1 observation) | pending | 296.733 (1 observation) | 40.146 (1 observation) |
+| 5,000 | startup | 8.047/8.295/8.548 (240/240) | 16.258/35.175/39.611 (240/240) | 18.158 (1 observation) | pending | 372.176/537.600/640.351 (480/240) | 87.646/192.006/272.979 (240/240) |
 | 5,000 | idle | 0 frames | 0 frames | 0 repairs | pending | 0 frames | 0 frames |
 | 5,000 | one | 0.207/0.232/3.625 (240/240) | 0.601/2.261/6.900 (240/240) | 0.055/0.061/3.818 (240/240) | pending | 0.290/2.185/95.298 (Δ131/240) | 0.665/0.788/0.938 (221/240) |
 | 5,000 | many | 4.212/8.849/9.235 (240/240) | 8.875/21.104/35.442 (240/240) | 4.605/4.677/4.737 (240/240) | pending | gate failed | 1.608/2.058/2.708 (221/240) |
