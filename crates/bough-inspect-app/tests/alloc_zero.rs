@@ -51,5 +51,8 @@ fn idle_refresh_allocates_nothing() {
     s.invalidate();
     ALLOCS.store(0, Ordering::Relaxed);
     let _ = s.snapshot();
-    assert!(ALLOCS.load(Ordering::Relaxed) > 0, "a changed world rebuilds the description");
+    assert!(
+        ALLOCS.load(Ordering::Relaxed) > 0,
+        "a changed world rebuilds the description"
+    );
 }

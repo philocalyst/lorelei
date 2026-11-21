@@ -11,7 +11,9 @@ fn three_line_typed_selectors() {
     app.click(cell);
     assert!(app.has_text("Row 00003"));
     // a typed field, then the row a scroll brought into the window
-    app.session.set("scroll", &bough_inspect::PropValue::Int(53 * 32)).unwrap();
+    app.session
+        .set("scroll", &bough_inspect::PropValue::Int(53 * 32))
+        .unwrap();
     let found = app.find().kind("text").text("Row 00053").one();
     assert!(app.node(found).loc.line > 0);
     // a selector that matches nothing and one that matches many both say so

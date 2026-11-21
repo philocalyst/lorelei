@@ -138,7 +138,13 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
         "hello" => ok(J::obj()
             .set("schema", SCHEMA_VERSION as i64)
             .set("app", s.app().name())
-            .set("methods", METHODS.iter().map(|m| J::Str((*m).to_owned())).collect::<Vec<_>>())
+            .set(
+                "methods",
+                METHODS
+                    .iter()
+                    .map(|m| J::Str((*m).to_owned()))
+                    .collect::<Vec<_>>(),
+            )
             .set(
                 "capabilities",
                 vec![
@@ -154,7 +160,10 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
             )),
         "methods" => ok(J::obj().set(
             "methods",
-            METHODS.iter().map(|m| J::Str((*m).to_owned())).collect::<Vec<_>>(),
+            METHODS
+                .iter()
+                .map(|m| J::Str((*m).to_owned()))
+                .collect::<Vec<_>>(),
         )),
         "tree" => ok(tree(s, params)),
         "node" => match node(s, params) {
@@ -185,10 +194,7 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                         .set("handler", !n.handlers.is_empty())
                 })
                 .collect();
-            ok(J::obj()
-                .set("x", x)
-                .set("y", y)
-                .set("stack", v))
+            ok(J::obj().set("x", x).set("y", y).set("stack", v))
         }
         "deps" => match deps(s, params) {
             Ok(v) => ok(v),
@@ -206,7 +212,10 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
             let snap = s.snapshot();
             ok(J::obj().set(
                 "fields",
-                snap.to_json().get("fields").cloned().unwrap_or(J::Arr(Vec::new())),
+                snap.to_json()
+                    .get("fields")
+                    .cloned()
+                    .unwrap_or(J::Arr(Vec::new())),
             ))
         }
         "set" => {
@@ -226,7 +235,8 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                 Err(r) => fail(RpcError::refusal(&r)),
             }
         }
-        "pointer" | "down" | "up" | "click" | "key" | "text" | "wheel" | "tick" | "resize" | "settle" => {
+        "pointer" | "down" | "up" | "click" | "key" | "text" | "wheel" | "tick" | "resize"
+        | "settle" => {
             let c = match command(method, params) {
                 Ok(c) => c,
                 Err(e) => return fail(e),
@@ -258,9 +268,7 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
             for c in &log {
                 steps.push(c.to_json());
             }
-            ok(J::obj()
-                .set("steps", steps)
-                .set("count", log.len()))
+            ok(J::obj().set("steps", steps).set("count", log.len()))
         }
         "replay" => {
             let log = match params.get("log") {
@@ -321,12 +329,14 @@ fn command(method: &str, p: &J) -> Result<Command, RpcError> {
         "down" => Command::Down {
             x,
             y,
-            button: record::button_of(p.get("button").and_then(J::as_str)).unwrap_or(Button::Primary),
+            button: record::button_of(p.get("button").and_then(J::as_str))
+                .unwrap_or(Button::Primary),
         },
         "up" => Command::Up {
             x,
             y,
-            button: record::button_of(p.get("button").and_then(J::as_str)).unwrap_or(Button::Primary),
+            button: record::button_of(p.get("button").and_then(J::as_str))
+                .unwrap_or(Button::Primary),
         },
         "click" => Command::Click { x, y },
         "key" => Command::Key {
@@ -397,10 +407,7 @@ fn tree<P: Program>(s: &mut Session<P>, p: &J) -> J {
         j.put("ax", J::Null);
     }
     if !flag(p, "damage", true) {
-        j.put(
-            "damage",
-            J::obj().set("tiles", snap.damage.tiles as i64),
-        );
+        j.put("damage", J::obj().set("tiles", snap.damage.tiles as i64));
     }
     if let Some(limit) = int(p, "limit") {
         if let Some(J::Arr(nodes)) = j.get("nodes").cloned().as_ref() {
@@ -432,10 +439,7 @@ fn node<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
                 }
                 a
             },
-            depth: p
-                .get("path")
-                .map(|v| v.arr().len() as u16)
-                .unwrap_or(0),
+            depth: p.get("path").map(|v| v.arr().len() as u16).unwrap_or(0),
             row: p.get("row").and_then(J::as_u32).unwrap_or(0),
             pos: p.get("pos").and_then(J::as_u32).unwrap_or(0),
             col: 0,
@@ -618,14 +622,17 @@ fn deps<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
         .stores
         .iter()
         .flat_map(|st| {
-            st.cols.iter().filter(|c| c.reads.contains(&word)).map(move |c| {
-                J::obj()
-                    .set("store", st.index)
-                    .set("col", c.index)
-                    .set("kind", c.kind)
-                    .set("ty", c.ty)
-                    .set("stage", c.stage)
-            })
+            st.cols
+                .iter()
+                .filter(|c| c.reads.contains(&word))
+                .map(move |c| {
+                    J::obj()
+                        .set("store", st.index)
+                        .set("col", c.index)
+                        .set("kind", c.kind)
+                        .set("ty", c.ty)
+                        .set("stage", c.stage)
+                })
         })
         .collect();
     let stores: Vec<J> = snap
@@ -688,11 +695,36 @@ fn why<P: Program>(s: &mut Session<P>) -> J {
         .set("changed_words", changed)
         .set("damage_tiles", snap.damage.tiles)
         .set("damage", snap.damage.json())
-        .set("delta", snap.to_json().get("counters").cloned().unwrap_or(J::Null))
+        .set(
+            "delta",
+            snap.to_json().get("counters").cloned().unwrap_or(J::Null),
+        )
 }
 
 fn shot<P: Program>(s: &mut Session<P>, p: &J) -> J {
-    let f = s.shot();
+    // a whole window, or the part of it one element covers (a screenshot by element)
+    let crop = match p.get("node").and_then(J::as_i64) {
+        Some(i) => {
+            let snap = s.snapshot();
+            snap.nodes.get(i as usize).map(|n| n.screen.and(n.clip))
+        }
+        None => None,
+    };
+    let full = s.shot();
+    let f = match crop {
+        Some(r) if !r.empty() => {
+            let (x0, y0) = (r.x0.max(0), r.y0.max(0));
+            let (x1, y1) = (r.x1.min(full.w), r.y1.min(full.h));
+            let (w, h) = ((x1 - x0).max(0), (y1 - y0).max(0));
+            let mut px = Vec::with_capacity((w * h) as usize);
+            for y in y0..y1 {
+                let a = (y * full.w + x0) as usize;
+                px.extend_from_slice(&full.px[a..a + w as usize]);
+            }
+            crate::frame::Frame { w, h, px }
+        }
+        _ => full,
+    };
     let png = f.png();
     let mut o = J::obj()
         .set("w", f.w)
@@ -735,12 +767,15 @@ fn diff<P: Program>(s: &mut Session<P>, p: &J) -> Result<J, RpcError> {
         .set("differing", d.differing)
         .set("total", d.total)
         .set("max_channel", d.max_channel as i64)
-        .set("bbox", d.bbox.map_or(J::Null, |b| {
-            J::obj()
-                .set("x0", b[0])
-                .set("y0", b[1])
-                .set("x1", b[2])
-                .set("y1", b[3])
-        }))
+        .set(
+            "bbox",
+            d.bbox.map_or(J::Null, |b| {
+                J::obj()
+                    .set("x0", b[0])
+                    .set("y0", b[1])
+                    .set("x1", b[2])
+                    .set("y1", b[3])
+            }),
+        )
         .set("digest", J::Str(format!("{:016x}", f.digest()))))
 }

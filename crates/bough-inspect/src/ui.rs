@@ -109,8 +109,12 @@ impl Inspector {
     /// (nothing above it). The core's lexical parent is the store tree (a record's own parent chain is the
     /// parent column the roadmap still owes), so a walk that reaches the root store stops.
     pub fn select_parent(&mut self) -> bool {
-        let Some(i) = self.selected_index else { return false };
-        let Some(n) = self.snap.nodes.get(i) else { return false };
+        let Some(i) = self.selected_index else {
+            return false;
+        };
+        let Some(n) = self.snap.nodes.get(i) else {
+            return false;
+        };
         if self.snap.stores[n.store].depth == 0 {
             return false;
         }
@@ -155,9 +159,11 @@ impl Inspector {
             return false;
         }
         let screen = n.screen;
-        self.snap.damage.rects.iter().any(|r| {
-            screen.x0 < r.x1 && r.x0 < screen.x1 && screen.y0 < r.y1 && r.y0 < screen.y1
-        })
+        self.snap
+            .damage
+            .rects
+            .iter()
+            .any(|r| screen.x0 < r.x1 && r.x0 < screen.x1 && screen.y0 < r.y1 && r.y0 < screen.y1)
     }
     fn rebuild(&mut self) {
         let mut lines = Vec::new();
@@ -172,7 +178,11 @@ impl Inspector {
             let mut label = format!(
                 "{indent}{:<7} {}{}",
                 n.kind,
-                if text.is_empty() { String::new() } else { format!("{text:?} ") },
+                if text.is_empty() {
+                    String::new()
+                } else {
+                    format!("{text:?} ")
+                },
                 location(&n.loc)
             );
             if !n.handlers.is_empty() {
@@ -204,8 +214,14 @@ impl Inspector {
                 details.push(detail(
                     format!(
                         "rect {} {} {}x{}   screen {} {} {}x{}",
-                        n.rect.x0, n.rect.y0, n.rect.w(), n.rect.h(),
-                        n.screen.x0, n.screen.y0, n.screen.w(), n.screen.h()
+                        n.rect.x0,
+                        n.rect.y0,
+                        n.rect.w(),
+                        n.rect.h(),
+                        n.screen.x0,
+                        n.screen.y0,
+                        n.screen.w(),
+                        n.screen.h()
                     ),
                     Action::None,
                 ));
@@ -221,7 +237,12 @@ impl Inspector {
                 let words = |w: &[u32]| -> String {
                     let mut s = Vec::new();
                     for &x in w {
-                        let name = self.snap.words.iter().find(|v| v.word == x).and_then(|v| v.name);
+                        let name = self
+                            .snap
+                            .words
+                            .iter()
+                            .find(|v| v.word == x)
+                            .and_then(|v| v.name);
                         s.push(match name {
                             Some(n) => format!("{x}:{n}"),
                             None => x.to_string(),
@@ -255,10 +276,14 @@ impl Inspector {
                             p.value.text(),
                             p.stage,
                             words(&p.reads),
-                            if p.reads.is_empty() { String::new() } else { String::new() }
+                            if p.reads.is_empty() {
+                                String::new()
+                            } else {
+                                String::new()
+                            }
                         )
                         .to_owned()
-                        + &format!("  {expr}"),
+                            + &format!("  {expr}"),
                         Action::None,
                     ));
                 }
@@ -267,7 +292,10 @@ impl Inspector {
                     .iter()
                     .map(|&s| format!("{}({})", s, self.snap.stores[s].kind))
                     .collect();
-                details.push(detail(format!("stores {}", chain.join(" > ")), Action::None));
+                details.push(detail(
+                    format!("stores {}", chain.join(" > ")),
+                    Action::None,
+                ));
             }
             None => {
                 let why = if self.stale {
@@ -312,7 +340,11 @@ impl Inspector {
             self.snap.nodes.len(),
             self.snap.app.revision,
             self.snap.damage.tiles,
-            if self.snap.ax.is_some() { format!(" · ax {}", self.snap.ax.as_ref().unwrap().nodes.len()) } else { String::new() }
+            if self.snap.ax.is_some() {
+                format!(" · ax {}", self.snap.ax.as_ref().unwrap().nodes.len())
+            } else {
+                String::new()
+            }
         );
     }
 }
@@ -337,7 +369,11 @@ fn index_of(snap: &Snapshot, n: &Node) -> usize {
 /// Whether the view's shape still has this entity. A list's row that is outside its count is gone; a row merely
 /// outside the exposed window is not.
 fn exists(snap: &Snapshot, k: &Key) -> bool {
-    let Some(st) = snap.stores.iter().find(|s| s.path[..s.depth as usize] == k.path[..k.depth as usize]) else {
+    let Some(st) = snap
+        .stores
+        .iter()
+        .find(|s| s.path[..s.depth as usize] == k.path[..k.depth as usize])
+    else {
         return false;
     };
     if st.kind == "list" && k.row >= st.n {
@@ -378,7 +414,10 @@ impl ElView for Inspector {
                 0xffc8c8d0
             };
             row((
-                div().w(3.0).h(ROW).bg(rgb(if l.damaged { 0xffff4444 } else { 0xff303040 })),
+                div()
+                    .w(3.0)
+                    .h(ROW)
+                    .bg(rgb(if l.damaged { 0xffff4444 } else { 0xff303040 })),
                 text(l.label.clone()).font(12.0, ROW).color(rgb(fg)),
             ))
             .w_pct(1.0)
@@ -418,9 +457,13 @@ impl ElView for Inspector {
         });
         column((
             row((
-                text("lorelei inspector").font(14.0, 24.0).color(rgb(0xffe8e8f0)),
+                text("lorelei inspector")
+                    .font(14.0, 24.0)
+                    .color(rgb(0xffe8e8f0)),
                 text("  "),
-                text(self.status.clone()).font(12.0, 24.0).color(rgb(0xff9aa0b8)),
+                text(self.status.clone())
+                    .font(12.0, 24.0)
+                    .color(rgb(0xff9aa0b8)),
             ))
             .w_pct(1.0)
             .h(24.0)

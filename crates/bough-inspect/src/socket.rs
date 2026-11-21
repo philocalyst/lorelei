@@ -6,7 +6,7 @@
 //! session across a thread. One connection may send many requests; the first request should be `hello`, and a
 //! client that names a different schema version is refused before any command runs.
 use crate::json::{self, Value as J};
-use crate::rpc::{self, Request, RpcError, INVALID_REQUEST, PARSE_ERROR};
+use crate::rpc::{self, INVALID_REQUEST, PARSE_ERROR, Request, RpcError};
 use crate::schema::SCHEMA_VERSION;
 use crate::session::{Program, Session};
 use std::io::{self, Read, Write};
@@ -18,7 +18,10 @@ pub const MAX_FRAME: usize = 64 * 1024 * 1024;
 
 pub fn write_frame(w: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
     if bytes.len() > MAX_FRAME {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "frame too large"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "frame too large",
+        ));
     }
     w.write_all(&(bytes.len() as u32).to_be_bytes())?;
     w.write_all(bytes)?;
@@ -133,14 +136,11 @@ impl Server {
                         let _ = write_frame(
                             &mut s,
                             json::to_string(
-                                &J::obj()
-                                    .set("jsonrpc", "2.0")
-                                    .set("id", J::Null)
-                                    .set(
-                                        "error",
-                                        RpcError::new(INVALID_REQUEST, "a connection is already open")
-                                            .to_json(),
-                                    ),
+                                &J::obj().set("jsonrpc", "2.0").set("id", J::Null).set(
+                                    "error",
+                                    RpcError::new(INVALID_REQUEST, "a connection is already open")
+                                        .to_json(),
+                                ),
                             )
                             .as_bytes(),
                         );
@@ -213,10 +213,10 @@ impl Server {
                 match json::parse(core::str::from_utf8(&frame).unwrap_or("")) {
                     Ok(v) => answer(s, &v, &mut c.handshaken),
                     Err(e) => (
-                        J::obj()
-                            .set("jsonrpc", "2.0")
-                            .set("id", J::Null)
-                            .set("error", RpcError::new(PARSE_ERROR, format!("{e}")).to_json()),
+                        J::obj().set("jsonrpc", "2.0").set("id", J::Null).set(
+                            "error",
+                            RpcError::new(PARSE_ERROR, format!("{e}")).to_json(),
+                        ),
                         false,
                     ),
                 }

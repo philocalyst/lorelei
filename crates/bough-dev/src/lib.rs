@@ -15,7 +15,10 @@ pub use watch::{Change, Kind, Watcher};
 
 /// Serve the MCP endpoint at `addr` from this process, over the application's socket. Returns the bound address
 /// and a handle to stop it (dropping the handle does not close the listener; the process ending does).
-pub fn serve_mcp_http(socket: impl Into<std::path::PathBuf>, addr: &str) -> Result<std::net::SocketAddr, String> {
+pub fn serve_mcp_http(
+    socket: impl Into<std::path::PathBuf>,
+    addr: &str,
+) -> Result<std::net::SocketAddr, String> {
     let listener = TcpListener::bind(addr).map_err(|e| format!("cannot bind {addr}: {e}"))?;
     let at = listener.local_addr().map_err(|e| e.to_string())?;
     let socket = socket.into();
@@ -36,12 +39,8 @@ pub fn serve_mcp_stdio(socket: impl Into<std::path::PathBuf>) -> Result<(), Stri
     let mut m = bough_mcp::Mcp::new(socket);
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
-    bough_mcp::serve_stream(
-        &mut m,
-        std::io::BufReader::new(stdin.lock()),
-        stdout.lock(),
-    )
-    .map_err(|e| e.to_string())
+    bough_mcp::serve_stream(&mut m, std::io::BufReader::new(stdin.lock()), stdout.lock())
+        .map_err(|e| e.to_string())
 }
 
 /// The typed state of a running application (a `state` file's contents).

@@ -26,8 +26,8 @@ use crate::expr::{
 };
 use crate::kinds::{Fill, LabelArch, Motion, NumArch, OutlineArch, Txt};
 use crate::reflect::Val;
-use crate::store::Op;
 use crate::sink::{Cx, Geo, Leaf, Mk, Row, Sink};
+use crate::store::Op;
 use crate::store::{Arch, Backend, ColRef, POINTS, Rect, Site, Space};
 use bough_lay::flex::{Dim, Spec};
 use bough_lay::shape::{Flat, K_BOX, K_LINE, Nd, Sink as LSink};
@@ -889,9 +889,33 @@ unsafe impl<C: Words> Words for StrRec<C> {}
 
 impl<C: Expr<Out = Color>> Arch for NumRec<C> {
     const OPS: &'static [Op] = &[
-        Op { name: "value", code: &Code::Rec, ty: core::any::type_name::<i32>, stage: crate::expr::StageId::Mount, reads: 0, word: 0, words: 1 },
-        Op { name: "decimals", code: &Code::Rec, ty: core::any::type_name::<u32>, stage: crate::expr::StageId::Mount, reads: 0, word: 1, words: 1 },
-        Op { name: "color", code: C::CODE, ty: core::any::type_name::<C>, stage: C::STAGE, reads: C::READS, word: (core::mem::offset_of!(NumRec<C>, c) / 4) as u16, words: (core::mem::size_of::<C>() / 4) as u16 },
+        Op {
+            name: "value",
+            code: &Code::Rec,
+            ty: core::any::type_name::<i32>,
+            stage: crate::expr::StageId::Mount,
+            reads: 0,
+            word: 0,
+            words: 1,
+        },
+        Op {
+            name: "decimals",
+            code: &Code::Rec,
+            ty: core::any::type_name::<u32>,
+            stage: crate::expr::StageId::Mount,
+            reads: 0,
+            word: 1,
+            words: 1,
+        },
+        Op {
+            name: "color",
+            code: C::CODE,
+            ty: core::any::type_name::<C>,
+            stage: C::STAGE,
+            reads: C::READS,
+            word: (core::mem::offset_of!(NumRec<C>, c) / 4) as u16,
+            words: (core::mem::size_of::<C>() / 4) as u16,
+        },
     ];
     const READS: u64 = C::READS;
     const NAME: &'static str = "num";
@@ -935,8 +959,24 @@ impl<C: Expr<Out = Color>> Arch for NumRec<C> {
 }
 impl<C: Expr<Out = Color>> Arch for StrRec<C> {
     const OPS: &'static [Op] = &[
-        Op { name: "text", code: &Code::Rec, ty: core::any::type_name::<Txt>, stage: crate::expr::StageId::Mount, reads: 0, word: 0, words: 3 },
-        Op { name: "color", code: C::CODE, ty: core::any::type_name::<C>, stage: C::STAGE, reads: C::READS, word: (core::mem::offset_of!(StrRec<C>, c) / 4) as u16, words: (core::mem::size_of::<C>() / 4) as u16 },
+        Op {
+            name: "text",
+            code: &Code::Rec,
+            ty: core::any::type_name::<Txt>,
+            stage: crate::expr::StageId::Mount,
+            reads: 0,
+            word: 0,
+            words: 3,
+        },
+        Op {
+            name: "color",
+            code: C::CODE,
+            ty: core::any::type_name::<C>,
+            stage: C::STAGE,
+            reads: C::READS,
+            word: (core::mem::offset_of!(StrRec<C>, c) / 4) as u16,
+            words: (core::mem::size_of::<C>() / 4) as u16,
+        },
     ];
     const READS: u64 = C::READS;
     const NAME: &'static str = "label";

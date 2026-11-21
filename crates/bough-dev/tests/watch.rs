@@ -1,6 +1,6 @@
 //! The watcher: a content scan, so a test can drive it without waiting for a platform event, and an edit with an
 //! old mtime is still found.
-use bough_dev::watch::{classify, Kind};
+use bough_dev::watch::{Kind, classify};
 use bough_dev::{Change, Watcher};
 use std::path::PathBuf;
 
@@ -25,9 +25,18 @@ fn a_scan_finds_adds_edits_and_removes() {
     let p = d.join("a.rs");
     let mtime = std::fs::metadata(&p).unwrap().modified().unwrap();
     std::fs::write(&p, "fn b() {}").unwrap();
-    std::fs::File::options().write(true).open(&p).unwrap().set_modified(mtime).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&p)
+        .unwrap()
+        .set_modified(mtime)
+        .unwrap();
     let c = w.scan();
-    assert_eq!(c.len(), 1, "a content change with an old mtime is found: {c:?}");
+    assert_eq!(
+        c.len(),
+        1,
+        "a content change with an old mtime is found: {c:?}"
+    );
     std::fs::write(d.join("Cargo.toml"), "[package]").unwrap();
     std::fs::write(d.join("theme.json"), "{}").unwrap();
     let c = w.scan();
@@ -48,7 +57,16 @@ fn classification_is_by_extension() {
     assert_eq!(classify(std::path::Path::new("theme.json")), Kind::Asset);
     assert_eq!(classify(std::path::Path::new("logo.png")), Kind::Asset);
     assert_eq!(
-        Watcher::worst(&[Change { path: "a".into(), kind: Kind::Asset }, Change { path: "b".into(), kind: Kind::Source }]),
+        Watcher::worst(&[
+            Change {
+                path: "a".into(),
+                kind: Kind::Asset
+            },
+            Change {
+                path: "b".into(),
+                kind: Kind::Source
+            }
+        ]),
         Some(Kind::Source)
     );
 }

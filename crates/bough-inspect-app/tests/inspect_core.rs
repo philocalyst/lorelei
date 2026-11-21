@@ -21,7 +21,10 @@ fn a_snapshot_names_the_tree() {
         assert!(n.loc.file.ends_with(".rs"), "{}", n.loc.short());
         assert!(n.loc.line > 0);
     }
-    assert!(snap.ax.is_some(), "the accessibility projection is published");
+    assert!(
+        snap.ax.is_some(),
+        "the accessibility projection is published"
+    );
     println!(
         "rows=1000 nodes={} stores={} lists={} ax={} records={}",
         snap.nodes.len(),
@@ -40,12 +43,19 @@ fn a_pointer_hovers_and_the_pick_names_the_record() {
     let mut s = rows(1_000);
     let before = s.snapshot().damage.tiles;
     assert!(before > 0, "the mount damaged the window ({before})");
-    let o = s.run(&bough_inspect::record::Command::Pointer { x: 100, y: 5 * 32 + 10 });
+    let o = s.run(&bough_inspect::record::Command::Pointer {
+        x: 100,
+        y: 5 * 32 + 10,
+    });
     assert_eq!(o.damage_tiles > 0, true, "a hover damages two rows");
     let snap = s.snapshot();
     let pick = snap.pointers.pick.expect("something is under the pointer");
     let n = snap.find_key(&pick).expect("the pick is a node");
-    assert!(!n.handlers.is_empty(), "the picked record hears the pointer: {:?}", n.handlers);
+    assert!(
+        !n.handlers.is_empty(),
+        "the picked record hears the pointer: {:?}",
+        n.handlers
+    );
     let hot = snap.fields.iter().find(|f| f.name == "hot").unwrap();
     assert_eq!(hot.value.text(), "5", "the hover word followed the pointer");
     let hit = s.stack(100, 5 * 32 + 10);
@@ -60,25 +70,42 @@ fn a_typed_field_write_damages_exactly_its_readers() {
         s.snapshot().stores.iter().any(|st| st.scroll == Some(0)),
         "the body's space reads the scroll word"
     );
-    let o = s.set("scroll", &bough_inspect::PropValue::Int(64)).expect("scroll is writable");
+    let o = s
+        .set("scroll", &bough_inspect::PropValue::Int(64))
+        .expect("scroll is writable");
     assert!(o.damage_tiles > 0, "a scroll changes the window");
     let after = s.snapshot();
     assert_eq!(
-        after.fields.iter().find(|f| f.name == "scroll").unwrap().value.text(),
+        after
+            .fields
+            .iter()
+            .find(|f| f.name == "scroll")
+            .unwrap()
+            .value
+            .text(),
         "64"
     );
     assert_eq!(after.lists[0].scroll, Some(0));
     // the refusal probes
     assert_eq!(
-        s.set("scroll", &bough_inspect::PropValue::Text("x".into())).err().unwrap().code(),
+        s.set("scroll", &bough_inspect::PropValue::Text("x".into()))
+            .err()
+            .unwrap()
+            .code(),
         "wrong-kind"
     );
     assert_eq!(
-        s.set("nope", &bough_inspect::PropValue::Int(1)).err().unwrap().code(),
+        s.set("nope", &bough_inspect::PropValue::Int(1))
+            .err()
+            .unwrap()
+            .code(),
         "unknown-field"
     );
     assert_eq!(
-        s.set("scroll", &bough_inspect::PropValue::Int(-1)).err().unwrap().code(),
+        s.set("scroll", &bough_inspect::PropValue::Int(-1))
+            .err()
+            .unwrap()
+            .code(),
         "rejected"
     );
 }

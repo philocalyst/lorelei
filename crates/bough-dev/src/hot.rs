@@ -64,8 +64,8 @@ impl Running {
     /// output is drained on helper threads: it can never block on a full pipe, and an early exit can say why.
     pub fn start(spec: &AppSpec, timeout: Duration) -> Result<Running, String> {
         use std::collections::VecDeque;
-        use std::sync::{Arc, Mutex};
         use std::sync::mpsc;
+        use std::sync::{Arc, Mutex};
         let mut child = spec
             .command()
             .stdout(Stdio::piped())
@@ -210,7 +210,9 @@ pub fn restore(c: &mut Client, st: &[(String, J)]) -> (usize, Vec<String>) {
     let mut ok = 0;
     let mut bad = Vec::new();
     for (field, value) in st {
-        let p = J::obj().set("field", field.as_str()).set("value", value.clone());
+        let p = J::obj()
+            .set("field", field.as_str())
+            .set("value", value.clone());
         match c.request("set", &p) {
             Ok(Ok(_)) => ok += 1,
             Ok(Err(e)) => bad.push(format!("{field}: {}", e.message)),
@@ -226,10 +228,7 @@ pub fn tree_digest(c: &mut Client) -> Result<String, String> {
         .request("tree", &J::obj().set("nodes", false))
         .map_err(|e| e.to_string())?
         .map_err(|e| e.message)?;
-    Ok(r.get("digest")
-        .and_then(J::as_str)
-        .unwrap_or("")
-        .to_owned())
+    Ok(r.get("digest").and_then(J::as_str).unwrap_or("").to_owned())
 }
 
 #[derive(Clone, Debug)]
@@ -250,7 +249,11 @@ impl RestartReport {
             if self.refusals.is_empty() {
                 String::new()
             } else {
-                format!(" ({} refused: {})", self.refusals.len(), self.refusals.join("; "))
+                format!(
+                    " ({} refused: {})",
+                    self.refusals.len(),
+                    self.refusals.join("; ")
+                )
             },
             if self.matched { "matched" } else { "DIFFERED" },
             self.before,
@@ -373,7 +376,11 @@ impl Rebuild {
 pub fn default_socket(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir();
     let p = dir.join(format!("bough-dev-{}-{tag}.sock", std::process::id()));
-    assert!(p.as_os_str().len() < 100, "socket path too long: {}", p.display());
+    assert!(
+        p.as_os_str().len() < 100,
+        "socket path too long: {}",
+        p.display()
+    );
     p
 }
 
@@ -399,8 +406,7 @@ pub fn describe(changes: &[super::watch::Change]) -> String {
 pub fn read_state(path: &Path) -> Result<Vec<(String, J)>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let v = json::parse(&text).map_err(|e| e.to_string())?;
-    Ok(v
-        .arr()
+    Ok(v.arr()
         .iter()
         .map(|f| {
             (
@@ -416,5 +422,6 @@ pub fn write_state(path: &Path, st: &[(String, J)]) -> Result<(), String> {
         .iter()
         .map(|(f, v)| J::obj().set("field", f.as_str()).set("value", v.clone()))
         .collect();
-    std::fs::write(path, json::to_string(&J::Arr(arr))).map_err(|e| format!("{}: {e}", path.display()))
+    std::fs::write(path, json::to_string(&J::Arr(arr)))
+        .map_err(|e| format!("{}: {e}", path.display()))
 }

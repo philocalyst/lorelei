@@ -34,5 +34,5 @@ pub mod testing;
 pub mod ui;
 
 pub use frame::Frame;
-pub use schema::{Key, Loc, Node, PropValue, Snapshot, SCHEMA_VERSION};
+pub use schema::{Key, Loc, Node, PropValue, SCHEMA_VERSION, Snapshot};
 pub use session::{FieldDef, FieldKind, Input, Outcome, Program, Refusal, Session};

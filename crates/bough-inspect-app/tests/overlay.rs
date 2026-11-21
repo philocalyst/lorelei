@@ -51,7 +51,10 @@ fn a_colour_write_skips_layout_and_touches_only_its_readers() {
     let o = s.set("hot", &PropValue::Int(3)).unwrap();
     assert!(o.damage_tiles > 0);
     let after = s.snapshot();
-    assert_eq!(after.counters.retables, retables, "no store was made or re-tabled");
+    assert_eq!(
+        after.counters.retables, retables,
+        "no store was made or re-tabled"
+    );
     assert!(
         after.counters.evaluated_columns > 0,
         "the columns reading the word were differentiated"
@@ -74,9 +77,18 @@ fn refusals_leave_the_world_and_the_description_unchanged() {
     let before = s.snapshot().clone();
     let rev = before.app.revision;
     let cases: Vec<(Refusal, &str)> = vec![
-        (s.set("scroll", &PropValue::Text("x".into())).unwrap_err(), "wrong-kind"),
-        (s.set("nope", &PropValue::Int(1)).unwrap_err(), "unknown-field"),
-        (s.set("scroll", &PropValue::Int(-5)).unwrap_err(), "rejected"),
+        (
+            s.set("scroll", &PropValue::Text("x".into())).unwrap_err(),
+            "wrong-kind",
+        ),
+        (
+            s.set("nope", &PropValue::Int(1)).unwrap_err(),
+            "unknown-field",
+        ),
+        (
+            s.set("scroll", &PropValue::Int(-5)).unwrap_err(),
+            "rejected",
+        ),
     ];
     for (r, code) in cases {
         assert_eq!(r.code(), code);
@@ -117,7 +129,10 @@ fn parent_walk_stops_at_the_root() {
         assert!(steps < 8, "the walk does not stop");
     }
     assert!(steps >= 1, "the body's list has a scope above it");
-    let top = insp.selected_index.map(|i| insp.snap.nodes[i].store).unwrap();
+    let top = insp
+        .selected_index
+        .map(|i| insp.snap.nodes[i].store)
+        .unwrap();
     let depth = insp.snap.stores[top].depth;
     assert!(depth <= 1, "the walk stopped below the root ({depth})");
 }
@@ -139,7 +154,11 @@ fn selection_of_removed_and_foreign_entities() {
     let key = insp.selected.unwrap();
     s.set("scroll", &PropValue::Int(64 * 100)).unwrap();
     insp.set_snapshot(s.snapshot().clone());
-    assert_eq!(insp.selected, Some(key), "a row that left the window is still the same row");
+    assert_eq!(
+        insp.selected,
+        Some(key),
+        "a row that left the window is still the same row"
+    );
     assert!(!insp.stale);
 
     // a row the list no longer has is gone
@@ -198,11 +217,18 @@ fn geometry_is_stable_and_needs_no_followup_frame() {
     let b = s.snapshot().clone();
     let commands = b.counters.commands;
     let c = s.snapshot().clone();
-    assert_eq!(c.counters.commands, commands, "reading a snapshot runs no command");
+    assert_eq!(
+        c.counters.commands, commands,
+        "reading a snapshot runs no command"
+    );
     assert_eq!(c.app.revision, b.app.revision);
     let moved = c.find_key(&key);
     if let Some(n) = moved {
-        assert_eq!(n.screen.y0, once.y0 - 64, "the row moved exactly with the space");
+        assert_eq!(
+            n.screen.y0,
+            once.y0 - 64,
+            "the row moved exactly with the space"
+        );
     }
     // screen = rect + the space's origin
     let st = &c.stores[2];
@@ -244,7 +270,16 @@ fn admission_is_all_or_nothing() {
     assert_eq!(s.snapshot().digest(), before.digest());
     let o = s.set("hot", &PropValue::Int(4)).unwrap();
     assert_eq!(o.revision, s.snapshot().app.revision);
-    assert_eq!(s.snapshot().fields.iter().find(|f| f.name == "hot").unwrap().value.text(), "4");
+    assert_eq!(
+        s.snapshot()
+            .fields
+            .iter()
+            .find(|f| f.name == "hot")
+            .unwrap()
+            .value
+            .text(),
+        "4"
+    );
 }
 
 /// 11. rects are reported in the store's space and on screen, at the scale the frame was made at
@@ -286,7 +321,9 @@ fn the_overlay_paints_selects_and_offers_a_jump() {
         let r = bough_x::reflect::Reflect::learn(&app.world, &app.v);
         let items = r.items(app.world.root(), &app.world.shown);
         if std::env::var("DUMP").is_ok() {
-            for i in &items { println!("{:?} {:?} {:?}", i.kind(), i.text(), i.screen); }
+            for i in &items {
+                println!("{:?} {:?} {:?}", i.kind(), i.text(), i.screen);
+            }
         }
         let n = items
             .iter()
@@ -296,9 +333,13 @@ fn the_overlay_paints_selects_and_offers_a_jump() {
         (n.ent, n.screen)
     };
     let _ = node;
-    app.world.click(&mut app.v, (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2);
+    app.world
+        .click(&mut app.v, (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2);
     app.settle();
-    assert!(app.v.selected_index.is_some(), "clicking a line selects an element");
+    assert!(
+        app.v.selected_index.is_some(),
+        "clicking a line selects an element"
+    );
     // the details pane offers the source location; selecting it leaves a jump for the host
     let idx = app.v.selected_index.unwrap();
     let loc = app.v.snap.nodes[idx].loc;

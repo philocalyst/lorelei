@@ -21,7 +21,9 @@ fn opt_s(v: &J, k: &str) -> Option<&'static str> {
     v.get(k).and_then(J::as_str).map(stat)
 }
 fn i(v: &J, k: &str) -> Result<i64, String> {
-    v.get(k).and_then(J::as_i64).ok_or_else(|| format!("missing integer {k}"))
+    v.get(k)
+        .and_then(J::as_i64)
+        .ok_or_else(|| format!("missing integer {k}"))
 }
 fn u(v: &J, k: &str) -> Result<u32, String> {
     i(v, k).map(|x| x as u32)
@@ -40,7 +42,12 @@ fn arr<'a>(v: &'a J, k: &str) -> &'a [J] {
 
 impl R {
     pub fn from_json(v: &J) -> Result<R, String> {
-        let (x, y, w, h) = (i(v, "x")? as i32, i(v, "y")? as i32, i(v, "w")? as i32, i(v, "h")? as i32);
+        let (x, y, w, h) = (
+            i(v, "x")? as i32,
+            i(v, "y")? as i32,
+            i(v, "w")? as i32,
+            i(v, "h")? as i32,
+        );
         Ok(R {
             x0: x,
             y0: y,
@@ -147,7 +154,10 @@ impl Store {
         let geo = v.get("geo").filter(|g| !g.is_null());
         let mut moved = Vec::new();
         for m in arr(v, "moved") {
-            moved.push((stat(m.get("op").and_then(J::as_str).unwrap_or("update")), u(m, "at")?));
+            moved.push((
+                stat(m.get("op").and_then(J::as_str).unwrap_or("update")),
+                u(m, "at")?,
+            ));
         }
         Ok(Store {
             index: i(v, "index")? as usize,
@@ -165,11 +175,20 @@ impl Store {
             lo: u32::try_from(win.first().and_then(J::as_i64).unwrap_or(0)).unwrap_or(0),
             hi: u32::try_from(win.get(1).and_then(J::as_i64).unwrap_or(0)).unwrap_or(0),
             n: u(v, "n")?,
-            geo: geo.map(|g| (i(g, "x").unwrap_or(0) as i32, i(g, "y").unwrap_or(0) as i32, i(g, "row_h").unwrap_or(0) as i32)),
+            geo: geo.map(|g| {
+                (
+                    i(g, "x").unwrap_or(0) as i32,
+                    i(g, "y").unwrap_or(0) as i32,
+                    i(g, "row_h").unwrap_or(0) as i32,
+                )
+            }),
             seen: u(v, "seen")?,
             moved,
             moved_ok: b(v, "moved_ok"),
-            cols: arr(v, "cols").iter().map(Col::from_json).collect::<Result<_, _>>()?,
+            cols: arr(v, "cols")
+                .iter()
+                .map(Col::from_json)
+                .collect::<Result<_, _>>()?,
             records: i(v, "records")? as usize,
             pages: i(v, "pages")? as usize,
             bytes: i(v, "bytes")? as usize,
@@ -195,7 +214,10 @@ impl List {
             row_h: i(row, "h")? as i32,
             x: i(row, "x")? as i32,
             y: i(row, "y")? as i32,
-            shape: arr(v, "shape").iter().map(R::from_json).collect::<Result<_, _>>()?,
+            shape: arr(v, "shape")
+                .iter()
+                .map(R::from_json)
+                .collect::<Result<_, _>>()?,
             lo: u32::try_from(win.first().and_then(J::as_i64).unwrap_or(0)).unwrap_or(0),
             hi: u32::try_from(win.get(1).and_then(J::as_i64).unwrap_or(0)).unwrap_or(0),
             cap: u(v, "cap")?,
@@ -224,9 +246,15 @@ impl Node {
                 off.first().and_then(J::as_i64).unwrap_or(0) as i32,
                 off.get(1).and_then(J::as_i64).unwrap_or(0) as i32,
             ),
-            handlers: arr(v, "handlers").iter().filter_map(|h| h.as_str().map(stat)).collect(),
+            handlers: arr(v, "handlers")
+                .iter()
+                .filter_map(|h| h.as_str().map(stat))
+                .collect(),
             handler_ty: opt_s(v, "handler_ty"),
-            ops: arr(v, "ops").iter().map(Prop::from_json).collect::<Result<_, _>>()?,
+            ops: arr(v, "ops")
+                .iter()
+                .map(Prop::from_json)
+                .collect::<Result<_, _>>()?,
             reads: reads(v),
             text: v.get("text").and_then(J::as_str).map(str::to_owned),
         })
@@ -261,7 +289,10 @@ impl Damage {
             tiles: u(v, "tiles")?,
             rows,
             sweeps,
-            rects: arr(v, "rects").iter().map(R::from_json).collect::<Result<_, _>>()?,
+            rects: arr(v, "rects")
+                .iter()
+                .map(R::from_json)
+                .collect::<Result<_, _>>()?,
         })
     }
 }
@@ -281,7 +312,11 @@ impl Counters {
             bytes: i(r, "bytes")? as usize,
             commands: v.get("commands").and_then(J::as_i64).unwrap_or(0) as u64,
             frames: v.get("frames").and_then(J::as_i64).unwrap_or(0) as u64,
-            last_command: last.get("command").and_then(J::as_str).unwrap_or("").to_owned(),
+            last_command: last
+                .get("command")
+                .and_then(J::as_str)
+                .unwrap_or("")
+                .to_owned(),
             last_settle_us: last.get("settle_us").and_then(J::as_i64).unwrap_or(0) as u64,
             last_paint_us: last.get("paint_us").and_then(J::as_i64).unwrap_or(0) as u64,
             changed: arr(v, "changed").iter().filter_map(J::as_u32).collect(),
@@ -304,7 +339,7 @@ impl AppInfo {
     }
 }
 impl AxNode {
-    fn from_json(v: &J, ) -> Result<AxNode, String> {
+    fn from_json(v: &J) -> Result<AxNode, String> {
         Ok(AxNode {
             role: stat(&s(v, "role")?),
             name: s(v, "name")?,
@@ -320,7 +355,10 @@ impl AxNode {
             col_index: v.get("col_index").and_then(J::as_u32),
             col_count: v.get("col_count").and_then(J::as_u32),
             live: b(v, "live"),
-            actions: arr(v, "actions").iter().filter_map(|a| a.as_str().map(stat)).collect(),
+            actions: arr(v, "actions")
+                .iter()
+                .filter_map(|a| a.as_str().map(stat))
+                .collect(),
             loc: opt_loc(v, "loc")?,
             place: v.get("place").and_then(J::as_u32),
         })
@@ -331,7 +369,10 @@ impl Ax {
         Ok(Ax {
             root: v.get("root").and_then(J::as_usize),
             focus: v.get("focus").and_then(J::as_usize),
-            nodes: arr(v, "nodes").iter().map(AxNode::from_json).collect::<Result<_, _>>()?,
+            nodes: arr(v, "nodes")
+                .iter()
+                .map(AxNode::from_json)
+                .collect::<Result<_, _>>()?,
             projected: v.get("projected").and_then(J::as_i64).unwrap_or(0) as usize,
         })
     }
@@ -342,7 +383,9 @@ impl Snapshot {
     pub fn from_json(v: &J) -> Result<Snapshot, String> {
         let schema = u(v, "schema")?;
         if schema != SCHEMA_VERSION {
-            return Err(format!("snapshot is schema {schema}, this build reads {SCHEMA_VERSION}"));
+            return Err(format!(
+                "snapshot is schema {schema}, this build reads {SCHEMA_VERSION}"
+            ));
         }
         let fields = arr(v, "fields")
             .iter()
@@ -367,9 +410,18 @@ impl Snapshot {
         Ok(Snapshot {
             schema,
             app: AppInfo::from_json(v.get("app").ok_or("app")?)?,
-            stores: arr(v, "stores").iter().map(Store::from_json).collect::<Result<_, _>>()?,
-            lists: arr(v, "lists").iter().map(List::from_json).collect::<Result<_, _>>()?,
-            nodes: arr(v, "nodes").iter().map(Node::from_json).collect::<Result<_, _>>()?,
+            stores: arr(v, "stores")
+                .iter()
+                .map(Store::from_json)
+                .collect::<Result<_, _>>()?,
+            lists: arr(v, "lists")
+                .iter()
+                .map(List::from_json)
+                .collect::<Result<_, _>>()?,
+            nodes: arr(v, "nodes")
+                .iter()
+                .map(Node::from_json)
+                .collect::<Result<_, _>>()?,
             damage: Damage::from_json(v.get("damage").ok_or("damage")?)?,
             counters: Counters::from_json(v.get("counters").ok_or("counters")?)?,
             words: arr(v, "words")
@@ -386,10 +438,12 @@ impl Snapshot {
                 .collect::<Result<_, String>>()?,
             fields,
             pointers: Pointers {
-                pointer: ptr
-                    .len()
-                    .eq(&2)
-                    .then(|| (ptr[0].as_i64().unwrap_or(0) as i32, ptr[1].as_i64().unwrap_or(0) as i32)),
+                pointer: ptr.len().eq(&2).then(|| {
+                    (
+                        ptr[0].as_i64().unwrap_or(0) as i32,
+                        ptr[1].as_i64().unwrap_or(0) as i32,
+                    )
+                }),
                 pick: key("pick")?,
                 press: key("press")?,
                 focus: key("focus")?,

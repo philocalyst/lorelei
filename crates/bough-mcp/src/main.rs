@@ -14,7 +14,9 @@ fn main() {
             "--http" => http = it.next(),
             "--help" | "-h" => {
                 println!("usage: bough-mcp [--socket PATH] [--http ADDR]");
-                println!("  --socket PATH  the app's inspector socket (default: $BOUGH_INSPECT_SOCKET)");
+                println!(
+                    "  --socket PATH  the app's inspector socket (default: $BOUGH_INSPECT_SOCKET)"
+                );
                 println!("  --http ADDR    serve MCP at POST http://ADDR/mcp instead of stdio");
                 std::process::exit(0);
             }

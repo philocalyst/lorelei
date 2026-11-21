@@ -6,7 +6,7 @@
 //! bough-dev mcp --socket /tmp/b.sock --http 127.0.0.1:7777
 //! ```
 use bough_dev::hot::{self, AppSpec, Rebuild, Running};
-use bough_dev::{Watcher, Kind};
+use bough_dev::{Kind, Watcher};
 use bough_inspect::client::Client;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -76,7 +76,9 @@ fn parse(rest: &[String]) -> Result<Opts, String> {
             "--watch" => o.roots.push(PathBuf::from(val("--watch")?)),
             "--http" => o.http = Some(val("--http")?),
             "--once" => o.once = true,
-            "--interval-ms" => o.interval_ms = val("--interval-ms")?.parse().map_err(|_| "interval")?,
+            "--interval-ms" => {
+                o.interval_ms = val("--interval-ms")?.parse().map_err(|_| "interval")?
+            }
             "--timeout-ms" => o.timeout_ms = val("--timeout-ms")?.parse().map_err(|_| "timeout")?,
             "-p" | "--package" => o.package = Some(val("--package")?),
             "--bin" => o.bin = Some(val("--bin")?),
@@ -114,7 +116,10 @@ fn spec_of(o: &Opts) -> Result<AppSpec, String> {
         Some(s) => s.clone(),
         None => hot::default_socket("run"),
     };
-    let program = o.app.clone().unwrap_or_else(|| PathBuf::from("bough-inspect-app"));
+    let program = o
+        .app
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("bough-inspect-app"));
     let mut spec = AppSpec::new(program, socket);
     spec.args = if o.app_args.is_empty() {
         vec![
@@ -193,7 +198,11 @@ fn run(args: &[String]) -> Result<(), String> {
                 eprintln!("refused: {b}");
             }
             println!("{ok}/{} fields restored", st.len());
-            if bad.is_empty() { Ok(()) } else { Err(format!("{} refused", bad.len())) }
+            if bad.is_empty() {
+                Ok(())
+            } else {
+                Err(format!("{} refused", bad.len()))
+            }
         }
         "inspect" => unreachable!("inspect is parsed apart"),
         "mcp" => {
@@ -203,7 +212,10 @@ fn run(args: &[String]) -> Result<(), String> {
                     // on this thread: a `shutdown` request closes the server and the process exits
                     let listener = std::net::TcpListener::bind(addr.as_str())
                         .map_err(|e| format!("cannot bind {addr}: {e}"))?;
-                    println!("listening {}", listener.local_addr().map_err(|e| e.to_string())?);
+                    println!(
+                        "listening {}",
+                        listener.local_addr().map_err(|e| e.to_string())?
+                    );
                     let mut m = bough_mcp::Mcp::new(socket);
                     bough_mcp::serve_http(&mut m, listener).map_err(|e| e.to_string())
                 }
@@ -245,7 +257,11 @@ fn dev(o: &Opts) -> Result<(), String> {
         "app ready: {} (socket {}){}",
         spec.program.display(),
         spec.socket.display(),
-        if running.ready() { "" } else { " (no ready line)" }
+        if running.ready() {
+            ""
+        } else {
+            " (no ready line)"
+        }
     );
     if let Some(addr) = &o.http {
         let at = bough_dev::serve_mcp_http(spec.socket.clone(), addr)?;
@@ -262,7 +278,10 @@ fn dev(o: &Opts) -> Result<(), String> {
     };
     let mut w = Watcher::new(roots.clone());
     let _ = w.scan();
-    let package = o.package.clone().unwrap_or_else(|| "bough-inspect-app".into());
+    let package = o
+        .package
+        .clone()
+        .unwrap_or_else(|| "bough-inspect-app".into());
     loop {
         std::thread::sleep(Duration::from_millis(o.interval_ms));
         let changes = w.scan();
@@ -288,7 +307,11 @@ fn dev(o: &Opts) -> Result<(), String> {
                 rb.no_default_features = o.no_default_features;
                 rb.offline = o.offline;
                 match rb.run() {
-                    Ok(()) => match hot::restart_preserving_state(&spec, &mut running, Duration::from_millis(o.timeout_ms)) {
+                    Ok(()) => match hot::restart_preserving_state(
+                        &spec,
+                        &mut running,
+                        Duration::from_millis(o.timeout_ms),
+                    ) {
                         Ok(r) => println!("{}", r.line()),
                         Err(e) => eprintln!("restart: {e}"),
                     },
@@ -308,7 +331,10 @@ fn dev(o: &Opts) -> Result<(), String> {
 
 fn rebuild(o: &Opts) -> Result<(), String> {
     let socket = socket_of(o)?;
-    let package = o.package.clone().unwrap_or_else(|| "bough-inspect-app".into());
+    let package = o
+        .package
+        .clone()
+        .unwrap_or_else(|| "bough-inspect-app".into());
     let mut rb = Rebuild::new(&package);
     rb.bin = o.bin.clone();
     rb.example = o.example.clone();
@@ -319,7 +345,10 @@ fn rebuild(o: &Opts) -> Result<(), String> {
     println!("building {} {}...", rb.package, rb.args().join(" "));
     rb.run()?;
     // the new binary is the same program with the same arguments; the socket is the contract
-    let program = o.app.clone().ok_or("rebuild needs --app (the new binary)")?;
+    let program = o
+        .app
+        .clone()
+        .ok_or("rebuild needs --app (the new binary)")?;
     let mut spec = AppSpec::new(program, socket.clone());
     spec.args = o.app_args.clone();
     restart_between(&socket, &spec, Duration::from_millis(o.timeout_ms))

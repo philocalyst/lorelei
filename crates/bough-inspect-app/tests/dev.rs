@@ -1,8 +1,8 @@
 //! The dev server's fallback against a real app: snapshot the typed state, stop the application, start a fresh
 //! binary, write the state back through the inspector's admission, and compare the descriptions. Also the hot
 //! path that is not a rebuild: `reload` changes nothing and costs no restart.
-use bough_dev::hot::{self, AppSpec};
 use bough_dev::Running;
+use bough_dev::hot::{self, AppSpec};
 use bough_inspect::client::Client;
 use bough_inspect::json::{self, Value as J};
 use std::io::{BufRead, BufReader};
@@ -24,8 +24,18 @@ fn a_restart_keeps_the_typed_state_and_the_description() {
     let mut running = Running::start(&s, Duration::from_secs(15)).expect("start");
     {
         let c = running.client().unwrap();
-        let _ = c.request("set", &J::obj().set("field", "scroll").set("value", J::obj().set("kind", "int").set("value", 320)));
-        let _ = c.request("set", &J::obj().set("field", "hot").set("value", J::obj().set("kind", "int").set("value", 9)));
+        let _ = c.request(
+            "set",
+            &J::obj()
+                .set("field", "scroll")
+                .set("value", J::obj().set("kind", "int").set("value", 320)),
+        );
+        let _ = c.request(
+            "set",
+            &J::obj()
+                .set("field", "hot")
+                .set("value", J::obj().set("kind", "int").set("value", 9)),
+        );
     }
     let before_state = {
         let c = running.client().unwrap();
@@ -36,12 +46,17 @@ fn a_restart_keeps_the_typed_state_and_the_description() {
         hot::tree_digest(c).unwrap()
     };
     // the same binary started again with the same arguments
-    let r = hot::restart_preserving_state(&s, &mut running, Duration::from_secs(15)).expect("restart");
+    let r =
+        hot::restart_preserving_state(&s, &mut running, Duration::from_secs(15)).expect("restart");
     assert_eq!(r.fields, before_state.len());
     assert_eq!(r.restored, r.fields, "refusals: {:?}", r.refusals);
     assert!(r.refusals.is_empty());
     assert_eq!(r.before, before_digest);
-    assert!(r.matched, "the description after the restart differs: {} != {}", r.before, r.after);
+    assert!(
+        r.matched,
+        "the description after the restart differs: {} != {}",
+        r.before, r.after
+    );
     // the fields read back as they were
     let after = {
         let c = running.client().unwrap();
@@ -57,7 +72,12 @@ fn a_reload_keeps_the_description() {
     let mut running = Running::start(&s, Duration::from_secs(15)).expect("start");
     {
         let c = running.client().unwrap();
-        let _ = c.request("set", &J::obj().set("field", "scroll").set("value", J::obj().set("kind", "int").set("value", 64)));
+        let _ = c.request(
+            "set",
+            &J::obj()
+                .set("field", "scroll")
+                .set("value", J::obj().set("kind", "int").set("value", 64)),
+        );
     }
     let before = {
         let c = running.client().unwrap();
@@ -65,16 +85,16 @@ fn a_reload_keeps_the_description() {
     };
     {
         let c = running.client().unwrap();
-        let r = c
-            .request("reload", &J::obj())
-            .unwrap()
-            .unwrap();
+        let r = c.request("reload", &J::obj()).unwrap().unwrap();
         assert_eq!(r.get("reloaded").and_then(J::as_bool), Some(true));
     }
     let after = {
         let c = running.client().unwrap();
         (hot::tree_digest(c).unwrap(), hot::state(c).unwrap())
     };
-    assert_eq!(before, after, "a reload re-reads inputs and keeps state and description");
+    assert_eq!(
+        before, after,
+        "a reload re-reads inputs and keeps state and description"
+    );
     running.stop();
 }

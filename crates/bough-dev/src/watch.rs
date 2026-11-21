@@ -114,7 +114,9 @@ fn skip(p: &Path) -> bool {
 }
 
 fn collect(dir: &Path, out: &mut BTreeMap<PathBuf, Stamp>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if skip(&p) {

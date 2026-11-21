@@ -48,7 +48,10 @@ impl Command {
             Command::Key { key, mods } => Input::Key { key, mods },
             Command::Text { ref text } => Input::Text { text: text.clone() },
             Command::Wheel { x, y, dx, dy } => Input::Wheel { x, y, dx, dy },
-            Command::Tick { .. } | Command::Resize { .. } | Command::Set { .. } | Command::Settle => {
+            Command::Tick { .. }
+            | Command::Resize { .. }
+            | Command::Set { .. }
+            | Command::Settle => {
                 return None;
             }
         })
@@ -96,7 +99,10 @@ impl Command {
         o
     }
     pub fn from_json(v: &J) -> Result<Command, String> {
-        let cmd = v.get("cmd").and_then(J::as_str).ok_or("a command needs a name")?;
+        let cmd = v
+            .get("cmd")
+            .and_then(J::as_str)
+            .ok_or("a command needs a name")?;
         let i = |k: &str| v.get(k).and_then(J::as_i64).map(|x| x as i32);
         let f = |k: &str| v.get(k).and_then(J::as_f32);
         let b = |k: &str| v.get(k).and_then(J::as_bool).unwrap_or(false);
@@ -129,11 +135,7 @@ impl Command {
                 },
             },
             "text" => Command::Text {
-                text: v
-                    .get("text")
-                    .and_then(J::as_str)
-                    .ok_or("text")?
-                    .to_owned(),
+                text: v.get("text").and_then(J::as_str).ok_or("text")?.to_owned(),
             },
             "wheel" => Command::Wheel {
                 x: i("x").ok_or("x")?,
@@ -212,7 +214,13 @@ pub fn key_of(s: Option<&str>) -> Option<Key> {
         "end" => Key::End,
         "page-up" => Key::PageUp,
         "page-down" => Key::PageDown,
-        other => Key::Char(other.strip_prefix("char:").unwrap_or(other).chars().next()?),
+        other => Key::Char(
+            other
+                .strip_prefix("char:")
+                .unwrap_or(other)
+                .chars()
+                .next()?,
+        ),
     })
 }
 
@@ -233,11 +241,14 @@ impl PropValue {
             "int" => PropValue::Int(v.get("value").and_then(J::as_i64).ok_or("int value")? as i32),
             "float" => PropValue::Float(v.get("value").and_then(J::as_f32).ok_or("float value")?),
             "bool" => PropValue::Bool(v.get("value").and_then(J::as_bool).ok_or("bool value")?),
-            "color" => PropValue::Color(
-                v.get("rgba").and_then(J::as_i64).ok_or("colour value")? as u32,
-            ),
+            "color" => {
+                PropValue::Color(v.get("rgba").and_then(J::as_i64).ok_or("colour value")? as u32)
+            }
             "text" => PropValue::Text(
-                v.get("text").and_then(J::as_str).ok_or("text value")?.to_owned(),
+                v.get("text")
+                    .and_then(J::as_str)
+                    .ok_or("text value")?
+                    .to_owned(),
             ),
             other => return Err(format!("not a settable value kind: {other}")),
         })
@@ -282,7 +293,13 @@ impl Log {
         J::obj()
             .set("schema", self.schema as i64)
             .set("app", self.app.as_str())
-            .set("size", J::obj().set("w", self.w).set("h", self.h).set("scale", self.scale))
+            .set(
+                "size",
+                J::obj()
+                    .set("w", self.w)
+                    .set("h", self.h)
+                    .set("scale", self.scale),
+            )
             .set(
                 "steps",
                 self.steps
@@ -296,8 +313,12 @@ impl Log {
                             .set("damage", s.damage)
                             .set("revision", s.revision);
                         if let Some((code, reason)) = &s.refused {
-                            o = o
-                                .set("refused", J::obj().set("code", code.as_str()).set("reason", reason.as_str()));
+                            o = o.set(
+                                "refused",
+                                J::obj()
+                                    .set("code", code.as_str())
+                                    .set("reason", reason.as_str()),
+                            );
                         }
                         o
                     })
@@ -381,7 +402,9 @@ pub fn record_step<P: Program>(s: &mut Session<P>, c: Command) -> Step {
 /// What replay found. The first mismatch names the step and the field that differed.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Replay {
-    Match { steps: usize },
+    Match {
+        steps: usize,
+    },
     Mismatch {
         step: usize,
         command: Command,
@@ -395,11 +418,28 @@ pub enum Replay {
 pub fn replay<P: Program>(log: &Log, app: impl FnOnce() -> P) -> Replay {
     let mut s = Session::new(app());
     for (i, want) in log.steps.iter().enumerate() {
+        #[cfg(feature = "mutant_replay")]
+        if i % 4 == 3 {
+            // the negative control of G4: a replay silently skips every fourth command
+            continue;
+        }
         let got = record_step(&mut s, want.command.clone());
         for (what, e, g) in [
-            ("description", format!("{:016x}", want.digest), format!("{:016x}", got.digest)),
-            ("pixels", format!("{:016x}", want.pixels), format!("{:016x}", got.pixels)),
-            ("revision", want.revision.to_string(), got.revision.to_string()),
+            (
+                "description",
+                format!("{:016x}", want.digest),
+                format!("{:016x}", got.digest),
+            ),
+            (
+                "pixels",
+                format!("{:016x}", want.pixels),
+                format!("{:016x}", got.pixels),
+            ),
+            (
+                "revision",
+                want.revision.to_string(),
+                got.revision.to_string(),
+            ),
         ] {
             if e != g {
                 return Replay::Mismatch {
@@ -444,9 +484,7 @@ pub fn outcome_json(o: &Outcome) -> J {
         .set("digest", J::Str(format!("{:016x}", o.digest)))
 }
 pub fn refusal_json(r: &Refusal) -> J {
-    J::obj()
-        .set("code", r.code())
-        .set("reason", r.reason())
+    J::obj().set("code", r.code()).set("reason", r.reason())
 }
 
 /// Run a script on a session and return the log it produced (the recording entry point for a test).

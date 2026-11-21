@@ -79,24 +79,37 @@ fn rows_over_the_socket() {
     let lists = tree.get("lists").unwrap().arr();
     assert_eq!(lists[0].get("n").and_then(J::as_u32), Some(1_000));
     assert!(tree.get("ax").unwrap().get("nodes").unwrap().arr().len() > 10);
-    assert!(
-        nodes
-            .iter()
-            .all(|n| n.get("loc").unwrap().get("line").and_then(J::as_u32).unwrap() > 0)
-    );
+    assert!(nodes.iter().all(|n| {
+        n.get("loc")
+            .unwrap()
+            .get("line")
+            .and_then(J::as_u32)
+            .unwrap()
+            > 0
+    }));
 
     // pick under a row: the pick names a record with a pointer handler
     let pick = call(&mut c, "pick", J::obj().set("x", 100).set("y", 5 * 32 + 10));
     let stack = pick.get("stack").unwrap().arr();
     assert!(!stack.is_empty());
-    assert_eq!(stack[0].get("kind").and_then(J::as_str), Some("text"), "the label lies over the row");
+    assert_eq!(
+        stack[0].get("kind").and_then(J::as_str),
+        Some("text"),
+        "the label lies over the row"
+    );
     assert!(
-        stack.iter().any(|n| n.get("handler").and_then(J::as_bool) == Some(true)),
+        stack
+            .iter()
+            .any(|n| n.get("handler").and_then(J::as_bool) == Some(true)),
         "the row's fill is under the label and hears the pointer"
     );
 
     // drive: hover, then read the world's hover state through the description
-    call(&mut c, "pointer", J::obj().set("x", 100).set("y", 5 * 32 + 10));
+    call(
+        &mut c,
+        "pointer",
+        J::obj().set("x", 100).set("y", 5 * 32 + 10),
+    );
     let tree = call(&mut c, "tree", J::obj().set("nodes", false));
     let pick = tree.get("pointers").unwrap().get("pick").unwrap();
     assert!(!pick.is_null(), "the pick is a node of the new snapshot");
@@ -108,10 +121,19 @@ fn rows_over_the_socket() {
         .iter()
         .find(|f| f.get("name").and_then(J::as_str) == Some("hot"))
         .unwrap();
-    assert_eq!(hot.get("value").unwrap().get("value").and_then(J::as_i64), Some(5));
+    assert_eq!(
+        hot.get("value").unwrap().get("value").and_then(J::as_i64),
+        Some(5)
+    );
 
     // find by text: Row 00042 is in the window only when scrolled there; scroll to it through a typed write
-    call(&mut c, "set", J::obj().set("field", "scroll").set("value", J::obj().set("kind", "int").set("value", 42 * 32)));
+    call(
+        &mut c,
+        "set",
+        J::obj()
+            .set("field", "scroll")
+            .set("value", J::obj().set("kind", "int").set("value", 42 * 32)),
+    );
     let found = call(
         &mut c,
         "find",
@@ -145,6 +167,25 @@ fn rows_over_the_socket() {
         "two paints of one state are the same frame"
     );
 
+    // a screenshot by element: just the record's rect
+    let node = call(
+        &mut c,
+        "find",
+        J::obj()
+            .set("kind", "fill")
+            .set("visible", true)
+            .set("limit", 1),
+    );
+    let idx = node.get("nodes").unwrap().arr()[0]
+        .get("index")
+        .and_then(J::as_u32)
+        .unwrap();
+    let one = call(&mut c, "shot", J::obj().set("node", idx));
+    let png1 = json::base64_decode(one.get("png").and_then(J::as_str).unwrap()).unwrap();
+    let img1 = png::decode(&png1).unwrap();
+    assert!(img1.w <= 800 && img1.h <= 600);
+    assert!(img1.w > 0 && img1.h > 0);
+
     // diff: the frame against itself matches; one changed pixel does not
     let same = call(
         &mut c,
@@ -169,7 +210,14 @@ fn rows_over_the_socket() {
     // counters
     let ctr = call(&mut c, "counters", J::obj());
     assert!(ctr.get("revision").and_then(J::as_u32).unwrap() > 0);
-    assert!(ctr.get("retained").unwrap().get("records").and_then(J::as_u32).unwrap() < 200);
+    assert!(
+        ctr.get("retained")
+            .unwrap()
+            .get("records")
+            .and_then(J::as_u32)
+            .unwrap()
+            < 200
+    );
 
     // protocol refusals
     let (code, msg) = refusable(&mut c, "no-such-method", J::obj());
@@ -177,9 +225,14 @@ fn rows_over_the_socket() {
     let (code, _) = refusable(
         &mut c,
         "set",
-        J::obj().set("field", "hot").set("value", J::obj().set("kind", "text").set("text", "x")),
+        J::obj()
+            .set("field", "hot")
+            .set("value", J::obj().set("kind", "text").set("text", "x")),
     );
-    assert_eq!(code, -32010, "a refusal is distinguishable from a transport error");
+    assert_eq!(
+        code, -32010,
+        "a refusal is distinguishable from a transport error"
+    );
 
     call(&mut c, "shutdown", J::obj());
     drop(c);
@@ -190,7 +243,10 @@ fn rows_over_the_socket() {
             assert!(st.success(), "the app exited with {st}");
             break;
         }
-        assert!(Instant::now() < deadline, "the app did not exit after shutdown");
+        assert!(
+            Instant::now() < deadline,
+            "the app did not exit after shutdown"
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
     let _ = std::fs::remove_file(&app.path);
@@ -201,11 +257,16 @@ fn table_over_the_socket() {
     let app = spawn("table", "table", 500);
     let mut c = Client::open(&app.path).expect("connect");
     assert_eq!(
-        call(&mut c, "hello", J::obj()).get("app").and_then(J::as_str),
+        call(&mut c, "hello", J::obj())
+            .get("app")
+            .and_then(J::as_str),
         Some("table")
     );
     let tree = call(&mut c, "tree", J::obj());
-    assert_eq!(tree.get("app").unwrap().get("name").and_then(J::as_str), Some("table"));
+    assert_eq!(
+        tree.get("app").unwrap().get("name").and_then(J::as_str),
+        Some("table")
+    );
     // click a row: the header of the table has a status text and rows are a list
     call(&mut c, "click", J::obj().set("x", 200).set("y", 120));
     let tree = call(&mut c, "tree", J::obj().set("nodes", false));
@@ -214,7 +275,9 @@ fn table_over_the_socket() {
     let (code, msg) = refusable(
         &mut c,
         "set",
-        J::obj().set("field", "len").set("value", J::obj().set("kind", "int").set("value", 1)),
+        J::obj()
+            .set("field", "len")
+            .set("value", J::obj().set("kind", "int").set("value", 1)),
     );
     assert_eq!(code, -32010);
     assert!(msg.contains("read-only"), "{msg}");
@@ -239,8 +302,12 @@ fn handshake_is_enforced_and_a_second_client_is_refused() {
             .set("method", "tree")
             .set("params", J::obj());
         write_frame(&mut s, json::to_string(&req).as_bytes()).unwrap();
-        let reply = json::parse(std::str::from_utf8(&read_frame(&mut s).unwrap()).unwrap()).unwrap();
-        assert_eq!(reply.get("error").unwrap().get("code").and_then(J::as_i64), Some(-32600));
+        let reply =
+            json::parse(std::str::from_utf8(&read_frame(&mut s).unwrap()).unwrap()).unwrap();
+        assert_eq!(
+            reply.get("error").unwrap().get("code").and_then(J::as_i64),
+            Some(-32600)
+        );
     }
     // a client naming another schema is refused
     {
@@ -252,8 +319,12 @@ fn handshake_is_enforced_and_a_second_client_is_refused() {
             .set("method", "hello")
             .set("params", J::obj().set("schema", 999));
         write_frame(&mut s, json::to_string(&req).as_bytes()).unwrap();
-        let reply = json::parse(std::str::from_utf8(&read_frame(&mut s).unwrap()).unwrap()).unwrap();
-        assert_eq!(reply.get("error").unwrap().get("code").and_then(J::as_i64), Some(-32600));
+        let reply =
+            json::parse(std::str::from_utf8(&read_frame(&mut s).unwrap()).unwrap()).unwrap();
+        assert_eq!(
+            reply.get("error").unwrap().get("code").and_then(J::as_i64),
+            Some(-32600)
+        );
     }
     // a live connection owns the world: a second one is told so
     let mut c = Client::open(&app.path).expect("connect");
@@ -269,8 +340,12 @@ fn handshake_is_enforced_and_a_second_client_is_refused() {
         // the server accepts only when it is pumped; ask the live client to make it pump
         write_frame(&mut s, json::to_string(&req).as_bytes()).unwrap();
         let _ = call(&mut c, "tree", J::obj());
-        let reply = json::parse(std::str::from_utf8(&read_frame(&mut s).unwrap()).unwrap()).unwrap();
-        assert_eq!(reply.get("error").unwrap().get("code").and_then(J::as_i64), Some(-32600));
+        let reply =
+            json::parse(std::str::from_utf8(&read_frame(&mut s).unwrap()).unwrap()).unwrap();
+        assert_eq!(
+            reply.get("error").unwrap().get("code").and_then(J::as_i64),
+            Some(-32600)
+        );
     }
     call(&mut c, "shutdown", J::obj());
     let _ = app;

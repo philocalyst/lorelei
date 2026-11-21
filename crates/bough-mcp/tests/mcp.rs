@@ -30,7 +30,9 @@ fn fake_app(tag: &str) -> (PathBuf, std::thread::JoinHandle<()>) {
                 "hello" => J::obj().set("result", J::obj().set("schema", 1).set("app", "fake")),
                 "tree" => J::obj().set(
                     "result",
-                    J::obj().set("schema", 1).set("nodes", vec![J::obj().set("kind", "fill")]),
+                    J::obj()
+                        .set("schema", 1)
+                        .set("nodes", vec![J::obj().set("kind", "fill")]),
                 ),
                 "counters" => J::obj().set("result", J::obj().set("revision", 3)),
                 "shot" => {
@@ -66,7 +68,13 @@ fn fake_app(tag: &str) -> (PathBuf, std::thread::JoinHandle<()>) {
                 "shutdown" => {
                     let _ = write_frame(
                         &mut s,
-                        json::to_string(&J::obj().set("jsonrpc", "2.0").set("id", id).set("result", J::obj())).as_bytes(),
+                        json::to_string(
+                            &J::obj()
+                                .set("jsonrpc", "2.0")
+                                .set("id", id)
+                                .set("result", J::obj()),
+                        )
+                        .as_bytes(),
                     );
                     break;
                 }
@@ -86,71 +94,179 @@ fn fake_app(tag: &str) -> (PathBuf, std::thread::JoinHandle<()>) {
 }
 
 fn rpc(mcp: &mut Mcp, id: i64, method: &str, params: J) -> J {
-    mcp.handle(&J::obj().set("jsonrpc", "2.0").set("id", id).set("method", method).set("params", params))
-        .expect("a response")
+    mcp.handle(
+        &J::obj()
+            .set("jsonrpc", "2.0")
+            .set("id", id)
+            .set("method", method)
+            .set("params", params),
+    )
+    .expect("a response")
 }
 
 #[test]
 fn protocol_shapes_and_tools() {
     let (path, h) = fake_app("shapes");
     let mut m = Mcp::new(&path);
-    let init = rpc(&mut m, 1, "initialize", J::obj().set("protocolVersion", "2025-06-18").set("capabilities", J::obj()));
+    let init = rpc(
+        &mut m,
+        1,
+        "initialize",
+        J::obj()
+            .set("protocolVersion", "2025-06-18")
+            .set("capabilities", J::obj()),
+    );
     assert_eq!(init.get("jsonrpc").and_then(J::as_str), Some("2.0"));
     let r = init.get("result").unwrap();
-    assert_eq!(r.get("protocolVersion").and_then(J::as_str), Some("2025-06-18"));
-    assert_eq!(r.get("serverInfo").unwrap().get("name").and_then(J::as_str), Some("bough-mcp"));
+    assert_eq!(
+        r.get("protocolVersion").and_then(J::as_str),
+        Some("2025-06-18")
+    );
+    assert_eq!(
+        r.get("serverInfo").unwrap().get("name").and_then(J::as_str),
+        Some("bough-mcp")
+    );
 
-    assert!(m.handle(&J::obj().set("jsonrpc", "2.0").set("method", "notifications/initialized")).is_none());
-    assert_eq!(rpc(&mut m, 2, "ping", J::obj()).get("result"), Some(&J::obj()));
+    assert!(
+        m.handle(
+            &J::obj()
+                .set("jsonrpc", "2.0")
+                .set("method", "notifications/initialized")
+        )
+        .is_none()
+    );
+    assert_eq!(
+        rpc(&mut m, 2, "ping", J::obj()).get("result"),
+        Some(&J::obj())
+    );
 
     let tools = rpc(&mut m, 3, "tools/list", J::obj());
     let list = tools.get("result").unwrap().get("tools").unwrap().arr();
-    let names: Vec<&str> = list.iter().map(|t| t.get("name").and_then(J::as_str).unwrap()).collect();
-    for need in ["tree", "find", "node", "pick", "deps", "why_repaint", "set_field", "screenshot", "diff_golden", "replay", "key", "type_text"] {
+    let names: Vec<&str> = list
+        .iter()
+        .map(|t| t.get("name").and_then(J::as_str).unwrap())
+        .collect();
+    for need in [
+        "tree",
+        "find",
+        "node",
+        "pick",
+        "deps",
+        "why_repaint",
+        "set_field",
+        "screenshot",
+        "diff_golden",
+        "replay",
+        "key",
+        "type_text",
+    ] {
         assert!(names.contains(&need), "{need} is missing from {names:?}");
     }
     assert!(names.len() >= 20, "{} tools", names.len());
     for t in list {
-        assert!(t.get("inputSchema").unwrap().get("type").and_then(J::as_str) == Some("object"));
+        assert!(
+            t.get("inputSchema")
+                .unwrap()
+                .get("type")
+                .and_then(J::as_str)
+                == Some("object")
+        );
     }
 
     // a tool call is JSON in a text block
-    let tree = rpc(&mut m, 4, "tools/call", J::obj().set("name", "tree").set("arguments", J::obj()));
+    let tree = rpc(
+        &mut m,
+        4,
+        "tools/call",
+        J::obj().set("name", "tree").set("arguments", J::obj()),
+    );
     let content = tree.get("result").unwrap().get("content").unwrap().arr();
     let body: J = json::parse(content[0].get("text").and_then(J::as_str).unwrap()).unwrap();
     assert_eq!(body.get("nodes").unwrap().arr().len(), 1);
 
     // a refusal is a tool error with the reason
-    let bad = rpc(&mut m, 5, "tools/call", J::obj().set("name", "set_field").set("arguments", J::obj().set("field", "ro").set("value", J::obj().set("kind", "int").set("value", 1))));
+    let bad = rpc(
+        &mut m,
+        5,
+        "tools/call",
+        J::obj().set("name", "set_field").set(
+            "arguments",
+            J::obj()
+                .set("field", "ro")
+                .set("value", J::obj().set("kind", "int").set("value", 1)),
+        ),
+    );
     let rr = bad.get("result").unwrap();
     assert_eq!(rr.get("isError").and_then(J::as_bool), Some(true));
-    let text = rr.get("content").unwrap().arr()[0].get("text").and_then(J::as_str).unwrap();
+    let text = rr.get("content").unwrap().arr()[0]
+        .get("text")
+        .and_then(J::as_str)
+        .unwrap();
     assert!(text.contains("read-only"), "{text}");
 
     // the image content of a screenshot
-    let shot = rpc(&mut m, 6, "tools/call", J::obj().set("name", "screenshot").set("arguments", J::obj()));
+    let shot = rpc(
+        &mut m,
+        6,
+        "tools/call",
+        J::obj()
+            .set("name", "screenshot")
+            .set("arguments", J::obj()),
+    );
     let content = shot.get("result").unwrap().get("content").unwrap().arr();
     assert_eq!(content.len(), 2);
     assert_eq!(content[1].get("type").and_then(J::as_str), Some("image"));
-    assert_eq!(content[1].get("mimeType").and_then(J::as_str), Some("image/png"));
+    assert_eq!(
+        content[1].get("mimeType").and_then(J::as_str),
+        Some("image/png")
+    );
     let bytes = json::base64_decode(content[1].get("data").and_then(J::as_str).unwrap()).unwrap();
     assert!(png::decode(&bytes).is_ok());
 
     // resources
     let rs = rpc(&mut m, 7, "resources/list", J::obj());
-    let uris: Vec<&str> = rs.get("result").unwrap().get("resources").unwrap().arr().iter().map(|r| r.get("uri").and_then(J::as_str).unwrap()).collect();
+    let uris: Vec<&str> = rs
+        .get("result")
+        .unwrap()
+        .get("resources")
+        .unwrap()
+        .arr()
+        .iter()
+        .map(|r| r.get("uri").and_then(J::as_str).unwrap())
+        .collect();
     assert!(uris.contains(&"lorelei://tree"));
     assert!(uris.contains(&"lorelei://screenshot"));
-    let read = rpc(&mut m, 8, "resources/read", J::obj().set("uri", "lorelei://tree"));
+    let read = rpc(
+        &mut m,
+        8,
+        "resources/read",
+        J::obj().set("uri", "lorelei://tree"),
+    );
     let c = &read.get("result").unwrap().get("contents").unwrap().arr()[0];
-    assert_eq!(c.get("mimeType").and_then(J::as_str), Some("application/json"));
+    assert_eq!(
+        c.get("mimeType").and_then(J::as_str),
+        Some("application/json")
+    );
     assert!(c.get("text").and_then(J::as_str).unwrap().contains("nodes"));
-    let shotr = rpc(&mut m, 9, "resources/read", J::obj().set("uri", "lorelei://screenshot"));
-    assert_eq!(shotr.get("result").unwrap().get("contents").unwrap().arr()[0].get("mimeType").and_then(J::as_str), Some("image/png"));
+    let shotr = rpc(
+        &mut m,
+        9,
+        "resources/read",
+        J::obj().set("uri", "lorelei://screenshot"),
+    );
+    assert_eq!(
+        shotr.get("result").unwrap().get("contents").unwrap().arr()[0]
+            .get("mimeType")
+            .and_then(J::as_str),
+        Some("image/png")
+    );
 
     // an unknown method is an RPC error, not a result
     let bad = rpc(&mut m, 10, "no/such", J::obj());
-    assert_eq!(bad.get("error").unwrap().get("code").and_then(J::as_i64), Some(-32601));
+    assert_eq!(
+        bad.get("error").unwrap().get("code").and_then(J::as_i64),
+        Some(-32601)
+    );
 
     rpc(&mut m, 11, "shutdown", J::obj());
     drop(m);
@@ -192,7 +308,13 @@ fn http_post_is_streamable_http() {
         // it ends when the listener is closed by the process, so this thread is detached after the assertions.
         let _ = serve_http(&mut m, listener);
     });
-    let body = json::to_string(&J::obj().set("jsonrpc", "2.0").set("id", 1).set("method", "initialize").set("params", J::obj()));
+    let body = json::to_string(
+        &J::obj()
+            .set("jsonrpc", "2.0")
+            .set("id", 1)
+            .set("method", "initialize")
+            .set("params", J::obj()),
+    );
     let req = format!(
         "POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         body.len(),
@@ -204,12 +326,28 @@ fn http_post_is_streamable_http() {
     use std::io::Read;
     s.read_to_string(&mut resp).unwrap();
     assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
-    assert!(resp.to_ascii_lowercase().contains("content-type: application/json"));
+    assert!(
+        resp.to_ascii_lowercase()
+            .contains("content-type: application/json")
+    );
     let body = resp.split("\r\n\r\n").nth(1).unwrap();
     assert!(body.contains("\"serverInfo\""));
     // a tool call that reaches the app (and opens the inspector connection)
-    let body = json::to_string(&J::obj().set("jsonrpc", "2.0").set("id", 3).set("method", "tools/call").set("params", J::obj().set("name", "tree").set("arguments", J::obj())));
-    let req = format!("POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+    let body = json::to_string(
+        &J::obj()
+            .set("jsonrpc", "2.0")
+            .set("id", 3)
+            .set("method", "tools/call")
+            .set(
+                "params",
+                J::obj().set("name", "tree").set("arguments", J::obj()),
+            ),
+    );
+    let req = format!(
+        "POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
     let mut s = std::net::TcpStream::connect(addr).unwrap();
     s.write_all(req.as_bytes()).unwrap();
     let mut resp = String::new();
@@ -223,8 +361,18 @@ fn http_post_is_streamable_http() {
     s.read_to_string(&mut resp).unwrap();
     assert!(resp.starts_with("HTTP/1.1 405"), "{resp}");
     // closing the MCP connection lets the fake app leave, so the thread can be joined
-    let body = json::to_string(&J::obj().set("jsonrpc", "2.0").set("id", 2).set("method", "shutdown").set("params", J::obj()));
-    let req = format!("POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+    let body = json::to_string(
+        &J::obj()
+            .set("jsonrpc", "2.0")
+            .set("id", 2)
+            .set("method", "shutdown")
+            .set("params", J::obj()),
+    );
+    let req = format!(
+        "POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
     let mut s = std::net::TcpStream::connect(addr).unwrap();
     s.write_all(req.as_bytes()).unwrap();
     let mut resp = String::new();

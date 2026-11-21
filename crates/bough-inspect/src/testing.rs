@@ -10,8 +10,8 @@
 //! A selector walks the snapshot the inspector publishes, not a second description of the view: what the test
 //! names is what the inspector and an agent see.
 use crate::frame::Frame;
-use crate::schema::{Key, Node, Snapshot};
 use crate::record::Command;
+use crate::schema::{Key, Node, Snapshot};
 use crate::session::{Program, Session};
 use bough_x::event::{Key as K, Mods};
 
@@ -73,10 +73,7 @@ impl<'a> Find<'a> {
         self.snap.nodes.iter().filter(|n| self.matches(n)).count()
     }
     pub fn first(&self) -> Option<usize> {
-        self.snap
-            .nodes
-            .iter()
-            .position(|n| self.matches(n))
+        self.snap.nodes.iter().position(|n| self.matches(n))
     }
     /// The one match; panics (a test's assertion) when there is none or more than one.
     #[track_caller]
@@ -148,8 +145,7 @@ impl<P: Program> TestApp<P> {
         self.session.run(&Command::Text { text: s.to_owned() });
     }
     pub fn wheel(&mut self, x: i32, y: i32, dy: f32) {
-        self.session
-            .run(&Command::Wheel { x, y, dx: 0.0, dy });
+        self.session.run(&Command::Wheel { x, y, dx: 0.0, dy });
     }
     pub fn tick(&mut self, ms: u32) {
         self.session.run(&Command::Tick { ms });

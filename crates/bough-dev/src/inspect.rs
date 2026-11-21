@@ -28,7 +28,10 @@ pub fn print_tree(v: &J) -> String {
             .and_then(|r| r.get("records"))
             .and_then(J::as_i64)
             .unwrap_or(0),
-        v.get("damage").and_then(|d| d.get("tiles")).and_then(J::as_i64).unwrap_or(0),
+        v.get("damage")
+            .and_then(|d| d.get("tiles"))
+            .and_then(J::as_i64)
+            .unwrap_or(0),
         v.get("digest").and_then(J::as_str).unwrap_or(""),
     ));
     for n in v.get("nodes").map(J::arr).unwrap_or(&[]) {
@@ -48,7 +51,11 @@ pub fn print_tree(v: &J) -> String {
             "{:indent$}{:<7} {}{}  [{}:{}]  {},{} {}x{}{}\n",
             "",
             kind,
-            if text.is_empty() { String::new() } else { format!("{text:?} ") },
+            if text.is_empty() {
+                String::new()
+            } else {
+                format!("{text:?} ")
+            },
             loc.get("file").and_then(J::as_str).unwrap_or(""),
             loc.get("line").and_then(J::as_i64).unwrap_or(0),
             loc.get("col").and_then(J::as_i64).unwrap_or(0),
@@ -56,7 +63,11 @@ pub fn print_tree(v: &J) -> String {
             screen.get("y").and_then(J::as_i64).unwrap_or(0),
             screen.get("w").and_then(J::as_i64).unwrap_or(0),
             screen.get("h").and_then(J::as_i64).unwrap_or(0),
-            if handlers.is_empty() { String::new() } else { format!("  [{}]", handlers.join(",")) },
+            if handlers.is_empty() {
+                String::new()
+            } else {
+                format!("  [{}]", handlers.join(","))
+            },
             indent = depth * 2,
         ));
     }
@@ -65,15 +76,22 @@ pub fn print_tree(v: &J) -> String {
 
 fn value_of(kind: &str, v: &str) -> Result<J, String> {
     Ok(match kind {
-        "int" => J::obj().set("kind", "int").set("value", v.parse::<i64>().map_err(|_| "int")?),
-        "float" => J::obj().set("kind", "float").set("value", v.parse::<f64>().map_err(|_| "float")?),
-        "bool" => J::obj().set("kind", "bool").set("value", v == "true" || v == "1"),
-        "color" => J::obj().set(
-            "rgba",
-            u32::from_str_radix(v.trim_start_matches("0x").trim_start_matches('#'), 16)
-                .map_err(|_| "color")?,
-        )
-        .set("kind", "color"),
+        "int" => J::obj()
+            .set("kind", "int")
+            .set("value", v.parse::<i64>().map_err(|_| "int")?),
+        "float" => J::obj()
+            .set("kind", "float")
+            .set("value", v.parse::<f64>().map_err(|_| "float")?),
+        "bool" => J::obj()
+            .set("kind", "bool")
+            .set("value", v == "true" || v == "1"),
+        "color" => J::obj()
+            .set(
+                "rgba",
+                u32::from_str_radix(v.trim_start_matches("0x").trim_start_matches('#'), 16)
+                    .map_err(|_| "color")?,
+            )
+            .set("kind", "color"),
         "text" => J::obj().set("kind", "text").set("text", v),
         other => return Err(format!("no value kind {other:?}")),
     })
@@ -87,7 +105,11 @@ pub fn value_text(v: &J) -> String {
         return format!("#{:08x}", x as u32);
     }
     v.get("value")
-        .map(|x| x.as_str().map(str::to_owned).unwrap_or_else(|| json::to_string(x)))
+        .map(|x| {
+            x.as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| json::to_string(x))
+        })
         .unwrap_or_default()
 }
 
@@ -115,8 +137,14 @@ pub fn run(socket: &Path, args: &[String]) -> R {
             }
         }
         "node" => {
-            let i = opts.first().and_then(|x| x.parse::<i64>().ok()).ok_or("node <index>")?;
-            println!("{}", json::to_string(&call(&mut c, "node", J::obj().set("index", i))?));
+            let i = opts
+                .first()
+                .and_then(|x| x.parse::<i64>().ok())
+                .ok_or("node <index>")?;
+            println!(
+                "{}",
+                json::to_string(&call(&mut c, "node", J::obj().set("index", i))?)
+            );
         }
         "find" => {
             let mut p = J::obj();
@@ -127,7 +155,13 @@ pub fn run(socket: &Path, args: &[String]) -> R {
                     "--text" => p.put("text", iter.next().ok_or("--text value")?.as_str()),
                     "--ty" => p.put("ty", iter.next().ok_or("--ty value")?.as_str()),
                     "--role" => p.put("role", iter.next().ok_or("--role value")?.as_str()),
-                    "--limit" => p.put("limit", iter.next().ok_or("--limit value")?.parse::<i64>().map_err(|_| "--limit")?),
+                    "--limit" => p.put(
+                        "limit",
+                        iter.next()
+                            .ok_or("--limit value")?
+                            .parse::<i64>()
+                            .map_err(|_| "--limit")?,
+                    ),
                     "--ops" => p.put("ops", true),
                     other => return Err(format!("find: unknown option {other:?}")),
                 }
@@ -142,16 +176,28 @@ pub fn run(socket: &Path, args: &[String]) -> R {
                         n.get("index").and_then(J::as_i64).unwrap_or(0),
                         n.get("kind").and_then(J::as_str).unwrap_or(""),
                         n.get("text").and_then(J::as_str).unwrap_or(""),
-                        n.get("loc").and_then(|l| l.get("file")).and_then(J::as_str).unwrap_or(""),
-                        n.get("loc").and_then(|l| l.get("line")).and_then(J::as_i64).unwrap_or(0),
+                        n.get("loc")
+                            .and_then(|l| l.get("file"))
+                            .and_then(J::as_str)
+                            .unwrap_or(""),
+                        n.get("loc")
+                            .and_then(|l| l.get("line"))
+                            .and_then(J::as_i64)
+                            .unwrap_or(0),
                     );
                 }
                 println!("{} total", v.get("total").and_then(J::as_i64).unwrap_or(0));
             }
         }
         "pick" => {
-            let x = opts.first().and_then(|v| v.parse::<i64>().ok()).ok_or("pick <x> <y>")?;
-            let y = opts.get(1).and_then(|v| v.parse::<i64>().ok()).ok_or("pick <x> <y>")?;
+            let x = opts
+                .first()
+                .and_then(|v| v.parse::<i64>().ok())
+                .ok_or("pick <x> <y>")?;
+            let y = opts
+                .get(1)
+                .and_then(|v| v.parse::<i64>().ok())
+                .ok_or("pick <x> <y>")?;
             let v = call(&mut c, "pick", J::obj().set("x", x).set("y", y))?;
             for n in v.get("stack").map(J::arr).unwrap_or(&[]) {
                 println!(
@@ -159,14 +205,23 @@ pub fn run(socket: &Path, args: &[String]) -> R {
                     n.get("index").and_then(J::as_i64).unwrap_or(0),
                     n.get("kind").and_then(J::as_str).unwrap_or(""),
                     n.get("text").and_then(J::as_str),
-                    if n.get("handler").and_then(J::as_bool).unwrap_or(false) { "handler" } else { "" }
+                    if n.get("handler").and_then(J::as_bool).unwrap_or(false) {
+                        "handler"
+                    } else {
+                        ""
+                    }
                 );
             }
         }
         "deps" => {
             let mut p = J::obj();
             if let Some(i) = opts.iter().position(|o| o == "--word") {
-                p.put("word", opts.get(i + 1).and_then(|v| v.parse::<i64>().ok()).ok_or("--word n")?);
+                p.put(
+                    "word",
+                    opts.get(i + 1)
+                        .and_then(|v| v.parse::<i64>().ok())
+                        .ok_or("--word n")?,
+                );
             } else if let Some(i) = opts.iter().position(|o| o == "--field") {
                 p.put("field", opts.get(i + 1).ok_or("--field name")?.as_str());
             } else {
@@ -184,10 +239,15 @@ pub fn run(socket: &Path, args: &[String]) -> R {
                     f.get("name").and_then(J::as_str).unwrap_or(""),
                     f.get("kind").and_then(J::as_str).unwrap_or(""),
                     value_text(f.get("value").unwrap_or(&J::Null)),
-                    f.get("writable").and_then(J::as_bool).unwrap_or(false)
+                    f.get("writable")
+                        .and_then(J::as_bool)
+                        .unwrap_or(false)
                         .then_some("writable")
                         .unwrap_or("read-only"),
-                    f.get("word").and_then(J::as_i64).map(|w| format!("  word {w}")).unwrap_or_default(),
+                    f.get("word")
+                        .and_then(J::as_i64)
+                        .map(|w| format!("  word {w}"))
+                        .unwrap_or_default(),
                 );
             }
         }
@@ -205,8 +265,14 @@ pub fn run(socket: &Path, args: &[String]) -> R {
             println!("{}", json::to_string(&v));
         }
         "click" | "pointer" | "down" | "up" => {
-            let x = opts.first().and_then(|v| v.parse::<i64>().ok()).ok_or("x y")?;
-            let y = opts.get(1).and_then(|v| v.parse::<i64>().ok()).ok_or("x y")?;
+            let x = opts
+                .first()
+                .and_then(|v| v.parse::<i64>().ok())
+                .ok_or("x y")?;
+            let y = opts
+                .get(1)
+                .and_then(|v| v.parse::<i64>().ok())
+                .ok_or("x y")?;
             let v = call(&mut c, cmd, J::obj().set("x", x).set("y", y))?;
             println!("{}", json::to_string(&v));
         }
@@ -221,14 +287,36 @@ pub fn run(socket: &Path, args: &[String]) -> R {
             println!("{}", json::to_string(&v));
         }
         "tick" => {
-            let ms = opts.first().and_then(|v| v.parse::<i64>().ok()).unwrap_or(16);
-            println!("{}", json::to_string(&call(&mut c, "tick", J::obj().set("ms", ms))?));
+            let ms = opts
+                .first()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(16);
+            println!(
+                "{}",
+                json::to_string(&call(&mut c, "tick", J::obj().set("ms", ms))?)
+            );
         }
         "resize" => {
-            let w = opts.first().and_then(|v| v.parse::<i64>().ok()).ok_or("resize <w> <h> [scale]")?;
-            let h = opts.get(1).and_then(|v| v.parse::<i64>().ok()).ok_or("resize <w> <h> [scale]")?;
-            let scale = opts.get(2).and_then(|v| v.parse::<f64>().ok()).unwrap_or(1.0);
-            println!("{}", json::to_string(&call(&mut c, "resize", J::obj().set("w", w).set("h", h).set("scale", scale))?));
+            let w = opts
+                .first()
+                .and_then(|v| v.parse::<i64>().ok())
+                .ok_or("resize <w> <h> [scale]")?;
+            let h = opts
+                .get(1)
+                .and_then(|v| v.parse::<i64>().ok())
+                .ok_or("resize <w> <h> [scale]")?;
+            let scale = opts
+                .get(2)
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(1.0);
+            println!(
+                "{}",
+                json::to_string(&call(
+                    &mut c,
+                    "resize",
+                    J::obj().set("w", w).set("h", h).set("scale", scale)
+                )?)
+            );
         }
         "reload" => println!("{}", json::to_string(&call(&mut c, "reload", J::obj())?)),
         "shot" => {

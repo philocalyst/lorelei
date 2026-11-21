@@ -7,8 +7,8 @@
 //! With `--socket`, the process mounts the scenario, binds the socket, prints `ready <path>` on stdout and serves
 //! until a `shutdown` request or the client leaves. Without it, it paints one frame and prints its digest (the
 //! zero-cost build's self-check).
-use bough_inspect_app::{Lab, Scenario};
 use bough_guibench_x::{rows, search, spinner, table};
+use bough_inspect_app::{Lab, Scenario};
 
 struct Args {
     scenario: String,

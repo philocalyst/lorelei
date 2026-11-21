@@ -5,10 +5,10 @@
 //! the stores and must not move across threads, so the socket is pumped from the application's loop rather than
 //! serving from another thread (see [`crate::socket`]).
 use crate::damage::capture;
-use crate::schema::Damage as DamageSnapshot;
-use crate::record::Command;
-use crate::schema::*;
 use crate::frame::Frame;
+use crate::record::Command;
+use crate::schema::Damage as DamageSnapshot;
+use crate::schema::*;
 use bough_ax::{Ax as AxProjection, Role};
 use bough_x::event::{Button, Key as EKey, Mods};
 use bough_x::expr::{APP_WORDS, U, U_ENV, U_FOCUS, U_PICK, U_PRESS, U_PRESS_AT, U_SCALE, U_TIME};
@@ -154,7 +154,9 @@ impl Refusal {
             Refusal::ForeignNode => {
                 "the node does not belong to this session's last snapshot".to_owned()
             }
-            Refusal::NotExposed => "the entity is not materialised in the current window".to_owned(),
+            Refusal::NotExposed => {
+                "the entity is not materialised in the current window".to_owned()
+            }
         }
     }
 }
@@ -332,16 +334,6 @@ impl<P: Program> Session<P> {
 
     /// Run one command, then settle (when it changes state). Returns what it did.
     pub fn run(&mut self, c: &Command) -> Outcome {
-        #[cfg(feature = "mutant_replay")]
-        if self.log.is_some() && self.commands % 4 == 3 {
-            // the negative control of G4: a recorded command is skipped on replay
-            return Outcome {
-                command: c.name().to_owned(),
-                revision: self.app.world().revision(),
-                damage_tiles: 0,
-                digest: 0,
-            };
-        }
         if let Some(log) = &mut self.log
             && !matches!(c, Command::Set { .. })
         {
@@ -726,7 +718,6 @@ fn snap_lists(
     out
 }
 
-
 /// Walk the store tree in pre-order, keeping the reflection's description of each store.
 fn walk_store(
     st: &StoreRef,
@@ -935,7 +926,10 @@ fn node_loc(l: &'static core::panic::Location<'static>) -> Loc {
 }
 
 fn bits(m: u64) -> Vec<u32> {
-    (0..64).filter(|w| m >> w & 1 != 0).map(|w| w as u32).collect()
+    (0..64)
+        .filter(|w| m >> w & 1 != 0)
+        .map(|w| w as u32)
+        .collect()
 }
 
 const CORE_NAMES: [(u32, &str); 9] = [
@@ -953,7 +947,9 @@ const CORE_NAMES: [(u32, &str); 9] = [
 fn words(shown: &U, readers: &[u32; 64], fields: &[Field]) -> Vec<Word> {
     let mut out = Vec::new();
     for w in 0..64u32 {
-        if w >= APP_WORDS as u32 && readers[w as usize] == 0 && !CORE_NAMES.iter().any(|&(c, _)| c == w)
+        if w >= APP_WORDS as u32
+            && readers[w as usize] == 0
+            && !CORE_NAMES.iter().any(|&(c, _)| c == w)
         {
             continue;
         }

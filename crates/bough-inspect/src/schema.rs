@@ -41,6 +41,15 @@ impl R {
     pub fn empty(&self) -> bool {
         self.x0 >= self.x1 || self.y0 >= self.y1
     }
+    /// The intersection: what a screenshot by element needs.
+    pub fn and(self, o: R) -> R {
+        R {
+            x0: self.x0.max(o.x0),
+            y0: self.y0.max(o.y0),
+            x1: self.x1.min(o.x1),
+            y1: self.y1.min(o.y1),
+        }
+    }
     pub(crate) fn json(&self) -> J {
         J::obj()
             .set("x", self.x0)
@@ -122,7 +131,11 @@ impl Key {
 pub enum PropValue {
     None,
     Color(u32),
-    Num { int: i32, decimals: u8, text: String },
+    Num {
+        int: i32,
+        decimals: u8,
+        text: String,
+    },
     Text(String),
     Pair(i32, i32),
     Bool(bool),
@@ -223,7 +236,13 @@ impl Prop {
             .set("expr", self.expr)
             .set("word", self.word)
             .set("words", self.words)
-            .set("reads", self.reads.iter().map(|&w| J::Int(w as i64)).collect::<Vec<_>>())
+            .set(
+                "reads",
+                self.reads
+                    .iter()
+                    .map(|&w| J::Int(w as i64))
+                    .collect::<Vec<_>>(),
+            )
     }
 }
 
@@ -260,12 +279,24 @@ impl Col {
             .set("kind", self.kind)
             .set("ty", self.ty)
             .set("stage", self.stage)
-            .set("reads", self.reads.iter().map(|&w| J::Int(w as i64)).collect::<Vec<_>>())
+            .set(
+                "reads",
+                self.reads
+                    .iter()
+                    .map(|&w| J::Int(w as i64))
+                    .collect::<Vec<_>>(),
+            )
             .set("moves", self.moves)
             .set("timed", self.timed)
             .set("pages", self.npages)
             .set("nrec", self.nrec)
-            .set("sites", self.sites.iter().map(|&s| J::Int(s as i64)).collect::<Vec<_>>())
+            .set(
+                "sites",
+                self.sites
+                    .iter()
+                    .map(|&s| J::Int(s as i64))
+                    .collect::<Vec<_>>(),
+            )
             .set("records", self.records)
             .set("bytes", self.bytes)
     }
@@ -307,16 +338,19 @@ impl Store {
         J::obj()
             .set("index", self.index)
             .set("path", path)
-            .set(
-                "kind",
-                self.kind,
-            )
+            .set("kind", self.kind)
             .set("loc", self.loc.map_or(J::Null, |l| l.json()))
             .set("clip", self.clip.json())
-            .set("origin", vec![J::Int(self.origin.0 as i64), J::Int(self.origin.1 as i64)])
+            .set(
+                "origin",
+                vec![J::Int(self.origin.0 as i64), J::Int(self.origin.1 as i64)],
+            )
             .set("scroll", self.scroll.map_or(J::Null, |w| J::Int(w as i64)))
             .set("cap", self.cap)
-            .set("window", vec![J::Int(self.lo as i64), J::Int(self.hi as i64)])
+            .set(
+                "window",
+                vec![J::Int(self.lo as i64), J::Int(self.hi as i64)],
+            )
             .set("n", self.n)
             .set(
                 "geo",
@@ -339,7 +373,10 @@ impl Store {
             .set("bytes", self.bytes)
             .set(
                 "subs",
-                self.subs.iter().map(|&s| J::Int(s as i64)).collect::<Vec<_>>(),
+                self.subs
+                    .iter()
+                    .map(|&s| J::Int(s as i64))
+                    .collect::<Vec<_>>(),
             )
     }
 }
@@ -376,10 +413,16 @@ impl List {
             .set("n", self.n)
             .set(
                 "row",
-                J::obj().set("x", self.x).set("y", self.y).set("h", self.row_h),
+                J::obj()
+                    .set("x", self.x)
+                    .set("y", self.y)
+                    .set("h", self.row_h),
             )
             .set("shape", self.shape.iter().map(R::json).collect::<Vec<_>>())
-            .set("window", vec![J::Int(self.lo as i64), J::Int(self.hi as i64)])
+            .set(
+                "window",
+                vec![J::Int(self.lo as i64), J::Int(self.hi as i64)],
+            )
             .set("cap", self.cap)
             .set("seen", self.seen)
             .set("extent", self.extent)
@@ -431,14 +474,26 @@ impl Node {
             .set("clip", self.clip.json())
             .set("visible", self.visible)
             .set("moving", self.moving)
-            .set("offset", vec![J::Int(self.offset.0 as i64), J::Int(self.offset.1 as i64)])
+            .set(
+                "offset",
+                vec![J::Int(self.offset.0 as i64), J::Int(self.offset.1 as i64)],
+            )
             .set(
                 "handlers",
-                self.handlers.iter().map(|&h| J::Str(h.to_owned())).collect::<Vec<_>>(),
+                self.handlers
+                    .iter()
+                    .map(|&h| J::Str(h.to_owned()))
+                    .collect::<Vec<_>>(),
             )
             .set("handler_ty", self.handler_ty)
             .set("ops", self.ops.iter().map(Prop::json).collect::<Vec<_>>())
-            .set("reads", self.reads.iter().map(|&w| J::Int(w as i64)).collect::<Vec<_>>())
+            .set(
+                "reads",
+                self.reads
+                    .iter()
+                    .map(|&w| J::Int(w as i64))
+                    .collect::<Vec<_>>(),
+            )
             .set("text", self.text.clone())
     }
 }
@@ -471,7 +526,9 @@ impl Damage {
                     .map(|(y, w)| {
                         J::obj().set("y", *y).set(
                             "words",
-                            w.iter().map(|x| J::Str(format!("{x:016x}"))).collect::<Vec<_>>(),
+                            w.iter()
+                                .map(|x| J::Str(format!("{x:016x}")))
+                                .collect::<Vec<_>>(),
                         )
                     })
                     .collect::<Vec<_>>(),
@@ -538,7 +595,10 @@ impl Counters {
             .set("frames", self.frames)
             .set(
                 "changed",
-                self.changed.iter().map(|&w| J::Int(w as i64)).collect::<Vec<_>>(),
+                self.changed
+                    .iter()
+                    .map(|&w| J::Int(w as i64))
+                    .collect::<Vec<_>>(),
             )
             .set(
                 "last",
@@ -621,7 +681,10 @@ impl AxNode {
             .set("bounds", self.bounds.json())
             .set(
                 "children",
-                self.children.iter().map(|&c| J::Int(c as i64)).collect::<Vec<_>>(),
+                self.children
+                    .iter()
+                    .map(|&c| J::Int(c as i64))
+                    .collect::<Vec<_>>(),
             )
             .set("parent", self.parent.map_or(J::Null, |p| J::Int(p as i64)))
             .set("focusable", self.focusable)
@@ -634,7 +697,10 @@ impl AxNode {
             .set("live", self.live)
             .set(
                 "actions",
-                self.actions.iter().map(|&a| J::Str(a.to_owned())).collect::<Vec<_>>(),
+                self.actions
+                    .iter()
+                    .map(|&a| J::Str(a.to_owned()))
+                    .collect::<Vec<_>>(),
             )
             .set("loc", self.loc.map_or(J::Null, |l| l.json()))
             .set("place", self.place.map_or(J::Null, |p| J::Int(p as i64)))
@@ -655,7 +721,10 @@ impl Ax {
             .set("root", self.root.map_or(J::Null, |r| J::Int(r as i64)))
             .set("focus", self.focus.map_or(J::Null, |f| J::Int(f as i64)))
             .set("projected", self.projected)
-            .set("nodes", self.nodes.iter().map(AxNode::json).collect::<Vec<_>>())
+            .set(
+                "nodes",
+                self.nodes.iter().map(AxNode::json).collect::<Vec<_>>(),
+            )
     }
 }
 
@@ -731,9 +800,18 @@ impl Snapshot {
         let mut o = J::obj()
             .set("schema", self.schema as i64)
             .set("app", self.app.json())
-            .set("stores", self.stores.iter().map(Store::json).collect::<Vec<_>>())
-            .set("lists", self.lists.iter().map(List::json).collect::<Vec<_>>())
-            .set("nodes", self.nodes.iter().map(Node::json).collect::<Vec<_>>())
+            .set(
+                "stores",
+                self.stores.iter().map(Store::json).collect::<Vec<_>>(),
+            )
+            .set(
+                "lists",
+                self.lists.iter().map(List::json).collect::<Vec<_>>(),
+            )
+            .set(
+                "nodes",
+                self.nodes.iter().map(Node::json).collect::<Vec<_>>(),
+            )
             .set("damage", self.damage.json())
             .set("counters", self.counters.json())
             .set(
@@ -763,18 +841,9 @@ impl Snapshot {
                             vec![J::Int(x as i64), J::Int(y as i64)].into()
                         }),
                     )
-                    .set(
-                        "pick",
-                        self.pointers.pick.map_or(J::Null, |k| k.json()),
-                    )
-                    .set(
-                        "press",
-                        self.pointers.press.map_or(J::Null, |k| k.json()),
-                    )
-                    .set(
-                        "focus",
-                        self.pointers.focus.map_or(J::Null, |k| k.json()),
-                    ),
+                    .set("pick", self.pointers.pick.map_or(J::Null, |k| k.json()))
+                    .set("press", self.pointers.press.map_or(J::Null, |k| k.json()))
+                    .set("focus", self.pointers.focus.map_or(J::Null, |k| k.json())),
             )
             .set("ax", self.ax.as_ref().map_or(J::Null, Ax::json));
         #[cfg(feature = "mutant_schema")]
@@ -853,11 +922,7 @@ impl Snapshot {
     pub fn store_chain(&self, store: usize) -> Vec<usize> {
         let mut v = vec![store];
         let mut cur = store;
-        while let Some(parent) = self
-            .stores
-            .iter()
-            .position(|s| s.subs.contains(&cur))
-        {
+        while let Some(parent) = self.stores.iter().position(|s| s.subs.contains(&cur)) {
             v.push(parent);
             cur = parent;
         }

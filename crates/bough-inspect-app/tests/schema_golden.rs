@@ -4,7 +4,7 @@
 use bough_guibench_x::rows::Rows;
 use bough_inspect::json;
 use bough_inspect::session::Session;
-use bough_inspect::{Snapshot, SCHEMA_VERSION};
+use bough_inspect::{SCHEMA_VERSION, Snapshot};
 use bough_inspect_app::Lab;
 
 fn small() -> Session<Lab<Rows>> {
@@ -24,7 +24,11 @@ fn a_description_reads_back_and_writes_the_same_bytes() {
     let text = s.snapshot().stable_json();
     let parsed = json::parse(&text).expect("canonical JSON parses");
     let back = Snapshot::from_json(&parsed).expect("a snapshot reads back");
-    assert_eq!(back.stable_json(), text, "write -> read -> write is the identity");
+    assert_eq!(
+        back.stable_json(),
+        text,
+        "write -> read -> write is the identity"
+    );
     assert_eq!(back.digest(), s.snapshot().digest());
     assert_eq!(back.nodes.len(), s.snapshot().nodes.len());
     // another schema is refused, not misread
@@ -46,5 +50,8 @@ fn the_golden_is_byte_stable() {
         std::fs::write(path, &got).unwrap();
     }
     let want = std::fs::read_to_string(path).expect("the golden is committed");
-    assert_eq!(got, want, "the schema description changed: re-bless it deliberately");
+    assert_eq!(
+        got, want,
+        "the schema description changed: re-bless it deliberately"
+    );
 }

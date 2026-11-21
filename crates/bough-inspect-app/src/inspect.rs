@@ -1,9 +1,9 @@
 //! The inspector's view of the lab: the typed state fields each scenario exposes, and the `Program` adapter.
 use crate::lab::{Event, Lab, Scenario};
 use bough_guibench_x::{rows, search, spinner, table};
+use bough_inspect::Frame;
 use bough_inspect::schema::PropValue;
 use bough_inspect::session::{FieldDef, FieldKind, Input, Program, Refusal};
-use bough_inspect::Frame;
 use bough_span::Spans;
 use bough_x::prelude::*;
 

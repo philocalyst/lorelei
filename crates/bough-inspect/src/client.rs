@@ -1,6 +1,6 @@
 //! A blocking client for the inspector socket: what the terminal client, the dev server and the MCP server use.
 use crate::json::{self, Value as J};
-use crate::rpc::{RpcError, INVALID_REQUEST, PARSE_ERROR};
+use crate::rpc::{INVALID_REQUEST, PARSE_ERROR, RpcError};
 use crate::schema::SCHEMA_VERSION;
 use crate::socket::{read_frame, write_frame};
 use std::io;
@@ -24,10 +24,7 @@ impl Client {
             next: 1,
             handshaken: false,
         };
-        let hello = c.request_raw(
-            "hello",
-            &J::obj().set("schema", SCHEMA_VERSION as i64),
-        )?;
+        let hello = c.request_raw("hello", &J::obj().set("schema", SCHEMA_VERSION as i64))?;
         let v = hello.map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -57,11 +54,13 @@ impl Client {
             .set("params", params.clone());
         write_frame(&mut self.stream, json::to_string(&req).as_bytes())?;
         let bytes = read_frame(&mut self.stream)?;
-        let v = json::parse(core::str::from_utf8(&bytes).unwrap_or("")).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, format!("reply: {e}"))
-        })?;
+        let v = json::parse(core::str::from_utf8(&bytes).unwrap_or(""))
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("reply: {e}")))?;
         if let Some(e) = v.get("error") {
-            let code = e.get("code").and_then(J::as_i64).unwrap_or(PARSE_ERROR as i64) as i32;
+            let code = e
+                .get("code")
+                .and_then(J::as_i64)
+                .unwrap_or(PARSE_ERROR as i64) as i32;
             let message = e
                 .get("message")
                 .and_then(J::as_str)
@@ -81,7 +80,9 @@ impl Client {
     }
     /// A socket path short enough for a Unix address (the kernel admits about 104 bytes).
     pub fn short_path(dir: impl AsRef<Path>, tag: &str) -> PathBuf {
-        let p = dir.as_ref().join(format!("bl-{}-{tag}.sock", std::process::id()));
+        let p = dir
+            .as_ref()
+            .join(format!("bl-{}-{tag}.sock", std::process::id()));
         assert!(
             p.as_os_str().len() < 100,
             "socket path too long for a Unix address: {} ({} bytes)",

@@ -93,7 +93,10 @@ impl Mcp {
                         "capabilities",
                         J::obj()
                             .set("tools", J::obj().set("listChanged", false))
-                            .set("resources", J::obj().set("subscribe", false).set("listChanged", false)),
+                            .set(
+                                "resources",
+                                J::obj().set("subscribe", false).set("listChanged", false),
+                            ),
                     )
                     .set(
                         "serverInfo",
@@ -107,9 +110,24 @@ impl Mcp {
             "resources/list" => Ok(J::obj().set(
                 "resources",
                 vec![
-                    resource("lorelei://tree", "tree", "The live element tree (JSON)", "application/json"),
-                    resource("lorelei://counters", "counters", "Per-turn counters and timings", "application/json"),
-                    resource("lorelei://screenshot", "screenshot", "The current frame (PNG)", "image/png"),
+                    resource(
+                        "lorelei://tree",
+                        "tree",
+                        "The live element tree (JSON)",
+                        "application/json",
+                    ),
+                    resource(
+                        "lorelei://counters",
+                        "counters",
+                        "Per-turn counters and timings",
+                        "application/json",
+                    ),
+                    resource(
+                        "lorelei://screenshot",
+                        "screenshot",
+                        "The current frame (PNG)",
+                        "image/png",
+                    ),
                 ],
             )),
             "resources/read" => self.resources_read(&params),
@@ -124,25 +142,30 @@ impl Mcp {
             other => Err(format!("-32601: no method {other:?}")),
         };
         Some(match result {
-            Ok(v) => J::obj().set("jsonrpc", "2.0").set("id", id).set("result", v),
+            Ok(v) => J::obj()
+                .set("jsonrpc", "2.0")
+                .set("id", id)
+                .set("result", v),
             Err(e) => {
                 let (code, message) = match e.split_once(':') {
-                    Some((c, m)) if c.starts_with('-') => (
-                        c.parse::<i64>().unwrap_or(-32603),
-                        m.trim().to_owned(),
-                    ),
+                    Some((c, m)) if c.starts_with('-') => {
+                        (c.parse::<i64>().unwrap_or(-32603), m.trim().to_owned())
+                    }
                     _ => (-32603, e),
                 };
-                J::obj().set("jsonrpc", "2.0").set("id", id).set(
-                    "error",
-                    J::obj().set("code", code).set("message", message),
-                )
+                J::obj()
+                    .set("jsonrpc", "2.0")
+                    .set("id", id)
+                    .set("error", J::obj().set("code", code).set("message", message))
             }
         })
     }
 
     fn tools_call(&mut self, p: &J) -> Result<J, String> {
-        let name = p.get("name").and_then(J::as_str).ok_or("-32602: tools/call needs a name")?;
+        let name = p
+            .get("name")
+            .and_then(J::as_str)
+            .ok_or("-32602: tools/call needs a name")?;
         let a = p.get("arguments").cloned().unwrap_or(J::Null);
         let (text, image) = self.run_tool(name, &a)?;
         // an admission's refusal is a tool error (the model can correct the call); everything else is a result
@@ -176,9 +199,7 @@ impl Mcp {
             "find" => Ok((j(self.call("find", a)?), None)),
             "node" => Ok((j(self.call("node", a)?), None)),
             "pick" => {
-                let p = J::obj()
-                    .set("x", req_i(a, "x")?)
-                    .set("y", req_i(a, "y")?);
+                let p = J::obj().set("x", req_i(a, "x")?).set("y", req_i(a, "y")?);
                 Ok((j(self.call("pick", &p)?), None))
             }
             "deps" => Ok((j(self.call("deps", a)?), None)),
@@ -206,14 +227,20 @@ impl Mcp {
                 let p = J::obj()
                     .set("x", req_i(a, "x")?)
                     .set("y", req_i(a, "y")?)
-                    .set("button", a.get("button").cloned().unwrap_or(J::from("primary")));
+                    .set(
+                        "button",
+                        a.get("button").cloned().unwrap_or(J::from("primary")),
+                    );
                 Ok((j(self.call("down", &p)?), None))
             }
             "pointer_up" => {
                 let p = J::obj()
                     .set("x", req_i(a, "x")?)
                     .set("y", req_i(a, "y")?)
-                    .set("button", a.get("button").cloned().unwrap_or(J::from("primary")));
+                    .set(
+                        "button",
+                        a.get("button").cloned().unwrap_or(J::from("primary")),
+                    );
                 Ok((j(self.call("up", &p)?), None))
             }
             "key" => {
@@ -256,6 +283,9 @@ impl Mcp {
                 if a.get("raw").and_then(J::as_bool).unwrap_or(false) {
                     p.put("raw", true);
                 }
+                if let Some(n) = a.get("node") {
+                    p.put("node", n.clone());
+                }
                 let v = self.call("shot", &p)?;
                 let png = v.get("png").and_then(J::as_str).unwrap_or("").to_owned();
                 let summary = J::obj()
@@ -268,7 +298,9 @@ impl Mcp {
             "diff_golden" | "diff" => {
                 let p = J::obj().set(
                     "golden",
-                    a.get("golden").and_then(J::as_str).ok_or("-32602: golden (base64 PNG)")?,
+                    a.get("golden")
+                        .and_then(J::as_str)
+                        .ok_or("-32602: golden (base64 PNG)")?,
                 );
                 Ok((j(self.call("diff", &p)?), None))
             }
@@ -276,10 +308,7 @@ impl Mcp {
             "record_start" => Ok((j(self.call("record_start", &J::obj())?), None)),
             "record_stop" => Ok((j(self.call("record_stop", &J::obj())?), None)),
             "replay" => {
-                let p = J::obj().set(
-                    "log",
-                    a.get("log").cloned().ok_or("-32602: log")?,
-                );
+                let p = J::obj().set("log", a.get("log").cloned().ok_or("-32602: log")?);
                 Ok((j(self.call("replay", &p)?), None))
             }
             "wait_for_idle" => {
@@ -310,7 +339,10 @@ impl Mcp {
                 "application/json",
             ),
             "lorelei://counters" => (
-                J::obj().set("text", self.call("counters", &J::obj())?.pipe(json::to_string)),
+                J::obj().set(
+                    "text",
+                    self.call("counters", &J::obj())?.pipe(json::to_string),
+                ),
                 "application/json",
             ),
             "lorelei://screenshot" => {
@@ -323,7 +355,10 @@ impl Mcp {
                     .parse()
                     .map_err(|_| "-32602: node index")?;
                 let v = self.call("node", &J::obj().set("index", i))?;
-                (J::obj().set("text", json::to_string(&v)), "application/json")
+                (
+                    J::obj().set("text", json::to_string(&v)),
+                    "application/json",
+                )
             }
             other => return Err(format!("-32602: no resource {other:?}")),
         };
@@ -364,18 +399,15 @@ fn resource(uri: &str, name: &str, description: &str, mime: &str) -> J {
 fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> J {
     let mut p = J::obj();
     for (name, kind, desc) in props {
-        p.put(
-            name,
-            J::obj().set("type", *kind).set("description", *desc),
-        );
+        p.put(name, J::obj().set("type", *kind).set("description", *desc));
     }
-    J::obj()
-        .set("type", "object")
-        .set("properties", p)
-        .set(
-            "required",
-            required.iter().map(|&r| J::Str(r.to_owned())).collect::<Vec<_>>(),
-        )
+    J::obj().set("type", "object").set("properties", p).set(
+        "required",
+        required
+            .iter()
+            .map(|&r| J::Str(r.to_owned()))
+            .collect::<Vec<_>>(),
+    )
 }
 
 fn tool(name: &str, description: &str, input: J) -> J {
@@ -389,65 +421,269 @@ fn tool(name: &str, description: &str, input: J) -> J {
 pub fn tools() -> Vec<J> {
     let no = || schema(&[], &[]);
     vec![
-        tool("hello", "The application's inspector: schema version, app name, methods, capabilities.", no()),
-        tool("tree", "The live element tree: stores, lists, nodes (kind, source location, typed operands and the expression behind each, the block words it reads, rects, damage), pointers, counters and the accessibility projection.", schema(&[
-            ("nodes", "boolean", "Include records (default true)."),
-            ("ax", "boolean", "Include the accessibility projection (default true)."),
-            ("damage", "boolean", "Include the damage bit rows (default true)."),
-            ("limit", "integer", "At most this many records."),
-        ], &[])),
-        tool("find", "Select records by kind, text, type name, accessibility role, container store, or state (focused, hovered, pressed, visible, has a handler).", schema(&[
-            ("kind", "string", "The paint kind: fill, text, label, num, outline, ..."),
-            ("text", "string", "Substring of the record's content text."),
-            ("ty", "string", "Substring of the record's Rust type."),
-            ("role", "string", "Accessibility role (button, list, text-input, ...)."),
-            ("within", "integer", "A store index; the search is its subtree."),
-            ("focused", "boolean", "The focused record."),
-            ("hovered", "boolean", "The record picked under the pointer."),
-            ("pressed", "boolean", "The record pressed."),
-            ("visible", "boolean", "On screen (inside its clip)."),
-            ("handler", "boolean", "Has any handler."),
-            ("ops", "boolean", "Include operands."),
-            ("limit", "integer", "At most this many (default 64)."),
-        ], &[])),
-        tool("node", "One record by index or by its entity (path, row, pos), with the stores it lies in.", schema(&[
-            ("index", "integer", "Node index in the last tree."),
-            ("path", "array", "Store path (child indices from the root)."),
-            ("row", "integer", "Row of a list, or the row call of a fixed shape."),
-            ("pos", "integer", "Position in the row's shape."),
-        ], &[])),
-        tool("pick", "The records under a device-pixel point, topmost first, with whether each hears the pointer.", schema(&[("x", "integer", "Device x."), ("y", "integer", "Device y.")], &["x", "y"])),
-        tool("deps", "What a state word moves: the records whose operands read it, the columns, and the spaces whose scroll word it is.", schema(&[("word", "integer", "Block word index."), ("field", "string", "A registered field's name.")], &[])),
-        tool("why_repaint", "Why the last turn repainted: the command, the block words that changed, the records reading them, the damage and the delta counters.", no()),
-        tool("counters", "Per-turn counters: evaluated columns, visited incidences, retables, retained records/pages/bytes, damage, last command timings.", no()),
-        tool("state", "The typed state fields the application exposes, with values and whether each is writable.", no()),
-        tool("set_field", "Write a typed state field through the application's own admission; refused with a reason (read-only, wrong kind, out of range, unknown). Record operands are read-only.", schema(&[
-            ("field", "string", "Field name from `state`."),
-            ("value", "object", "{\"kind\":\"int\"|\"float\"|\"bool\"|\"color\"|\"text\", ...}"),
-        ], &["field", "value"])),
-        tool("pointer_move", "Move the pointer (hover) to a device-pixel point.", schema(&[("x", "integer", "x"), ("y", "integer", "y")], &["x", "y"])),
-        tool("click", "Press and release the primary button at a point.", schema(&[("x", "integer", "x"), ("y", "integer", "y")], &["x", "y"])),
-        tool("pointer_down", "Press a button at a point.", schema(&[("x", "integer", "x"), ("y", "integer", "y"), ("button", "string", "primary, secondary, middle")], &["x", "y"])),
-        tool("pointer_up", "Release a button at a point.", schema(&[("x", "integer", "x"), ("y", "integer", "y"), ("button", "string", "primary, secondary, middle")], &["x", "y"])),
-        tool("key", "Press a key, optionally with modifiers (tab, enter, escape, up, down, delete, home, end, page-up, page-down, char:x).", schema(&[("key", "string", "key name"), ("shift", "boolean", "shift"), ("ctrl", "boolean", "ctrl"), ("alt", "boolean", "alt"), ("logo", "boolean", "logo")], &["key"])),
-        tool("type_text", "Type text into the focused text handler.", schema(&[("text", "string", "text")], &["text"])),
-        tool("wheel", "Turn the wheel at a point (lines).", schema(&[("x", "integer", "x"), ("y", "integer", "y"), ("dx", "number", "horizontal lines"), ("dy", "number", "vertical lines")], &["dy"])),
-        tool("tick", "Advance the clock (a frame, not a turn).", schema(&[("ms", "integer", "milliseconds")], &[])),
-        tool("resize", "Resize the window (a remount in the benchmark adapter).", schema(&[("w", "integer", "width"), ("h", "integer", "height"), ("scale", "number", "device pixels per point")], &["w", "h"])),
-        tool("screenshot", "Paint the whole frame and return it as a PNG image, with its size and digest.", schema(&[("raw", "boolean", "Also return raw RGBA (base64).")], &[])),
-        tool("diff_golden", "Paint the frame and diff it against a golden PNG (base64): differing pixels, bounding box, maximum channel delta.", schema(&[("golden", "string", "base64 PNG")], &["golden"])),
-        tool("reload", "Ask the application to re-read its own inputs (assets, theme, configuration) and re-describe; state is kept.", no()),
-        tool("record_start", "Start recording commands for a deterministic replay.", no()),
-        tool("record_stop", "Stop recording and return the commands.", no()),
-        tool("replay", "Replay a recorded log on a fresh application of the same kind; reports the first description or pixel that differs.", schema(&[("log", "object", "the log from record_stop, plus digests")], &["log"])),
-        tool("wait_for_idle", "The inspector answers after each command's turn; reports that nothing is pending and the current revision and damage.", no()),
+        tool(
+            "hello",
+            "The application's inspector: schema version, app name, methods, capabilities.",
+            no(),
+        ),
+        tool(
+            "tree",
+            "The live element tree: stores, lists, nodes (kind, source location, typed operands and the expression behind each, the block words it reads, rects, damage), pointers, counters and the accessibility projection.",
+            schema(
+                &[
+                    ("nodes", "boolean", "Include records (default true)."),
+                    (
+                        "ax",
+                        "boolean",
+                        "Include the accessibility projection (default true).",
+                    ),
+                    (
+                        "damage",
+                        "boolean",
+                        "Include the damage bit rows (default true).",
+                    ),
+                    ("limit", "integer", "At most this many records."),
+                ],
+                &[],
+            ),
+        ),
+        tool(
+            "find",
+            "Select records by kind, text, type name, accessibility role, container store, or state (focused, hovered, pressed, visible, has a handler).",
+            schema(
+                &[
+                    (
+                        "kind",
+                        "string",
+                        "The paint kind: fill, text, label, num, outline, ...",
+                    ),
+                    ("text", "string", "Substring of the record's content text."),
+                    ("ty", "string", "Substring of the record's Rust type."),
+                    (
+                        "role",
+                        "string",
+                        "Accessibility role (button, list, text-input, ...).",
+                    ),
+                    (
+                        "within",
+                        "integer",
+                        "A store index; the search is its subtree.",
+                    ),
+                    ("focused", "boolean", "The focused record."),
+                    ("hovered", "boolean", "The record picked under the pointer."),
+                    ("pressed", "boolean", "The record pressed."),
+                    ("visible", "boolean", "On screen (inside its clip)."),
+                    ("handler", "boolean", "Has any handler."),
+                    ("ops", "boolean", "Include operands."),
+                    ("limit", "integer", "At most this many (default 64)."),
+                ],
+                &[],
+            ),
+        ),
+        tool(
+            "node",
+            "One record by index or by its entity (path, row, pos), with the stores it lies in.",
+            schema(
+                &[
+                    ("index", "integer", "Node index in the last tree."),
+                    ("path", "array", "Store path (child indices from the root)."),
+                    (
+                        "row",
+                        "integer",
+                        "Row of a list, or the row call of a fixed shape.",
+                    ),
+                    ("pos", "integer", "Position in the row's shape."),
+                ],
+                &[],
+            ),
+        ),
+        tool(
+            "pick",
+            "The records under a device-pixel point, topmost first, with whether each hears the pointer.",
+            schema(
+                &[("x", "integer", "Device x."), ("y", "integer", "Device y.")],
+                &["x", "y"],
+            ),
+        ),
+        tool(
+            "deps",
+            "What a state word moves: the records whose operands read it, the columns, and the spaces whose scroll word it is.",
+            schema(
+                &[
+                    ("word", "integer", "Block word index."),
+                    ("field", "string", "A registered field's name."),
+                ],
+                &[],
+            ),
+        ),
+        tool(
+            "why_repaint",
+            "Why the last turn repainted: the command, the block words that changed, the records reading them, the damage and the delta counters.",
+            no(),
+        ),
+        tool(
+            "counters",
+            "Per-turn counters: evaluated columns, visited incidences, retables, retained records/pages/bytes, damage, last command timings.",
+            no(),
+        ),
+        tool(
+            "state",
+            "The typed state fields the application exposes, with values and whether each is writable.",
+            no(),
+        ),
+        tool(
+            "set_field",
+            "Write a typed state field through the application's own admission; refused with a reason (read-only, wrong kind, out of range, unknown). Record operands are read-only.",
+            schema(
+                &[
+                    ("field", "string", "Field name from `state`."),
+                    (
+                        "value",
+                        "object",
+                        "{\"kind\":\"int\"|\"float\"|\"bool\"|\"color\"|\"text\", ...}",
+                    ),
+                ],
+                &["field", "value"],
+            ),
+        ),
+        tool(
+            "pointer_move",
+            "Move the pointer (hover) to a device-pixel point.",
+            schema(&[("x", "integer", "x"), ("y", "integer", "y")], &["x", "y"]),
+        ),
+        tool(
+            "click",
+            "Press and release the primary button at a point.",
+            schema(&[("x", "integer", "x"), ("y", "integer", "y")], &["x", "y"]),
+        ),
+        tool(
+            "pointer_down",
+            "Press a button at a point.",
+            schema(
+                &[
+                    ("x", "integer", "x"),
+                    ("y", "integer", "y"),
+                    ("button", "string", "primary, secondary, middle"),
+                ],
+                &["x", "y"],
+            ),
+        ),
+        tool(
+            "pointer_up",
+            "Release a button at a point.",
+            schema(
+                &[
+                    ("x", "integer", "x"),
+                    ("y", "integer", "y"),
+                    ("button", "string", "primary, secondary, middle"),
+                ],
+                &["x", "y"],
+            ),
+        ),
+        tool(
+            "key",
+            "Press a key, optionally with modifiers (tab, enter, escape, up, down, delete, home, end, page-up, page-down, char:x).",
+            schema(
+                &[
+                    ("key", "string", "key name"),
+                    ("shift", "boolean", "shift"),
+                    ("ctrl", "boolean", "ctrl"),
+                    ("alt", "boolean", "alt"),
+                    ("logo", "boolean", "logo"),
+                ],
+                &["key"],
+            ),
+        ),
+        tool(
+            "type_text",
+            "Type text into the focused text handler.",
+            schema(&[("text", "string", "text")], &["text"]),
+        ),
+        tool(
+            "wheel",
+            "Turn the wheel at a point (lines).",
+            schema(
+                &[
+                    ("x", "integer", "x"),
+                    ("y", "integer", "y"),
+                    ("dx", "number", "horizontal lines"),
+                    ("dy", "number", "vertical lines"),
+                ],
+                &["dy"],
+            ),
+        ),
+        tool(
+            "tick",
+            "Advance the clock (a frame, not a turn).",
+            schema(&[("ms", "integer", "milliseconds")], &[]),
+        ),
+        tool(
+            "resize",
+            "Resize the window (a remount in the benchmark adapter).",
+            schema(
+                &[
+                    ("w", "integer", "width"),
+                    ("h", "integer", "height"),
+                    ("scale", "number", "device pixels per point"),
+                ],
+                &["w", "h"],
+            ),
+        ),
+        tool(
+            "screenshot",
+            "Paint the frame and return it as a PNG image, with its size and digest; with `node`, the part of the frame that element covers.",
+            schema(
+                &[
+                    ("node", "integer", "Node index: a screenshot by element."),
+                    ("raw", "boolean", "Also return raw RGBA (base64)."),
+                ],
+                &[],
+            ),
+        ),
+        tool(
+            "diff_golden",
+            "Paint the frame and diff it against a golden PNG (base64): differing pixels, bounding box, maximum channel delta.",
+            schema(&[("golden", "string", "base64 PNG")], &["golden"]),
+        ),
+        tool(
+            "reload",
+            "Ask the application to re-read its own inputs (assets, theme, configuration) and re-describe; state is kept.",
+            no(),
+        ),
+        tool(
+            "record_start",
+            "Start recording commands for a deterministic replay.",
+            no(),
+        ),
+        tool(
+            "record_stop",
+            "Stop recording and return the commands.",
+            no(),
+        ),
+        tool(
+            "replay",
+            "Replay a recorded log on a fresh application of the same kind; reports the first description or pixel that differs.",
+            schema(
+                &[("log", "object", "the log from record_stop, plus digests")],
+                &["log"],
+            ),
+        ),
+        tool(
+            "wait_for_idle",
+            "The inspector answers after each command's turn; reports that nothing is pending and the current revision and damage.",
+            no(),
+        ),
     ]
 }
 
 // ---- transports ----------------------------------------------------------------------------------------------
 
 /// Serve newline-delimited JSON-RPC over any reader/writer pair (MCP's stdio transport).
-pub fn serve_stream<R: BufRead, W: Write>(mcp: &mut Mcp, mut input: R, mut out: W) -> io::Result<()> {
+pub fn serve_stream<R: BufRead, W: Write>(
+    mcp: &mut Mcp,
+    mut input: R,
+    mut out: W,
+) -> io::Result<()> {
     let mut line = String::new();
     loop {
         line.clear();
@@ -462,13 +698,10 @@ pub fn serve_stream<R: BufRead, W: Write>(mcp: &mut Mcp, mut input: R, mut out: 
         let msg = match json::parse(t) {
             Ok(v) => v,
             Err(e) => {
-                let reply = J::obj()
-                    .set("jsonrpc", "2.0")
-                    .set("id", J::Null)
-                    .set(
-                        "error",
-                        J::obj().set("code", -32700).set("message", format!("{e}")),
-                    );
+                let reply = J::obj().set("jsonrpc", "2.0").set("id", J::Null).set(
+                    "error",
+                    J::obj().set("code", -32700).set("message", format!("{e}")),
+                );
                 writeln!(out, "{}", json::to_string(&reply))?;
                 out.flush()?;
                 continue;
@@ -528,8 +761,13 @@ fn one_http(mcp: &mut Mcp, mut s: TcpStream) -> io::Result<()> {
         let n = match s.read(&mut chunk) {
             Ok(n) => n,
             // a client that connected and said nothing: not this server's problem
-            Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {
-                return Ok(())
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) =>
+            {
+                return Ok(());
             }
             Err(e) => return Err(e),
         };
@@ -541,7 +779,11 @@ fn one_http(mcp: &mut Mcp, mut s: TcpStream) -> io::Result<()> {
             let head = String::from_utf8_lossy(&buf[..p]).to_string();
             let len = head
                 .lines()
-                .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                .find_map(|l| {
+                    l.to_ascii_lowercase()
+                        .strip_prefix("content-length:")
+                        .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                })
                 .unwrap_or(0);
             break (p + 4, len);
         }
@@ -571,11 +813,16 @@ fn one_http(mcp: &mut Mcp, mut s: TcpStream) -> io::Result<()> {
     let msg = match json::parse(core::str::from_utf8(body).unwrap_or("")) {
         Ok(v) => v,
         Err(e) => {
-            let r = J::obj()
-                .set("jsonrpc", "2.0")
-                .set("id", J::Null)
-                .set("error", J::obj().set("code", -32700).set("message", format!("{e}")));
-            return respond(&mut s, 200, "application/json", json::to_string(&r).as_bytes());
+            let r = J::obj().set("jsonrpc", "2.0").set("id", J::Null).set(
+                "error",
+                J::obj().set("code", -32700).set("message", format!("{e}")),
+            );
+            return respond(
+                &mut s,
+                200,
+                "application/json",
+                json::to_string(&r).as_bytes(),
+            );
         }
     };
     let reply = match msg {
@@ -593,7 +840,12 @@ fn one_http(mcp: &mut Mcp, mut s: TcpStream) -> io::Result<()> {
             None => return respond(&mut s, 202, "application/json", b""),
         },
     };
-    respond(&mut s, 200, "application/json", json::to_string(&reply).as_bytes())
+    respond(
+        &mut s,
+        200,
+        "application/json",
+        json::to_string(&reply).as_bytes(),
+    )
 }
 
 fn find(h: &[u8], n: &[u8]) -> Option<usize> {

@@ -51,7 +51,10 @@ impl<const N: usize> Str<N> {
         &b[..n]
     }
 }
-const _: () = assert!(cfg!(target_endian = "little"), "Str packs bytes little-endian");
+const _: () = assert!(
+    cfg!(target_endian = "little"),
+    "Str packs bytes little-endian"
+);
 
 /// Text an expression can evaluate to.
 pub trait Bytes: Copy + PartialEq {
@@ -136,7 +139,8 @@ impl<const AL: u8, E: Expr<Out: Bytes>, C: Expr<Out = Color>> Arch for Text<AL, 
     }
     #[inline(always)]
     fn changed(&self, old: &U, new: &U) -> bool {
-        (E::READS != 0 && self.0.eval(&Cx::of(old)) != self.0.eval(&Cx::of(new))) | (self.1.eval(&Cx::of(old)) != self.1.eval(&Cx::of(new)))
+        (E::READS != 0 && self.0.eval(&Cx::of(old)) != self.0.eval(&Cx::of(new)))
+            | (self.1.eval(&Cx::of(old)) != self.1.eval(&Cx::of(new)))
     }
     #[inline(always)]
     fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
@@ -154,7 +158,13 @@ impl<const AL: u8, E: Expr<Out: Bytes>, C: Expr<Out = Color>> Arch for Text<AL, 
 impl<const AL: u8, E: Expr<Out: Bytes>, C: Expr<Out = Color>> Draws for Text<AL, E, C> {
     #[inline(always)]
     fn draw<P: Prims>(&self, r: Rect, cut: Rect, u: &U, p: &mut P) {
-        p.text(r, cut, self.0.eval(&Cx::of(u)).bytes(), align(AL), self.1.eval(&Cx::of(u)).0)
+        p.text(
+            r,
+            cut,
+            self.0.eval(&Cx::of(u)).bytes(),
+            align(AL),
+            self.1.eval(&Cx::of(u)).0,
+        )
     }
 }
 
@@ -216,7 +226,16 @@ impl<C: Expr<Out = Color>> Draws for Bar<C> {
         let c = self.2.eval(&Cx::of(u));
         // a colour with no alpha is no bar (a caret in its off phase)
         if self.1 > 0 && c.0 >> 24 != 0 {
-            p.solid(Rect { x0: r.x0 + self.0, x1: r.x0 + self.0 + self.1, ..r }.and(r).and(cut), c.0)
+            p.solid(
+                Rect {
+                    x0: r.x0 + self.0,
+                    x1: r.x0 + self.0 + self.1,
+                    ..r
+                }
+                .and(r)
+                .and(cut),
+                c.0,
+            )
         }
     }
 }
@@ -244,7 +263,8 @@ impl<const R: i32, C: Expr<Out = Color>, T: Expr<Out = u32>> Arch for Spin<R, C,
     }
     #[inline(always)]
     fn changed(&self, old: &U, new: &U) -> bool {
-        (self.0.eval(&Cx::of(old)) != self.0.eval(&Cx::of(new))) | (self.1.eval(&Cx::of(old)) != self.1.eval(&Cx::of(new)))
+        (self.0.eval(&Cx::of(old)) != self.0.eval(&Cx::of(new)))
+            | (self.1.eval(&Cx::of(old)) != self.1.eval(&Cx::of(new)))
     }
     #[inline(always)]
     fn paint<B: Backend>(b: &mut B, col: ColRef<'_, Self>, u: &U) {
@@ -257,12 +277,23 @@ pub fn reach(r: Rect) -> Rect {
     let (w, h) = ((r.x1 - r.x0) as f32, (r.y1 - r.y0) as f32);
     let d = ((w * w + h * h).sqrt() * 0.5).ceil() as i32 + 1;
     let (cx, cy) = ((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
-    Rect { x0: cx - d, y0: cy - d, x1: cx + d + 1, y1: cy + d + 1 }
+    Rect {
+        x0: cx - d,
+        y0: cy - d,
+        x1: cx + d + 1,
+        y1: cy + d + 1,
+    }
 }
 impl<const R: i32, C: Expr<Out = Color>, T: Expr<Out = u32>> Draws for Spin<R, C, T> {
     #[inline(always)]
     fn draw<P: Prims>(&self, r: Rect, cut: Rect, u: &U, p: &mut P) {
-        p.rbox(r, cut, R, self.1.eval(&Cx::of(u)), self.0.eval(&Cx::of(u)).0)
+        p.rbox(
+            r,
+            cut,
+            R,
+            self.1.eval(&Cx::of(u)),
+            self.0.eval(&Cx::of(u)).0,
+        )
     }
 }
 

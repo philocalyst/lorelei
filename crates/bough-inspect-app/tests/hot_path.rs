@@ -4,8 +4,8 @@
 //! argument is structural (the off binary links no inspector symbol; `bough-x` is one compiled crate either way);
 //! this test prints the numbers that show it.
 use bough_guibench_x::rows::Rows;
-use bough_inspect_app::lab::Event;
 use bough_inspect_app::Lab;
+use bough_inspect_app::lab::Event;
 
 fn median(mut v: Vec<u64>) -> u64 {
     v.sort_unstable();

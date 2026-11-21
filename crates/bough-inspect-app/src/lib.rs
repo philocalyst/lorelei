@@ -1,8 +1,8 @@
 //! The real comparison apps on a headless host, for the inspector. `lab` has no inspector dependency (the
 //! zero-cost control); `inspect` (on by default) registers their typed state and adapts them to `Program`.
-pub mod lab;
 #[cfg(feature = "inspect")]
 pub mod inspect;
+pub mod lab;
 
 #[cfg(feature = "inspect")]
 pub use inspect::Fields;
