@@ -550,7 +550,13 @@ fn replay_log_schema() -> J {
         vec![
             (
                 "schema",
-                J::obj().set("const", bough_inspect::SCHEMA_VERSION),
+                ty("integer").set(
+                    "enum",
+                    vec![
+                        J::from(bough_inspect::record::LEGACY_LOG_SCHEMA_VERSION),
+                        J::from(bough_inspect::record::LOG_SCHEMA_VERSION),
+                    ],
+                ),
             ),
             ("app", ty("string")),
             (

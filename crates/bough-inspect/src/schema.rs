@@ -837,6 +837,55 @@ pub struct Snapshot {
     pub ax: Option<Ax>,
 }
 
+/// Live snapshot members excluded from goldens and current replay description digests.
+/// Paths start at the root. `*` visits each array element.
+/// All other fields participate, including `app.generation` (the host remount epoch)
+/// and `lists.*.shape` (row geometry).
+pub const VOLATILE_SNAPSHOT_FIELDS: &[(&[&str], &[&str])] = &[
+    (&[], &["counters", "damage"]),
+    (&["app"], &["world", "revision", "input_revision", "shape"]),
+    (&["ax"], &["projected"]),
+    (
+        &["stores", "*"],
+        &[
+            "cap", "seen", "moved", "moved_ok", "records", "pages", "bytes",
+        ],
+    ),
+    (
+        &["stores", "*", "cols", "*"],
+        &["pages", "nrec", "records", "bytes"],
+    ),
+    (&["lists", "*"], &["cap", "seen"]),
+    (&["nodes", "*", "key"], &["col", "rec"]),
+    (&["pointers", "pick"], &["col", "rec"]),
+    (&["pointers", "press"], &["col", "rec"]),
+    (&["pointers", "focus"], &["col", "rec"]),
+    (&["words", "*"], &["readers"]),
+];
+
+fn omit_fields(value: &mut J, path: &[&str], fields: &[&str]) {
+    match (value, path) {
+        (J::Obj(members), []) => members.retain(|(key, _)| !fields.contains(&key.as_str())),
+        (J::Arr(items), ["*", rest @ ..]) => {
+            for item in items {
+                omit_fields(item, rest, fields);
+            }
+        }
+        (J::Obj(members), [key, rest @ ..]) => {
+            if let Some((_, child)) = members.iter_mut().find(|(name, _)| name == key) {
+                omit_fields(child, rest, fields);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn description_hash(json: &str) -> u64 {
+    json.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, x| {
+        (h ^ x as u64).wrapping_mul(0x100_0000_01b3)
+    })
+}
+
 impl Default for AppInfo {
     fn default() -> Self {
         AppInfo {
@@ -914,55 +963,36 @@ impl Snapshot {
             .set("ax", self.ax.as_ref().map_or(J::Null, Ax::json));
         #[cfg(feature = "mutant_schema")]
         if let J::Obj(m) = &mut o {
-            m.retain(|(k, _)| k != "counters");
+            m.retain(|(k, _)| k != "nodes");
         }
         o
     }
     pub fn json_string(&self) -> String {
         json::to_string(&self.to_json())
     }
-    /// The description with nothing process-specific in it: what a golden holds (damage, counters and their
-    /// timings included, but no world identity).
+    /// The serialized description contract used by goldens and current replay logs.
     pub fn stable_json(&self) -> String {
-        let mut j = self.to_json();
-        if let J::Obj(m) = &mut j {
-            if let Some((_, J::Obj(a))) = m.iter_mut().find(|(k, _)| k == "app") {
-                a.retain(|(k, _)| k != "world");
-            }
-            if let Some((_, J::Obj(c))) = m.iter_mut().find(|(k, _)| k == "counters") {
-                c.retain(|(k, _)| k != "last");
-            }
-            if let Some((_, J::Obj(a))) = m.iter_mut().find(|(k, _)| k == "ax") {
-                a.retain(|(k, _)| k != "projected");
-            }
-        }
-        json::to_string(&j)
+        json::to_string(&self.digest_json())
     }
-    /// The description without what is specific to one process's instance: the world's identity and the
-    /// session's wall-clock timings. Replay compares this; a golden may too.
+    /// The live description with the fields in [`VOLATILE_SNAPSHOT_FIELDS`] omitted.
     pub fn digest_json(&self) -> J {
         let mut j = self.to_json();
-        if let J::Obj(m) = &mut j {
-            if let Some((_, J::Obj(a))) = m.iter_mut().find(|(k, _)| k == "app") {
-                a.retain(|(k, _)| k != "world");
-            }
-            if let Some((_, J::Obj(a))) = m.iter_mut().find(|(k, _)| k == "ax") {
-                // how much of the projection an update had to touch is a cost, not a description
-                a.retain(|(k, _)| k != "projected");
-            }
-            // costs are not the description: a restart with the same state re-evaluates a different number of
-            // columns and damages a different last turn
-            m.retain(|(k, _)| k != "counters" && k != "damage");
+        for &(path, fields) in VOLATILE_SNAPSHOT_FIELDS {
+            omit_fields(&mut j, path, fields);
         }
         j
     }
-    /// A digest of the description: the same view in the same state has the same digest, in any process.
-    /// Used by record/replay and by the overlay's idle check (not a hash of pixels).
+    /// Digest of the description contract.
     pub fn digest(&self) -> u64 {
-        let s = json::to_string(&self.digest_json());
-        s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, x| {
-            (h ^ x as u64).wrapping_mul(0x100_0000_01b3)
-        })
+        description_hash(&self.stable_json())
+    }
+    /// The original description projection for version 1 recordings.
+    pub(crate) fn legacy_digest(&self) -> u64 {
+        let mut j = self.to_json();
+        omit_fields(&mut j, &[], &["counters", "damage"]);
+        omit_fields(&mut j, &["app"], &["world"]);
+        omit_fields(&mut j, &["ax"], &["projected"]);
+        description_hash(&json::to_string(&j))
     }
     pub fn node(&self, i: usize) -> Option<&Node> {
         self.nodes.get(i)
