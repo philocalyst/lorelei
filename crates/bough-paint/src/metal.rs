@@ -23,12 +23,14 @@ use crate::emit;
 use crate::scene::{Desc, IDX_BITS, IDX_MASK, LANES, Scene};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2_foundation::NSString;
+use objc2_foundation::{NSRange, NSString};
 use objc2_metal::*;
 use std::fmt::Write;
 
 type Buf = Retained<ProtocolObject<dyn MTLBuffer>>;
 type Pso = Retained<ProtocolObject<dyn MTLComputePipelineState>>;
+
+type Icb = Retained<ProtocolObject<dyn MTLIndirectCommandBuffer>>;
 
 /// META words: header, then the new block, the old block, and one length per column.
 const M_UNEW: usize = 16;
@@ -228,6 +230,7 @@ kernel void k_rc0(const device uint* META [[buffer(1)]], const device uint* WINS
 kernel void k_downr(const device uint* META [[buffer(1)]], device uint* POOL [[buffer(13)]], const device uint* LT [[buffer(14)]], const device uint* SL [[buffer(19)]],
                     const device uint* LB [[buffer(20)]], device metal::atomic_uint* CHG [[buffer(21)]], const device uint* FORCE [[buffer(22)]], device metal::atomic_uint* KT [[buffer(23)]],
                     const device uint* RP [[buffer(26)]], const device uint* STG [[buffer(27)]], metal::uint3 wg [[threadgroup_position_in_grid]], metal::uint3 tp [[thread_position_in_threadgroup]]) {
+    if (wg.x >= STG[1]) { return; }
     uint s = STG[0] + wg.x, gen = RP[0], lid = SL[s] & 0xFFFFFFu, k = STG[2], bs = 5u - k;
     metal::int2 b;
     if (!rs_block(LT, lid, k, s - LB[lid * 8u + k], b)) { return; }
@@ -257,6 +260,10 @@ kernel void k_downr(const device uint* META [[buffer(1)]], device uint* POOL [[b
         metal::atomic_store_explicit(&CHG[s], gen, metal::memory_order_relaxed); // block stamps changed
         rs_mark(KT, LT, lid, k, metal::int4(x, y, x + 1, y + 1), META[3], META[4], gen);
     }
+}
+// Reset compacted layer counts before the cached stage sequence. Output uses a separate counter.
+kernel void k_rreset(device uint* ARGS [[buffer(24)]], const device uint* RP [[buffer(26)]], uint i [[thread_position_in_grid]]) {
+    if (i < RP[4]) { ARGS[8u * i] = 0u; }
 }
 // the output: the tiles damaged after the frame the surface last showed
 kernel void k_rcout(const device uint* META [[buffer(1)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]], const device uint* LT [[buffer(14)]],
@@ -358,7 +365,7 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
         // 0: `k_shade`; 1: `k_seg`; 2: `k_segr` (the resident plan's: a prefix job compares before it writes
         // and stamps its block changed)
         let seg = variant > 0;
-        s.push_str(["\nkernel void k_shade(", "\nkernel void k_seg(", "\nkernel void k_segr(device metal::atomic_uint* CHG [[buffer(21)]], device metal::atomic_uint* KT [[buffer(23)]], const device uint* RP [[buffer(26)]], "][variant]);
+        s.push_str(["\nkernel void k_shade(", "\nkernel void k_seg(", "\nkernel void k_segr(device metal::atomic_uint* CHG [[buffer(21)]], device metal::atomic_uint* KT [[buffer(23)]], device metal::atomic_uint* ARGS [[buffer(24)]], const device uint* RP [[buffer(26)]], "][variant]);
         s.push_str(
             r#"const device uint* COLS [[buffer(0)]], const device uint* META [[buffer(1)]], const device uint* ORDER [[buffer(2)]],
                     const device uint* WINS [[buffer(3)]], const device uint* TILES [[buffer(4)]], const device uint* LIST [[buffer(5)]],
@@ -370,6 +377,9 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
     const device uint* TAB = COLS + TABBASE; (void)TAB; (void)POOL; (void)LT; (void)MEDIA; (void)LAYOF; (void)JOBS; (void)TL;
 "#,
         );
+        if variant == 2 {
+            s.push_str("    if (wg.x >= metal::atomic_load_explicit(&ARGS[0], metal::memory_order_relaxed)) { return; }\n");
+        }
         s.push_str(&load_u('u', M_UNEW));
         s.push_str(if seg {
             r#"    const device uint* J = JOBS + wg.x * 8u;
@@ -617,6 +627,9 @@ pub struct GpuTime {
     pub gpu: f64,
 }
 
+/// Actual buffers (rather than argument indices) referenced by the indirect layer commands.
+const RES_COMMAND_BUFFERS: [usize; 21] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26];
+
 /// The resident plan's CPU side (`Gpu::resident`).
 #[derive(Default)]
 struct Res {
@@ -635,6 +648,9 @@ struct Res {
     /// Stage index of each rank, followed by the output stage.
     rank_stage: Vec<usize>,
     max_dispatches: usize,
+    /// Cached layer commands and the command index at which each stage begins.
+    commands: Option<Icb>,
+    command_at: Vec<usize>,
     first_stage: usize,
     last_dispatches: usize,
     nslots: usize,
@@ -661,6 +677,8 @@ pub struct Gpu {
     bufs: [Option<Buf>; 28],
     /// The resident plan's kernels and state (`resident`).
     rk: [Pso; 5],
+    icb_pipelines: Option<[Pso; 3]>,
+    reset_counts: Pso,
     res: Res,
     /// The scene's layer pool this executor wrapped (null: none yet).
     pool: *const u32,
@@ -729,6 +747,20 @@ impl Gpu {
         let (shade, pick, bin, compact, tab) = (pso("k_shade"), pso("k_pick"), pso("k_bin"), pso("k_compact"), pso("k_tab"));
         let (seg, down) = (pso("k_seg"), pso("k_down"));
         let rk = [pso("k_rc0"), pso("k_segr"), pso("k_downr"), pso("k_rcout"), pso("k_rfin")];
+        let icb_pipelines = (|| {
+            if !device.supportsFamily(MTLGPUFamily::Apple4) {
+                return None;
+            }
+            let pipeline = |name| {
+                let f = lib.newFunctionWithName(&NSString::from_str(name))?;
+                let desc = MTLComputePipelineDescriptor::new();
+                desc.setComputeFunction(Some(&f));
+                desc.setSupportIndirectCommandBuffers(true);
+                device.newComputePipelineStateWithDescriptor_options_reflection_error(&desc, MTLPipelineOption::empty(), None).ok()
+            };
+            Some([pipeline("k_rc0")?, pipeline("k_segr")?, pipeline("k_downr")?])
+        })();
+        let reset_counts = pso("k_rreset");
         let win: Vec<Pso> = (0..scene.cols.len()).map(|k| pso(&format!("k_win{k}"))).collect();
         let compile_s = t.elapsed().as_secs_f64();
         let nt = scene.tx * scene.ty;
@@ -743,6 +775,8 @@ impl Gpu {
             seg,
             down,
             rk,
+            icb_pipelines,
+            reset_counts,
             res: Res::default(),
             media: scene.media.arena().ptr(),
             pool: std::ptr::null(),
@@ -795,6 +829,7 @@ impl Gpu {
         let need = bytes.max(16);
         if self.bufs[i].as_ref().is_none_or(|b| b.length() < need) {
             let cap = need.next_power_of_two();
+            self.res.commands = None;
             self.bufs[i] = Some(self.device.newBufferWithLength_options(cap, MTLResourceOptions::StorageModeShared).expect("buffer"));
         }
         self.bufs[i].as_ref().unwrap()
@@ -970,6 +1005,7 @@ impl Gpu {
             if !std::ptr::eq(self.pool, a.ptr()) {
                 // SAFETY: page-aligned whole pages owned by the scene, which outlives the executor; the CPU
                 // writes it only between this executor's calls (each waits for the GPU).
+                self.res.commands = None;
                 self.bufs[13] = unsafe { self.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(a.ptr() as *mut std::ffi::c_void).expect("pool"), a.bytes(), MTLResourceOptions::StorageModeShared, None) };
                 self.pool = a.ptr();
             }
@@ -1113,6 +1149,7 @@ impl Gpu {
             if !std::ptr::eq(self.pool, a.ptr()) {
                 // SAFETY: page-aligned whole pages owned by the scene, which outlives the executor; the CPU
                 // writes it only between this executor's calls (each waits for the GPU).
+                self.res.commands = None;
                 self.bufs[13] = unsafe { self.device.newBufferWithBytesNoCopy_length_options_deallocator(std::ptr::NonNull::new(a.ptr() as *mut std::ffi::c_void).expect("pool"), a.bytes(), MTLResourceOptions::StorageModeShared, None) };
                 self.pool = a.ptr();
             }
@@ -1217,11 +1254,18 @@ impl Gpu {
         // By the rank invariant, any consumer is above the emitter in stage order.
         let first_stage = self.res.rank_stage.get(first_rank).copied().unwrap_or(nstages);
         self.res.first_stage = first_stage;
-        let args = self.words_mut(24);
-        for i in first_stage..=nstages {
-            args[8 * i] = 0;
+        if first_stage < nstages && self.res.commands.is_none() {
+            self.res_commands();
         }
-        self.words_mut(26)[..4].copy_from_slice(&[era, since.unwrap_or(era), all as u32, since.is_some() as u32]);
+        let cached = self.res.commands.is_some() && first_stage < nstages;
+        let args = self.words_mut(24);
+        if !cached {
+            for i in first_stage..nstages {
+                args[8 * i] = 0;
+            }
+        }
+        args[8 * nstages] = 0;
+        self.words_mut(26)[..5].copy_from_slice(&[era, since.unwrap_or(era), all as u32, since.is_some() as u32, nstages as u32]);
         let m = self.words_mut(1);
         m[2] = stride as u32;
         m[M_UNEW..M_UNEW + 64].copy_from_slice(&u.w);
@@ -1244,22 +1288,38 @@ impl Gpu {
             enc.setBuffer_offset_atIndex(Some(args_buf), 12, 27);
         }
         let mut dispatches = 1;
-        for (i, st) in self.res.stages.iter().enumerate().skip(first_stage) {
-            dispatches += if st.0 == 0 { 2 } else { 1 };
-            unsafe {
-                enc.setBufferOffset_atIndex(32 * i, 24);
-                enc.setBufferOffset_atIndex(32 * i + 12, 27);
+        if cached {
+            let commands = self.res.commands.as_ref().unwrap();
+            let first = self.res.command_at[first_stage];
+            let end = self.res.command_at[nstages];
+            for i in RES_COMMAND_BUFFERS {
+                let used = self.bufs[i].as_ref().unwrap();
+                let usage = if matches!(i, 13 | 21 | 23 | 24 | 25) { MTLResourceUsage::Read | MTLResourceUsage::Write } else { MTLResourceUsage::Read };
+                enc.useResource_usage(ProtocolObject::from_ref(&**used), usage);
             }
-            if st.0 == 0 {
-                enc.setComputePipelineState(&self.rk[0]);
-                enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: (st.1 as usize).div_ceil(64), height: 1, depth: 1 }, g64);
-                enc.setComputePipelineState(&self.rk[1]);
-                unsafe { enc.dispatchThreadgroupsWithIndirectBuffer_indirectBufferOffset_threadsPerThreadgroup(args_buf, 32 * i, g16) };
-            } else {
-                // a threadgroup per slot, a thread per pixel of its block
-                let side = 32usize >> st.0;
-                enc.setComputePipelineState(&self.rk[2]);
-                enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: st.1 as usize, height: 1, depth: 1 }, MTLSize { width: side, height: side, depth: 1 });
+            enc.setComputePipelineState(&self.reset_counts);
+            enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: nstages.div_ceil(64), height: 1, depth: 1 }, g64);
+            // SAFETY: res_commands populated every command in this range and `self` owns the buffers it binds.
+            unsafe { enc.executeCommandsInBuffer_withRange(commands, NSRange::new(first, end - first)) };
+            dispatches += 2;
+        } else {
+            for (i, st) in self.res.stages.iter().enumerate().skip(first_stage) {
+                dispatches += if st.0 == 0 { 2 } else { 1 };
+                unsafe {
+                    enc.setBufferOffset_atIndex(32 * i, 24);
+                    enc.setBufferOffset_atIndex(32 * i + 12, 27);
+                }
+                if st.0 == 0 {
+                    enc.setComputePipelineState(&self.rk[0]);
+                    enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: (st.1 as usize).div_ceil(64), height: 1, depth: 1 }, g64);
+                    enc.setComputePipelineState(&self.rk[1]);
+                    unsafe { enc.dispatchThreadgroupsWithIndirectBuffer_indirectBufferOffset_threadsPerThreadgroup(args_buf, 32 * i, g16) };
+                } else {
+                    // a threadgroup per slot, a thread per pixel of its block
+                    let side = 32usize >> st.0;
+                    enc.setComputePipelineState(&self.rk[2]);
+                    enc.dispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: st.1 as usize, height: 1, depth: 1 }, MTLSize { width: side, height: side, depth: 1 });
+                }
             }
         }
         if since.is_some() {
@@ -1360,11 +1420,66 @@ impl Gpu {
             sw[8 * i + 3..8 * i + 6].copy_from_slice(&[s.2, s.1, s.0]);
         }
         self.buf(25, most.max(self.nt).max(1) * 32);
+        if !cfg!(feature = "mutant_rank_stale") || self.res.command_at.len() != stages.len() + 1 {
+            self.res.commands = None;
+        }
         self.res.max_dispatches = stages.iter().map(|s| if s.0 == 0 { 2 } else { 1 }).sum::<usize>() + 3;
         self.res.rank_stage = rank_stage;
         self.res.alloc = Some(ls.alloc_epoch);
         (self.res.rank, self.res.lb, self.res.stages, self.res.nslots) = (rank, lb, stages, ns);
     }
+    /// Encode once per slot layout or buffer replacement. Every command after the first depends on
+    /// earlier commands through JOBS, layer pixels, or event stamps. `setBarrier` orders those accesses.
+    fn res_commands(&mut self) {
+        let Some(pipelines) = self.icb_pipelines.as_ref() else { return };
+        let count = self.res.max_dispatches - 3;
+        let desc = MTLIndirectCommandBufferDescriptor::new();
+        desc.setCommandTypes(MTLIndirectCommandType::ConcurrentDispatch);
+        desc.setInheritBuffers(false);
+        desc.setInheritPipelineState(false);
+        desc.setMaxKernelBufferBindCount(28);
+        // SAFETY: three compatible pipeline states were admitted above. The command range is bounded by the
+        // stage vector and the dispatch shapes are the same as on the serial path (the prefix count is guarded).
+        let Some(commands) = (unsafe { self.device.newIndirectCommandBufferWithDescriptor_maxCommandCount_options(&desc, count, MTLResourceOptions::StorageModeShared) }) else { return };
+        let mut at = Vec::with_capacity(self.res.stages.len() + 1);
+        let mut index = 0;
+        for (i, &(level, n, _)) in self.res.stages.iter().enumerate() {
+            at.push(index);
+            let mut record = |pipeline: usize, groups: usize, side: usize, height: usize, bindings: &[usize]| {
+                // SAFETY: count is two commands per prefix stage and one per downsample stage. All bound
+                // buffers live in this executor. Replacement invalidates the stored commands before use.
+                let command = unsafe { commands.indirectComputeCommandAtIndex(index) };
+                for &b in bindings {
+                    let (buffer, offset) = match b {
+                        17 => (25, 0),
+                        24 => (24, i * 32),
+                        27 => (24, i * 32 + 12),
+                        _ => (b, 0),
+                    };
+                    // SAFETY: the stage buffer holds eight words per stage, in its declared shader layout.
+                    // Each other buffer is the same buffer as the direct encoder at its binding index.
+                    unsafe { command.setKernelBuffer_offset_atIndex(self.bufs[buffer].as_ref().unwrap(), offset, b) };
+                }
+                command.setComputePipelineState(&pipelines[pipeline]);
+                command.setBarrier();
+                command.concurrentDispatchThreadgroups_threadsPerThreadgroup(MTLSize { width: groups, height: 1, depth: 1 }, MTLSize { width: side, height, depth: 1 });
+                index += 1;
+            };
+            let n = n as usize;
+            if level == 0 {
+                record(0, n.div_ceil(64), 64, 1, &[1, 3, 4, 5, 14, 16, 17, 19, 20, 21, 22, 23, 24, 26, 27]);
+                record(1, n, 16, 16, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 17, 21, 23, 24, 26]);
+            } else {
+                let side = 32 >> level;
+                record(2, n, side, side, &[1, 13, 14, 19, 20, 21, 22, 23, 26, 27]);
+            }
+        }
+        at.push(index);
+        assert_eq!(index, count);
+        self.res.command_at = at;
+        self.res.commands = Some(commands);
+    }
+
     /// The tile lists as slabs in buffer 5: all of them (`None`), or the tiles that changed (rewritten in
     /// place while they fit, moved to the end otherwise; everything is repacked when the end is reached).
     fn res_lists(&mut self, scene: &Scene, changed: Option<&[u32]>) {
