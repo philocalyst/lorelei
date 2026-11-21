@@ -559,7 +559,9 @@ impl<V: View, B: Backend> World<V, B> {
             for p in &st.order {
                 match *p {
                     crate::store::Pass::Col(j) => {
+                        let fast = cols[*k].timed & ColEnt::FAST;
                         cols[*k] = st.ent(&st.cols[j as usize]);
+                        cols[*k].timed |= fast;
                         cold[*k] = (st, j);
                         *k += 1;
                     }
