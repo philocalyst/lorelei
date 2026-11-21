@@ -271,7 +271,9 @@ impl<V> Leaf<V> for LearnLeaf<'_> {
         self.site += 1;
         self.pos += 1;
         #[cfg(feature = "inspect-metadata")]
-        { self.cur = self.loc; }
+        {
+            self.cur = self.loc;
+        }
     }
     fn leaf<A: Arch>(&mut self, _: &A, _: TypeId, hov: Option<Hov>) {
         let k = self.site as usize;
@@ -335,7 +337,8 @@ impl<'a, V> Sink<V> for Learn<'a> {
             row: k,
             pos: 0,
             loc,
-            #[cfg(feature = "inspect-metadata")]            cur: loc,
+            #[cfg(feature = "inspect-metadata")]
+            cur: loc,
         });
     }
     #[track_caller]
@@ -396,7 +399,8 @@ impl<'a, V> Sink<V> for Learn<'a> {
                 row: 0,
                 pos: 0,
                 loc,
-                #[cfg(feature = "inspect-metadata")]                cur: loc,
+                #[cfg(feature = "inspect-metadata")]
+                cur: loc,
             });
         }
         (n as i32).saturating_mul(st.geo.2)
@@ -428,7 +432,8 @@ impl<'a, V> Sink<V> for Learn<'a> {
                 row: 0,
                 pos: 0,
                 loc,
-                #[cfg(feature = "inspect-metadata")]                cur: loc,
+                #[cfg(feature = "inspect-metadata")]
+                cur: loc,
             });
         }
     }
@@ -876,7 +881,9 @@ impl<V> Leaf<V> for DLeaf<'_> {
     fn hole(&mut self) {
         self.ent.pos += 1;
         #[cfg(feature = "inspect-metadata")]
-        { self.cur = self.loc; }
+        {
+            self.cur = self.loc;
+        }
     }
     fn leaf<A: Arch>(&mut self, a: &A, _: TypeId, hov: Option<Hov>) {
         let k = self.ent.pos as usize;
@@ -939,7 +946,8 @@ impl<'a, V> Sink<V> for Detach<'a> {
                     pos: 0,
                 },
                 loc,
-                #[cfg(feature = "inspect-metadata")]                cur: loc,
+                #[cfg(feature = "inspect-metadata")]
+                cur: loc,
                 shape: l.shape,
                 at,
                 u: self.u,
