@@ -13,7 +13,12 @@ use serde_json::{Map, Value, json};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicUsize, Ordering},
+    mpsc,
+};
+use std::time::Duration;
 
 fn target_dir() -> PathBuf {
     // The test executable lives under <target>/debug/{deps,build/..}/...; walk up to the directory that
@@ -28,13 +33,59 @@ fn target_dir() -> PathBuf {
 }
 
 fn app_bin() -> PathBuf {
-    let p = target_dir().join("bough-inspect-app");
-    assert!(
-        p.exists(),
-        "{} is missing: build it with `cargo build -p bough-inspect-app` first",
-        p.display()
-    );
-    p
+    static BIN: OnceLock<PathBuf> = OnceLock::new();
+    BIN.get_or_init(|| {
+        let target = target_dir();
+        let p = target.join("bough-inspect-app");
+        if p.is_file() {
+            return p;
+        }
+        // A standalone SDK test may not have the app binary built by the outer Cargo invocation.
+        let build = target.join("mcp-sdk-app");
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml");
+        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+        let output = Command::new(cargo)
+            .args([
+                "build",
+                "--offline",
+                "--locked",
+                "-j",
+                "2",
+                "-p",
+                "bough-inspect-app",
+                "--manifest-path",
+            ])
+            .arg(manifest)
+            .arg("--target-dir")
+            .arg(&build)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "build inspector fixture: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        build.join("debug/bough-inspect-app")
+    })
+    .clone()
+}
+
+fn readiness(child: &mut Child) -> String {
+    let stdout = child.stdout.take().expect("piped stdout");
+    let (send, recv) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let result = BufReader::new(stdout).read_line(&mut line).map(|_| line);
+        let _ = send.send(result);
+    });
+    match recv.recv_timeout(Duration::from_secs(20)) {
+        Ok(Ok(line)) if !line.is_empty() => line.trim_end().to_owned(),
+        result => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("child did not provide readiness: {result:?}");
+        }
+    }
 }
 
 struct App {
@@ -50,9 +101,12 @@ impl Drop for App {
 }
 
 fn start_app(scenario: &str) -> App {
-    let socket =
-        std::env::temp_dir().join(format!("bm-std-{}-{scenario}.sock", std::process::id()));
-    let _ = std::fs::remove_file(&socket);
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let socket = std::env::temp_dir().join(format!(
+        "bm-std-{}-{}.sock",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
     let mut child = Command::new(app_bin())
         .args([
             "--scenario",
@@ -66,18 +120,7 @@ fn start_app(scenario: &str) -> App {
         .stderr(Stdio::null())
         .spawn()
         .expect("start the app");
-    let out = child.stdout.take().unwrap();
-    let mut lines = BufReader::new(out).lines();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        assert!(Instant::now() < deadline, "the app did not become ready");
-        let Some(Ok(line)) = lines.next() else {
-            continue;
-        };
-        if line.starts_with("ready ") {
-            break;
-        }
-    }
+    assert!(readiness(&mut child).starts_with("ready "));
     App { child, socket }
 }
 
@@ -333,9 +376,7 @@ fn the_http_transport_accepts_the_same_client() {
         .stderr(Stdio::null())
         .spawn()
         .expect("start the HTTP server");
-    let out = child.stdout.take().unwrap();
-    let mut lines = BufReader::new(out).lines();
-    let ready = lines.next().expect("HTTP readiness line").unwrap();
+    let ready = readiness(&mut child);
     let address = ready
         .strip_prefix("listening ")
         .expect("HTTP listener address")
