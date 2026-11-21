@@ -17,7 +17,7 @@ The façade program uses the author prelude and an offscreen CPU target. It impl
 
 ## Staged paint and framework probes
 
-The staged adapter runs the pinned `bough-paint` seam (`64101ac59d`) as an offscreen renderer. Its glass-over-video trace uses four rounded backdrops, brightness and saturation, a moving spring with a retarget, two built-in paints and a synthetic NV12 publisher. Its card bodies are solid rounded translucent fills. It checks the whole-frame specification at ring ages 1–4. It reports video generation together with rendering.
+The staged adapter runs the pinned `bough-paint` seam (`64101ac59d`) as an offscreen renderer. Its glass-over-video trace uses four rounded backdrops, brightness and saturation, a moving spring with a retarget, two built-in paints and a synthetic NV12 publisher. Its card bodies are solid rounded translucent fills. It checks the whole-frame specification on the initial frame and an uncached redraw at ring ages 1–4. It reports video generation together with rendering.
 
 ```sh
 comparisons/bough-fx-bench/scripts/build-fx-seam.sh
@@ -39,4 +39,4 @@ lockf -k "$HOME/work/locks/bench.lock" sh -c '
 '
 ```
 
-The zgx probe checks output change and retained equality against a fresh renderer at the final step. The zgui probe currently checks redraw requests. Readback and independent pixel witnesses, common GPU completion timing boundaries, more than one animation trace and reference video remain needed for matched ranking. The supplementary adapters expose their coverage in the report.
+The zgx probe checks output change and retained equality against a fresh renderer at the final step. The zgui probe checks pixel hashes in normal and forced-full mode. Use `release/solfx CARD_COUNT check` and replay with `ZGUI_FULL_DAMAGE=1`, then compare the `zgui_pixel` rows. Common GPU completion timing boundaries, more than one animation trace and reference video remain needed for matched ranking. The supplementary adapters expose their coverage in the report.

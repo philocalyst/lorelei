@@ -101,3 +101,13 @@ The next card should bind the staged effects to the author frontend, align one r
 | 200 | 11.660/15.404/228.904 | 60,793,477 |
 | 1,000 | 13.539/14.408/14.443 | 129,971,120 |
 | 5,000 | 20.919/22.026/23.516 | 460,055,809 |
+
+## zgui shader and redraw check
+
+The zgui probe now registers a circle-difference coverage shader. The first check forced full damage on the already emitted incremental scene and failed at every size. The corrected check replays two independent headless app processes and uses `ZGUI_FULL_DAMAGE=1` on the full replay so the framework emits the full scene. Both processes exited 0 and their complete frame-hash sequences matched at all three sizes. The hashes changed during the motion trace. Timings with readback disabled follow.
+
+| Cards | Offscreen step wall p50/p95/p99 ms | Matching pixel hashes |
+|---:|---|---:|
+| 200 | 0.076/1.483/3.505 | 12 |
+| 1,000 | 0.373/2.210/14.802 | 12 |
+| 5,000 | 1.142/3.322/85.337 | 12 |

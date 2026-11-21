@@ -1,0 +1,29 @@
+3b14158f0c3d09bbb95c023a45efae1c0f7666a496d4fbb6bc33056bb0b7e9cc  release/solfx
+ 4:45  up 4 days,  7:38, 5 users, load averages: 18.19 16.09 16.99
+zgui,200,0,16034625,2
+zgui,200,1,542,2
+zgui,200,2,167,2
+
+thread 'main' panicked at crates/zgui-bench/src/bin/solfx.rs:63:9:
+zgui retained redraw differs
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+n=200 check_exit=101
+ 4:45  up 4 days,  7:38, 5 users, load averages: 18.19 16.09 16.99
+zgui,1000,0,24740167,2
+zgui,1000,1,458,2
+zgui,1000,2,166,2
+
+thread 'main' panicked at crates/zgui-bench/src/bin/solfx.rs:63:9:
+zgui retained redraw differs
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+n=1000 check_exit=101
+ 4:45  up 4 days,  7:38, 5 users, load averages: 17.38 15.95 16.93
+zgui,5000,0,103122416,2
+zgui,5000,1,541,2
+zgui,5000,2,208,2
+
+thread 'main' panicked at crates/zgui-bench/src/bin/solfx.rs:63:9:
+zgui retained redraw differs
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+n=5000 check_exit=101
+ 4:45  up 4 days,  7:38, 5 users, load averages: 17.38 15.95 16.93

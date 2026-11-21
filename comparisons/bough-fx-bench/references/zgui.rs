@@ -1,18 +1,88 @@
 //! Offscreen zgui canvas probe using painted CSS effects and a framework animation.
+use std::{cell::RefCell, rc::Rc};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use zgui::bits::DamageSet;
 use zgui::geom::{DevicePx, Size};
 use zgui::platform::{Surface, SurfaceEvent};
 use zgui::prelude::*;
 use zgui::reactive::RwSignal;
-use zgui::render::{RenderTarget, Renderer};
+use zgui::render::{
+    ExternalTexture, FrameOutcome, MemoryReport, RenderCapabilities, RenderTarget, Renderer,
+    TextureHandle,
+};
 use zgui::runtime::{App, AppError};
 use zgui::view::{Anchor, BuildCx, ClassName};
 use zgui_platform_headless::Harness;
 
-fn renderer(_: &Arc<dyn Surface>, target: RenderTarget) -> Result<Box<dyn Renderer>, AppError> {
+#[repr(C)]
+#[derive(Clone, Copy, Default, ShaderParams)]
+struct Mask {
+    fraction: f32,
+}
+
+static SDF: ShaderEffect<Mask> = shader! {
+    name: "effects-circle-difference",
+    mode: Coverage,
+    params: Mask,
+    source: r#"
+        struct Params { fraction: f32, }
+        fn coverage(in: ShaderInput, params: Params) -> f32 {
+            let p = in.local / in.size;
+            let outer = length(p - vec2<f32>(0.48, 0.5)) - 0.43;
+            let inner = length(p - vec2<f32>(0.64, 0.40)) - (0.25 + params.fraction);
+            return 1.0 - smoothstep(-0.01, 0.01, max(outer, -inner));
+        }
+    "#,
+};
+
+type Witness = Rc<RefCell<Vec<u64>>>;
+
+struct PixelGate {
+    renderer: zgui_render_wgpu::WgpuRenderer,
+    pixels: Witness,
+}
+
+impl Renderer for PixelGate {
+    fn capabilities(&self) -> RenderCapabilities {
+        self.renderer.capabilities()
+    }
+    fn configure(&mut self, target: RenderTarget) {
+        self.renderer.configure(target);
+    }
+    fn target(&self) -> Option<RenderTarget> {
+        self.renderer.target()
+    }
+    fn draw(&mut self, scene: &zgui::scene::Scene, damage: &DamageSet) -> FrameOutcome {
+        let outcome = self.renderer.draw(scene, damage);
+        let retained = self.renderer.read_composed();
+        assert!(!retained.bytes().is_empty());
+        let hash = retained
+            .bytes()
+            .iter()
+            .fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+                (h ^ u64::from(*b)).wrapping_mul(0x100_0000_01b3)
+            });
+        self.pixels.borrow_mut().push(hash);
+        outcome
+    }
+    fn register_external(&mut self, texture: ExternalTexture) -> TextureHandle {
+        self.renderer.register_external(texture)
+    }
+    fn release_external(&mut self, handle: TextureHandle) {
+        self.renderer.release_external(handle);
+    }
+    fn memory(&self) -> MemoryReport {
+        self.renderer.memory()
+    }
+    fn texture_sink(&mut self) -> &mut dyn zgui::atlas::TextureSink {
+        self.renderer.texture_sink()
+    }
+}
+
+fn renderer(target: RenderTarget, gate: Option<Witness>) -> Result<Box<dyn Renderer>, AppError> {
     let renderer = zgui_render_wgpu::Builder::new()
         .offscreen(
             target,
@@ -20,7 +90,10 @@ fn renderer(_: &Arc<dyn Surface>, target: RenderTarget) -> Result<Box<dyn Render
             false,
         )
         .map_err(AppError::GpuUnavailable)?;
-    Ok(Box::new(renderer))
+    Ok(match gate {
+        Some(pixels) => Box::new(PixelGate { renderer, pixels }),
+        None => Box::new(renderer),
+    })
 }
 
 fn main() {
@@ -30,6 +103,9 @@ fn main() {
         .parse()
         .unwrap();
     assert!([200, 1000, 5000].contains(&cards));
+    let gate = std::env::args().any(|a| a == "check");
+    let witness = gate.then(Witness::default);
+    let renderer_witness = witness.clone();
     let moving = RwSignal::new_local(false);
     let css = "
         :root { background-color: #142638; }
@@ -40,10 +116,13 @@ fn main() {
         .moving { transform: translateX(10px); }
         .pane { position: absolute; left: 455px; top: 298px; width: 112px; height: 76px;
                 border-radius: 12px; backdrop-filter: blur(6px); background-color: #568cd15c; }
+        .sdf { position: absolute; left: 72px; top: 134px; width: 80px; height: 64px;
+               --zgui-shape: effects-circle-difference; background-color: #ec8f6fa6; }
     ";
     let handler = App::new().with_size(640.0, 400.0).with_stylesheet(css)
-        .with_renderer(Box::new(renderer))
+        .with_renderer(Box::new(move |_: &Arc<dyn Surface>, target| renderer(target, renderer_witness.clone())))
         .into_handler(move |cx: &mut BuildCx<'_>| -> Box<dyn Anchor> {
+            let _effect = SDF.register();
             let mut layer = zgui::elements::column().class("layer");
             for i in 0..cards {
                 let slot = i % 100;
@@ -61,6 +140,7 @@ fn main() {
                 layer = layer.child(card);
             }
             layer = layer.child(zgui::elements::control().class("pane"));
+            layer = layer.child(zgui::elements::control().class("sdf"));
             Box::new(layer.into_view().build(cx))
         }).expect("runtime");
     let mut harness = Harness::new(handler);
@@ -82,6 +162,17 @@ fn main() {
             start.elapsed().as_nanos(),
             harness.redraws_requested()
         );
+    }
+    if let Some(witness) = witness {
+        let pixels = witness.borrow();
+        let first = pixels.first().expect("a captured frame");
+        assert!(
+            pixels.iter().any(|hash| hash != first),
+            "the trace did not change pixels"
+        );
+        for (frame, hash) in pixels.iter().enumerate() {
+            println!("zgui_pixel,{cards},{frame},{hash:016x}");
+        }
     }
     assert!(
         harness.redraws_requested() > baseline,
