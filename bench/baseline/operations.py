@@ -1,5 +1,6 @@
 """Read each fixture's operation counters by column or field name."""
 
+from decimal import Decimal
 import re
 import statistics
 
@@ -152,6 +153,50 @@ def effects_core(stdout, args):
     raise ValueError("incomplete typed-core effect trace")
 
 
+FX_COMMON = ("idle", "one spring", "all springs", "hover above glass", "hover beneath glass", "glass moves 1 px")
+FX_PHASES = {
+    "effects": (*FX_COMMON, "scroll 11 px", "theme"),
+    "pane": FX_COMMON,
+    "media": ("idle", "one video frame", "video under glass", "all videos (every 4th)",
+              "scroll 11 px", "hover above glass", "theme", "all springs", "glass over playing video"),
+}
+
+
+def staged_paint(stdout, args):
+    scene, size, *mode = args
+    expected_size = size + ("d" if mode == ["dense"] else "")
+    phases = {f"{executor}/{phase}" for phase in FX_PHASES[scene]
+              for executor in ("cpu1", "cpu1-nocache", "metal")}
+    header = None
+    result = {}
+    for line in stdout.splitlines():
+        if line.startswith("#") or "\t" not in line:
+            continue
+        fields = line.split("\t")
+        if fields[0] == "scene":
+            if header is not None or len(fields) != len(set(fields)):
+                raise ValueError("ambiguous staged-paint header")
+            header = fields
+            continue
+        if header is None or len(fields) != len(header):
+            raise ValueError("malformed staged-paint row")
+        row = dict(zip(header, fields))
+        if row.pop("scene") != scene or row.pop("n") != expected_size or row.pop("mismatch") != "0":
+            raise ValueError("unexpected staged-paint scene or pixel mismatch")
+        key = f"{row.pop('executor')}/{row.pop('cell')}"
+        if key not in phases or key in result:
+            raise ValueError(f"unexpected or duplicate staged-paint operation: {key}")
+        if any(not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", v) for v in row.values()):
+            raise ValueError("invalid staged-paint metric")
+        instructions = int(1000 * Decimal(row.pop("instr_med_K")))
+        if instructions == 0:
+            raise ValueError("staged-paint instruction counter unavailable")
+        result[key] = {"instructions": instructions, **{k: float(v) for k, v in row.items()}}
+    if result.keys() != phases or not re.search(r"^# mismatching words in total: 0;", stdout, re.M):
+        raise ValueError("missing staged-paint operations or retained-pixel verdict")
+    return result
+
+
 def parse(kind, stdout, stderr, args, env):
     if kind in TABLES:
         return table(kind, stdout, env)
@@ -161,6 +206,8 @@ def parse(kind, stdout, stderr, args, env):
         return effects(stdout, args)
     if kind == "effects-core":
         return effects_core(stdout, args)
+    if kind == "fxbench":
+        return staged_paint(stdout, args)
     if kind == "pbench":
         if not re.search(r"^# cross-check failures: 0;", stdout, re.M):
             raise ValueError("pbench cross-check did not pass")

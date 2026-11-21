@@ -77,7 +77,18 @@ def cells(worktree):
                                    ("check", count, op)))
     else:
         unavailable["effects"] = "the effects adapter is absent from this checkout"
-    unavailable["video"] = "staged video requires the separately pinned paint seam"
+    if (worktree / "crates/bough-paint/examples/fxbench.rs").is_file():
+        for scene, sizes in (("effects", (300, 3000)), ("pane", (300, 3000)), ("media", (4, 24, 48))):
+            for size in sizes:
+                matrix.append(Cell(f"fxbench/{scene}/{size}", "fxbench", (scene, str(size)),
+                                   {"REPS": "24"}, "fxbench"))
+        matrix.append(Cell("fxbench/effects/600-dense", "fxbench", ("effects", "600", "dense"),
+                           {"REPS": "6"}, "fxbench"))
+        for scene, size in (("canvas", "4"), ("anim", "600")):
+            matrix.append(Cell(f"pbench/{scene}{size}", "pbench", (scene, size),
+                               {"REPS": "24", "WORKERS": "5"}, "pbench"))
+    else:
+        unavailable["fxbench"] = "the staged paint and video adapter is absent from this checkout"
     unavailable["windowed"] = "see the VM runbook for compositor scenarios"
     if not (worktree / "crates/bough/tests/glyph_reclaim.rs").is_file():
         unavailable["guibench/search-1000-filter"] = "historical glyph_x capacity panic"
@@ -96,7 +107,7 @@ def binary_spec(name):
         return f"release/{name}", ["--locked", "--release", "--manifest-path",
                                    "comparisons/bough-fx-bench/Cargo.toml",
                                    "--features", "full-effects,typed-core", "--bin", name]
-    package = "bough-paint" if name == "pbench" else "bough-x"
+    package = "bough-paint" if name in ("pbench", "fxbench") else "bough-x"
     return f"dist/examples/{name}", ["--locked", "--profile", "dist", "-p", package, "--example", name]
 
 
@@ -187,6 +198,7 @@ SCOPES = {
     "guibench": "calling-thread instructions for mount or the median per operation across timed blocks",
     "effects": "process instructions per operation, mean of trace, or spawn-to-first for startup",
     "effects-core": "process instructions per operation, median of trace, or setup-to-first for startup",
+    "fxbench": "calling-thread instructions per frame, rounded to 100 instructions by its TSV",
     "pbench": "process instructions for the full offscreen CPU and Metal benchmark",
 }
 
