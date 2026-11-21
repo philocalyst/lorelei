@@ -13,10 +13,14 @@ export RUSTC_WRAPPER=
 nice -n 15 cargo build --profile dist -p bough-paint --example fxbench --example pbench -j "${JOBS:-8}"
 bin="${CARGO_TARGET_DIR:-target}/dist/examples"
 {
-  for a in "effects 300" "effects 3000" "effects 3000 dense" "pane 300" "pane 3000" "media 4" "media 24" "media 48"; do
+  for a in "effects 300" "effects 3000" "pane 300" "pane 3000" "media 4" "media 24" "media 48"; do
     echo "## fxbench $a @$tag $(uptime)"
     lockf -k "$lock" "$bin/fxbench" $a || echo "## FAILED: fxbench $a (exit $?)"
   done
+  # every card in the frame: depth grows with n (50 glass panels, about six deep). Fewer frames: the control
+  # redraws every layer of a deep stack every frame. (3,000 dense, 31 deep, was stopped: seconds per frame.)
+  echo "## fxbench effects 600 dense (REPS=6) @$tag $(uptime)"
+  REPS=6 lockf -k "$lock" "$bin/fxbench" effects 600 dense || echo "## FAILED: fxbench effects 600 dense (exit $?)"
 } > "$out/fxbench-$tag.txt" 2>&1
 {
   for a in "canvas 4" "anim 600"; do
