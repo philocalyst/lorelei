@@ -32,6 +32,11 @@ source = source.replace(old, old + """
         app.rt.win_w as u32, app.rt.win_h as u32, 4,
     )));""")
 source = source.replace("App::new(model, c, cfg.render)", "App::new(model, c, false)")
+source = source.replace("let frame = move |app: &mut App<S>| {", """let force_full = std::env::var_os("SOLFX_FULL_REPLAY").is_some();
+    let frame = move |app: &mut App<S>| {
+        if force_full {
+            app.rt.bough.damage_rect(app.rt.bough.window());
+        }""")
 path.write_text(source)
 PYTHON
 fi

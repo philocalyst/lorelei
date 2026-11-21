@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 use zgui::bits::DamageSet;
-use zgui::geom::{DevicePx, Size};
+use zgui::geom::{CssPx, DevicePx, Point, Size};
 use zgui::platform::{Surface, SurfaceEvent};
 use zgui::prelude::*;
 use zgui::reactive::RwSignal;
@@ -15,6 +15,10 @@ use zgui::render::{
 };
 use zgui::runtime::{App, AppError};
 use zgui::view::{Anchor, BuildCx, ClassName};
+use zgui::vocab::{
+    Modifiers, PointerAction, PointerEvent, PointerId, PointerKind, ScrollDelta, ScrollPhase,
+    Timestamp, WheelEvent,
+};
 use zgui_platform_headless::Harness;
 
 #[repr(C)]
@@ -103,16 +107,46 @@ fn main() {
         .parse()
         .unwrap();
     assert!([200, 1000, 5000].contains(&cards));
-    let gate = std::env::args().any(|a| a == "check");
+    let args: Vec<_> = std::env::args().collect();
+    let gate = args.iter().any(|a| a == "check");
+    let cell = args
+        .get(2)
+        .filter(|x| x.as_str() != "check")
+        .map(String::as_str)
+        .unwrap_or("one");
+    if cell == "video" {
+        std::process::exit(2);
+    }
+    assert!(
+        [
+            "startup", "idle", "one", "many", "hover", "theme", "scroll", "resize"
+        ]
+        .contains(&cell)
+    );
+    let count = args
+        .get(3)
+        .and_then(|x| x.parse::<usize>().ok())
+        .unwrap_or(240);
+    let strip = cell == "scroll";
+    let thematic = cell == "theme";
+    let many = cell == "many";
+    let image_path = std::env::var("BOUGH_REFERENCE_TILE").ok();
+    let matched = image_path.is_some();
+    let startup = Instant::now();
+    let theme = RwSignal::new_local(false);
     let witness = gate.then(Witness::default);
     let renderer_witness = witness.clone();
     let moving = RwSignal::new_local(false);
     let css = "
         :root { background-color: #142638; }
+        .port { width: 100%; height: 100%; overflow: scroll; }
         .layer { position: relative; width: 640px; height: 400px; }
-        .card { position: absolute; width: 60px; height: 36px; border-radius: 6px;
+        .card:hover { background: #f0b65dd4 !important; }
+        .many-motion { width:55px !important; opacity:0.83; transform:translate(9px,-1px); }
+        .card { position: absolute; box-sizing: border-box; width: 60px; height: 36px; border-radius: 6px;
                 border: 1px solid #69849dd4; box-shadow: 2px 5px 8px 1px #00000048, -2px 2px 3px #070c142c;
-                transition: transform 300ms ease-in-out; }
+                transition: transform 300ms ease-in-out, opacity 300ms ease-in-out, width 300ms ease-in-out; }
+        .chip { position: absolute; left: 7px; top: 9px; width:12px; height:12px; }
         .moving { transform: translateX(10px); }
         .pane { position: absolute; left: 455px; top: 298px; width: 112px; height: 76px;
                 border-radius: 12px; backdrop-filter: blur(6px); background-color: #568cd15c; }
@@ -124,41 +158,144 @@ fn main() {
         .into_handler(move |cx: &mut BuildCx<'_>| -> Box<dyn Anchor> {
             let _effect = SDF.register();
             let mut layer = zgui::elements::column().class("layer");
+            if strip { layer = layer.style_text(Some(format!("height:{}px", cards.div_ceil(10)*40))); }
             for i in 0..cards {
-                let slot = i % 100;
-                let stagger = ((i / 100) % 8) as f32 * 0.25;
+                let slot = if strip { i } else { i % 100 };
+                let stagger = if strip { 0.0 } else { ((i / 100) % 8) as f32 * 0.25 };
                 let x = (slot % 10) as f32 * 64.0 + stagger;
                 let y = (slot / 10) as f32 * 40.0 + stagger;
                 let base = ((i as u32).wrapping_mul(0x0077_9b83) ^ 0x22b080) & 0xffffff;
                 let end = base ^ 0x3b2b18;
-                let mut card = zgui::elements::control().class("card").style_text(Some(format!(
-                    "left:{x}px;top:{y}px;background:linear-gradient(124deg,#{base:06x}d4,#{end:06x}c7)"
-                )));
+                let css = move || {
+                    let color = if thematic && theme.get() { base ^ 0x22105f } else { base };
+                    if matched {
+                        Some(format!("left:{x}px;top:{y}px;background:#{color:06x}d4;box-shadow:none"))
+                    } else {
+                        Some(format!("left:{x}px;top:{y}px;background:linear-gradient(124deg,#{color:06x}d4,#{end:06x}c7)"))
+                    }
+                };
+                let mut card = zgui::elements::control().class("card");
+                card = if thematic { card.style_text(css) } else { card.style_text(css()) };
                 if i + 1 == cards {
                     card = card.class_toggle(ClassName::new("moving"), move || moving.get());
+                } else if many {
+                    card = card.class_toggle(ClassName::new("many-motion"), move || moving.get());
+                }
+                if matched && i+1 < cards {
+                    card = card.child(zgui::elements::r#box().class("chip").style_text(Some(format!("background:#{base:06x}"))));
                 }
                 layer = layer.child(card);
+                if let Some(path) = image_path.as_ref().filter(|_| i.is_multiple_of(16)) {
+                    layer = layer.child(zgui::elements::image().src(Some(path.clone())).style_text(Some(format!(
+                        "position:absolute;left:{}px;top:{}px;width:12px;height:12px;pointer-events:none", x+34.0,y+12.0))));
+                }
             }
-            layer = layer.child(zgui::elements::control().class("pane"));
-            layer = layer.child(zgui::elements::control().class("sdf"));
-            Box::new(layer.into_view().build(cx))
+            if !matched {
+                layer = layer.child(zgui::elements::control().class("pane"));
+                layer = layer.child(zgui::elements::control().class("sdf"));
+            }
+            if strip {
+                Box::new(zgui::elements::column().class("port").child(layer).into_view().build(cx))
+            } else {
+                Box::new(layer.into_view().build(cx))
+            }
         }).expect("runtime");
     let mut harness = Harness::new(handler);
+    if matched {
+        harness.platform().offscreens()[0].set_refresh_rate_millihertz(Some(120_000));
+    }
     harness.deliver_to_first(SurfaceEvent::Resized(Size::new(
         DevicePx(640.0),
         DevicePx(400.0),
     )));
     harness.settle(512);
-    let baseline = harness.redraws_requested();
-    for k in 0..20 {
-        let start = Instant::now();
-        if k == 0 || k == 12 {
-            moving.set(k == 0);
+    if matched {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            harness.settle(64);
+            let report = harness.app_mut().windows_mut()[0].budget_report();
+            if report
+                .line(zgui::runtime::budget::CacheId::DecodedImages)
+                .report
+                .resident
+                > 0
+            {
+                break;
+            }
+            assert!(Instant::now() < deadline, "required PNG never decoded");
+            std::thread::yield_now();
         }
-        harness.advance(Duration::from_nanos(8_333_333));
+        if let Some(ref witness) = witness {
+            witness.borrow_mut().clear();
+        }
+    }
+    let baseline = harness.redraws_requested();
+    if cell == "startup" {
+        println!(
+            "zgui_sample,{cards},{cell},0,{},{}",
+            startup.elapsed().as_nanos(),
+            baseline
+        );
+        return;
+    }
+    if cell == "idle" {
+        let time = Instant::now();
+        harness.advance(Duration::from_secs(1));
+        harness.pump();
+        assert_eq!(baseline, harness.redraws_requested());
+        println!(
+            "zgui_sample,{cards},{cell},0,{},0",
+            time.elapsed().as_nanos()
+        );
+        return;
+    }
+    for k in 0..count {
+        let start = Instant::now();
+        match cell {
+            "one" | "many" if matches!(k % 40, 0 | 12) => moving.set(k % 40 == 0),
+            "theme" => theme.set(k % 2 == 0),
+            "hover" => {
+                let j = k % 40;
+                let j = if j < 20 { j } else { 39 - j };
+                harness.deliver_to_first(SurfaceEvent::Pointer {
+                    action: PointerAction::Moved,
+                    event: PointerEvent::mouse(Point::new(
+                        CssPx((j % 10) as f32 * 64.0 + 20.0),
+                        CssPx((j / 10) as f32 * 40.0 + 20.0),
+                    )),
+                    modifiers: Modifiers::NONE,
+                    timestamp: Timestamp::ORIGIN,
+                });
+            }
+            "scroll" => {
+                let delta = if k % 40 < 20 { -11.0 } else { 11.0 };
+                harness.deliver_to_first(SurfaceEvent::Wheel {
+                    event: WheelEvent {
+                        delta: ScrollDelta::Pixels(Size::new(CssPx(0.0), CssPx(delta))),
+                        phase: ScrollPhase::Discrete,
+                        position: Point::new(CssPx(100.0), CssPx(100.0)),
+                        id: PointerId::MOUSE,
+                        kind: PointerKind::Mouse,
+                    },
+                    modifiers: Modifiers::NONE,
+                    timestamp: Timestamp::ORIGIN,
+                });
+            }
+            "resize" => {
+                let (w, h) = if k % 2 == 0 {
+                    (704.0, 448.0)
+                } else {
+                    (640.0, 400.0)
+                };
+                harness
+                    .deliver_to_first(SurfaceEvent::Resized(Size::new(DevicePx(w), DevicePx(h))));
+            }
+            _ => {}
+        }
+        harness.advance(Duration::from_nanos(8_333_334));
         harness.pump();
         println!(
-            "zgui,{cards},{k},{},{}",
+            "zgui_sample,{cards},{cell},{k},{},{}",
             start.elapsed().as_nanos(),
             harness.redraws_requested()
         );

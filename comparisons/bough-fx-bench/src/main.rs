@@ -47,10 +47,10 @@ fn pointer(step: usize) -> (f32, f32) {
     )
 }
 
-fn input(a: &mut App<Scene>, cell: &str, step: usize, mutant: bool) -> bool {
+fn update(a: &mut App<Scene>, cell: &str, step: usize, mutant: bool) {
     match cell {
         "one" | "many" => {
-            if step % 40 == 0 || step % 40 == 12 {
+            if matches!(step % 40, 0 | 12) {
                 let target = if step.is_multiple_of(40) { 1 } else { -1 };
                 a.turn(|s| {
                     s.foreground.set(target as f32 * 10.0);
@@ -82,9 +82,36 @@ fn input(a: &mut App<Scene>, cell: &str, step: usize, mutant: bool) -> bool {
         }
         _ => unreachable!(),
     }
+}
+
+fn input(a: &mut App<Scene>, cell: &str, step: usize, mutant: bool) -> bool {
+    update(a, cell, step, mutant);
     let drawn = a.frame();
     a.wait_presented();
     drawn
+}
+
+fn profile_one(n: usize, iterations: usize, font: &[u8]) {
+    let mut app = mount(n, false, State::default(), 4, (WIDTH, HEIGHT), font);
+    assert!(app.frame());
+    app.wait_presented();
+    let floor = perf::tinstr_overhead();
+    for step in 0..iterations {
+        let a = perf::tinstr();
+        update(&mut app, "one", step, false);
+        let b = perf::tinstr();
+        app.frame();
+        let c = perf::tinstr();
+        app.wait_presented();
+        let d = perf::tinstr();
+        let staged = app.kernel.as_ref().map(|k| k.stats.staged).unwrap_or(0);
+        println!(
+            "facade_profile,{n},{step},{},{},{},{staged}",
+            b.saturating_sub(a + floor),
+            c.saturating_sub(b + floor),
+            d.saturating_sub(c + floor)
+        );
+    }
 }
 
 fn size_at(cell: &str, step: Option<usize>) -> (f32, f32) {
@@ -325,6 +352,8 @@ fn main() -> ExitCode {
             }
         }
         "measure" => measure(n, cell, 4, count, &font),
+        "profile" => profile_one(n, count, &font),
+        "profile-mount" => profile_one(n, 0, &font),
         "cold" => {
             assert_eq!((cell.as_str(), count), ("startup", 1));
             let mut app = mount(n, false, State::default(), 4, (WIDTH, HEIGHT), &font);
