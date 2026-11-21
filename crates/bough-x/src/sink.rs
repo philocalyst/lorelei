@@ -297,7 +297,32 @@ pub fn tid<T: ?Sized>() -> TypeId {
 
 /// The shape of a row: a record, a tuple of rows, or an array of rows. Its type fixes the sequence of
 /// archetypes, so the columns of a store are resolved once, when the row is first described.
-pub trait Row<V> {
+///
+/// # Safety
+/// The sinks and the composite rows (tuples, arrays, boxes) find a row's records by position: element `k`
+/// of a tuple is written at the sites after the `LEAVES` of the elements before it, and those sites were
+/// made by `visit`. An implementation therefore promises (soundness review S05):
+/// * `visit` reports exactly `LEAVES` leaves and holes, and the sequence of their archetypes, keys and
+///   handler faces depends on the type alone, never on the value;
+/// * `write` and `patch` touch only the `LEAVES` sites from `sites`, writing at each the record type its
+///   `visit` reported there.
+///
+/// A safe implementation whose `LEAVES` disagreed with `visit` used to shift a built-in record onto another
+/// archetype's column:
+///
+/// ```compile_fail,E0200
+/// use bough_x::prelude::*;
+/// use bough_x::sink::{Cx, Leaf, Mk};
+/// use bough_x::store::Site;
+/// struct Liar;
+/// impl<V> Row<V> for Liar {
+///     const LEAVES: u32 = 1;
+///     fn visit<L: Leaf<V>>(&self, _: &mut L) {}
+///     unsafe fn write(&self, _: *const Site, _: u32) {}
+///     unsafe fn patch(&self, _: *const Site, _: u32, _: &Mk, _: &mut Cx<'_>) {}
+/// }
+/// ```
+pub unsafe trait Row<V> {
     const LEAVES: u32;
     fn visit<L: Leaf<V>>(&self, l: &mut L);
     /// Write the row's operands into slot `slot`.
@@ -318,7 +343,8 @@ pub struct Mk {
     pub clip: Rect,
 }
 
-impl<V, A: Arch> Row<V> for A {
+// SAFETY: one leaf, of archetype `A`, written as an `A` at the one site.
+unsafe impl<V, A: Arch> Row<V> for A {
     const LEAVES: u32 = 1;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -333,6 +359,17 @@ impl<V, A: Arch> Row<V> for A {
     unsafe fn patch(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
         // SAFETY: as `write`.
         unsafe {
+            if !(*sites).is_init::<A>(slot) {
+                // Never written (a row a re-description appended, or one a panicking row function left
+                // behind): there is nothing to compare with, and reading the slot as an `A` would read a
+                // value that was never made (soundness review S04). It appears where it is.
+                let r = (*sites).rect(slot).shift(mk.org);
+                cx.tiles.mark(r.shift(self.offset(cx.u)).and(mk.clip));
+                cx.tiles.mark(r.and(mk.clip));
+                (*sites).write_record(slot, *self);
+                cx.changed += 1;
+                return;
+            }
             let p = (*sites).rec::<A>(slot);
             if A::STATE {
                 if !(*p).eq_ops(self) {
@@ -372,7 +409,8 @@ unsafe fn replace<A: Arch>(site: &Site, slot: u32, p: *mut A, a: A, mk: &Mk, cx:
     }
 }
 
-impl<V, X: Row<V>, const N: usize> Row<V> for [X; N] {
+// SAFETY: `N` elements, each of `X::LEAVES` sites, visited, written and patched in order.
+unsafe impl<V, X: Row<V>, const N: usize> Row<V> for [X; N] {
     const LEAVES: u32 = X::LEAVES * N as u32;
     #[inline(always)]
     fn visit<L: Leaf<V>>(&self, l: &mut L) {
@@ -398,7 +436,8 @@ impl<V, X: Row<V>, const N: usize> Row<V> for [X; N] {
 
 macro_rules! row_tuple {
     ($($t:ident)+) => {
-        impl<V, $($t: Row<V>),+> Row<V> for ($($t,)+) {
+        // SAFETY: the elements in order, each at the sites after the `LEAVES` of those before it.
+        unsafe impl<V, $($t: Row<V>),+> Row<V> for ($($t,)+) {
             const LEAVES: u32 = 0 $(+ $t::LEAVES)+;
             #[inline(always)]
             #[allow(non_snake_case)]
@@ -949,8 +988,12 @@ impl bough_lay::Out for Lanes {
     #[inline(always)]
     fn put(&mut self, k: usize, r: [i32; 4]) {
         // SAFETY: `k` is under the row's leaves (the layout and the row count alike, checked when the list's
-        // columns were made); the site is a record's and holds `slot`.
+        // columns were made), so `sites + k` is a site of the row. A hole (a scrolled box in the row) has no
+        // page: it is skipped (soundness review S13); any other site is a record's and holds `slot`.
         unsafe {
+            if (*self.sites.add(k)).col == u32::MAX {
+                return;
+            }
             (*self.sites.add(k)).set_rect(
                 self.slot,
                 Rect {
@@ -1357,7 +1400,11 @@ fn list_plan(
             if fresh {
                 let at = (l.x, l.y + r as i32 * l.row_h);
                 for (s, t) in st.sites[..leaves].iter().zip(l.shape) {
-                    // SAFETY: a site of this list; the slot is under `cap`.
+                    if s.col == u32::MAX {
+                        // a hole (a scrolled box in the row) has no page (soundness review S13)
+                        continue;
+                    }
+                    // SAFETY: a record's site of this list; the slot is under `cap`.
                     unsafe { s.set_rect(r & mask, t.shift(at)) }
                 }
             }

@@ -55,3 +55,5 @@ mutant_swept = []
 mutant_uniform = []
 # the clipped column walk loses the last record of every page (tests/each_in.rs must fail)
 mutant_each_in = []
+# a broad word's change damages nothing (tests/broad.rs must fail)
+mutant_broad = []

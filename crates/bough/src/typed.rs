@@ -384,7 +384,8 @@ impl<C> Shape for TLine<C> {
         ));
     }
 }
-impl<W, C: Expr<Out = XColor> + Copy + 'static> Row<W> for TLine<C> {
+// SAFETY (`Row`'s contract): one leaf, the line's record, visited, written and compared as that record.
+unsafe impl<W, C: Expr<Out = XColor> + Copy + 'static> Row<W> for TLine<C> {
     const LEAVES: u32 = 1;
     #[inline(always)]
     fn visit<L: Leaf<W>>(&self, l: &mut L) {
@@ -419,7 +420,8 @@ impl Shape for Nope {
     const HK: bough_lay::Hk = bough_lay::Hk::Fixed;
     fn emit<'a, S: bough_lay::shape::Sink<'a>>(&'a self, _: &mut S) {}
 }
-impl<W> Row<W> for Nope {
+// SAFETY (`Row`'s contract): no leaf; nothing is visited, written or compared.
+unsafe impl<W> Row<W> for Nope {
     const LEAVES: u32 = 0;
     fn visit<L: Leaf<W>>(&self, _: &mut L) {}
     unsafe fn write(&self, _: *const Site, _: u32) {}

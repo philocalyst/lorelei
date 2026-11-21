@@ -723,6 +723,10 @@ fn walk_owned<'w>(
                             // the row of the window that lives at this slot
                             st.lo + (slot + st.cap - st.lo % st.cap) % st.cap
                         };
+                        if !c.rec_init(rec) {
+                            // live, never written (soundness review S04): there is no record to read
+                            continue;
+                        }
                         let ptr = c.rec_ptr(rec);
                         // SAFETY: a site of this store, `slot` under its capacity, pointers current.
                         let rect = unsafe { st.sites[si as usize].rect(slot) };
