@@ -4,6 +4,283 @@ file	kind	scene	n	shape	script	cell	fields
 #fields	COUNT						counter per_frame
 #fields	LEDGER						store bytes
 #fields	COLUMN						index description
+effects-300.txt	SUMMARY	effects	300	sparse	published	idle	446	25	19	5640	5639	30498	17	3672	0.0	0.0	0.0	0.0	1578
+effects-300.txt	PHASE	effects	300	sparse	published	idle	0	harness_other	158	9626	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	idle	1	update_glue	281	5015	3.0
+effects-300.txt	PHASE	effects	300	sparse	published	idle	3	update_block_diff	63	1641	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	idle	5	update_layer_regeo_repack	28	1606	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	idle	12	prepare_glue	10	1588	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	idle	17	shade_admission_checks	278	1856	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	idle	21	shade_glue	2708	5864	2.0
+effects-300.txt	PHASE	effects	300	sparse	published	idle	22	harness_damage_tiles_clear	125	1703	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	idle	23	turn_script_set_retarget	21	1599	1.0
+effects-300.txt	COUNT	effects	300	sparse	published	idle	bin_calls	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	bin_records_walked	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	bin_records_live	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	bin_cells_count_pass	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	bin_cells_fill_pass	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	bin_list_entries	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	bin_tiles	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	window_records	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	window_columns	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	rewin_records	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	prefix_tiles	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	prefix_entries	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	out_tiles	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	out_entries	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	tent_blocks	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	tent_px	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	sched_calls	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	sched_events_seen	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	damage_adds	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	frames	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	prefix_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	out_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	backdrop_runs	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	idle	sched_layers_with_work	0.00
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	arena bytes (columns, lanes, records, tabs)	17039360
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	arena column words used (bytes)	55040
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layer pool (Vec len, bytes)	2470252
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layer pool (Vec capacity, bytes)	2470252
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layer pool words in use by allocator (bytes)	2470252
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layer pool live words (bytes)	2470252
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layer level capacity px*4 (sum cw*ch)	2470252
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layer level window px*4 (sum of level windows)	1914536
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layers (count)	25
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layer struct bytes (list)	11264
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	layers.of (by key)	3456
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	bins.list	18648
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	bins.off	4004
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	bins.count	4000
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	bins.floor	4000
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	bins.mark	1000
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	win lane	4096
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	cover lane	4096
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	halo lane	4096
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	order	2048
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	events/regeo/act scratch	10368
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	damage bitset (struct, approx)	1064
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	atlas	0
+effects-300.txt	LEDGER	effects	300	sparse	published	idle	tab region (bytes touched, upper bound used)	21768
+effects-300.txt	COLUMN	effects	300	sparse	published	idle	0	c0: records 1 (cap 64), words/record 2, layer false, Uw<3>>>
+effects-300.txt	COLUMN	effects	300	sparse	published	idle	1	c1: records 226 (cap 384), words/record 7, layer false, Uw<3>>>>>
+effects-300.txt	COLUMN	effects	300	sparse	published	idle	2	c2: records 100 (cap 320), words/record 7, layer false, Rec>>>
+effects-300.txt	COLUMN	effects	300	sparse	published	idle	3	c3: records 25 (cap 64), words/record 23, layer true, Rec>>>
+effects-300.txt	COLUMN	effects	300	sparse	published	idle	4	c4: records 19 (cap 64), words/record 3, layer false, Rec>>
+effects-300.txt	COLUMN	effects	300	sparse	published	idle	5	c5: records 75 (cap 128), words/record 11, layer false, Rec>>
+effects-300.txt	COLUMN	effects	300	sparse	published	idle	6	c6: records 0 (cap 64), words/record 3, layer false, Rec>
+effects-300.txt	SUMMARY	effects	300	sparse	published	one spring	446	25	20	68736608	67437859	70622367	1427	68371087	60.3	20.0	6.0	154.0	1578
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	0	harness_other	160	9628	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	1	update_glue	3778	96880	59.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	3	update_block_diff	256	1834	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	5	update_layer_regeo_repack	28	1606	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	6	bins_clear_resize	836	2414	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	7	bins_count_pass	140501	142079	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	8	bins_offsets	19534	21112	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	9	bins_fill_pass	162554	164132	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	10	layer_schedule_dependency	67204	106654	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	11	layer_damage_add_vis_events	7348	46798	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	12	prepare_glue	5924	319946	199.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	13	prefix_tile_setup(begin,cover,load)	10054	19522	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	14	prefix_store_layer	174648	184116	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	15	tent_pyramid_down	1669538	1912550	154.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	16	prefix_backdrop_flatten_sample	742897	752365	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	17	shade_admission_checks	1185	2763	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	18	out_tile_setup(begin,cover,load)	208253	303459	60.3
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	19	out_tile_store	478914	574120	60.3
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	20	out_backdrop_flatten_sample	7672076	7727306	35.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	21	shade_glue	22722	672595	411.8
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	22	harness_damage_tiles_clear	933	2511	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	23	turn_script_set_retarget	34	1612	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	36	window_pass[c4]	6498	8076	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	37	window_pass[c5]	1210	2788	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	64	prefix_shade[c0]	13124	22592	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	65	prefix_shade[c1]	5480009	5498945	12.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	66	prefix_shade[c2]	571124	574280	2.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	67	prefix_shade[c3]	36498	55434	12.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	68	prefix_shade[c4]	362778	372246	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	96	out_shade[c0]	112849	197009	53.3
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	97	out_shade[c1]	39994026	40158664	104.3
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	98	out_shade[c2]	7789923	7869349	50.3
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	99	out_shade[c3]	305954	416414	70.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	100	out_shade[c4]	2285632	2353486	43.0
+effects-300.txt	PHASE	effects	300	sparse	published	one spring	101	out_shade[c5]	22082	27079	3.2
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	bin_calls	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	bin_records_walked	446.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	bin_records_live	446.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	bin_cells_count_pass	4849.17
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	bin_cells_fill_pass	4849.17
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	bin_list_entries	4663.17
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	bin_tiles	1000.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	window_records	20.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	window_columns	2.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	rewin_records	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	prefix_tiles	6.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	prefix_entries	36.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	out_tiles	60.33
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	out_entries	335.17
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	tent_blocks	154.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	tent_px	5865.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	sched_calls	25.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	sched_events_seen	1585.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	damage_adds	53.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	frames	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	prefix_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	out_from_stored	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	backdrop_runs	41.00
+effects-300.txt	COUNT	effects	300	sparse	published	one spring	sched_layers_with_work	1.00
+effects-300.txt	SUMMARY	effects	300	sparse	published	hover above glass	446	25	19	11232079	11231501	11596420	231	11231902	6.0	226.0	0.0	0.0	1578
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	0	harness_other	158	9626	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	1	update_glue	793	86005	54.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	3	update_block_diff	256	1834	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	5	update_layer_regeo_repack	28	1606	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	10	layer_schedule_dependency	9752	49202	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	11	layer_damage_add_vis_events	375	39825	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	12	prepare_glue	10	1588	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	17	shade_admission_checks	370	1948	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	18	out_tile_setup(begin,cover,load)	12184	21652	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	19	out_tile_store	47526	56994	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	20	out_backdrop_flatten_sample	2216290	2230492	9.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	21	shade_glue	4917	82239	49.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	22	harness_damage_tiles_clear	207	1785	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	23	turn_script_set_retarget	28	1606	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	33	window_pass[c1]	19415	20993	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	96	out_shade[c0]	7869	14181	4.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	97	out_shade[c1]	8025383	8052209	17.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	98	out_shade[c2]	831982	839872	5.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover above glass	99	out_shade[c3]	54359	82763	18.0
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	bin_calls	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	bin_records_walked	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	bin_records_live	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	bin_cells_count_pass	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	bin_cells_fill_pass	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	bin_list_entries	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	bin_tiles	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	window_records	226.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	window_columns	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	rewin_records	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	prefix_tiles	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	prefix_entries	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	out_tiles	6.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	out_entries	42.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	tent_blocks	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	tent_px	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	sched_calls	25.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	sched_events_seen	25.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	damage_adds	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	frames	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	prefix_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	out_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	backdrop_runs	9.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover above glass	sched_layers_with_work	0.00
+effects-300.txt	SUMMARY	effects	300	sparse	published	hover beneath glass	446	25	19	85529386	85518113	88281605	1725	85559555	36.0	226.0	27.0	337.0	1578
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	0	harness_other	160	9628	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	1	update_glue	4892	90104	54.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	3	update_block_diff	256	1834	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	5	update_layer_regeo_repack	28	1606	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	10	layer_schedule_dependency	139820	179270	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	11	layer_damage_add_vis_events	14296	53746	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	12	prepare_glue	11928	781992	488.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	13	prefix_tile_setup(begin,cover,load)	42698	85304	27.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	14	prefix_store_layer	785917	828523	27.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	15	tent_pyramid_down	4763509	5295295	337.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	16	prefix_backdrop_flatten_sample	2205910	2223268	11.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	17	shade_admission_checks	820	2398	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	18	out_tile_setup(begin,cover,load)	63350	120158	36.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	19	out_tile_store	285157	341965	36.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	20	out_backdrop_flatten_sample	10438363	10512529	47.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	21	shade_glue	14220	424500	260.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	22	harness_damage_tiles_clear	601	2179	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	23	turn_script_set_retarget	27	1605	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	33	window_pass[c1]	19589	21167	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	64	prefix_shade[c0]	53307	92757	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	65	prefix_shade[c1]	19500551	19568405	43.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	66	prefix_shade[c2]	3448240	3475066	17.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	67	prefix_shade[c3]	79442	114158	22.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	96	out_shade[c0]	61969	109309	30.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	97	out_shade[c1]	39954907	40092193	87.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	98	out_shade[c2]	3285804	3320520	22.0
+effects-300.txt	PHASE	effects	300	sparse	published	hover beneath glass	99	out_shade[c3]	383794	532126	94.0
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	bin_calls	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	bin_records_walked	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	bin_records_live	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	bin_cells_count_pass	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	bin_cells_fill_pass	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	bin_list_entries	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	bin_tiles	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	window_records	226.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	window_columns	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	rewin_records	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	prefix_tiles	27.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	prefix_entries	118.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	out_tiles	36.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	out_entries	233.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	tent_blocks	337.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	tent_px	16793.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	sched_calls	25.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	sched_events_seen	2485.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	damage_adds	105.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	frames	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	prefix_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	out_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	backdrop_runs	58.00
+effects-300.txt	COUNT	effects	300	sparse	published	hover beneath glass	sched_layers_with_work	2.00
+effects-300.txt	SUMMARY	effects	300	sparse	published	glass moves 1 px	446	25	19	55847133	53404415	57743423	1135	55952393	29.8	0.0	8.2	191.8	1578
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	0	harness_other	160	9628	6.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	1	update_glue	3599	95123	58.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	3	update_block_diff	63	1641	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	4	update_rewin_touched	1561	3139	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	5	update_layer_regeo_repack	1084	2662	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	6	bins_clear_resize	831	2409	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	7	bins_count_pass	140496	142074	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	8	bins_offsets	20824	22402	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	9	bins_fill_pass	162736	164314	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	10	layer_schedule_dependency	83516	122966	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	11	layer_damage_add_vis_events	8339	47789	25.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	12	prepare_glue	7479	404478	251.6
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	13	prefix_tile_setup(begin,cover,load)	15236	28255	8.2
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	14	prefix_store_layer	240141	253160	8.2
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	15	tent_pyramid_down	2250047	2552760	191.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	16	prefix_backdrop_flatten_sample	2213105	2225598	7.9
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	17	shade_admission_checks	728	2306	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	18	out_tile_setup(begin,cover,load)	53719	100796	29.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	19	out_tile_store	236471	283548	29.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	20	out_backdrop_flatten_sample	10462015	10521584	37.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	21	shade_glue	13423	344408	209.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	22	harness_damage_tiles_clear	521	2099	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	23	turn_script_set_retarget	209	1787	1.0
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	64	prefix_shade[c0]	15791	28809	8.2
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	65	prefix_shade[c1]	6881645	6911890	19.2
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	66	prefix_shade[c2]	990118	1001033	6.9
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	67	prefix_shade[c3]	84144	109129	15.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	96	out_shade[c0]	47898	85506	23.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	97	out_shade[c1]	29249882	29356791	67.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	98	out_shade[c2]	2371343	2400931	18.8
+effects-300.txt	PHASE	effects	300	sparse	published	glass moves 1 px	99	out_shade[c3]	395270	514409	75.5
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	bin_calls	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	bin_records_walked	446.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	bin_records_live	446.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	bin_cells_count_pass	4849.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	bin_cells_fill_pass	4849.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	bin_list_entries	4663.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	bin_tiles	1000.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	window_records	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	window_columns	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	rewin_records	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	prefix_tiles	8.25
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	prefix_entries	50.25
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	out_tiles	29.83
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	out_entries	179.08
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	tent_blocks	191.83
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	tent_px	7875.25
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	sched_calls	25.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	sched_events_seen	1472.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	damage_adds	61.75
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	frames	1.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	prefix_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	out_from_stored	0.00
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	backdrop_runs	45.67
+effects-300.txt	COUNT	effects	300	sparse	published	glass moves 1 px	sched_layers_with_work	1.08
 pane-300.txt	SUMMARY	pane	300	sparse	published	idle	379	1	0	5799	5783	30498	17	3689	0.0	0.0	0.0	0.0	1577
 pane-300.txt	PHASE	pane	300	sparse	published	idle	0	harness_other	164	9626	6.0
 pane-300.txt	PHASE	pane	300	sparse	published	idle	1	update_glue	284	5015	3.0

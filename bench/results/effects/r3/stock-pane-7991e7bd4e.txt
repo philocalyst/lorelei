@@ -1,0 +1,46 @@
+## fxbench pane 300 @7991e7bd4e  6:43  up 4 days,  9:35, 1 user, load averages: 63.81 53.74 51.17
+# fxbench pane 300; 1280x800; reps 24; load at start: 41.05 49.82 53.20
+# scene: 379 records in 7 columns, 1 layers, 1 glass / 75 dots / 0 videos; media pool 0 slots
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch
+pane	300	idle	cpu1	0.0	0.0	0.0	0.0	0	46275	0	5.5	5.5	6.3	0	0	0
+pane	300	idle	cpu1-nocache	14.0	0.0	36.0	132.0	9411	46275	0	39479.5	39473.9	39481.9	1773	0	0
+pane	300	idle	metal	0.0	0.0	0.0	0.0	0	46275	0	52.5	51.0	52.9	49	0	0
+pane	300	one spring	cpu1	2.8	1.0	0.0	0.0	0	46275	1	690.8	690.3	1240.9	33	0	0
+pane	300	one spring	cpu1-nocache	16.8	1.0	36.0	132.0	9411	46275	1	40162.3	40152.6	40707.2	1848	0	0
+pane	300	one spring	metal	2.8	1.0	0.0	0.0	0	46275	1	346.7	66.8	336.7	409	89	0
+pane	300	all springs	cpu1	32.7	38.0	0.0	0.0	0	46275	38	19614.5	9394.5	19024.3	1038	0	0
+pane	300	all springs	cpu1-nocache	46.7	38.0	36.0	132.0	9411	46275	38	59083.5	48854.5	58493.5	2864	0	0
+pane	300	all springs	metal	32.7	38.0	0.0	0.0	0	46275	38	385.6	378.3	386.3	475	172	0
+pane	300	hover above glass	cpu1	6.0	202.0	0.0	0.0	0	46275	0	11208.2	11207.6	11208.9	501	0	0
+pane	300	hover above glass	cpu1-nocache	14.0	202.0	36.0	132.0	9411	46275	0	39486.5	39485.5	39491.1	1772	0	0
+pane	300	hover above glass	metal	6.0	202.0	0.0	0.0	0	46275	0	84.9	83.5	86.0	584	278	0
+pane	300	hover beneath glass	cpu1	22.0	202.0	16.0	116.0	7281	46275	0	43888.9	43879.9	43888.9	1992	0	0
+pane	300	hover beneath glass	cpu1-nocache	22.0	202.0	36.0	132.0	9411	46275	0	51493.7	51484.0	51492.8	2312	0	0
+pane	300	hover beneath glass	metal	22.0	202.0	16.0	116.0	7281	46275	0	159.3	158.3	160.3	756	462	0
+pane	300	glass moves 1 px	cpu1	15.7	0.0	0.2	2.0	80	46275	0	21831.6	19941.1	21629.0	1018	0	0
+pane	300	glass moves 1 px	cpu1-nocache	15.7	0.0	36.5	133.5	9482	46275	0	41888.2	39745.4	41459.5	1842	0	0
+pane	300	glass moves 1 px	metal	15.7	0.0	0.2	2.0	80	46275	0	356.9	354.7	359.5	629	308	0
+# mismatching words in total: 0; load at end: 39.36 49.32 53.00
+## fxbench pane 3000 @7991e7bd4e  7:01  up 4 days,  9:54, 1 user, load averages: 39.36 49.32 53.00
+# fxbench pane 3000; 1280x800; reps 24; load at start: 53.96 36.34 33.41
+# scene: 3754 records in 7 columns, 1 layers, 1 glass / 750 dots / 0 videos; media pool 0 slots
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch
+pane	3000	idle	cpu1	0.0	0.0	0.0	0.0	0	46275	0	5.4	5.4	5.8	1	0	0
+pane	3000	idle	cpu1-nocache	14.0	0.0	36.0	132.0	9411	46275	0	39477.2	39471.6	39475.3	2124	0	0
+pane	3000	idle	metal	0.0	0.0	0.0	0.0	0	46275	0	53.9	44.9	58.8	217	0	0
+pane	3000	one spring	cpu1	2.8	1.0	0.0	0.0	0	46275	1	921.0	920.4	1461.5	54	0	0
+pane	3000	one spring	cpu1-nocache	16.8	1.0	36.0	132.0	9411	46275	1	40388.4	40382.3	40929.1	2311	0	0
+pane	3000	one spring	metal	2.8	1.0	0.0	0.0	0	46275	1	597.0	68.0	573.4	1456	86	0
+pane	3000	all springs	cpu1	32.7	375.0	0.0	0.0	0	46275	375	20065.9	9862.0	19488.0	1386	0	0
+pane	3000	all springs	cpu1-nocache	46.7	375.0	36.0	132.0	9411	46275	375	59529.0	49401.4	58964.7	3525	0	0
+pane	3000	all springs	metal	32.7	375.0	0.0	0.0	0	46275	375	873.2	833.4	875.4	774	174	0
+pane	3000	hover above glass	cpu1	6.0	2002.0	0.0	0.0	0	46275	0	11359.2	11358.7	11361.3	609	0	0
+pane	3000	hover above glass	cpu1-nocache	14.0	2002.0	36.0	132.0	9411	46275	0	39642.7	39637.1	39678.7	2268	0	0
+pane	3000	hover above glass	metal	6.0	2002.0	0.0	0.0	0	46275	0	249.7	236.2	253.1	1149	278	0
+pane	3000	hover beneath glass	cpu1	22.0	2002.0	16.0	116.0	7281	46275	0	44036.8	44031.2	44044.8	2414	0	0
+pane	3000	hover beneath glass	cpu1-nocache	22.0	2002.0	36.0	132.0	9411	46275	0	51645.4	51635.3	51678.3	2960	0	0
+pane	3000	hover beneath glass	metal	22.0	2002.0	16.0	116.0	7281	46275	0	329.6	313.0	333.7	4034	470	0
+pane	3000	glass moves 1 px	cpu1	15.7	0.0	0.2	2.0	80	46275	0	22061.3	20172.1	21860.5	1228	0	0
+pane	3000	glass moves 1 px	cpu1-nocache	15.7	0.0	36.5	133.5	9482	46275	0	42153.4	39981.6	41777.7	2266	0	0
+pane	3000	glass moves 1 px	metal	15.7	0.0	0.2	2.0	80	46275	0	618.4	597.6	628.1	2601	309	0
+# mismatching words in total: 0; load at end: 53.08 36.46 33.47
