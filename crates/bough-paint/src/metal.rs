@@ -467,7 +467,7 @@ static inline void markv(device metal::atomic_uint* DMG, metal::int4 w, uint TX,
         if (x + 1 < wn.x || x >= wn.z || y + 1 < wn.y || y >= wn.w) { continue; }
         uint o = ORDER[z], idx = o & IDXMASK;
         switch (o >> IDXBITS) {
-"#,
+"#
         });
         for (k, d) in descs.iter().enumerate() {
             write!(s, "        case {k}u: {{ {}", record(k, &lays[k])).unwrap();
@@ -802,7 +802,7 @@ impl Gpu {
             device.newComputePipelineStateWithFunction_error(&f).unwrap_or_else(|e| panic!("{name}: {e}"))
         };
         let (shade, pick, bin, compact, tab) = (pso("k_shade"), pso("k_pick"), pso("k_bin"), pso("k_compact"), pso("k_tab"));
-        let (seg, down) = (pso("k_seg"), pso("k_down"));
+        let (seg, down, pan) = (pso("k_seg"), pso("k_down"), pso("k_pan"));
         let rk = [pso("k_rc0"), pso("k_segr"), pso("k_downr"), pso("k_rcout"), pso("k_rfin")];
         let icb_pipelines = (|| {
             if !device.supportsFamily(MTLGPUFamily::Apple4) {
@@ -825,7 +825,7 @@ impl Gpu {
             device,
             queue,
             shade,
-            pan: pso("k_pan"),
+            pan,
             world_seen: None,
             world_uploads: 0,
             pick,
