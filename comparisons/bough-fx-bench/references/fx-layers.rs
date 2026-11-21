@@ -110,22 +110,23 @@ fn world(seed: u64, fw: u32, fh: u32) -> World {
         let (x, y) = if g.u(3) == 0 { (32.0 * g.u(fw / 32 + 1) as f32 - g.u(2) as f32, 32.0 * g.u(fh / 32 + 1) as f32 - g.u(2) as f32) } else { (g.pos(-10.0, w), g.pos(-10.0, h)) };
         let (bw, bh) = if g.u(3) == 0 { (g.pos(1.0, 4.0), g.pos(1.0, 4.0)) } else { (g.pos(3.0, 70.0), g.pos(3.0, 60.0)) };
         let rad = [0, q(2.0), q(9.0), q(9999.0)][g.u(4) as usize];
-        wd.bx.push(Bx { rect: [q(x), q(y), q(x + bw), q(y + bh)], rad, c: g.color(i < 3 || g.u(3) != 0) });
+        let opaque = i < 3 || g.u(3) != 0;
+        wd.bx.push(Bx { rect: [q(x), q(y), q(x + bw), q(y + bh)], rad, c: g.color(opaque) });
     }
-    let pane = |g: &mut Rng, x: f32, y: f32, bw: f32, bh: f32, blur: f32| {
+    let pane = |x: f32, y: f32, bw: f32, bh: f32, blur: f32, g: &mut Rng| {
         let rect = [q(x), q(y), q(x + bw), q(y + bh)];
         Gl { rect, rad: [0, q(6.0), q(14.0), q(40.0)][g.u(4) as usize], blur: q(blur), f: FILTERS[g.u(5) as usize], tint: g.color(false) & 0x50ff_ffff }
     };
     let (x0, y0) = (g.pos(0.0, w * 0.4), g.pos(0.0, h * 0.4));
     let (w0, h0) = (g.pos(w * 0.3, w * 0.6), g.pos(h * 0.3, h * 0.6));
-    wd.gl.push(pane(&mut g, x0, y0, w0, h0, BLURS[g.u(24) as usize]));
+    wd.gl.push(pane(x0, y0, w0, h0, BLURS[g.u(24) as usize], &mut g));
     // overlapping the first, partly outside it
-    wd.gl.push(pane(&mut g, x0 + w0 * 0.5, y0 + h0 * 0.3, g.pos(30.0, w * 0.5), g.pos(24.0, h * 0.5), BLURS[g.u(24) as usize]));
+    wd.gl.push(pane(x0 + w0 * 0.5, y0 + h0 * 0.3, g.pos(30.0, w * 0.5), g.pos(24.0, h * 0.5), BLURS[g.u(24) as usize], &mut g));
     // nested: wholly inside the second
     let r1 = wd.gl[1].rect;
-    wd.gl.push(pane(&mut g, r1[0] as f32 / 256.0 + 6.0, r1[1] as f32 / 256.0 + 5.0, 18.0, 15.0, BLURS[g.u(24) as usize]));
+    wd.gl.push(pane(r1[0] as f32 / 256.0 + 6.0, r1[1] as f32 / 256.0 + 5.0, 18.0, 15.0, BLURS[g.u(24) as usize], &mut g));
     // a big one over (nearly) everything
-    wd.gl.push(pane(&mut g, g.pos(0.0, 9.0), g.pos(0.0, 9.0), w - 4.0, h - 4.0, BLURS[g.u(24) as usize]));
+    wd.gl.push(pane(g.pos(0.0, 9.0), g.pos(0.0, 9.0), w - 4.0, h - 4.0, BLURS[g.u(24) as usize], &mut g));
     for _ in 0..2 {
         let (x, y) = (g.pos(0.0, w * 0.5), g.pos(0.0, h * 0.5));
         wd.sl.push(Sl { rect: [q(x), q(y), q(x + g.pos(20.0, w * 0.5)), q(y + g.pos(16.0, h * 0.5))], rad: q(g.f(0.0, 20.0)) });
@@ -292,7 +293,10 @@ fn step(g: &mut Rng, u: &mut U, wd: &mut World, b: &mut Built, fw: u32, fh: u32)
                     let (x, y) = (32 * g.u(w as u32 / 32 + 1) as i32 - g.u(2) as i32, 32 * g.u(h as u32 / 32 + 1) as i32 - g.u(2) as i32);
                     bxr.rect = [q(x as f32), q(y as f32), q(x as f32 + 1.0 + g.u(3) as f32), q(y as f32 + 1.0 + g.u(3) as f32)];
                 }
-                1 => bxr.c = g.color(g.u(2) == 0),
+                1 => {
+                    let opaque = g.u(2) == 0;
+                    bxr.c = g.color(opaque);
+                }
                 2 => bxr.rect = sane(shift(bxr.rect, [-256, 256, 0, 32 * 256][g.u(4) as usize], [0, 0, -256, 256][g.u(4) as usize]), false),
                 _ => bxr.rad = [0, q(2.0), q(9999.0)][g.u(3) as usize],
             }
