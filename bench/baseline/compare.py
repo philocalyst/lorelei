@@ -28,7 +28,7 @@ def metric(value, repetitions=None):
 
 def validate(doc):
     version, cells = doc["format"], doc["cells"]
-    if version not in (1, 2) or not isinstance(cells, dict) or not cells or doc.get("errors") != []:
+    if type(version) is not int or version not in (1, 2) or not isinstance(cells, dict) or not cells or doc.get("errors") != []:
         raise ValueError("empty, unsupported, or failed receipt")
     if type(doc["load"]["ok"]) is not bool or not doc["host"] or not doc["rustc"]:
         raise ValueError("incomplete receipt identity")
@@ -36,10 +36,18 @@ def validate(doc):
         if type(doc["reps"]) is not int or doc["reps"] <= 0:
             raise ValueError("invalid repetitions")
         for name, cell in cells.items():
-            if cell.get("valid") is not True:
+            if cell.get("valid") is not True or len(cell["load"]) != doc["reps"]:
                 raise ValueError(f"invalid or incomplete cell {name}")
+            for key in ("instructions", "wall_ms", "rss_bytes"):
+                if metric(cell["process"][key], doc["reps"])["min"] == 0:
+                    raise ValueError(f"zero process {key} for {name}")
             if not cell["operations"] and cell["parser"] != "pbench":
                 raise ValueError(f"{name} has no operation counters")
+            for op, counters in cell["operations"].items():
+                if not (set(PRIMARY) - {"dispatch_allocs"}) & set(counters):
+                    raise ValueError(f"{name}/{op} has no operation instruction counter")
+                for value in counters.values():
+                    metric(value, doc["reps"])
 
 
 def ratio(base, head):

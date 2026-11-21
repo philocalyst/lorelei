@@ -37,7 +37,7 @@ class CompareTests(unittest.TestCase):
             "contract": "test", "runtime_inputs": {}, "reps": 3,
             "binaries": {"sheet_x": {"cargo_args": ["--profile", "dist"]}},
             "cells": {self.cid: {
-                "valid": True, "binary": "sheet_x", "argv": [], "env": {"ROWS": "10000"},
+                "valid": True, "load": [25.0] * 3, "binary": "sheet_x", "argv": [], "env": {"ROWS": "10000"},
                 "parser": "sheet", "counter_scope": "thread", "check": [], "operations": {"hover": {"instr_p50": summary([13504] * 3)}},
                 "process": {k: summary([99999] * 3) for k in ("instructions", "wall_ms", "rss_bytes")},
             }},

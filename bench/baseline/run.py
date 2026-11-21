@@ -267,6 +267,7 @@ def main():
     for suffix in (".json", ".md"):
         (out / (args.name + suffix)).unlink(missing_ok=True)
     toolchain = fetch(["rustc", "-vV"], worktree)
+    harness = {name: digest(Path(__file__).with_name(name)) for name in ("run.py", "operations.py")}
     host = {"os": platform.mac_ver()[0], "machine": platform.machine(),
             "cpu": fetch(["sysctl", "-n", "machdep.cpu.brand_string"]), "cpus": os.cpu_count()}
     runtime_inputs = {}
@@ -335,7 +336,7 @@ def main():
     peak_load = max(load_before[0], load_after[0], *(v for cell in results.values() for v in cell["load"]))
     doc = {
         "format": 2, "name": args.name, "commit": build_source["commit"], "source": build_source,
-        "rustc": toolchain, "host": host, "reps": args.reps, "order": order,
+        "rustc": toolchain, "host": host, "harness": harness, "reps": args.reps, "order": order,
         "load": {"before": load_before, "after": load_after, "peak": peak_load, "ceiling": 2.0, "ok": peak_load <= 2.0},
         "runtime_inputs": runtime_inputs, "binaries": manifest, "cells": results, "errors": errors,
         "unavailable": unavailable, "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
