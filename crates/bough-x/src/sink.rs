@@ -710,16 +710,16 @@ pub fn exposed(l: &List<'_>, org: (i32, i32), clip: Rect) -> (u32, u32) {
     let Some(ext) = bough_lay::Uniform::new(l.n, l.row_h) else {
         return (0, 0);
     };
-    let top = clip.y0 as i64 - org.1 as i64 - l.y as i64;
-    let h = clip.y1 - clip.y0;
+    let origin = i64::from(org.1) + i64::from(l.y);
+    let top = i64::from(clip.y0) - origin;
+    let bottom = i64::from(clip.y1) - origin;
     if top >= ext.total() {
         return (l.n, l.n);
     }
-    if h <= 0 || top + h as i64 <= 0 {
+    if bottom <= top || bottom <= 0 || l.n == 0 {
         return (0, 0);
     }
-    let (lo, hi, _) = ext.window(top, h);
-    (lo, hi)
+    (ext.row_at(top), ext.row_at(bottom - 1) + 1)
 }
 
 /// A list as described: rows of a positive height (review L03: a height of 0 divided where the list was
