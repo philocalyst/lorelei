@@ -151,8 +151,8 @@ impl Fixture {
     fn step(&mut self, k: usize, u: &mut U) {
         let now = (k * 1_000 / 120) as u32;
         u.w[U_TIME] = now;
-        if k == 1 || k == 12 {
-            let target = if k == 1 { 10.0 } else { -10.0 };
+        if matches!(k % 40, 1 | 12) {
+            let target = if k % 40 == 1 { 10.0 } else { -10.0 };
             self.x.retarget(Response::SNAPPY, now, q(target));
             self.scene.set(
                 self.panels,
@@ -170,10 +170,15 @@ impl Fixture {
 
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    let [mode, cards] = &args[..] else {
-        panic!("usage: fx_bench check|measure CARDS");
+    let [mode, cards, rest @ ..] = &args[..] else {
+        panic!("usage: fx_bench check|measure CARDS [SAMPLES]");
     };
     let cards = cards.parse::<usize>().unwrap();
+    let steps = rest
+        .first()
+        .map(|s| s.parse::<usize>().unwrap())
+        .unwrap_or(20);
+    assert!(steps >= 20);
     assert!([200, 1000, 5000].contains(&cards));
     assert!(mode == "check" || mode == "measure");
     let check = mode == "check";
@@ -189,7 +194,7 @@ fn main() {
     let mut reference = check.then(|| Fixture::new(cards));
     let mut reference_words = U::default();
     let mut reference_pixels = if check { vec![0; W * H] } else { Vec::new() };
-    for k in 0..=20 {
+    for k in 0..=steps {
         let a0 = perf::snap();
         let start = Instant::now();
         f.step(k, &mut u);
@@ -241,7 +246,7 @@ fn main() {
             if k == 0 {
                 witness = px;
             }
-            if k == 20 {
+            if k == steps {
                 assert_ne!(px, witness, "glass over video never changed");
             }
         } else if k > 0 {

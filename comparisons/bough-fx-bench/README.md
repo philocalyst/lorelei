@@ -40,3 +40,18 @@ lockf -k "$HOME/work/locks/bench.lock" sh -c '
 ```
 
 The zgx probe checks output change and retained equality against a fresh renderer at the final step. The zgui probe checks pixel hashes in normal and forced-full mode. Use `release/solfx CARD_COUNT check` and replay with `ZGUI_FULL_DAMAGE=1`, then compare the `zgui_pixel` rows. Common GPU completion timing boundaries, more than one animation trace and reference video remain needed for matched ranking. The supplementary adapters expose their coverage in the report.
+
+## Round 2 attribution and revision replay
+
+`profile-one.sh` takes a directory containing the façade and typed-core executables. It runs the original 20-tick trace plus a separate mount bracket with CPU1 selected for the façade. Pass `BOUGH_FX_SAMPLES=240` to the façade runner for the long repeat. The default is 240. The runners retain the shared lock for a complete batch to avoid long gaps between cells on a busy host.
+
+```sh
+comparisons/bough-fx-bench/scripts/profile-one.sh "$CARGO_TARGET_DIR/release"
+comparisons/bough-fx-bench/scripts/build-revision.sh 71ee3be0aa
+comparisons/bough-fx-bench/scripts/build-revision.sh 62d53d3abe
+export BOUGH_REFERENCE_TILE="$PWD/comparisons/bough-fx-bench/src/tile.png"
+comparisons/bough-fx-bench/scripts/run-reference-suite.sh runtime/effects-refs
+python3 comparisons/bough-fx-bench/scripts/matrix.py BASELINE_DIR WAVE3_DIR runtime/effects-refs
+```
+
+The revision builder copies the same harness to an archive of each production revision and builds into separate subdirectories of `CARGO_TARGET_DIR`. Set it to the revision's artifact subdirectory while running `run.sh` or pass the actual typed-core executable to `run-revision-core.sh`. The reference suite executes 240 active input steps and checks independently rendered full frames. zgui's PNG variant uses the native loader and sets the headless refresh to 120 Hz. The zgx video adapter uses the staged fixture's NV12 input pattern, converted to RGBA before updating its image leaf. Each adapter records submitted or requested frame counts. The rendering paths, cadence, animation semantics and video representations have different measured scopes. See the report's validity column before using any timing comparison.

@@ -1,0 +1,6 @@
+ 5:16  up 4 days,  8:09, 5 users, load averages: 19.62 18.95 20.54
+Sampling process 69143 for 1 second with 1 millisecond of run time between samples
+Sampling completed, processing symbols...
+Sample analysis of process 69143 written to file runtime/round2/sample-core-long.txt
+sample_exit=0 run_exit=0
+ 5:16  up 4 days,  8:09, 5 users, load averages: 19.41 18.92 20.52

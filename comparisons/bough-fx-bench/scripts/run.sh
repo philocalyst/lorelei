@@ -4,6 +4,9 @@ set -eu
 : "${CARGO_TARGET_DIR:?Set the isolated target directory}"
 lock=${BOUGH_BENCH_LOCK:-$HOME/work/locks/bench.lock}
 samples=${BOUGH_FX_SAMPLES:-240}
+if [ "${2:-}" != --locked ]; then
+    exec lockf -k "$lock" "$0" "$1" --locked
+fi
 bin=$CARGO_TARGET_DIR/release/bough-fx-bench
 out=${1:?Pass a directory for logs}
 mkdir -p "$out"
@@ -16,8 +19,7 @@ for n in 200 1000 5000; do
         if "$bin" check "$n" "$cell" 20 > "$stem.gate" 2>&1; then
             count=$samples
             if [ "$cell" = idle ]; then count=1; fi
-            if lockf -k "$lock" sh -c 'uptime; "$@"; r=$?; uptime; exit "$r"' sh \
-                    "$bin" measure "$n" "$cell" "$count" > "$stem.csv" 2>&1; then
+            if (uptime; rc=0; "$bin" measure "$n" "$cell" "$count" || rc=$?; uptime; exit "$rc") > "$stem.csv" 2>&1; then
                 printf '%s,%s,measured\n' "$n" "$cell"
             else
                 printf '%s,%s,timing_failed,%s\n' "$n" "$cell" "$?"

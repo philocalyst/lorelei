@@ -4,6 +4,9 @@ set -eu
 output=${1:?Pass output directory}
 mkdir -p "$output"
 lock=${BOUGH_BENCH_LOCK:-$HOME/work/locks/bench.lock}
+if [ "${2:-}" != --locked ]; then
+    exec lockf -k "$lock" "$0" "$1" --locked
+fi
 for framework in zgui zgx; do
     if [ "$framework" = zgui ]; then
         binary=$CARGO_TARGET_DIR/release/solfx
@@ -14,7 +17,7 @@ for framework in zgui zgx; do
     for n in 200 1000 5000; do
         for cell in startup idle one many hover theme scroll resize video; do
             base=$output/$framework-$n-$cell
-            lockf -k "$lock" sh -c '
+            sh -c '
                 framework=$1 binary=$2 n=$3 cell=$4 base=$5
                 uptime
                 "$binary" "$n" "$cell" 40 check > "$base.retained" 2>&1
