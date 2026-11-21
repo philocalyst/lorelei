@@ -1,0 +1,32 @@
+ 4:24  up 4 days,  7:16, 5 users, load averages: 22.27 21.19 18.80
+idle_frames=0
+mount instructions=431727625 ns=32044334 rss=66387968 footprint=57295616 records=50011 rows=10000
+
+thread 'main' panicked at crates/bough-mem/src/lib.rs:251:9:
+bough-mem: column `glyph_x` is full (capacity 524288, need 524304); raise it in the region layout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+ 4:24  up 4 days,  7:16, 5 users, load averages: 22.27 21.19 18.80
+idle_frames=1
+mount instructions=425592677 ns=28458833 rss=67731456 footprint=58622696 records=50011 rows=10000
+
+thread 'main' panicked at crates/bough-mem/src/lib.rs:251:9:
+bough-mem: column `glyph_x` is full (capacity 524288, need 524304); raise it in the region layout
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+ 4:24  up 4 days,  7:16, 5 users, load averages: 22.27 21.19 18.80
+idle_frames=4
+mount instructions=425490749 ns=28978084 rss=65896448 footprint=56820504 records=50011 rows=10000
+perop op=filter render=false med=192950153 lo=192725430 hi=192950153 records=50011 frames=13
+exit=0
+ 4:24  up 4 days,  7:16, 5 users, load averages: 22.27 21.19 18.80
+idle_frames=8
+mount instructions=427245448 ns=29664875 rss=68812800 footprint=59720448 records=50011 rows=10000
+perop op=filter render=false med=192891751 lo=192772417 hi=192891751 records=50011 frames=13
+exit=0
+ 4:24  up 4 days,  7:16, 5 users, load averages: 22.27 21.19 18.80
+idle_frames=16
+mount instructions=423518953 ns=28944584 rss=66404352 footprint=57328408 records=50011 rows=10000
+perop op=filter render=false med=192961325 lo=192902032 hi=192961325 records=50011 frames=13
+exit=0
+ 4:24  up 4 days,  7:16, 5 users, load averages: 22.27 21.19 18.80
