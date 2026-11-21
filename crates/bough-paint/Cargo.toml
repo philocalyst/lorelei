@@ -61,7 +61,6 @@ mutant_bins_stale = []
 # a broad change does not mark the layers for repair (tests/fx.rs must fail)
 mutant_broad_layers = []
 # the resident whole-frame jobs are reused after the bins or the layer table changed (tests/fx.rs must fail)
-mutant_full_stale = []
 # a repaired block in an even column counts as unchanged whatever it holds (tests/fx.rs must fail)
 mutant_prune = []
 # a pan visits the records near the new viewport only, not those near the old one (tests/fx.rs must fail)

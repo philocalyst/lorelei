@@ -792,6 +792,10 @@ pub struct Scene {
     /// The executor finds the layers an event reaches itself (`metal::Gpu::resident`): `update` does not
     /// route events to layers. The CPU's `prepare` must not be used while this is set.
     pub route_off: bool,
+    /// Measurement switch, never a result's configuration: events are routed without the cover certificate.
+    pub no_cert: bool,
+    /// This frame's events are routed with the certificate (`update` decides).
+    cert: bool,
     /// Measurement switch, never a result's configuration: every layer is recomputed whole on every
     /// frame and no tile restarts from a stored prefix (what a compositor that redraws its layers does).
     pub fx_nocache: bool,
@@ -904,6 +908,8 @@ impl Scene {
             lane_mark: Vec::new(),
             lane_all: true,
             route_off: false,
+            no_cert: false,
+            cert: true,
             fx_nocache: std::env::var("BOUGH_FX_NOCACHE").is_ok(),
             broad: 0,
             media: crate::media::Pool::new(0),
@@ -1303,6 +1309,10 @@ impl Scene {
                 self.lane_dirty.push(z);
             }
         }
+        // the certificate is a scan per event and tile of what lies above the event: when a good part of
+        // the scene moved (the same line the bins draw between editing and rebuilding) what is above moved
+        // too and the scan proves nothing (measured at 600 dense: a pan's turn 13.9 M without it, 18.3 M with)
+        self.cert = !self.no_cert && rebin.len() * 4 <= self.order.len();
         if moved {
             let lanes = Lanes { win: &self.win, cover: &self.cover, halo: &self.halo, lay: &self.layers.of, cut: self.cut };
             // edits pay per moved record and tile; when a good part of the scene moved (a pan) one pass over
@@ -1338,7 +1348,7 @@ impl Scene {
             }
             self.lay_todo.extend(regeo.iter().map(|&z| self.layers.lid(z)));
             for &(w, z) in events.iter().filter(|_| !self.route_off) {
-                Self::route(&self.bins, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
             }
         }
         (fs.prefix_tiles, fs.blocks, fs.layer_px) = (self.plan.prefix_tiles, self.plan.blocks, self.plan.px);
@@ -1349,7 +1359,7 @@ impl Scene {
     }
     /// An event (a window that changed, and its record's key) reaches the layers above it on the tiles it
     /// touches: their level-0 tiles there are due.
-    fn route(bins: &Bins, cover: &[[i16; 4]], layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, tx: i32, ty: i32, w: [i32; 4], z: u32) {
+    fn route(bins: &Bins, cert: bool, cover: &[[i16; 4]], layers: &mut Layers, todo: &mut std::collections::BTreeSet<u32>, tx: i32, ty: i32, w: [i32; 4], z: u32) {
         for y in (w[1] >> 5).max(0)..((w[3] + 31) >> 5).min(ty) {
             for x in (w[0] >> 5).max(0)..((w[2] + 31) >> 5).min(tx) {
                 let t = (y * tx + x) as usize;
@@ -1358,7 +1368,7 @@ impl Scene {
                 if from == ls.len() {
                     continue;
                 }
-                let stop = if std::env::var_os("NOCERT").is_some() { u32::MAX } else { bins.cover_above(t, z, w, cover, *ls.last().unwrap()) };
+                let stop = if cert { bins.cover_above(t, z, w, cover, *ls.last().unwrap()) } else { u32::MAX };
                 for &lz in &ls[from..] {
                     if lz > stop {
                         break;
@@ -1384,7 +1394,7 @@ impl Scene {
             let z = self.layers.list[lid as usize].z;
             for r in &outs {
                 self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                Self::route(&self.bins, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
             }
         }
         self.lay_todo = todo;
@@ -1419,7 +1429,7 @@ impl Scene {
         let events = std::mem::take(&mut self.events);
         if self.layers.any() && !self.plan.full {
             for &(w, z) in &events {
-                Self::route(&self.bins, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut self.lay_todo, self.tx as i32, self.ty as i32, w, z);
             }
         }
         self.events = events;
@@ -1691,7 +1701,7 @@ impl Scene {
             let z = self.layers.list[lid as usize].z;
             for r in &outs {
                 self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
-                Self::route(&self.bins, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
+                Self::route(&self.bins, self.cert, &self.cover, &mut self.layers, &mut todo, self.tx as i32, self.ty as i32, *r, z);
             }
         }
         self.layers.pool = pool;

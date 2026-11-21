@@ -434,6 +434,7 @@ enum Exec {
 fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Pool) -> (Row, usize) {
     let mut w = make();
     w.s.fx_nocache = exec == Exec::CpuNoCache;
+    w.s.no_cert = std::env::var("NOCERT").is_ok();
     // the theme's mix word (word 3) is broad: no geometry reads it
     w.s.broad = 1 << 3 | 1 << 4 | 1 << 5 | 1 << 6;
     let words = (FW * FH) as usize;
