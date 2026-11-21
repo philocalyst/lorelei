@@ -104,6 +104,19 @@ pub trait Sink<V>: Sized + for<'r> ScopeOf<'r, V> {
     /// is described; every other sink ignores the location, and after inlining it is not there.
     #[track_caller]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, f: F);
+    /// Whether this sink holds the fixed row of this scope from an earlier pass, so that one record of it can
+    /// be brought up to date alone ([`Sink::leaf`]) instead of the whole row being described.
+    #[inline(always)]
+    fn keeps(&self) -> bool {
+        false
+    }
+    /// Record `k` of this scope's first fixed row is `a` now: stored and damaged if it differs from what the
+    /// row holds, exactly as [`Sink::row`] would do for that record; the row's other records and every rect
+    /// are left as they are. Only for a sink that [`Sink::keeps`]. The record's type is checked against the
+    /// column the row was made with.
+    fn leaf<A: Arch>(&mut self, _k: usize, _a: &A) {
+        unimplemented!("this sink does not keep rows")
+    }
     /// A child with its own coordinate space (a clip, a scroll offset read from the block).
     #[track_caller]
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(
@@ -654,6 +667,24 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
                 self.cx.regroup = true;
             }
         }
+    }
+    #[inline(always)]
+    fn keeps(&self) -> bool {
+        !self.fresh && self.rowc == 0 && !self.st.rows.is_empty()
+    }
+    #[inline]
+    fn leaf<A: Arch>(&mut self, k: usize, a: &A) {
+        let p0 = self.st.rows[0].1 as usize;
+        let end = self.st.rows.get(1).map_or(self.st.sites.len(), |r| r.1 as usize);
+        assert!(p0 + k < end, "a record past the fixed row");
+        let site = self.st.sites[p0 + k];
+        assert!(
+            site.col != u32::MAX && self.st.cols[site.col as usize].arch == TypeId::of::<A>(),
+            "a record of another type than the row's column"
+        );
+        // SAFETY: the site is record `k` of this store's first row (in range, above), not a hole, and its
+        // column was made for archetype `A` (checked above); slot 0 is the fixed row's slot.
+        unsafe { <A as Row<V>>::patch(a, &site, 0, &self.mk, self.cx) }
     }
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(
         &mut self,

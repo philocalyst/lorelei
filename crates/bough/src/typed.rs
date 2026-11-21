@@ -73,9 +73,10 @@ struct SlotEnt {
     write: unsafe fn(*mut u8, u32),
 }
 
+#[doc(hidden)]
 /// What conversions consult while a view is being described: the run store, the block words assigned so far,
 /// the row being described, refusals.
-struct Shared {
+pub struct Shared {
     text: Rc<RefCell<TextSys>>,
     slots: RefCell<Vec<SlotEnt>>,
     refused: RefCell<Vec<&'static str>>,
@@ -90,6 +91,10 @@ struct Shared {
     /// the text the description under way is at.
     tape: RefCell<Vec<TapeEnt>>,
     ti: Cell<usize>,
+    /// What the last description said of every other operand of the fixed part: the layout specs as the
+    /// author gave them, and the paint operands as words (`Up`).
+    specs: RefCell<Vec<crate::layout::Spec>>,
+    ops: RefCell<Vec<u32>>,
     /// The layout words of the fixed part as last solved, with the rects they gave.
     lay: RefCell<LayMemo>,
     /// The lists of the view in description order: each one's journal, fed from the `List`'s own log.
@@ -323,19 +328,31 @@ impl<C: Expr<Out = XColor>> Expr for HSel<C> {
 /// A colour operand of the façade as a colour expression.
 pub trait TColor<O>: Sized {
     type E: Expr<Out = XColor> + Copy + 'static;
-    fn expr(self) -> Self::E;
+    fn expr(&self) -> Self::E;
+    /// What the operand is, as two words that are equal exactly when two descriptions' operands evaluate
+    /// alike for every block: a constant's value, a bound signal's block word. `None`: not known to be the
+    /// same as anything (a projection whose function captures values).
+    fn ident(&self) -> Option<[u32; 2]>;
 }
 impl<O> TColor<O> for Color {
     type E = XColor;
     #[inline(always)]
-    fn expr(self) -> XColor {
+    fn expr(&self) -> XColor {
         XColor(self.0)
     }
+    #[inline(always)]
+    fn ident(&self) -> Option<[u32; 2]> {
+        Some([0, self.0])
+    }
+}
+/// The identity of a bound signal as an operand: its block word, or (not a block word) its value now.
+fn dy_ident(slot: u32, val: u32) -> [u32; 2] {
+    if slot == NONE { [1, val] } else { [2, slot] }
 }
 impl<'a, O: 'static> TColor<O> for Wired<'a, Color, O> {
     type E = Dy<Color, fn(&Color) -> Color>;
-    fn expr(self) -> Self::E {
-        let (slot, val) = slot_of(&self);
+    fn expr(&self) -> Self::E {
+        let (slot, val) = slot_of(self);
         Dy {
             slot,
             val,
@@ -343,12 +360,16 @@ impl<'a, O: 'static> TColor<O> for Wired<'a, Color, O> {
             _t: PhantomData,
         }
     }
+    fn ident(&self) -> Option<[u32; 2]> {
+        let (slot, val) = slot_of(self);
+        Some(dy_ident(slot, val))
+    }
 }
 impl<'a, T: Wordy, O: 'static, F: Fn(&T) -> Color + Copy + 'static> TColor<O>
     for WMap<'a, T, O, F>
 {
     type E = Dy<T, F>;
-    fn expr(self) -> Self::E {
+    fn expr(&self) -> Self::E {
         let (slot, val) = slot_of(&self.w);
         Dy {
             slot,
@@ -356,6 +377,13 @@ impl<'a, T: Wordy, O: 'static, F: Fn(&T) -> Color + Copy + 'static> TColor<O>
             f: self.f,
             _t: PhantomData,
         }
+    }
+    fn ident(&self) -> Option<[u32; 2]> {
+        // a function that captures nothing is its type, and the type is the column's
+        (size_of::<F>() == 0).then(|| {
+            let (slot, val) = slot_of(&self.w);
+            dy_ident(slot, val)
+        })
     }
 }
 
@@ -603,9 +631,7 @@ impl<V: View> bough_x::sink::View for Ty<V> {
                 self.sh.text.borrow_mut().begin_pass();
             }
             mark(ph::ENTER);
-            let e = root_el(&self.v);
-            mark(ph::VIEW);
-            drive(e, s)
+            describe::<V, _, S>(&self.sh, self.v.view(), s)
         })
     }
 }
@@ -748,15 +774,143 @@ impl<V: View, C: Expr<Out = XColor> + Copy + 'static> Handler<Ty<V>, PBox<HSel<C
 pub trait Typed<V: View, R: Reach<V>>: Sized {
     type El: Part<Ty<V>> + Shape;
     fn typed(self) -> Self::El;
+    /// Whether the element can be read where it is ([`Typed::up`], [`Typed::lists`]); if not, a description
+    /// of a view that holds it is always the conversion.
+    const BY_REF: bool;
+    /// The update walk: this element's operands against what the last description said of them ([`Up`]).
+    fn up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>);
+    /// Reach the element's lists (and nothing else of it): `k` counts the records passed, `rects` are the
+    /// fixed part's (or `None` for a sink that keeps what it was told).
+    fn lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk);
 }
 /// The children of a box.
 pub trait TKids<V: View, R: Reach<V>>: Sized {
     type K: Part<Ty<V>> + bough_lay::shape::ShapeKids;
     fn kids(self) -> Self::K;
+    const BY_REF: bool;
+    fn up_kids<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>);
+    fn lists_kids<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk);
 }
 impl<V: View, R: Reach<V>> TKids<V, R> for () {
     type K = ();
     fn kids(self) {}
+    const BY_REF: bool = true;
+    fn up_kids<Sk: Sink<Ty<V>>>(&self, _: &mut Up<'_, V, Sk>) {}
+    fn lists_kids<Sk: Sink<Ty<V>>>(&self, _: Option<&[Rect]>, _: &mut usize, _: &mut Sk) {}
+}
+
+/// The update walk over the fixed part of a view (Integration Card 5).
+///
+/// The element value a view returns is read where it is, operand by operand in description order, against
+/// what the last description said (the tapes in [`Shared`]): layout specs as the author gave them, paint
+/// operands as words, texts by their bytes. An operand that differs is stored on the tape; if it is a paint
+/// operand its one record is brought up to date through the sink ([`Sink::leaf`]); if it is a layout word (a
+/// spec, a text's width) or something the walk cannot patch, the walk is a `miss` and the description falls
+/// back to the conversion (which reads the same tapes). A walk with no miss has described the fixed part:
+/// nothing was converted, laid out or compared record by record.
+pub struct Up<'s, V: View, S> {
+    sh: &'s Shared,
+    specs: std::cell::RefMut<'s, Vec<crate::layout::Spec>>,
+    ops: std::cell::RefMut<'s, Vec<u32>>,
+    si: usize,
+    oi: usize,
+    /// The record the walk is at (records are in description order: a box, then its children).
+    k: usize,
+    miss: bool,
+    /// The sink, if it keeps the fixed row (else the walk only writes the tapes).
+    sink: Option<&'s mut S>,
+    _v: PhantomData<fn(&V)>,
+}
+impl<'s, V: View, S: Sink<Ty<V>>> Up<'s, V, S> {
+    fn new(sh: &'s Shared, sink: Option<&'s mut S>) -> Self {
+        Up {
+            sh,
+            specs: sh.specs.borrow_mut(),
+            ops: sh.ops.borrow_mut(),
+            si: 0,
+            oi: 0,
+            k: 0,
+            miss: false,
+            sink,
+            _v: PhantomData,
+        }
+    }
+    /// A layout spec: one that differs is a miss.
+    #[inline(always)]
+    fn spec(&mut self, spec: &crate::layout::Spec) {
+        match self.specs.get_mut(self.si) {
+            Some(kept) if spec_same(kept, spec) => {}
+            Some(kept) => {
+                *kept = *spec;
+                self.miss = true;
+            }
+            None => {
+                self.specs.push(*spec);
+                self.miss = true;
+            }
+        }
+        self.si += 1;
+    }
+    /// A paint operand: whether it is the word the tape held.
+    #[inline(always)]
+    fn word(&mut self, w: u32) -> bool {
+        let same = match self.ops.get_mut(self.oi) {
+            Some(kept) if *kept == w => true,
+            Some(kept) => {
+                *kept = w;
+                false
+            }
+            None => {
+                self.ops.push(w);
+                false
+            }
+        };
+        self.oi += 1;
+        same
+    }
+    /// Several paint operands at once: whether they are the words the tape held.
+    #[inline(always)]
+    fn words<const N: usize>(&mut self, w: [u32; N]) -> bool {
+        let at = self.oi;
+        self.oi += N;
+        match self.ops.get_mut(at..at + N) {
+            Some(kept) if *kept == w => true,
+            Some(kept) => {
+                kept.copy_from_slice(&w);
+                false
+            }
+            None => {
+                self.ops.truncate(at);
+                self.ops.extend_from_slice(&w);
+                false
+            }
+        }
+    }
+    /// An operand whose change the walk cannot patch.
+    #[inline(always)]
+    fn must(&mut self, w: u32) {
+        if !self.word(w) {
+            self.miss = true;
+        }
+    }
+    /// A colour operand as tape words, and whether its identity is known at all (an operand of unknown
+    /// identity is never the one the tape held).
+    #[inline(always)]
+    fn color<O, C: TColor<O>>(c: &C) -> ([u32; 2], bool) {
+        match c.ident() {
+            Some(w) => (w, true),
+            None => ([u32::MAX, 0], false),
+        }
+    }
+    /// The record the walk is at is `a` now (called when one of its operands differed).
+    #[inline(always)]
+    fn leaf<A: Arch>(&mut self, a: &A) {
+        if !self.miss
+            && let Some(s) = self.sink.as_deref_mut()
+        {
+            s.leaf(self.k, a)
+        }
+    }
 }
 macro_rules! kids_tuple {
     ($($t:ident),+) => {
@@ -766,6 +920,19 @@ macro_rules! kids_tuple {
             fn kids(self) -> Self::K {
                 let ($($t,)+) = self;
                 ($($t.kids(),)+)
+            }
+            const BY_REF: bool = true $(&& $t::BY_REF)+;
+            #[allow(non_snake_case)]
+            #[inline(always)]
+            fn up_kids<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+                let ($($t,)+) = self;
+                $($t.up_kids(u);)+
+            }
+            #[allow(non_snake_case)]
+            #[inline(always)]
+            fn lists_kids<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+                let ($($t,)+) = self;
+                $($t.lists_kids(rects, k, s);)+
             }
         }
     };
@@ -788,6 +955,15 @@ macro_rules! kid {
             type K = <$t as Typed<V, R>>::El;
             fn kids(self) -> Self::K {
                 self.typed()
+            }
+            const BY_REF: bool = <$t as Typed<V, R>>::BY_REF;
+            #[inline(always)]
+            fn up_kids<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+                self.up(u)
+            }
+            #[inline(always)]
+            fn lists_kids<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+                self.lists(rects, k, s)
             }
         }
     };
@@ -827,17 +1003,63 @@ impl<V: View, R: Reach<V>, Bg: TColor<R::O>, Ch: TKids<V, R>> Typed<V, R> for LB
             self.ch.kids(),
         )
     }
+    const BY_REF: bool = Ch::BY_REF;
+    #[inline(always)]
+    fn up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+        u.spec(&self.spec);
+        let ([c0, c1], known) = Up::<V, Sk>::color(&self.bg);
+        let [d, r, bw, bc] = box_words(self.draw, self.radius, self.border);
+        if !(u.words([c0, c1, d, r, bw, bc]) & known) {
+            u.leaf(&pbox(self.bg.expr(), self.draw, self.radius, self.border).0);
+        }
+        u.k += 1;
+        self.ch.up_kids(u);
+    }
+    #[inline(always)]
+    fn lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+        *k += 1;
+        self.ch.lists_kids(rects, k, s);
+    }
+}
+/// Whether two specs are the same bytes (a spec's bytes are its identity: `layout::Spec::bytes`), compared as
+/// words in line: 21 of them, no call.
+#[inline(always)]
+fn spec_same(a: &crate::layout::Spec, b: &crate::layout::Spec) -> bool {
+    const N: usize = crate::layout::SPEC_BYTES / 4;
+    const { assert!(crate::layout::SPEC_BYTES % 4 == 0 && align_of::<crate::layout::Spec>() == 4) };
+    // SAFETY: a `Spec` is `SPEC_BYTES` initialised bytes with no padding at alignment 4 (the constants beside
+    // the struct check it at compile time, and `Spec::bytes` relies on the same), so it is `N` valid `u32`s.
+    let (a, b) = unsafe {
+        (
+            &*(a as *const crate::layout::Spec as *const [u32; N]),
+            &*(b as *const crate::layout::Spec as *const [u32; N]),
+        )
+    };
+    let mut d = 0u32;
+    for i in 0..N {
+        d |= a[i] ^ b[i];
+    }
+    d == 0
+}
+/// A box's constant paint operands as tape words.
+#[inline(always)]
+fn box_words(draw: bool, radius: f32, border: Option<(f32, Color)>) -> [u32; 4] {
+    let (bw, bc) = border.map_or((u32::MAX, 0), |(w, c)| (w.to_bits(), c.0));
+    [draw as u32, radius.to_bits(), bw, bc]
 }
 
 impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Para<S, C> {
     type El = TLine<C::E>;
     fn typed(self) -> Self::El {
-        let (scale, text) = with(|sh| (sh.scale.get(), sh.text.clone()));
+        let scale = with(|sh| sh.scale.get());
         if self.wrap {
             refuse("para (wrapped text)");
         }
         let (size, lh) = (self.size * scale, self.lh * scale);
-        let (run, w, base) = line_run(&text, self.s, size, lh);
+        let key = <S as TKey<R::O>>::key(&self.s);
+        let src = self.s;
+        let Line { run, w, base, .. } =
+            with(|sh| line_step(sh, key, size, lh, |g| src.with_str(|t| g(t))));
         TLine {
             spec: crate::lower::lay_spec(&self.spec, scale),
             w,
@@ -848,6 +1070,43 @@ impl<V: View, R: Reach<V>, S: TextSrc<R::O>, C: TColor<R::O>> Typed<V, R> for Pa
                 c: self.color.expr(),
             },
         }
+    }
+    const BY_REF: bool = true;
+    #[inline(always)]
+    fn up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+        u.spec(&self.spec);
+        let ([c0, c1], known) = Up::<V, Sk>::color(&self.color);
+        // (a line that wraps is refused at mount: a description that asks for it later is not a patch)
+        if !u.word(self.wrap as u32) {
+            u.miss = true;
+        }
+        let same_c = u.words([c0, c1]) & known;
+        if !<S as TPeek<R::O>>::REF {
+            // read only by value: the conversion describes it (and keeps its tape entry)
+            u.sh.ti.set(u.sh.ti.get() + 1);
+            u.miss = true;
+        } else {
+            let scale = u.sh.scale.get();
+            let (size, lh) = (self.size * scale, self.lh * scale);
+            let key = <S as TKey<R::O>>::key(&self.s);
+            let l = line_step(u.sh, key, size, lh, |g| self.s.peek(g));
+            if !l.same_w {
+                // the text's width is a layout word
+                u.miss = true;
+            }
+            if !(l.same & same_c) {
+                u.leaf(&PLine {
+                    run: l.run,
+                    base: l.base,
+                    c: self.color.expr(),
+                });
+            }
+        }
+        u.k += 1;
+    }
+    #[inline(always)]
+    fn lists<Sk: Sink<Ty<V>>>(&self, _: Option<&[Rect]>, k: &mut usize, _: &mut Sk) {
+        *k += 1;
     }
 }
 
@@ -874,112 +1133,183 @@ impl<'a, T: Wordy, O, F: Fn(&T) -> String + Copy + 'static> TKey<O> for WMap<'a,
     }
 }
 
+/// A text source read where it is (the update walk reads the element by reference). A source with no such
+/// reading (`REF` false) is described the long way every time.
+pub trait TPeek<O>: TextSrc<O> {
+    const REF: bool;
+    fn peek(&self, f: &mut dyn FnMut(&str));
+}
+impl<O, S: TextSrc<O>> TPeek<O> for S {
+    default const REF: bool = false;
+    default fn peek(&self, _: &mut dyn FnMut(&str)) {
+        unreachable!("a text source that is only read by value")
+    }
+}
+impl<O> TPeek<O> for &str {
+    const REF: bool = true;
+    #[inline(always)]
+    fn peek(&self, f: &mut dyn FnMut(&str)) {
+        f(self)
+    }
+}
+impl<O> TPeek<O> for String {
+    const REF: bool = true;
+    #[inline(always)]
+    fn peek(&self, f: &mut dyn FnMut(&str)) {
+        f(self)
+    }
+}
+impl<O> TPeek<O> for &Signal<String> {
+    const REF: bool = true;
+    #[inline(always)]
+    fn peek(&self, f: &mut dyn FnMut(&str)) {
+        f(self)
+    }
+}
+impl<'a, O> TPeek<O> for Wired<'a, String, O> {
+    const REF: bool = true;
+    #[inline(always)]
+    fn peek(&self, f: &mut dyn FnMut(&str)) {
+        f(self.get())
+    }
+}
+impl<'a, T: 'static, O, F: Fn(&T) -> String + Copy + 'static> TPeek<O> for WMap<'a, T, O, F> {
+    const REF: bool = true;
+    #[inline(always)]
+    fn peek(&self, f: &mut dyn FnMut(&str)) {
+        f(&(self.f)(self.w.get()))
+    }
+}
+macro_rules! int_peek {
+    ($($t:ty),*) => {$(
+        impl<O> TPeek<O> for $t {
+            const REF: bool = true;
+            #[inline(always)]
+            fn peek(&self, f: &mut dyn FnMut(&str)) {
+                f(crate::elem::decimal(*self as i128, &mut [0u8; 40]))
+            }
+        }
+    )*};
+}
+int_peek!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
+
+/// What a text is now: its run, its width, where its baseline is; whether the tape held exactly that (`same`)
+/// and whether its width and line height are what the tape held (`same_w`: its layout words).
+struct Line {
+    run: (u32, u32),
+    w: f32,
+    base: i32,
+    same: bool,
+    same_w: bool,
+}
+
 /// The run of a line of text, its width and where its baseline is.
 ///
 /// In the fixed part of a view the k-th text is the same call site in every description, so what the last
 /// description said of it is kept (the tape): if this description says the same bytes at the same size (or,
 /// for a projection of a word, the same word) the kept run is the answer and nothing is hashed, shaped or
 /// formatted. A text of a list row, a text that differs and every text of an oracle's pass go to the run
-/// store by their bytes.
-fn line_run<O, S: TextSrc<O>>(
-    text: &Rc<RefCell<TextSys>>,
-    src: S,
+/// store by their bytes. `read` lends the text.
+fn line_step(
+    sh: &Shared,
+    key: u64,
     size: f32,
     lh: f32,
-) -> ((u32, u32), f32, i32) {
+    read: impl FnOnce(&mut dyn FnMut(&str)),
+) -> Line {
     let fresh = |t: &str| {
-        let mut ts = text.borrow_mut();
+        let mut ts = sh.text.borrow_mut();
         mark(ph::VIEW);
         let run = ts.run(t, size);
         mark(ph::SHAPE);
+        let mut p = sh.pass.get();
+        p.lookups += 1;
+        sh.pass.set(p);
         (
             run,
             ts.get(run.0, run.1).map_or(0.0, |r| r.w).ceil(),
             ts.baseline(size, lh),
         )
     };
-    let k = with(|sh| {
-        if sh.plain.get() || sh.row.get().3 != 0 {
-            let mut p = sh.pass.get();
-            p.lookups += 1;
-            sh.pass.set(p);
-            return None;
-        }
-        let k = sh.ti.get();
-        sh.ti.set(k + 1);
-        Some(k)
-    });
-    let Some(k) = k else {
-        return src.with_str(fresh);
-    };
-    let key = <S as TKey<O>>::key(&src);
+    if sh.plain.get() || sh.row.get().3 != 0 {
+        let mut out = None;
+        read(&mut |t| out = Some(fresh(t)));
+        let (run, w, base) = out.expect("a text source lends its text");
+        return Line {
+            run,
+            w,
+            base,
+            same: false,
+            same_w: false,
+        };
+    }
+    let k = sh.ti.get();
+    sh.ti.set(k + 1);
     let (sb, lb) = (size.to_bits(), lh.to_bits());
     let hit = |e: &TapeEnt| {
-        text.borrow_mut().touch(e.run.0);
-        with(|sh| {
-            let mut p = sh.pass.get();
-            p.taped += 1;
-            sh.pass.set(p);
-        });
-        (e.run, e.w, e.base)
+        sh.text.borrow_mut().touch(e.run.0);
+        let mut p = sh.pass.get();
+        p.taped += 1;
+        sh.pass.set(p);
+        Line {
+            run: e.run,
+            w: e.w,
+            base: e.base,
+            same: true,
+            same_w: true,
+        }
     };
     if key != 0 {
-        let kept = with(|sh| {
-            sh.tape
-                .borrow()
-                .get(k)
-                .filter(|e| e.key == key && (e.size, e.lh) == (sb, lb))
-                .map(hit)
-        });
-        if let Some(r) = kept {
-            return r;
+        let tape = sh.tape.borrow();
+        if let Some(e) = tape
+            .get(k)
+            .filter(|e| e.key == key && (e.size, e.lh) == (sb, lb))
+        {
+            return hit(e);
         }
     }
-    src.with_str(|t| {
-        let kept = with(|sh| {
-            sh.tape
-                .borrow()
-                .get(k)
-                .filter(|e| {
-                    (e.size, e.lh) == (sb, lb)
-                        && (cfg!(feature = "mutant_typed_tape") || *e.text == *t)
-                })
-                .map(hit)
-        });
-        if let Some(r) = kept {
+    let mut out = None;
+    read(&mut |t| {
+        let mut tape = sh.tape.borrow_mut();
+        if let Some(e) = tape.get_mut(k).filter(|e| {
+            (e.size, e.lh) == (sb, lb) && (cfg!(feature = "mutant_typed_tape") || *e.text == *t)
+        }) {
             // the same bytes under another word: the entry answers that word too from now on
-            if key != 0 {
-                with(|sh| sh.tape.borrow_mut()[k].key = key);
-            }
-            return r;
+            e.key = key;
+            out = Some(hit(e));
+            return;
         }
         let (run, w, base) = fresh(t);
-        with(|sh| {
-            let mut p = sh.pass.get();
-            p.lookups += 1;
-            sh.pass.set(p);
-            let ent = TapeEnt {
-                text: t.into(),
-                key,
-                size: sb,
-                lh: lb,
-                run,
-                w,
-                base,
-            };
-            let mut tape = sh.tape.borrow_mut();
-            assert!(
-                k <= tape.len(),
-                "the fixed part's texts are described in one order"
-            );
-            if k == tape.len() {
-                tape.push(ent);
-            } else {
-                tape[k] = ent;
-            }
+        let same_w = tape
+            .get(k)
+            .is_some_and(|e| (e.lh, e.w.to_bits()) == (lb, w.to_bits()));
+        let ent = TapeEnt {
+            text: t.into(),
+            key,
+            size: sb,
+            lh: lb,
+            run,
+            w,
+            base,
+        };
+        assert!(
+            k <= tape.len(),
+            "the fixed part's texts are described in one order"
+        );
+        if k == tape.len() {
+            tape.push(ent);
+        } else {
+            tape[k] = ent;
+        }
+        out = Some(Line {
+            run,
+            w,
+            base,
+            same: false,
+            same_w,
         });
-        (run, w, base)
-    })
+    });
+    out.expect("a text source lends its text")
 }
 
 fn at_row() -> (u32, u32, u32) {
@@ -998,6 +1328,16 @@ where
     fn typed(self) -> Self::El {
         Hd(self.0.typed(), HClick(self.1.0, at_row(), PhantomData))
     }
+    // a handler that captures values is stored with its record: only the conversion writes it
+    const BY_REF: bool = E::BY_REF && size_of::<F>() == 0;
+    #[inline(always)]
+    fn up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+        self.0.up(u)
+    }
+    #[inline(always)]
+    fn lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+        self.0.lists(rects, k, s)
+    }
 }
 macro_rules! on_ev {
     ($op:ident, $k:expr) => {
@@ -1010,6 +1350,15 @@ macro_rules! on_ev {
             type El = Hd<E::El, HEv<F, R, { $k }>>;
             fn typed(self) -> Self::El {
                 Hd(self.0.typed(), HEv(self.1.0, at_row(), PhantomData))
+            }
+            const BY_REF: bool = E::BY_REF && size_of::<F>() == 0;
+            #[inline(always)]
+            fn up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+                self.0.up(u)
+            }
+            #[inline(always)]
+            fn lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+                self.0.lists(rects, k, s)
             }
         }
     };
@@ -1027,6 +1376,15 @@ where
     fn typed(self) -> Self::El {
         Hd(self.0.typed(), bough_x::event::Focusable)
     }
+    const BY_REF: bool = E::BY_REF;
+    #[inline(always)]
+    fn up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+        self.0.up(u)
+    }
+    #[inline(always)]
+    fn lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+        self.0.lists(rects, k, s)
+    }
 }
 impl<V: View, R: Reach<V>, Bg: TColor<R::O>, Ch: TKids<V, R>> Typed<V, R>
     for On<LBox<Bg, Ch, ()>, HoverBg>
@@ -1034,20 +1392,8 @@ impl<V: View, R: Reach<V>, Bg: TColor<R::O>, Ch: TKids<V, R>> Typed<V, R>
     type El = Hd<TBox<HSel<Bg::E>, Ch::K>, HSet>;
     fn typed(self) -> Self::El {
         let b = self.0;
-        // an id that is the same in every description of the same state: the row, and the order within it
-        let id = with(|sh| {
-            let n = sh.ord.get() + 1;
-            sh.ord.set(n);
-            let r = sh.row.get();
-            // a row's boxes are named by its item's slot (a row keeps its records when it moves)
-            let item = if r.3 == 0 { 0 } else { r.1 + 1 };
-            if item >= 1 << 21 || n >= 1 << 10 {
-                refuse("more than 2^21 list items or 2^10 hover paints in one row");
-            }
-            (item << 10 | n & 0x3ff) + 1
-        });
         let c = HSel {
-            id,
+            id: hover_id(),
             hot: self.1.0.0,
             base: b.bg.expr(),
         };
@@ -1056,6 +1402,44 @@ impl<V: View, R: Reach<V>, Bg: TColor<R::O>, Ch: TKids<V, R>> Typed<V, R>
             HSet,
         )
     }
+    const BY_REF: bool = Ch::BY_REF;
+    #[inline(always)]
+    fn up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+        let b = &self.0;
+        u.spec(&b.spec);
+        let id = hover_id();
+        let ([c0, c1], known) = Up::<V, Sk>::color(&b.bg);
+        let [d, r, bw, bc] = box_words(true, b.radius, b.border);
+        if !(u.words([c0, c1, self.1.0.0, d, r, bw, bc]) & known) {
+            let c = HSel {
+                id,
+                hot: self.1.0.0,
+                base: b.bg.expr(),
+            };
+            u.leaf(&pbox(c, true, b.radius, b.border).0);
+        }
+        u.k += 1;
+        b.ch.up_kids(u);
+    }
+    #[inline(always)]
+    fn lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+        *k += 1;
+        self.0.ch.lists_kids(rects, k, s);
+    }
+}
+/// The id of the next `hover_bg` box: the same in every description of the same state. A row's boxes are
+/// named by its item's slot (a row keeps its records when it moves), then by their order in the row.
+fn hover_id() -> u32 {
+    with(|sh| {
+        let n = sh.ord.get() + 1;
+        sh.ord.set(n);
+        let r = sh.row.get();
+        let item = if r.3 == 0 { 0 } else { r.1 + 1 };
+        if item >= 1 << 21 || n >= 1 << 10 {
+            refuse("more than 2^21 list items or 2^10 hover paints in one row");
+        }
+        (item << 10 | n & 0x3ff) + 1
+    })
 }
 
 impl<'a, V: View, R: Reach<V>, Bg: TColor<R::O>, Ch: TKids<V, R>> Typed<V, R>
@@ -1078,6 +1462,14 @@ where
             content: tbox(&c.spec, pbox(XColor(0), false, 0.0, None), c.ch.kids()),
             word: slot as u8,
         }
+    }
+    // its content is a row of a child space, which the walk does not reach: always the conversion
+    const BY_REF: bool = false;
+    fn up<Sk: Sink<Ty<V>>>(&self, _: &mut Up<'_, V, Sk>) {
+        unreachable!("a scrolled box is described by its conversion")
+    }
+    fn lists<Sk: Sink<Ty<V>>>(&self, _: Option<&[Rect]>, _: &mut usize, _: &mut Sk) {
+        unreachable!("a scrolled box is described by its conversion")
     }
 }
 
@@ -1142,17 +1534,52 @@ impl<'a, V: View, T: View> Seg<Ty<V>> for TRows<'a, V, T> {
 impl<'a, V: View, R: Reach<V>, T: View> Typed<V, R> for LList<'a, ListRows<'a, T, R::O>, R::O> {
     type El = Scroll<Rec1<BoxP<XColor>>, TRows<'a, V, T>>;
     fn typed(self) -> Self::El {
+        list_el::<V, R, T>(&self)
+    }
+    const BY_REF: bool = true;
+    #[inline(always)]
+    fn up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+        u.spec(&self.spec);
+        // what a typed list is admitted by, and where it reads its offset: a change of these is not a patch
+        u.must(self.virt as u32);
+        match &self.scroll {
+            Some(w) => {
+                let (slot, _) = slot_of(w);
+                u.must(slot)
+            }
+            None => u.must(u32::MAX - 1),
+        }
+        let (c, draw) = (self.bg.map_or(0, |c| c.0), self.bg.is_some());
+        let [d, r, bw, bc] = box_words(draw, self.radius, None);
+        if !u.words([c, d, r, bw, bc]) {
+            u.leaf(&pbox(XColor(c), draw, self.radius, None).0);
+        }
+        // the box's record and the hole its rows are under
+        u.k += 2;
+    }
+    #[inline(always)]
+    fn lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+        list_el::<V, R, T>(self).holes(rects, k, s)
+    }
+}
+/// A `list(..)` as a scrolled space of rows (read where it is: every operand is a copy).
+fn list_el<'a, V: View, R: Reach<V>, T: View>(
+    this: &LList<'a, ListRows<'a, T, R::O>, R::O>,
+) -> Scroll<Rec1<BoxP<XColor>>, TRows<'a, V, T>> {
+    let this = this;
+    {
+        let self_ = this;
         if !<T as RowView<V>>::OK {
             refuse("a list whose row view has no typed conversion");
         }
-        if !self.virt {
+        if !self_.virt {
             refuse("a list that is not a viewport (every row in flow)");
         }
-        if self.spec.gap != 0.0 || self.spec.pad != [0.0; 4] {
+        if self_.spec.gap != 0.0 || self_.spec.pad != [0.0; 4] {
             refuse("a list with a gap or padding");
         }
         let s = with(|sh| sh.scale.get());
-        let word = match &self.scroll {
+        let word = match &self_.scroll {
             Some(w) => {
                 let (slot, _) = slot_of(w);
                 if slot == NONE {
@@ -1162,18 +1589,18 @@ impl<'a, V: View, R: Reach<V>, T: View> Typed<V, R> for LList<'a, ListRows<'a, T
             }
             None => NO_WORD,
         };
-        let mut spec = self.spec;
+        let mut spec = self_.spec;
         spec.container = false;
         Scroll {
             spec: crate::lower::lay_spec(&spec, s),
             paint: Rec1(pbox(
-                XColor(self.bg.map_or(0, |c| c.0)),
-                self.bg.is_some(),
-                self.radius,
+                XColor(self_.bg.map_or(0, |c| c.0)),
+                self_.bg.is_some(),
+                self_.radius,
                 None,
             )),
             content: {
-                let (list, off) = (self.src.list.list, self.src.list.off);
+                let (list, off) = (self_.src.list.list, self_.src.list.off);
                 let (journal, all) = with(|sh| {
                     let k = sh.li.get();
                     sh.li.set(k + 1);
@@ -1219,21 +1646,40 @@ impl<'a, V: View, R: Reach<V>, T: View> Typed<V, R> for LList<'a, ListRows<'a, T
 /// Whether an element type converts, and its conversion: every type answers (the default is no).
 pub trait MaybeTyped<V: View, R: Reach<V>>: Sized {
     const OK: bool;
+    const BY_REF: bool;
     type El: Part<Ty<V>> + Shape;
     fn maybe(self) -> Self::El;
+    fn maybe_up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>);
+    fn maybe_lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk);
 }
 impl<V: View, R: Reach<V>, E> MaybeTyped<V, R> for E {
     default const OK: bool = false;
+    default const BY_REF: bool = false;
     default type El = Nope;
     default fn maybe(self) -> Self::El {
+        unreachable!("an element type with no typed conversion is driven through `bough::lower`")
+    }
+    default fn maybe_up<Sk: Sink<Ty<V>>>(&self, _: &mut Up<'_, V, Sk>) {
+        unreachable!("an element type with no typed conversion is driven through `bough::lower`")
+    }
+    default fn maybe_lists<Sk: Sink<Ty<V>>>(&self, _: Option<&[Rect]>, _: &mut usize, _: &mut Sk) {
         unreachable!("an element type with no typed conversion is driven through `bough::lower`")
     }
 }
 impl<V: View, R: Reach<V>, E: Typed<V, R>> MaybeTyped<V, R> for E {
     const OK: bool = true;
+    const BY_REF: bool = E::BY_REF;
     type El = E::El;
     fn maybe(self) -> E::El {
         self.typed()
+    }
+    #[inline(always)]
+    fn maybe_up<Sk: Sink<Ty<V>>>(&self, u: &mut Up<'_, V, Sk>) {
+        self.up(u)
+    }
+    #[inline(always)]
+    fn maybe_lists<Sk: Sink<Ty<V>>>(&self, rects: Option<&[Rect]>, k: &mut usize, s: &mut Sk) {
+        self.lists(rects, k, s)
     }
 }
 /// Whether a converted element type is a conversion at all ([`Nope`] is not).
@@ -1348,6 +1794,51 @@ fn fixed_rects<E: Shape>(e: &E, scale: f32, u: &U, size: [f32; 2]) -> LayMemo {
     m
 }
 
+/// One pass over the root view's element `el`.
+///
+/// A sink that keeps the fixed row (a re-description) gets the update walk ([`Up`]): if it finds no layout
+/// word changed, the fixed part is described and only the lists are reached. A pass after a turn (a sink
+/// that takes no fixed rows) reaches the lists and converts nothing. Anything else (mount, an oracle, a
+/// walk that missed, an element that cannot be read where it is) is the conversion, driven as an element.
+fn describe<V: View, E: MaybeTyped<V, Root>, S: Sink<Ty<V>>>(sh: &Shared, el: E, s: &mut S) {
+    if E::BY_REF && !sh.plain.get() {
+        if !S::FIXED {
+            return el.maybe_lists(None, &mut 0, s);
+        }
+        let env = s.env();
+        let envk = (
+            env.scale.to_bits(),
+            [env.size[0].to_bits(), env.size[1].to_bits()],
+        );
+        let keeps = s.keeps() && {
+            let m = sh.lay.borrow();
+            m.env == envk && m.rects.len() == <E::El as Shape>::LEAVES
+        };
+        let mut u = Up::new(sh, keeps.then_some(&mut *s));
+        el.maybe_up(&mut u);
+        let miss = u.miss || !keeps;
+        drop(u);
+        mark(ph::VIEW);
+        if !miss {
+            // the fixed part is as it was laid out: its rects are the kept ones, taken for the pass as the
+            // conversion's are (`fixed_rects`)
+            let memo = std::mem::take(&mut *sh.lay.borrow_mut());
+            sh.li.set(0);
+            sh.ord.set(0);
+            el.maybe_lists(Some(&memo.rects[..]), &mut 0, s);
+            *sh.lay.borrow_mut() = memo;
+            return;
+        }
+        // the conversion reads the same tapes, from their start
+        sh.ti.set(0);
+        sh.li.set(0);
+        sh.ord.set(0);
+    }
+    let e = el.maybe();
+    mark(ph::VIEW);
+    drive(e, s)
+}
+
 /// Drive a converted element: its layout words through the heap tree (no element or child limit), its records
 /// as one row, then its scrolled boxes. A pass after a turn takes no fixed rows and reaches only the lists.
 fn drive<W, E: Part<W> + Shape, S: Sink<W>>(mut e: E, s: &mut S) {
@@ -1426,6 +1917,8 @@ impl<V: View> App<V> {
             describes: Cell::new(0),
             tape: RefCell::new(Vec::new()),
             ti: Cell::new(0),
+            specs: RefCell::new(Vec::new()),
+            ops: RefCell::new(Vec::new()),
             lay: RefCell::new(LayMemo::default()),
             lists: RefCell::new(Vec::new()),
             li: Cell::new(0),

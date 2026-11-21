@@ -678,7 +678,7 @@ int_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 
 /// `v` in decimal, written at the end of `buf`.
 #[inline]
-fn decimal(v: i128, buf: &mut [u8; 40]) -> &str {
+pub(crate) fn decimal(v: i128, buf: &mut [u8; 40]) -> &str {
     let (neg, mut u) = (v < 0, v.unsigned_abs() as u64);
     let mut i = buf.len();
     loop {
