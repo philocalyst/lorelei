@@ -93,8 +93,10 @@ impl Damage {
         self.bits.fill(0);
     }
     pub fn all(&mut self) {
-        for t in 0..self.tx * self.ty {
-            self.bits[t / 64] |= 1 << (t % 64);
+        let nt = self.tx * self.ty;
+        self.bits.fill(u64::MAX);
+        if nt % 64 != 0 {
+            *self.bits.last_mut().unwrap() = (1u64 << (nt % 64)) - 1;
         }
     }
     /// The tiles a pixel window touches.

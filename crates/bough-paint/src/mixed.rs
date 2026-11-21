@@ -33,8 +33,9 @@ pub struct Mixed {
     /// Device constant 2: nanoseconds of a staged GPU frame that does nothing (the command buffer's floor).
     pub gpu_floor_ns: f64,
     tiles: Vec<u32>,
-    /// What the last frame's prediction was (weight units), for reports.
+    /// What the last frame's prediction was (weight units), and its GPU seconds (0 on the CPU), for reports.
     pub last_weight: u64,
+    pub last_gpu: f64,
 }
 impl Mixed {
     /// # Safety
@@ -44,7 +45,7 @@ impl Mixed {
         // SAFETY: the caller's contract is `Gpu::new`'s.
         let gpu = unsafe { Gpu::new(scene, words, 256) }?;
         // defaults for an M-class machine until `calibrate` runs: 15 ns a weight unit, 250 us a round trip
-        Some(Mixed { gpu, words, stride, cpu_ns_per_weight: 15.0, gpu_floor_ns: 250_000.0, tiles: Vec::new(), last_weight: 0 })
+        Some(Mixed { gpu, words, stride, cpu_ns_per_weight: 15.0, gpu_floor_ns: 250_000.0, tiles: Vec::new(), last_weight: 0, last_gpu: 0.0 })
     }
     /// The surface (the GPU's buffer, which the CPU kernel also draws into).
     pub fn out(&self) -> &[u32] {
@@ -94,6 +95,7 @@ impl Mixed {
             self.last_weight = w;
             if (w as f64) * self.cpu_ns_per_weight <= self.gpu_floor_ns { Ran::Cpu } else { Ran::Gpu }
         };
+        self.last_gpu = 0.0;
         match ran {
             Ran::Idle => {}
             Ran::Cpu => {
@@ -102,7 +104,7 @@ impl Mixed {
                 fs.raster = scene.shade(u, &tiles, self.gpu.out_mut(words), stride, pool, 0);
             }
             Ran::Gpu => {
-                self.gpu.staged(scene, u, &tiles, self.stride);
+                self.last_gpu = self.gpu.staged(scene, u, &tiles, self.stride).gpu;
             }
         }
         self.tiles = tiles;

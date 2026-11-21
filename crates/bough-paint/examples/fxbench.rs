@@ -346,6 +346,11 @@ struct Row {
     frames: u64,
     /// Pixels the scene's layers hold (every level).
     layers_px: u64,
+    /// Instructions of `Scene::update` alone (the turn's raster side).
+    turn: Vec<u64>,
+    /// Under the chooser: frames idle / on the CPU / on the GPU, and the two device constants it measured.
+    ran: [u32; 3],
+    consts: (f64, f64),
 }
 fn med<T: Copy + PartialOrd>(v: &[T]) -> Option<T> {
     let mut v = v.to_vec();
@@ -362,14 +367,20 @@ enum Exec {
     Cpu,
     CpuNoCache,
     Metal,
+    /// The chooser (`mixed::Mixed`): per change, CPU kernel or Metal.
+    Mixed,
 }
 /// Run `cell` for `reps` frames on a fresh world. Returns the row and the mismatches found.
 fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Pool) -> (Row, usize) {
     let mut w = make();
     w.s.fx_nocache = exec == Exec::CpuNoCache;
+    // the theme's mix word (word 3) is broad: no geometry reads it
+    w.s.broad = 1 << 3;
     let words = (FW * FH) as usize;
     // SAFETY: `w` (the scene) is declared before the executor and outlives it; the arena and the media pool
     // are written only between the executor's calls, each of which waits for the GPU.
+    // SAFETY: as the executor below.
+    let mut mixed = if exec == Exec::Mixed { Some(unsafe { bough_paint::mixed::Mixed::new(&w.s, FW as usize) }.expect("no Metal device")) } else { None };
     let mut gpu = if exec == Exec::Metal { Some(unsafe { Gpu::new(&w.s, words, 256) }.expect("no Metal device")) } else { None };
     let mut out = vec![0u32; words];
     let mut u = U::default();
@@ -384,17 +395,37 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
         if f > 0 {
             turn(cell, f, &mut u, &mut w, &slots);
         }
-        let fs: FrameStats = w.s.update(&u);
-        w.s.damage.tiles(&mut tiles);
-        w.s.damage.clear();
         let mut gs = 0.0;
-        match gpu.as_mut() {
-            None => {
-                w.s.prepare(&u);
-                w.s.shade(&u, &tiles, &mut out, FW as usize, pool, 0);
+        let fs: FrameStats = if let Some(mx) = mixed.as_mut() {
+            let (fs, ran) = mx.frame(&mut w.s, &u, pool, None);
+            gs = mx.last_gpu;
+            if f >= warm {
+                row.ran[ran as usize] += 1;
             }
-            Some(g) => gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu,
-        }
+            tiles.resize(fs.tiles as usize, 0);
+            if f == 0 {
+                mx.calibrate(&w.s, &u, pool);
+                row.consts = (mx.cpu_ns_per_weight, mx.gpu_floor_ns);
+            }
+            fs
+        } else {
+            let (j0, _) = pmu::instructions_cycles();
+            let fs = w.s.update(&u);
+            let (j1, _) = pmu::instructions_cycles();
+            if f >= warm {
+                row.turn.push(j1 - j0);
+            }
+            w.s.damage.tiles(&mut tiles);
+            w.s.damage.clear();
+            match gpu.as_mut() {
+                None => {
+                    w.s.prepare(&u);
+                    w.s.shade(&u, &tiles, &mut out, FW as usize, pool, 0);
+                }
+                Some(g) => gs = g.staged(&w.s, &u, &tiles, FW as usize).gpu,
+            }
+            fs
+        };
         if cell == Cell::AvPlayback && f > 0 && slots.is_empty() && exec != Exec::CpuNoCache {
             // T1: a refresh at which no tile has a new frame is an idle frame (the control redraws its
             // layers regardless: that is what it is)
@@ -426,10 +457,12 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
     row.layers_px = w.s.layers.list.iter().map(|l| l.lv.iter().map(|v| ((v.r[2] - v.r[0]) * (v.r[3] - v.r[1])) as u64).sum::<u64>()).sum();
     // validity: the retained surface against a full redraw of the same scene state (a second surface, every
     // tile, through the same scene: `invalidate` forgets what the surface shows)
-    let surface: Vec<u32> = match gpu.as_ref() {
-        Some(g) => g.out(words).to_vec(),
-        None => out,
+    let surface: Vec<u32> = match (gpu.as_ref(), mixed.as_ref()) {
+        (Some(g), _) => g.out(words).to_vec(),
+        (_, Some(m)) => m.out().to_vec(),
+        _ => out,
     };
+    drop(mixed);
     let mut full = vec![0u32; words];
     w.s.fx_nocache = false;
     w.s.invalidate();
@@ -456,7 +489,7 @@ fn main() {
     println!("# fxbench {scene} {n}{}; {FW}x{FH}; reps {reps}; load at start: {}", if dense { " dense" } else { "" }, load());
     println!("# scene: {} records in {} columns, {} layers, {} glass / {} dots / {} videos; media pool {} slots", w.s.records(), w.s.cols().len(), w.s.layers.list.len(), w.g_rect.len(), w.d_rect.len(), w.v_rect.len(), w.s.media.stats().0);
     drop(w);
-    println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch");
+    println!("scene\tn\tcell\texecutor\ttiles/frame\trecs/frame\tprefix/frame\tblocks/frame\tlayer_px/frame\tlayers_px\tactive\tinstr_med_K\tinstr_min_K\tinstr_mean_K\twall_med_us\tgpu_med_us\tmismatch\tturn_med\tran_idle/cpu/gpu\tcpu_ns_per_weight\tgpu_floor_ns");
     if scene == "media" {
         // T3: what the pacer costs per tile per refresh
         let mut sink = NullSink::new(Spec::STEREO_48K, 480, |_: &mut Block| {});
@@ -471,7 +504,7 @@ fn main() {
     }
     let mut bad_total = 0;
     for &cell in cells {
-        for (exec, name) in [(Exec::Cpu, "cpu1"), (Exec::CpuNoCache, "cpu1-nocache"), (Exec::Metal, "metal")] {
+        for (exec, name) in [(Exec::Cpu, "cpu1"), (Exec::CpuNoCache, "cpu1-nocache"), (Exec::Metal, "metal"), (Exec::Mixed, "mixed")] {
             // `NOCONTROL=1`: skip the redraw-every-layer control (seconds per frame in deep scenes)
             if exec == Exec::CpuNoCache && std::env::var("NOCONTROL").is_ok() {
                 continue;
@@ -480,7 +513,7 @@ fn main() {
             bad_total += bad;
             let f = r.frames.max(1) as f64;
             println!(
-                "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}",
+                "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{:.1}\t{:.0}",
                 if dense { "d" } else { "" },
                 cell.name(),
                 r.tiles as f64 / f,
@@ -495,6 +528,12 @@ fn main() {
                 r.instr.iter().sum::<u64>() as f64 / r.instr.len().max(1) as f64 / 1e3,
                 med(&r.wall).unwrap_or(0.0) * 1e6,
                 med(&r.gpu).unwrap_or(0.0) * 1e6,
+                med(&r.turn).map_or("-".to_string(), |t| t.to_string()),
+                r.ran[0],
+                r.ran[1],
+                r.ran[2],
+                r.consts.0,
+                r.consts.1,
             );
         }
     }
