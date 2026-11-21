@@ -1358,7 +1358,7 @@ impl Scene {
                 if from == ls.len() {
                     continue;
                 }
-                let stop = bins.cover_above(t, z, w, cover, *ls.last().unwrap());
+                let stop = if std::env::var_os("NOCERT").is_some() { u32::MAX } else { bins.cover_above(t, z, w, cover, *ls.last().unwrap()) };
                 for &lz in &ls[from..] {
                     if lz > stop {
                         break;
