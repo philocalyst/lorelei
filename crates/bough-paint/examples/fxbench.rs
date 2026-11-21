@@ -392,6 +392,7 @@ fn turn(cell: Cell, f: usize, u: &mut U, w: &mut World, slots: &[(usize, u32)]) 
 #[derive(Default)]
 struct Row {
     instr: Vec<u64>,
+    spring_launch_instr: Vec<u64>,
     wall: Vec<f64>,
     gpu: Vec<f64>,
     tiles: u64,
@@ -515,6 +516,9 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
         }
         let wall = t0.elapsed().as_secs_f64();
         let (i1, _) = pmu::instructions_cycles();
+        if matches!(cell, Cell::OneSpring | Cell::AllSprings) && f % 40 == 1 {
+            row.spring_launch_instr.push(i1 - i0);
+        }
         let (fs_prefix, fs_blocks);
         w.s.media.reclaim();
         if f >= warm {
@@ -603,6 +607,9 @@ fn main() {
             }
             let (r, bad) = run(&*make, cell, exec, reps, &pool);
             bad_total += bad;
+            if !r.spring_launch_instr.is_empty() {
+                println!("# spring launches {scene} {n} {} {name} instructions {:?}", cell.name(), r.spring_launch_instr);
+            }
             let f = r.frames.max(1) as f64;
             println!(
                 "{scene}\t{n}{}\t{}\t{name}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{}\t{}\t{:.1}\t{:.1}\t{:.1}\t{:.0}\t{:.0}\t{bad}\t{}\t{}/{}/{}\t{}/{}\t{}\t{}/{}",
