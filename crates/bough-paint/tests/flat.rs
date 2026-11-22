@@ -371,3 +371,290 @@ fn the_oracle_catches_broken_executors() {
         assert!(g > 0, "{name} was not caught");
     }
 }
+
+// ---- backdrops ----------------------------------------------------------------------------------------
+
+fn glass_scene() -> FlatScene {
+    let mut s = FlatScene::new(320, 256, FlatConfig::default());
+    let sky = s.lut(&[(0.0, 0xff40_2010), (0.5, 0xff20_60c0), (1.0, 0xfff0_f0f0)]).unwrap();
+    s.push(Node::new([0.0, 0.0, 320.0, 256.0], DrawCmd::Ramp { radius: 0.0, geo: RampGeo::Linear { angle_deg: 160.0 }, lut: sky })).unwrap();
+    // nodes 1 ..= 6: things beneath the glass
+    for i in 0..6 {
+        let (x, y) = (20.0 + 48.0 * i as f32, 30.0 + 31.0 * i as f32);
+        s.push(Node::new([x, y, x + 36.0, y + 28.0], DrawCmd::RRect { radius: 6.0, color: [0xff30_30ff, 0xff30_ff30, 0xffff_3030, 0xc0ff_ff30][i % 4] })).unwrap();
+    }
+    // nodes 7 ..= 9: three panes: rounded and tinted; sharp-cornered, filtered and clipped; a wide blur
+    s.push(Node::new([40.0, 40.0, 200.0, 150.0], DrawCmd::Glass { radius: 18.0, blur: 6.0, brightness: 1.0, saturation: 1.0, contrast: 1.0, tint: 0x40ff_ffff })).unwrap();
+    s.push(Node::new([150.0, 100.0, 300.5, 230.25], DrawCmd::Glass { radius: 0.0, blur: 2.5, brightness: 1.2, saturation: 1.6, contrast: 0.9, tint: 0x3000_2040 }).clip([160.0, 90.0, 290.0, 222.0])).unwrap();
+    s.push(Node::new([10.0, 170.0, 130.0, 250.0], DrawCmd::Glass { radius: 30.0, blur: 24.0, brightness: 0.8, saturation: 0.0, contrast: 1.3, tint: 0 }).opacity(0.5)).unwrap();
+    // node 10: above the panes
+    s.push(Node::new([90.0, 120.0, 180.0, 140.0], DrawCmd::Border { radius: 4.0, width: 2.0, color: 0xff00_0000, fill: 0x80ff_ffff })).unwrap();
+    s
+}
+
+#[test]
+fn backdrop_blur_is_retained_and_exact_in_a_flat_scene() {
+    let mut rig = Rig::new(&glass_scene);
+    let (d, g, st) = rig.step(&|_| {});
+    assert_eq!((d, g), (0, 0), "mount");
+    let whole = st.frame.raster.prefix;
+    assert!(whole > 0 && st.frame.raster.blk.iter().sum::<u64>() > 0, "the panes own layers");
+    let (d, g, st) = rig.step(&|_| {});
+    assert_eq!((d, g, st.frame.tiles, st.frame.raster.prefix, st.frame.raster.blk.iter().sum::<u64>()), (0, 0, 0, 0, 0), "idle");
+    // above every pane: no layer is repaired
+    let (d, g, st) = rig.step(&|s: &mut FlatScene| s.set_color(NodeId(10), 0xff00_ff00));
+    assert_eq!((d, g, st.frame.raster.prefix), (0, 0, 0), "a change above the panes reached a layer");
+    // beneath one pane: a few of its prefix tiles, not the scene's
+    let (d, g, st) = rig.step(&|s: &mut FlatScene| s.set_color(NodeId(2), 0xffff_00ff));
+    assert_eq!((d, g), (0, 0));
+    assert!(st.frame.raster.prefix > 0 && st.frame.raster.prefix < whole / 2, "{} of {whole} prefix tiles for one small box", st.frame.raster.prefix);
+    // rewritten with what it already shows: the prefix comes out as it was and nothing above is dirtied
+    let (d, g, st) = rig.step(&|s: &mut FlatScene| s.set_xf(NodeId(2), 0.0, 0.0, 1.0));
+    assert_eq!((d, g, st.lowered), (0, 0, 0));
+    let mut g = Rng(11);
+    let mut bad = 0;
+    for k in 0..50u32 {
+        let (pick, a, b) = (g.u(8), g.f(0.0, 1.0), g.f(-1.0, 1.0));
+        let (under, pane) = (NodeId(1 + g.u(6)), NodeId(7 + g.u(3)));
+        let (d, gd, _) = rig.step(&|s: &mut FlatScene| match pick {
+            0 => s.set_xf(under, b * 60.0, a * 50.0, 1.0),
+            1 => s.set_color(under, rgba((a * 255.0) as u32, 90, 200, 255)),
+            2 => s.set_prop(pane, Prop::Blur, a * a * 45.0),
+            3 => s.set_prop(pane, Prop::Radius, a * 50.0),
+            4 => s.set_xf(pane, b * 40.0, b * 25.0, 1.0),
+            5 => {
+                let DrawCmd::Glass { radius, blur, .. } = s.node(pane).cmd else { panic!() };
+                s.set(pane, DrawCmd::Glass { radius, blur, brightness: 0.5 + a, saturation: 2.0 * a, contrast: 1.0 + b * 0.4, tint: rgba(255, 255, 255, (a * 120.0) as u32) });
+            }
+            6 => s.set_opacity(pane, a),
+            _ => {}
+        });
+        if (d, gd) != (0, 0) {
+            eprintln!("glass step {k} (change {pick}): {d} words differ on the CPU, {gd} on Metal");
+            bad += 1;
+        }
+    }
+    eprintln!("flat backdrops: {} frames exact on the CPU, {} on Metal; {bad} failing", rig.frames, rig.gpu_frames);
+    assert_eq!(bad, 0);
+}
+
+// ---- retained groups: isolated opacity and element blur -----------------------------------------------
+
+/// Everything a group scene is built from: a fresh scene from the same world shows the same pixels.
+#[derive(Clone)]
+struct GroupWorld {
+    top: u32,
+    dots: Vec<([f32; 4], u32)>,
+    opacity: f32,
+    blur: f32,
+    radius: f32,
+    xf: [f32; 3],
+    under: u32,
+}
+struct Built {
+    flat: FlatScene,
+    group: GroupId,
+    node: NodeId,
+    under: NodeId,
+}
+const GW: u32 = 192;
+const GH: u32 = 160;
+fn group_world(top: u32) -> GroupWorld {
+    let mut g = Rng(top as u64 * 7 + 3);
+    let dots = (0..9).map(|i| {
+        let (x, y) = (g.f(4.0, GW as f32 - 40.0), g.f(4.0, GH as f32 - 40.0));
+        ([x, y, x + 14.0 + 3.0 * i as f32, y + 22.0], g.color(i % 3 == 0))
+    }).collect();
+    GroupWorld { top, dots, opacity: 1.0, blur: 0.0, radius: 0.0, xf: [0.0, 0.0, 1.0], under: 0xff40_80c0 }
+}
+fn group_build(w: &GroupWorld) -> Built {
+    let cfg = FlatConfig::default().media(surface_words(GW, GH, w.top) + 64);
+    let mut flat = FlatScene::new(300, 220, cfg);
+    let sky = flat.lut(&[(0.0, 0xff10_1820), (1.0, 0xffd0_e8f0)]).unwrap();
+    flat.push(Node::new([0.0, 0.0, 300.0, 220.0], DrawCmd::Ramp { radius: 0.0, geo: RampGeo::Linear { angle_deg: 45.0 }, lut: sky })).unwrap();
+    let under = flat.push(Node::new([60.0, 60.0, 130.0, 110.0], DrawCmd::RRect { radius: 5.0, color: w.under })).unwrap();
+    // the child: a translucent card, a ramp, and the dots
+    let mut child = FlatScene::new(GW, GH, FlatConfig::default());
+    child.push(Node::new([8.0, 8.0, GW as f32 - 8.0, GH as f32 - 8.0], DrawCmd::RRect { radius: 16.0, color: 0xa0ff_ffff })).unwrap();
+    let l = child.lut(&[(0.0, 0xff00_40ff), (0.5, 0x4000_ff80), (1.0, 0xffff_2000)]).unwrap();
+    child.push(Node::new([20.0, 100.0, 170.0, 140.0], DrawCmd::Ramp { radius: 8.0, geo: RampGeo::Linear { angle_deg: 90.0 }, lut: l })).unwrap();
+    for &(r, c) in &w.dots {
+        child.push(Node::new(r, DrawCmd::RRect { radius: 5.0, color: c })).unwrap();
+    }
+    let group = flat.group(child, w.top).unwrap();
+    let node = flat.push(Node::new([40.0, 30.0, 40.0 + GW as f32, 30.0 + GH as f32], DrawCmd::Group { radius: w.radius, blur: w.blur, group }).opacity(w.opacity)).unwrap();
+    flat.set_xf(node, w.xf[0], w.xf[1], w.xf[2]);
+    // above the group: a pane that reads it as its backdrop, and a border
+    flat.push(Node::new([150.0, 90.0, 280.0, 200.0], DrawCmd::Glass { radius: 10.0, blur: 5.0, brightness: 1.0, saturation: 1.0, contrast: 1.0, tint: 0x30ff_ffff })).unwrap();
+    flat.push(Node::new([30.0, 20.0, 110.0, 44.0], DrawCmd::Border { radius: 3.0, width: 1.5, color: 0xff00_0000, fill: 0x60ff_ff00 })).unwrap();
+    Built { flat, group, node, under }
+}
+/// A dot's node in the child (after the card and the ramp).
+fn dot(i: usize) -> NodeId {
+    NodeId(2 + i as u32)
+}
+
+/// Drive a retained group scene (and its Metal twin) through `steps`; after every step the retained
+/// surfaces must equal a fresh scene's full redraw, and the specification.
+fn group_run(top: u32, steps: usize, mutate: Option<&dyn Fn(&str) -> String>) -> (usize, usize) {
+    let mut w = group_world(top);
+    let mut b = group_build(&w);
+    let pool = Pool::new(2);
+    let (fw, fh) = b.flat.size();
+    let words = (fw * fh) as usize;
+    #[cfg(target_os = "macos")]
+    let mut twin = {
+        let t = Box::new(group_build(&w));
+        let good = FlatGpu::source(&t.flat);
+        let src = mutate.map_or(good.clone(), |f| f(&good));
+        assert!(mutate.is_none() || src != good, "the mutation did not apply");
+        // SAFETY: as `Rig::with`.
+        unsafe { FlatGpu::with_source(&t.flat, 256, &src) }.map(|g| (t, g))
+    };
+    #[cfg(not(target_os = "macos"))]
+    let _ = mutate;
+    let (mut keep, mut fresh, mut spec) = (vec![0u32; words], vec![0u32; words], vec![0u32; words]);
+    let mut g = Rng(99 + top as u64);
+    let (mut bad, mut gbad) = (0, 0);
+    let total_tiles = (fw.div_ceil(32) * fh.div_ceil(32)) as u32;
+    let group_tiles = GW.div_ceil(32) * GH.div_ceil(32);
+    for k in 0..steps {
+        let pick = if k == 0 { 99 } else { [0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 7][k % 11] };
+        let (a, c, i) = (g.f(0.0, 1.0), g.f(-1.0, 1.0), g.u(w.dots.len() as u32) as usize);
+        // the same change to the world, the retained scene and the Metal twin
+        let mut apply = |w: &mut GroupWorld, bs: &mut [&mut Built]| match pick {
+            // the parent animates the group: opacity, blur, corner radius, transform
+            0 => {
+                w.opacity = 0.15 + 0.85 * a;
+                bs.iter_mut().for_each(|b| b.flat.set_opacity(b.node, w.opacity));
+            }
+            1 => {
+                w.blur = if top == 0 { 0.0 } else { a * a * 30.0 };
+                w.radius = a * 40.0;
+                bs.iter_mut().for_each(|b| {
+                    b.flat.set_prop(b.node, Prop::Blur, w.blur);
+                    b.flat.set_prop(b.node, Prop::Radius, w.radius);
+                });
+            }
+            2 => {
+                w.xf = [c * 30.0, a * 20.0, if k % 3 == 0 { 0.8 + 0.4 * a } else { 1.0 }];
+                bs.iter_mut().for_each(|b| b.flat.set_xf(b.node, w.xf[0], w.xf[1], w.xf[2]));
+            }
+            // the child changes: a colour (one or two tiles), a move across tiles
+            3 => {
+                w.dots[i].1 = rgba((a * 255.0) as u32, 120, 30, 255);
+                bs.iter_mut().for_each(|b| b.flat.child_mut(b.group).set_color(dot(i), w.dots[i].1));
+            }
+            4 => {
+                let r = w.dots[i].0;
+                let (dx, dy) = (c * 45.0, (a - 0.5) * 50.0);
+                w.dots[i].0 = [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy];
+                bs.iter_mut().for_each(|b| b.flat.child_mut(b.group).set_rect(dot(i), w.dots[i].0));
+            }
+            // beneath the group, in the parent
+            5 => {
+                w.under = rgba(40, (a * 255.0) as u32, 200, 255);
+                bs.iter_mut().for_each(|b| b.flat.set_color(b.under, w.under));
+            }
+            _ => {}
+        };
+        #[cfg(target_os = "macos")]
+        match twin.as_mut() {
+            Some((t, _)) => apply(&mut w, &mut [&mut b, &mut **t]),
+            None => apply(&mut w, &mut [&mut b]),
+        }
+        #[cfg(not(target_os = "macos"))]
+        apply(&mut w, &mut [&mut b]);
+        let st = b.flat.frame(&mut keep, fw as usize, &pool, 1);
+        b.flat.spec(&mut spec, fw as usize);
+        let mut f = group_build(&w);
+        let fst = f.flat.frame(&mut fresh, fw as usize, &pool, 1);
+        assert_eq!(fst.group_tiles, group_tiles, "a fresh group paints its whole surface");
+        let d = (diff(&keep, &fresh), diff(&keep, &spec));
+        if d != (0, 0) {
+            eprintln!("group (top {top}) step {k} (change {pick}): {} words differ from a fresh scene, {} from the specification", d.0, d.1);
+            bad += 1;
+        }
+        #[cfg(target_os = "macos")]
+        if let Some((t, gpu)) = twin.as_mut() {
+            gpu.frame(&mut t.flat, &pool, 1);
+            let gd = diff(gpu.out(), &fresh);
+            if gd != 0 {
+                if mutate.is_none() {
+                    eprintln!("group (top {top}) step {k} (change {pick}): {gd} words differ on Metal");
+                }
+                gbad += 1;
+            }
+        }
+        // the counts the design promises
+        match pick {
+            // the parent's use of the group changed: the child is not asked anything
+            0 | 1 | 2 => assert_eq!((st.group_tiles, st.group_blocks, st.group_recs, st.lowered), (0, 0, 0, 1), "step {k} (change {pick}): an idle child did work under its parent's animation"),
+            // a small change in the child: its own damage, not the surface; the parent redraws near it
+            3 => {
+                assert!(st.group_tiles >= 1 && st.group_tiles <= 6, "step {k}: {} tiles of the group for one dot's colour", st.group_tiles);
+                assert_eq!(st.lowered, 1);
+                // (the pane above the group reads it as its backdrop: its repair is part of the parent's damage)
+                if w.blur == 0.0 && w.xf[2] == 1.0 {
+                    assert!(st.frame.tiles <= 20, "step {k}: {} parent tiles for one dot's colour", st.frame.tiles);
+                }
+                assert!(st.frame.tiles < total_tiles, "step {k}: {} of {total_tiles} parent tiles", st.frame.tiles);
+            }
+            4 => assert!(st.group_tiles >= 1 && st.group_tiles <= 12 && st.frame.tiles < total_tiles, "step {k}: {} tiles of the group for one dot's move", st.group_tiles),
+            5 => assert_eq!((st.group_tiles, st.group_blocks), (0, 0), "step {k}: a change in the parent repainted the group"),
+            7 => assert_eq!((st.group_tiles, st.group_blocks, st.lowered, st.frame.tiles, st.frame.recs_visited), (0, 0, 0, 0, 0), "step {k}: an idle frame did work"),
+            _ => {}
+        }
+        if top > 0 && pick == 3 {
+            assert!(st.group_blocks > 0, "step {k}: the pyramid was not repaired");
+        }
+    }
+    (bad, gbad)
+}
+
+/// Group opacity, slice 17's promise kept at tile grain: an idle child is no work under its parent's
+/// animation, and a small change in the child repaints the tiles it damaged, in place.
+#[test]
+fn isolated_group_opacity_repairs_at_tile_grain() {
+    let (bad, gbad) = group_run(0, 90, None);
+    eprintln!("flat isolated opacity: 90 steps; {bad} failing on the CPU, {gbad} on Metal");
+    assert_eq!((bad, gbad), (0, 0));
+}
+
+/// Element blur: the group's pyramid is retained under its content. The blur radius is a record word.
+#[test]
+fn element_blur_is_cached_by_content_and_exact() {
+    let (bad, gbad) = group_run(5, 90, None);
+    eprintln!("flat element blur: 90 steps; {bad} failing on the CPU, {gbad} on Metal");
+    assert_eq!((bad, gbad), (0, 0));
+    // the revision moves with the content and with nothing else
+    let mut b = group_build(&group_world(5));
+    let pool = Pool::new(1);
+    let mut out = vec![0u32; 300 * 220];
+    b.flat.frame(&mut out, 300, &pool, 0);
+    let r0 = b.flat.group_revision(b.group);
+    for blur in [1.0, 4.0, 9.0, 27.0, 0.0] {
+        b.flat.set_prop(b.node, Prop::Blur, blur);
+        let st = b.flat.frame(&mut out, 300, &pool, 0);
+        assert_eq!((st.group_tiles, st.group_blocks), (0, 0));
+    }
+    assert_eq!(b.flat.group_revision(b.group), r0);
+    b.flat.child_mut(b.group).set_color(dot(0), 0xff12_3456);
+    b.flat.frame(&mut out, 300, &pool, 0);
+    assert_eq!(b.flat.group_revision(b.group), r0 + 1);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn the_oracle_catches_a_broken_surface_read() {
+    let cases: [(&str, &dyn Fn(&str) -> String); 2] = [
+        ("the coarser level never mixed", &|s| s.replace("if (lv.y != 0) { v = x_mixv(v, mip_read", "if (false) { v = x_mixv(v, mip_read")),
+        ("a level read half a texel off", &|s| s.replace("int tx = mp_pos(t.x, k), ty = mp_pos(t.y, k);", "int tx = mp_pos(t.x, k) + 128, ty = mp_pos(t.y, k);")),
+    ];
+    for (name, f) in cases {
+        let (bad, gbad) = group_run(5, 24, Some(f));
+        eprintln!("flat mutant ({name}): {gbad} of 24 steps differ on Metal");
+        assert_eq!(bad, 0);
+        assert!(gbad > 0, "{name} was not caught");
+    }
+}
