@@ -76,6 +76,8 @@ mutant_typed_run_lease = []
 mutant_typed_log = []
 # a turn that changed a bound word is not described (the skip ruling D3 removed; tests/typed_twin.rs must fail)
 mutant_typed_skip = []
+# the cell table lists every cell one head further on (tests/ports.rs must fail)
+mutant_cell_offset = []
 # (bough-dataflow/mutant_rigid: rows kept across an insert or a remove keep their old rects)
 mutant_rigid = ["bough-dataflow/mutant_rigid"]
 # The presenter on the vendored wgpu-hal with wgsl-rs kernels (crates/bough-gpu) instead of direct Metal.

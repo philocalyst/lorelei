@@ -108,6 +108,29 @@ impl<V> Mounter<'_, V> {
         self.scope.wires.push(i);
         i
     }
+    /// Wire a borrowed cell when it is a field of this owner (`.bg(&self.tint)`): its address, relative to the
+    /// owner, is looked up in the owner type's cell table (`reflect::cells`). `false`: the cell lives
+    /// elsewhere (behind a `Vec`, in another object) and nothing was installed; the caller's operand is then
+    /// a constant of this description.
+    ///
+    /// # Safety
+    /// `head` is the head of a live cell of the type `ty` names (`reflect::cell_id`), and `patch` reads
+    /// exactly that cell type with the recipe given.
+    pub(crate) unsafe fn wire_field(&mut self, head: &std::cell::Cell<u32>, ty: std::any::TypeId, patch: PatchFn, node: u32, recipe: [u8; 16]) -> bool {
+        let (at, base) = (head as *const _ as usize, self.owner as usize);
+        if at < base || at - base >= size_of::<V>() {
+            return false;
+        }
+        let off = at - base;
+        if off % 4 != 0 || off > u32::MAX as usize || !crate::reflect::cells::<V>().has(off, ty) {
+            return false;
+        }
+        // SAFETY: the owner type has a field of the cell type at `off` (the table lists only cells reached
+        // through struct, tuple and array fields), and a live object of that type at that address inside the
+        // owner is that field: this is the offset `sig!` proves. `patch` reads that type (the contract).
+        unsafe { self.wire_cell(head, off as u32, patch, node, recipe) };
+        true
+    }
 }
 
 pub trait Element<V>: Sized {
@@ -269,9 +292,13 @@ impl<V> IntoProp<Color, V> for Color {
     }
 }
 
-/// A plain borrow is a constant of this description (re-read only when the owner re-describes).
+/// A borrowed signal is a direct port when it is a field of the mounting owner (`Mounter::wire_field`):
+/// publishing it patches the node without rerunning `view`. Borrowed from anywhere else it is a constant of
+/// this description, read again when the owner re-describes.
 impl<T: Clone + 'static, V> IntoProp<T, V> for &Signal<T> {
-    fn lower<K: Apply<P = T>>(self, _: &mut Mounter<'_, V>, _: u32) -> T {
+    fn lower<K: Apply<P = T>>(self, m: &mut Mounter<'_, V>, node: u32) -> T {
+        // SAFETY: `self` is a live `Signal<T>` and `patch_sig::<K, T>` reads a `Signal<T>` with no recipe.
+        unsafe { m.wire_field(self.head(), crate::reflect::cell_id::<Signal<T>>(), patch_sig::<K, T>, node, [0; 16]) };
         (**self).clone()
     }
     fn value(self) -> T {
@@ -281,7 +308,7 @@ impl<T: Clone + 'static, V> IntoProp<T, V> for &Signal<T> {
 
 /// # Safety
 /// The wire contract (`PatchFn`): `sig` is a `Signal<T>`.
-unsafe fn patch_sig<K: Apply<P = T>, T: 'static>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
+pub(crate) unsafe fn patch_sig<K: Apply<P = T>, T: 'static>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
     // SAFETY: see the function contract.
     let s = unsafe { &*(sig as *const Signal<T>) };
     K::apply(rt, w.node, s);
@@ -289,7 +316,7 @@ unsafe fn patch_sig<K: Apply<P = T>, T: 'static>(rt: &mut Rt, w: &Wire, sig: *co
 
 /// # Safety
 /// As `patch_sig`; the recipe holds an `F` written by `lower`.
-unsafe fn patch_map<K: Apply, T: 'static, F: Fn(&T) -> K::P + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
+pub(crate) unsafe fn patch_map<K: Apply, T: 'static, F: Fn(&T) -> K::P + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
     // SAFETY: see the function contract; F is Copy and was written unaligned into the 16-byte recipe.
     let s = unsafe { &*(sig as *const Signal<T>) };
     let f: F = unsafe { std::ptr::read_unaligned(w.recipe.as_ptr() as *const F) };
@@ -297,7 +324,7 @@ unsafe fn patch_map<K: Apply, T: 'static, F: Fn(&T) -> K::P + Copy>(rt: &mut Rt,
     K::apply(rt, w.node, &v);
 }
 
-fn recipe_of<F: Copy>(f: F) -> [u8; 16] {
+pub(crate) fn recipe_of<F: Copy>(f: F) -> [u8; 16] {
     const { assert!(size_of::<F>() <= 16, "map closure: at most 16 bytes of captures") };
     let mut r = [0u8; 16];
     // SAFETY: size_of::<F>() <= 16 (checked at compile time); unaligned write into a byte array.
@@ -311,7 +338,7 @@ fn recipe_of<F: Copy>(f: F) -> [u8; 16] {
 /// it reaches the record through the wire. Equal identity means the installed wire is the one this
 /// description would install, so the element may be stepped over.
 #[inline(always)]
-fn seal_wire<S: crate::seal::Sealer>(s: &mut S, tag: u32, off: u32, recipe: [u8; 16]) {
+pub(crate) fn seal_wire<S: crate::seal::Sealer>(s: &mut S, tag: u32, off: u32, recipe: [u8; 16]) {
     s.word(tag);
     s.word(off);
     for w in recipe.chunks_exact(4) {
@@ -697,8 +724,12 @@ pub(crate) fn decimal(v: i128, buf: &mut [u8; 40]) -> &str {
     unsafe { std::str::from_utf8_unchecked(&buf[i..]) }
 }
 
+/// A borrowed `Signal<String>`: a direct port when it is a field of the mounting owner, else a constant of
+/// this description (as `IntoProp for &Signal<T>`).
 impl<V> TextSrc<V> for &Signal<String> {
-    fn lower(self, _: &mut Mounter<'_, V>, _: u32) -> String {
+    fn lower(self, m: &mut Mounter<'_, V>, node: u32) -> String {
+        // SAFETY: `self` is a live `Signal<String>`, which `patch_text` reads; no recipe.
+        unsafe { m.wire_field(self.head(), crate::reflect::cell_id::<Signal<String>>(), patch_text, node, [0; 16]) };
         (**self).clone()
     }
     fn value(self) -> String {
@@ -723,7 +754,7 @@ pub(crate) fn set_node_text(rt: &mut Rt, node: u32, s: &str) {
 
 /// # Safety
 /// Wire contract: `sig` is a `Signal<String>`.
-unsafe fn patch_text(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
+pub(crate) unsafe fn patch_text(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
     // SAFETY: see the function contract.
     let s = unsafe { &*(sig as *const Signal<String>) };
     set_node_text(rt, w.node, s);
@@ -731,7 +762,7 @@ unsafe fn patch_text(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
 
 /// # Safety
 /// Wire contract: `sig` is a `Signal<T>`; the recipe holds an `F`.
-unsafe fn patch_text_map<T: 'static, F: Fn(&T) -> String + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
+pub(crate) unsafe fn patch_text_map<T: 'static, F: Fn(&T) -> String + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
     // SAFETY: see the function contract.
     let s = unsafe { &*(sig as *const Signal<T>) };
     let f: F = unsafe { std::ptr::read_unaligned(w.recipe.as_ptr() as *const F) };

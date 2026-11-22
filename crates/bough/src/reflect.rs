@@ -371,6 +371,120 @@ impl Schema {
     }
 }
 
+/// The reactive cells that are fields of an owner type: every cell (a struct whose first field is a wire
+/// head: `Signal`, `List`, `Reader`, `Entities`) reached from `V` through struct, tuple and array fields only.
+/// Nothing behind a pointer, an enum, a union or an interior-mutability wrapper is listed: such a cell has no
+/// fixed address in the owner, or may not be read at any time.
+///
+/// This is what lets a plain borrow be a port (`.bg(&self.tint)`): an object of type `C` at an offset where
+/// `V` has a field of type `C` *is* that field, so `address - owner` found here is the proof `sig!` computes
+/// with `offset_of!` (`Mounter::wire_field`).
+pub struct Cells {
+    n: usize,
+    /// The table is full: later cells are not listed (a borrow of one is a constant of its description).
+    pub truncated: bool,
+    at: [CellAt; CELL_CAP],
+}
+/// `count` cells of type `ty`, the first at `off`, `stride` bytes apart (an array of cells is one entry).
+#[derive(Clone, Copy)]
+struct CellAt {
+    off: usize,
+    stride: usize,
+    count: usize,
+    ty: std::any::TypeId,
+}
+pub const CELL_CAP: usize = 96;
+
+impl Cells {
+    /// Whether the owner type has a cell of type `ty` at byte offset `off`.
+    #[inline]
+    pub fn has(&self, off: usize, ty: std::any::TypeId) -> bool {
+        self.at[..self.n].iter().any(|c| off >= c.off && (off - c.off) % c.stride == 0 && (off - c.off) / c.stride < c.count && c.ty == ty)
+    }
+    pub fn len(&self) -> usize {
+        self.at[..self.n].iter().map(|c| c.count).sum()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+    /// (offset, type name is not kept) the offsets listed, for tests.
+    pub fn offsets(&self) -> Vec<usize> {
+        self.at[..self.n].iter().flat_map(|c| (0..c.count).map(move |i| c.off + i * c.stride)).collect()
+    }
+}
+
+/// The cell table of `V`, built once at compile time.
+pub fn cells<V>() -> &'static Cells {
+    const { &build_cells(std::mem::type_info::of::<V>()) }
+}
+
+/// The identity `Cells::has` compares: the `TypeId` of the cell type `C` (`Signal<T>`).
+#[inline(always)]
+pub fn cell_id<C: 'static>() -> std::any::TypeId {
+    const { std::mem::type_info::of::<C>() }
+}
+
+#[rustc_comptime]
+fn build_cells(t: std::any::TypeId) -> Cells {
+    let blank = CellAt { off: 0, stride: 1, count: 0, ty: t };
+    let mut c = Cells { n: 0, truncated: false, at: [blank; CELL_CAP] };
+    walk_cells(&mut c, t, 0, 0, 1, 1);
+    c
+}
+
+/// List the cells of a value of type `t` at `off` in the owner. `stride`/`count`: the innermost enclosing
+/// array repeats this value (`count` 1: none).
+#[rustc_comptime]
+fn walk_cells(c: &mut Cells, t: std::any::TypeId, off: usize, depth: u8, stride: usize, count: usize) {
+    let kind = kind_of(t);
+    if matches!(kind, Kind::Struct) && t.fields(0) >= 1 && t.field(0, 0).type_id() == std::mem::type_info::of::<crate::signal::WireHead>() && t.field(0, 0).offset() == 0 {
+        if c.n >= CELL_CAP {
+            c.truncated = true;
+            return;
+        }
+        // (mutant: every cell is listed one head further on, so a borrowed field proves nothing)
+        let off = if cfg!(feature = "mutant_cell_offset") { off + 4 } else { off };
+        c.at[c.n] = CellAt { off, stride, count, ty: t };
+        c.n += 1;
+        return;
+    }
+    if depth >= MAX_DEPTH || t.trait_info_of::<dyn Opaque>().is_some() {
+        return;
+    }
+    match kind {
+        Kind::Struct | Kind::Tuple => {
+            let nf = t.fields(0);
+            let mut k = 0;
+            while k < nf {
+                let f = t.field(0, k);
+                walk_cells(c, f.type_id(), off + f.offset(), depth + 1, stride, count);
+                k += 1;
+            }
+        }
+        Kind::Array => {
+            let (Some(e), n) = (t.element_ty(), t.array_len()) else { return };
+            let size = match e.size() {
+                Some(z) => z,
+                None => 0,
+            };
+            if size == 0 || n == 0 {
+                return;
+            }
+            if count == 1 {
+                walk_cells(c, e, off, depth + 1, size, n);
+            } else {
+                // an array inside an array: the inner one is listed once per outer element
+                let mut i = 0;
+                while i < n && !c.truncated {
+                    walk_cells(c, e, off + i * size, depth + 1, stride, count);
+                    i += 1;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// The schema of `T`, built once at compile time.
 pub fn schema<T>() -> &'static Schema {
     const { &build(std::mem::type_info::of::<T>()) }
