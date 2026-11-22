@@ -19,6 +19,9 @@ pub enum Val {
     /// `on` while the pointer is over hover site `site`, else `off`. A site names its depth in its top byte
     /// (`site >> 24`), and the world keeps one "who is hovered" word per depth: one compare.
     HoverSel { site: u32, off: u32, on: u32 },
+    /// `on` while the pointer is over hover site `site`, else palette colour `slot`. On a fill this is the
+    /// keyed hover and the lazy palette at once: a hover visits two records, a theme switch none.
+    HoverPal { site: u32, slot: u16, theme_slot: u16, on: u32 },
     /// The current value of an animation of the world's table.
     Anim(u32),
     /// The result of an expression of the tape.
@@ -366,6 +369,9 @@ pub fn eval(v: Val, cx: &EvalCx<'_>) -> u32 {
         Val::HoverSel { site, off, on } => {
             if cx.state.word(cx.hover[site_depth(site) & (HOVER_DEPTHS - 1)]) == site { on } else { off }
         }
+        Val::HoverPal { site, slot, theme_slot, on } => {
+            if cx.state.word(cx.hover[site_depth(site) & (HOVER_DEPTHS - 1)]) == site { on } else { cx.palette.get(cx.state.word(SlotId(theme_slot)), slot) }
+        }
         Val::Anim(a) => cx.anims.get(a as usize).copied().unwrap_or(0),
         Val::Expr(e) => cx.tape.eval(e, cx),
     }
@@ -386,6 +392,10 @@ pub fn each_dep(v: Val, tape: &ExprTape, f: &mut dyn FnMut(Dep)) {
         Val::Slot(s) => f(Dep::Slot(SlotId(s))),
         Val::Palette { theme_slot, .. } => f(Dep::Slot(SlotId(theme_slot))),
         Val::HoverSel { site, .. } => f(Dep::Site(site)),
+        Val::HoverPal { site, theme_slot, .. } => {
+            f(Dep::Site(site));
+            f(Dep::Slot(SlotId(theme_slot)))
+        }
         Val::Anim(a) => f(Dep::Anim(a)),
         Val::Expr(e) => tape.each_dep(e, f),
     }

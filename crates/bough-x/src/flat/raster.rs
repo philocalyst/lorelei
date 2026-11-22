@@ -240,14 +240,42 @@ pub fn paint_box(s: &mut Surface, cut: Rect, r: Rect, p: &BoxPaint) {
     let irad = if bw > 0 { (rad - bw).max(0) } else { rad };
     let solid = p.grad_dir == 0;
     let opaque = solid && p.fill >> 24 == 255 && p.opacity == 255 && rad <= 0 && bw <= 0;
+    // Away from the corners' squares a borderless solid box covers every pixel whole: those runs are one
+    // source colour, composited (or stored) without asking the coverage. The same pixels as the general path.
+    let flat = solid && bw <= 0;
+    let crad = rad.min((r.x1 - r.x0) * 128).min((r.y1 - r.y0) * 128).max(0);
+    let cpx = (crad + 255) >> 8;
+    let whole = pm(p.fill, 255, p.opacity);
+    let stored = p.fill >> 24 == 255 && p.opacity == 255;
     for y in c.y0..c.y1 {
         let row = s.row_mut(y, c.x0, c.x1);
         if opaque {
             row.fill(p.fill);
             continue;
         }
+        // the run of this row that is outside the corners' squares
+        let (fx0, fx1) = if !flat {
+            (c.x0, c.x0)
+        } else if (y - r.y0) * 256 >= crad && (y - r.y0 + 1) * 256 <= (r.y1 - r.y0) * 256 - crad {
+            (c.x0, c.x1)
+        } else {
+            ((r.x0 + cpx).clamp(c.x0, c.x1), (r.x1 - cpx).clamp(c.x0, c.x1))
+        };
+        if fx1 > fx0 && p.fill >> 24 != 0 {
+            let run = &mut row[(fx0 - c.x0) as usize..(fx1 - c.x0) as usize];
+            if stored {
+                run.fill(p.fill);
+            } else {
+                for d in run {
+                    *d = over(*d, whole);
+                }
+            }
+        }
         for (k, d) in row.iter_mut().enumerate() {
             let x = c.x0 + k as i32;
+            if x >= fx0 && x < fx1 {
+                continue;
+            }
             let co = rcov(r, rad, x, y);
             let fill = if solid { p.fill } else { grad_at(p, r, x, y) };
             if bw > 0 {
@@ -654,6 +682,60 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    /// The general per-pixel path of a box, written out again: what `paint_box` must equal wherever it takes a
+    /// shortcut (and what the lowered runtime's canvas computes).
+    fn reference_box(s: &mut Surface, cut: Rect, r: Rect, p: &BoxPaint) {
+        let c = r.and(cut);
+        let (rad, bw) = (p.radius as i32, p.border_w as i32);
+        let i = (bw + 128) >> 8;
+        let inner = if bw > 0 { Rect::new(r.x0 + i, r.y0 + i, r.x1 - i, r.y1 - i) } else { r };
+        let irad = if bw > 0 { (rad - bw).max(0) } else { rad };
+        for y in c.y0..c.y1 {
+            for x in c.x0..c.x1 {
+                let d = &mut s.row_mut(y, x, x + 1)[0];
+                let co = rcov(r, rad, x, y);
+                if bw > 0 {
+                    let ci = if inner.is_empty() { 0 } else { rcov(inner, irad, x, y) }.min(co);
+                    if ci > 0 && p.fill >> 24 != 0 {
+                        *d = over(*d, pm(p.fill, ci, p.opacity));
+                    }
+                    if co > ci {
+                        *d = over(*d, pm(p.border_color, co - ci, p.opacity));
+                    }
+                } else if co > 0 && p.fill >> 24 != 0 {
+                    *d = over(*d, pm(p.fill, co, p.opacity));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_box_painted_by_runs_equals_the_box_painted_pixel_by_pixel() {
+        let mut z = 9u32;
+        let mut rnd = |n: u32| {
+            z = z.wrapping_mul(1664525).wrapping_add(1013904223);
+            (z >> 8) % n
+        };
+        for case in 0..if cfg!(miri) { 12 } else { 400 } {
+            let r = Rect::xywh(rnd(30) as i32 - 5, rnd(30) as i32 - 5, 1 + rnd(50) as i32, 1 + rnd(40) as i32);
+            let p = BoxPaint {
+                fill: [0xff40_80c0, 0x8040_80c0, 0x0000_0000, 0xffff_ffff][rnd(4) as usize],
+                border_color: 0xc010_2030,
+                border_w: [0, 0, 256, 600][rnd(4) as usize],
+                radius: [0, 0, 300, 1536, 4000, 100_000][rnd(6) as usize],
+                opacity: [255, 255, 90][rnd(3) as usize],
+                ..BoxPaint::default()
+            };
+            let cut = Rect::xywh(rnd(20) as i32, rnd(20) as i32, 1 + rnd(50) as i32, 1 + rnd(50) as i32);
+            let base = noise(64, 56, case);
+            let (mut a, mut b) = (base.clone(), base.clone());
+            let cut = cut.and(a.bounds());
+            paint_box(&mut a, cut, r, &p);
+            reference_box(&mut b, cut, r, &p);
+            assert_eq!(a.px, b.px, "case {case}: {r:?} {p:?} cut {cut:?}");
         }
     }
 

@@ -159,7 +159,7 @@ pub struct FlatWorld {
     /// For each bind: the record whose life it shares (and that record's generation), or `NONE`.
     bind_owner: Vec<(u32, u32)>,
     /// State word -> bindings of record properties and texts.
-    slot_offsets_records: Csr,
+    slot_records: Csr,
     /// State word -> bindings of spaces (scroll offsets, clip switches).
     slot_spaces: Csr,
     /// State word -> bindings of effect rows and animation goals.
@@ -363,7 +363,7 @@ impl FlatWorld {
             spaces: vec![Space { parent: NONE, port: NONE, clip: win, old_clip: win, ..Space::default() }],
             binds: Vec::new(),
             bind_owner: Vec::new(),
-            slot_offsets_records: Csr::default(),
+            slot_records: Csr::default(),
             slot_spaces: Csr::default(),
             slot_layers: Csr::default(),
             site_index: Csr::default(),
@@ -489,6 +489,21 @@ impl FlatWorld {
     /// `on` while `site` is hovered, else `off`.
     pub fn hover_sel(&self, site: u32, off: u32, on: u32) -> Val {
         Val::HoverSel { site, off, on }
+    }
+    /// `on` while `site` is hovered, else palette colour `slot` of the world's theme.
+    pub fn hover_pal(&self, site: u32, slot: u16, on: u32) -> Val {
+        Val::HoverPal { site, slot, theme_slot: self.theme.id().0, on }
+    }
+    /// A fill that is a hover over a palette entry of the world's theme is kept lazy: the column holds the
+    /// palette slot (resolved when painted) or the hover colour, and only the site is a dependency.
+    #[inline]
+    fn lazy_fill(&self, b: &Bind) -> bool {
+        matches!((b.target, b.val), (Target::Prop(Prop::Fill), Val::HoverPal { theme_slot, .. }) if theme_slot == self.theme.id().0)
+    }
+    /// What a lazy fill's column and palette flag should be now.
+    fn lazy_now(&self, v: Val) -> (u32, bool) {
+        let Val::HoverPal { site, slot, on, .. } = v else { unreachable!() };
+        if self.state.word(self.hover[site_depth(site) & (HOVER_DEPTHS - 1)]) == site { (on, false) } else { (slot as u32, true) }
     }
     /// A value that follows `target` over `dur_ms` instead of jumping: colours per channel if `color`, else
     /// as integers; along a critically damped spring if `spring`, else linearly. Driven by the clock word.
@@ -762,9 +777,19 @@ impl FlatWorld {
     /// Re-evaluate one binding; write and touch if its value changed.
     fn apply_bind(&mut self, bi: usize) {
         let b = self.binds[bi];
-        let new = self.eval_val(b.val);
         self.stats.binds_evaluated += 1;
         let idx = b.idx as usize;
+        if self.lazy_fill(&b) {
+            let (v, pal) = self.lazy_now(b.val);
+            if (self.store.fill[idx], self.store.flags[idx] & flag::PAL_FILL != 0) != (v, pal) {
+                self.touch(idx, touch::PAINT);
+                self.store.fill[idx] = v;
+                self.store.flags[idx] = self.store.flags[idx] & !flag::PAL_FILL | if pal { flag::PAL_FILL } else { 0 };
+                self.pal_dirty = true;
+            }
+            return;
+        }
+        let new = self.eval_val(b.val);
         match b.target {
             Target::Prop(p) => {
                 if self.store.prop(idx, p) != new {
@@ -785,6 +810,8 @@ impl FlatWorld {
                 let owner = self.store.texts[idx].owner as usize;
                 self.touch(owner, touch::PAINT);
                 self.format_text(idx);
+                // its window is its ink: a themed line that grew touches tiles the palette mask does not hold
+                self.pal_dirty |= self.store.flags[owner] & flag::PAL_FILL != 0;
             }
             Target::SpaceClip | Target::SpaceSx | Target::SpaceSy => {
                 if self.write_space(idx, b.target, new) {
@@ -809,8 +836,14 @@ impl FlatWorld {
     /// Evaluate one binding and write it, with no comparison and no damage (a mount).
     fn write_bind(&mut self, bi: usize) {
         let b = self.binds[bi];
-        let new = self.eval_val(b.val);
         let idx = b.idx as usize;
+        if self.lazy_fill(&b) {
+            let (v, pal) = self.lazy_now(b.val);
+            self.store.fill[idx] = v;
+            self.store.flags[idx] = self.store.flags[idx] & !flag::PAL_FILL | if pal { flag::PAL_FILL } else { 0 };
+            return;
+        }
+        let new = self.eval_val(b.val);
         match b.target {
             Target::Prop(p) => self.store.set_prop(idx, p, new),
             Target::Effect(f) => self.store.effects[idx][f as usize] = new,
@@ -832,7 +865,7 @@ impl FlatWorld {
         let mut j = 0;
         loop {
             let row = match which {
-                0 => self.slot_offsets_records.row(k),
+                0 => self.slot_records.row(k),
                 1 => self.slot_layers.row(k),
                 2 => self.slot_spaces.row(k),
                 3 => self.site_index.row(k),
@@ -1060,23 +1093,25 @@ impl FlatWorld {
             self.store.z_order[*i as usize] = rank as u32 + 1;
         }
         // dependency rows
-        let (binds, tape, nslots) = (&self.binds, &self.tape, self.state.len());
+        let (binds, tape, nslots, theme) = (&self.binds, &self.tape, self.state.len(), self.theme.id().0);
         let rows = |want: u8, f: &mut dyn FnMut(usize, u32)| {
             for (bi, b) in binds.iter().enumerate() {
+                // a lazy fill does not read the theme word: its palette entry is resolved when painted
+                let lazy = matches!((b.target, b.val), (Target::Prop(Prop::Fill), Val::HoverPal { theme_slot, .. }) if theme_slot == theme);
                 let class = match b.target {
                     Target::Prop(_) | Target::Text => 0,
                     Target::Effect(_) | Target::Anim => 1,
                     _ => 2,
                 };
                 each_dep(b.val, tape, &mut |d| match d {
-                    Dep::Slot(s) if want == class && (s.0 as usize) < nslots => f(s.0 as usize, bi as u32),
+                    Dep::Slot(s) if want == class && (s.0 as usize) < nslots && !lazy => f(s.0 as usize, bi as u32),
                     Dep::Site(site) if want == 3 => f((site & 0xff_ffff) as usize, bi as u32),
                     Dep::Anim(a) if want == 4 => f(a as usize, bi as u32),
                     _ => {}
                 });
             }
         };
-        self.slot_offsets_records.build(nslots, &mut |f| rows(0, f));
+        self.slot_records.build(nslots, &mut |f| rows(0, f));
         self.slot_layers.build(nslots, &mut |f| rows(1, f));
         self.slot_spaces.build(nslots, &mut |f| rows(2, f));
         self.site_index.build(self.sites as usize, &mut |f| rows(3, f));
@@ -1439,14 +1474,7 @@ impl FlatWorld {
         if self.index.loose.len() > 32 + self.store.live as usize / 8 {
             self.reindex();
         }
-        // 6. what the engine culls with and propagates through
-        if self.covers_dirty {
-            self.rebuild_covers();
-        }
-        if self.layers_dirty {
-            self.rebuild_layers();
-        }
-        // 7. a theme switch: the tiles themed records touch, with no record visited
+        // 6. a theme switch: the tiles themed records touch, with no record visited
         if themed {
             if self.pal_dirty {
                 self.rebuild_pal_mask();
@@ -1495,6 +1523,13 @@ impl FlatWorld {
     pub fn frame_with(&mut self, ext: &mut dyn ExtPaint) -> FrameInfo {
         self.settle();
         self.stats.frames += 1;
+        // what the engine culls with and propagates through, if a turn of this frame moved any of it
+        if self.covers_dirty {
+            self.rebuild_covers();
+        }
+        if self.layers_dirty {
+            self.rebuild_layers();
+        }
         let theme = self.state.get(self.theme);
         let FlatWorld { engine, store, spaces, palette, index, sc, surface, backdrops, stats, .. } = self;
         // layers that appeared or moved: their backdrops whole, bottom up
@@ -1800,8 +1835,12 @@ mod tests {
         let site = wd.add_site(0);
         let tint = wd.add_anim(wd.hover_sel(site, 0x80ff_ffff, 0x80ff_8080), 40, true, true);
         wd.add_record(RecordDesc { fill: tint, ..RecordDesc::rect(ROOT, Rect::new(0, 0, w, 20), 0u32).hit(site, 0) });
+        // a themed box with a hover colour: the lazy palette and the keyed hover on one fill
+        let site = wd.add_site(2);
+        wd.add_record(RecordDesc::rect(ROOT, Rect::new(100, 60, 124, 90), wd.hover_pal(site, 1, 0xffff_00ff)).hit(site, 0));
         wd.check(&mut NoExt).unwrap();
         let ops: &[&dyn Fn(&mut FlatWorld, &mut Vec<RecId>)] = &[
+            &|wd, _| wd.pointer_move(110, 70),
             &|wd, _| wd.pointer_move(10, 50),
             &|wd, _| {
                 let c = wd.get(count);

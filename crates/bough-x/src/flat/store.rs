@@ -442,9 +442,20 @@ impl FlatStore {
     /// `bare` (the `NO_EFFECT_HULL` mutant) the box alone.
     #[inline]
     pub fn window(&self, i: usize, bare: bool) -> Rect {
-        let r = self.rects[i];
+        let mut r = self.rects[i];
         if r.is_empty() {
             return Rect::EMPTY;
+        }
+        if self.kinds[i] == Kind::Text as u8 {
+            // a line of the built-in face inks only its cells, from the box's corner
+            if let Some(t) = self.texts.get(self.text_run[i] as usize) {
+                let (cw, ch) = super::raster::cell(t.scale);
+                r.x1 = r.x1.min(r.x0 + t.buf.len() as i32 * cw);
+                r.y1 = r.y1.min(r.y0 + ch);
+                if r.is_empty() {
+                    return Rect::EMPTY;
+                }
+            }
         }
         let Some(e) = self.effect(i) else {
             return r;
