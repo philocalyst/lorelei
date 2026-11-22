@@ -522,7 +522,7 @@ fn group_run(top: u32, steps: usize, mutate: Option<&dyn Fn(&str) -> String>) ->
         let pick = if k == 0 { 99 } else { [0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 7][k % 11] };
         let (a, c, i) = (g.f(0.0, 1.0), g.f(-1.0, 1.0), g.u(w.dots.len() as u32) as usize);
         // the same change to the world, the retained scene and the Metal twin
-        let mut apply = |w: &mut GroupWorld, bs: &mut [&mut Built]| match pick {
+        let apply = |w: &mut GroupWorld, bs: &mut [&mut Built]| match pick {
             // the parent animates the group: opacity, blur, corner radius, transform
             0 => {
                 w.opacity = 0.15 + 0.85 * a;

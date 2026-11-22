@@ -120,6 +120,7 @@ dependencies = [
  "bough-lay",
  "bough-mem",
  "bough-metal",
+ "bough-paint",
  "bough-sys",
  "bough-text",
  "bough-wayland",

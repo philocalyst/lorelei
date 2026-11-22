@@ -426,6 +426,9 @@ pub struct FlatScene {
     key: Vec<u32>,
     /// The rect its record holds (Q8), for mapping a group's damage.
     shown: Vec<[i32; 4]>,
+    /// What the node's record holds (rect, clip, effect, and whether it took tables): a lowering that would
+    /// write the same words writes nothing.
+    last: Vec<Option<([i32; 4], [i32; 4], Low, bool)>>,
     /// A shadow's geometry key at its last lowering, and the lowering's serial.
     geo: Vec<[i32; 6]>,
     stamp: Vec<u64>,
@@ -440,6 +443,8 @@ pub struct FlatScene {
     u: U,
     serial: u64,
     rebuild_due: bool,
+    /// Something was written since the last `prepare` (or is still owed): an idle scene is not asked.
+    pending: bool,
     /// Bumped when records were mounted or the scene was rebuilt: an executor bound to the scene re-syncs.
     pub mount_epoch: u64,
 }
@@ -496,6 +501,7 @@ impl FlatScene {
             slot: Vec::new(),
             key: Vec::new(),
             shown: Vec::new(),
+            last: Vec::new(),
             geo: Vec::new(),
             stamp: Vec::new(),
             dirty_mark: Vec::new(),
@@ -507,6 +513,7 @@ impl FlatScene {
             u: U::default(),
             serial: 0,
             rebuild_due: false,
+            pending: true,
             mount_epoch: 0,
         }
     }
@@ -518,6 +525,7 @@ impl FlatScene {
         &self.scene
     }
     pub fn scene_mut(&mut self) -> &mut Scene {
+        self.pending = true;
         &mut self.scene
     }
     /// The block the scene is drawn under (the pan words; the rest is the caller's).
@@ -525,6 +533,7 @@ impl FlatScene {
         &self.u
     }
     pub fn block_mut(&mut self) -> &mut U {
+        self.pending = true;
         &mut self.u
     }
     pub fn nodes(&self) -> usize {
@@ -546,6 +555,11 @@ impl FlatScene {
     /// Scroll the panned nodes to (x, y) pixels.
     pub fn set_pan(&mut self, px: f32, py: f32) {
         (self.u.w[PAN_X], self.u.w[PAN_Y]) = (q8(px) as u32, q8(py) as u32);
+        self.pending = true;
+    }
+    /// Something was written since the last `prepare`, here or in a group: `prepare` has work to look for.
+    pub fn pending(&self) -> bool {
+        self.pending
     }
 
     fn admit(&self, kind: EffectKind, space: Space) -> Result<(), FlatError> {
@@ -574,6 +588,7 @@ impl FlatScene {
         self.slot.push(NO);
         self.key.push(NO);
         self.shown.push([0; 4]);
+        self.last.push(None);
         self.geo.push([i32::MIN; 6]);
         self.stamp.push(0);
         self.dirty_mark.push(false);
@@ -584,6 +599,7 @@ impl FlatScene {
             }
         }
         // mount now, so that paint order is push order
+        self.pending = true;
         self.serial += 1;
         self.lower(id, true);
         self.mount_epoch += 1;
@@ -596,6 +612,7 @@ impl FlatScene {
         let at = self.order.iter().position(|&o| o == before.0).unwrap_or(self.order.len());
         self.order.insert(at, id.0);
         self.rebuild_due = true;
+        self.pending = true;
         Ok(id)
     }
     /// Remove a node: it stops drawing at once (a record rewrite); its record is given back when the scene
@@ -618,10 +635,12 @@ impl FlatScene {
     /// are given back.
     pub fn compact(&mut self) {
         self.rebuild_due = true;
+        self.pending = true;
     }
 
     #[inline]
     fn mark(&mut self, id: u32) {
+        self.pending = true;
         if !self.dirty_mark[id as usize] {
             self.dirty_mark[id as usize] = true;
             self.dirty.push(id);
@@ -806,6 +825,7 @@ impl FlatScene {
         }
         let surf = Surface::new(w, h, &mut self.scene.media, top.min(x::BD_LMAX)).ok_or(FlatError::NoRoom)?;
         let g = Group { flat: Box::new(child), surf, nodes: Vec::new() };
+        self.pending = true;
         let id = match self.groups.iter().position(Option::is_none) {
             Some(i) => {
                 self.groups[i] = Some(g);
@@ -823,6 +843,7 @@ impl FlatScene {
         &self.groups[g.0 as usize].as_ref().expect("a live group").flat
     }
     pub fn child_mut(&mut self, g: GroupId) -> &mut FlatScene {
+        self.pending = true;
         &mut self.groups[g.0 as usize].as_mut().expect("a live group").flat
     }
     /// The content revision of a group's surface (bumped by every repair that repainted a pixel).
@@ -831,6 +852,7 @@ impl FlatScene {
     }
     /// Drop a group no node shows any more; its surface is reused after the next frame.
     pub fn drop_group(&mut self, g: GroupId) -> Option<FlatScene> {
+        self.pending = true;
         let grp = self.groups.get_mut(g.0 as usize)?.take()?;
         assert!(grp.nodes.is_empty(), "the group is still shown");
         grp.surf.release(&mut self.scene.media);
@@ -886,7 +908,8 @@ impl FlatScene {
         (rect, low)
     }
     /// Write node `id`'s record. `settled`: it may take tables (a shadow whose geometry is not changing).
-    fn lower(&mut self, id: u32, settled: bool) {
+    /// Returns whether a record was written (a change too small to alter a word writes nothing).
+    fn lower(&mut self, id: u32, settled: bool) -> bool {
         let i = id as usize;
         let (mut rect, low) = self.low(i);
         let mut clip = self.clip[i];
@@ -904,7 +927,7 @@ impl FlatScene {
         // a shadow keeps its tables only while its shape holds still: one whose size, phase, radius or blur
         // is being animated would otherwise mint a table per frame
         let mut tables = true;
-        if let Low::Shadow { r, spread, dx, dy, blur, .. } = low {
+        if let (Low::Shadow { r, spread, dx, dy, blur, .. }, true) = (low, self.visible[i] && fits) {
             let key = [rect[2] - rect[0], rect[3] - rect[1], (rect[0] - spread + dx) & 255, (rect[1] - spread + dy) & 255, r, blur ^ spread.rotate_left(16)];
             if slot.is_some() && key != self.geo[i] && !settled {
                 tables = false;
@@ -914,6 +937,12 @@ impl FlatScene {
             }
             self.geo[i] = key;
         }
+        let now = Some((rect, clip, low, tables));
+        if slot.is_some() && self.last[i] == now {
+            self.stamp[i] = self.serial;
+            return false;
+        }
+        self.last[i] = now;
         let (was_tab, was_cov) = (self.scene.memoise, self.scene.memoise_coverage);
         if !tables {
             self.scene.memoise = false;
@@ -924,6 +953,7 @@ impl FlatScene {
         };
         (self.scene.memoise, self.scene.memoise_coverage) = (was_tab, was_cov);
         (self.key[i], self.slot[i], self.shown[i], self.stamp[i]) = (z, sl, rect, self.serial);
+        true
     }
     /// Lower every node that changed since the last flush. Returns the records rewritten.
     pub fn flush(&mut self) -> u32 {
@@ -932,8 +962,7 @@ impl FlatScene {
         let mut dirty = std::mem::take(&mut self.dirty);
         for &id in &dirty {
             self.dirty_mark[id as usize] = false;
-            self.lower(id, false);
-            n += 1;
+            n += self.lower(id, false) as u32;
         }
         dirty.clear();
         self.dirty = dirty;
@@ -944,8 +973,7 @@ impl FlatScene {
                 if self.stamp[id as usize] == self.serial {
                     return true;
                 }
-                self.lower(id, true);
-                n += 1;
+                n += self.lower(id, true) as u32;
                 false
             });
             self.unsettled = un;
@@ -960,6 +988,7 @@ impl FlatScene {
         for k in 0..self.order.len() {
             let id = self.order[k];
             self.slot[id as usize] = NO;
+            self.last[id as usize] = None;
             self.geo[id as usize] = [i32::MIN; 6];
             self.lower(id, true);
         }
@@ -984,12 +1013,19 @@ impl FlatScene {
     /// (`Scene::update` and so on); `FlatScene::frame` is this and a CPU frame.
     pub fn prepare(&mut self, workers: &Pool, extra: usize) -> FlatStats {
         let mut st = FlatStats::default();
+        if !self.pending {
+            return st;
+        }
         if self.rebuild_due {
             self.rebuild();
             st.rebuilt = true;
         }
         for gi in 0..self.groups.len() {
             let Some(g) = self.groups[gi].as_mut() else { continue };
+            // a group nothing was written in, whose surface has been painted, is not asked anything
+            if !g.flat.pending && g.surf.revision != 0 {
+                continue;
+            }
             let cst = g.flat.prepare(workers, extra);
             self.changed.clear();
             let rf = g.surf.repair(&mut g.flat.scene, &g.flat.u, &mut self.scene.media, workers, extra, &mut self.changed);
@@ -1026,6 +1062,7 @@ impl FlatScene {
             }
         }
         st.lowered += self.flush();
+        self.pending = !self.unsettled.is_empty() || self.groups.iter().flatten().any(|g| g.flat.pending);
         st
     }
     /// `prepare`, then a CPU frame into `out` (which holds the previous frame).

@@ -376,13 +376,13 @@ impl SpringSpec {
         SpringSpec { stiffness: w * w, damping: 2.0 * damping_ratio.max(0.0) * w, mass: 1.0 }
     }
     /// Quick, a trace of overshoot (response 0.3 s, ratio 0.86).
-    pub const SNAPPY: SpringSpec = SpringSpec::new(438.65, 36.02, 1.0);
+    pub const SNAPPY: SpringSpec = SpringSpec::new(438.649_1, 36.023_6, 1.0);
     /// A visible bounce (response 0.5 s, ratio 0.55).
-    pub const BOUNCY: SpringSpec = SpringSpec::new(157.91, 13.82, 1.0);
+    pub const BOUNCY: SpringSpec = SpringSpec::new(157.913_67, 13.823_008, 1.0);
     /// Slow and soft, no overshoot (response 0.6 s, critically damped).
-    pub const GENTLE: SpringSpec = SpringSpec::new(109.66, 20.94, 1.0);
+    pub const GENTLE: SpringSpec = SpringSpec::new(109.662_27, 20.943_951, 1.0);
     /// Fast and critically damped (response 0.2 s): a control snapping into place.
-    pub const STIFF: SpringSpec = SpringSpec::new(986.96, 62.83, 1.0);
+    pub const STIFF: SpringSpec = SpringSpec::new(986.960_4, 62.831_85, 1.0);
     /// The undamped angular rate and the damping ratio.
     pub fn omega_zeta(&self) -> (f64, f64) {
         let m = self.mass.max(1e-6) as f64;
@@ -492,17 +492,28 @@ impl Sprung {
         }
         (lo, hi)
     }
-    /// The local time from which the motion is within `eps` of its target for good (at most a minute).
+    /// The local time from which the motion is within `eps` of its target for good (at most a minute):
+    /// the envelope gives a time by which it surely is, and the exact range from a time on (which only
+    /// narrows) finds the first such time under it.
     fn settle(&self, eps: f64) -> f64 {
-        if self.envelope(0.0) <= eps {
+        let within = |t: f64| {
+            let (lo, hi) = self.range(t);
+            lo >= self.to - eps && hi <= self.to + eps
+        };
+        if within(0.0) {
             return 0.0;
         }
         let rate = self.s.max(1e-6);
-        let mut t = (self.envelope(0.0) / eps).ln() / rate;
-        while self.envelope(t) > eps && t < 60.0 {
-            t += 0.25 / rate;
+        let mut hi = (self.envelope(0.0) / eps).max(1.0).ln() / rate;
+        while !within(hi) && hi < 60.0 {
+            hi += 0.25 / rate;
         }
-        t.min(60.0)
+        let (mut lo, mut hi) = (0.0, hi.min(60.0));
+        for _ in 0..40 {
+            let mid = 0.5 * (lo + hi);
+            if within(mid) { hi = mid } else { lo = mid }
+        }
+        hi
     }
 }
 
@@ -590,6 +601,8 @@ struct Track {
     parked: bool,
     /// Its value was written (`AnimBank::set`) and the sink has not been told.
     fresh: bool,
+    /// How close to its target a spring of this track is declared at rest.
+    rest: f32,
     group: u32,
     /// The key range the track owns in the arena (reused by later keyframe motions that fit).
     keys: (u32, u32),
@@ -603,7 +616,8 @@ pub struct AnimBank {
     /// The earliest end among the parked tracks.
     wake: Option<ClockNs>,
     arena: Vec<Key>,
-    /// How close to its target a spring is declared at rest (in the track's own unit).
+    /// How close to its target a spring is declared at rest, for tracks made from now on (in the track's
+    /// own unit; `AnimBank::set_rest` for one track).
     pub rest_epsilon: f32,
     /// Track evaluations so far (a parked or resting track adds none).
     pub evals: u64,
@@ -620,7 +634,7 @@ impl AnimBank {
     }
     /// A track at rest at `v`. `tag` names what it drives (`flat_scene::Prop::tag`); the tick hands it back.
     pub fn track(&mut self, tag: u64, v: f32) -> TrackId {
-        self.tracks.push(Track { tag, value: v, motion: Motion::Rest, t0: ClockNs(0), end: None, held: None, window: None, at: NOWHERE, parked: false, fresh: false, group: 0, keys: (0, 0) });
+        self.tracks.push(Track { tag, value: v, motion: Motion::Rest, t0: ClockNs(0), end: None, held: None, window: None, at: NOWHERE, parked: false, fresh: false, rest: self.rest_epsilon, group: 0, keys: (0, 0) });
         // the lists a tick edits never grow inside it
         self.active.reserve(self.tracks.len() - self.active.len());
         self.parked.reserve(self.tracks.len() - self.parked.len());
@@ -647,6 +661,12 @@ impl AnimBank {
             Motion::Spring(s) => s.to as f32,
             Motion::Keys { .. } => self.final_value(t),
         }
+    }
+    /// How close to its target a spring of this track is declared at rest, in the track's unit: half the
+    /// smallest step that can be seen (a 64th of a pixel, a 512th of an opacity). A spring's last
+    /// invisible second is then not drawn.
+    pub fn set_rest(&mut self, id: TrackId, eps: f32) {
+        self.tracks[id.0 as usize].rest = eps.max(1e-9);
     }
     /// Put the track in group `g` (0: none): `pause_group`, `resume_group`, `scrub_group` act on a group.
     pub fn set_group(&mut self, id: TrackId, g: u32) {
@@ -803,7 +823,7 @@ impl AnimBank {
     fn spring_from(&mut self, id: TrackId, spec: SpringSpec, to: f32, v: f64, now: ClockNs, start: ClockNs) {
         let from = self.sample(id, now) as f64;
         let s = Sprung::launch(spec, from, v, to as f64);
-        let settle = s.settle(self.rest_epsilon.max(1e-9) as f64);
+        let settle = s.settle(self.tracks[id.0 as usize].rest.max(1e-9) as f64);
         self.tracks[id.0 as usize].value = from as f32;
         self.start(id, Motion::Spring(s), start, Some(start.after_ns((settle * 1e9).ceil() as u64)));
     }
