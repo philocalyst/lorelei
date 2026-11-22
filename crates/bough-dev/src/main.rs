@@ -303,6 +303,13 @@ fn dev(o: &Opts) -> Result<(), String> {
         .package
         .clone()
         .unwrap_or_else(|| "bough-inspect-app".into());
+    let mut rb = Rebuild::new(&package);
+    rb.bin = o.bin.clone();
+    rb.example = o.example.clone();
+    rb.features = o.features.clone();
+    rb.all_features = o.all_features;
+    rb.no_default_features = o.no_default_features;
+    rb.offline = o.offline;
     loop {
         std::thread::sleep(Duration::from_millis(o.interval_ms));
         let changes = w.scan();
@@ -311,38 +318,19 @@ fn dev(o: &Opts) -> Result<(), String> {
         }
         println!("change: {}", bough_dev::describe(&changes));
         match Watcher::worst(&changes) {
-            Some(Kind::Asset) => {
-                let c = running.client()?;
-                match c.request("reload", &bough_inspect::json::Value::obj()) {
-                    Ok(Ok(v)) => println!("reloaded: {}", bough_inspect::json::to_string(&v)),
-                    Ok(Err(e)) => eprintln!("reload refused: {}", e.message),
-                    Err(e) => eprintln!("reload: {e}"),
-                }
-            }
-            Some(_) => {
-                let mut rb = Rebuild::new(&package);
-                rb.bin = o.bin.clone();
-                rb.example = o.example.clone();
-                rb.features = o.features.clone();
-                rb.all_features = o.all_features;
-                rb.no_default_features = o.no_default_features;
-                rb.offline = o.offline;
-                match rb.run() {
-                    Ok(()) => match hot::restart_preserving_state(
-                        &spec,
-                        &mut running,
-                        Duration::from_millis(o.timeout_ms),
-                    ) {
-                        Ok(r) => println!("{}", r.line()),
-                        Err(e) => eprintln!("restart: {e}"),
-                    },
-                    Err(e) => {
-                        // the old app and its state stay; the next valid save retries
-                        eprintln!("build failed; the running app is kept:\n{e}");
+            Some(kind @ (Kind::AssetReload | Kind::StyleOrFxPatch | Kind::LayoutOrTreeRebuild)) => {
+                match bough_dev::dispatch(kind, &mut running, &spec, &rb, Duration::from_millis(o.timeout_ms))
+                {
+                    Ok(bough_dev::Dispatched::Reloaded(v)) => {
+                        println!("reloaded: {}", bough_inspect::json::to_string(&v))
                     }
+                    Ok(bough_dev::Dispatched::Restarted(r)) => println!("{}", r.line()),
+                    Ok(bough_dev::Dispatched::Ignored) => {}
+                    // the old app and its state stay; the next valid save retries
+                    Err(e) => eprintln!("{e}; the running app is kept"),
                 }
             }
-            None => {}
+            Some(Kind::Ignore) | None => {}
         }
         if o.once {
             return Ok(());

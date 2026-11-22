@@ -131,6 +131,13 @@ pub const METHODS: &[&str] = &[
     "record_start",
     "record_stop",
     "replay",
+    "damage_map",
+    "effects_inspect",
+    "animations",
+    "scrub_animation",
+    "profile_frame",
+    "assert_selector",
+    "batch",
     "shutdown",
 ];
 
@@ -157,6 +164,13 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                     J::Str("pixel-diff".into()),
                     J::Str("accessibility".into()),
                     J::Str("input".into()),
+                    J::Str("damage-map".into()),
+                    J::Str("effects".into()),
+                    J::Str("animations".into()),
+                    J::Str("scrub".into()),
+                    J::Str("frame-profile".into()),
+                    J::Str("assert-selector".into()),
+                    J::Str("batch".into()),
                 ],
             )),
         "methods" => ok(J::obj().set(
@@ -348,6 +362,34 @@ pub fn handle<P: Program>(s: &mut Session<P>, method: &str, params: &J) -> Reply
                 )),
             }
         }
+        "damage_map" => match crate::server::damage_map(s, params) {
+            Ok(reply) => ok(crate::server::finish_damage_reply(reply)),
+            Err(e) => fail(e),
+        },
+        "effects_inspect" => match crate::server::effects_inspect(s, params) {
+            Ok(v) => ok(v.json()),
+            Err(e) => fail(e),
+        },
+        "animations" => ok(J::obj().set(
+            "animations",
+            crate::server::animations(s)
+                .iter()
+                .map(|a| a.json())
+                .collect::<Vec<_>>(),
+        )),
+        "scrub_animation" => match crate::server::scrub_animation(s, params) {
+            Ok(v) => ok(v.json()),
+            Err(e) => fail(e),
+        },
+        "profile_frame" => ok(crate::server::profile_frame(s).json()),
+        "assert_selector" => match crate::server::assert_selector(s, params) {
+            Ok(v) => ok(v.json()),
+            Err(e) => fail(e),
+        },
+        "batch" => match crate::server::batch(s, params) {
+            Ok(v) => ok(v.json()),
+            Err(e) => fail(e),
+        },
         "shutdown" => Reply {
             result: Ok(J::obj().set("bye", true)),
             shutdown: true,
@@ -829,22 +871,15 @@ pub(crate) fn prepare_shot<P: Program>(
 }
 
 pub(crate) fn encode_shot(f: crate::Frame, raw_pixels: bool) -> J {
-    let png = f.png();
+    let e = crate::encoder::encode(f.w, f.h, &f.px, raw_pixels);
     let mut o = J::obj()
         .set("w", f.w)
         .set("h", f.h)
-        .set("digest", J::Str(format!("{:016x}", f.digest())))
-        .set("png", json::base64_encode(&png))
-        .set("bytes", png.len());
-    if raw_pixels {
-        let mut raw = Vec::with_capacity(f.px.len() * 4);
-        for c in &f.px {
-            let [a, r, g, b] = c.to_be_bytes();
-            raw.extend_from_slice(&[r, g, b, a]);
-        }
-        o = o
-            .set("raw", json::base64_encode(&raw))
-            .set("format", "rgba8-le");
+        .set("digest", J::Str(format!("{:016x}", e.digest)))
+        .set("png", e.png_base64.as_str())
+        .set("bytes", e.png.len());
+    if let Some(raw) = e.raw_base64 {
+        o = o.set("raw", raw.as_str()).set("format", "rgba8-le");
     }
     o
 }

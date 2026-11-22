@@ -90,6 +90,15 @@ fn answer<P: Program>(s: &mut Session<P>, req: &J, handshaken: &mut bool) -> (Re
             Err(e) => (Response::Json(request.error(&e)), false),
         };
     }
+    if request.method == "damage_map" {
+        return match crate::server::damage_map(s, &request.params) {
+            Ok(crate::server::DamageReply::Ready(v)) => (Response::Json(request.result(v)), false),
+            Ok(crate::server::DamageReply::Heatmap { json, w, h, px }) => {
+                (Response::Heatmap(request, json, w, h, px), false)
+            }
+            Err(e) => (Response::Json(request.error(&e)), false),
+        };
+    }
     let reply = rpc::handle(s, &request.method, &request.params);
     (
         Response::Json(match reply.result {
@@ -109,6 +118,7 @@ const FRAME_TIMEOUT: Duration = Duration::from_secs(30);
 enum Response {
     Json(J),
     Shot(Request, crate::Frame, bool),
+    Heatmap(Request, J, i32, i32, Arc<[u32]>),
     #[cfg(test)]
     Thread(mpsc::SyncSender<std::thread::ThreadId>),
 }
@@ -118,6 +128,11 @@ impl Response {
         let value = match self {
             Self::Json(value) => value,
             Self::Shot(request, frame, raw) => request.result(rpc::encode_shot(frame, raw)),
+            Self::Heatmap(request, mut result, w, h, px) => {
+                let encoded = crate::encoder::encode(w, h, &px, false);
+                result.put("heatmap_png_base64", encoded.png_base64.as_str());
+                request.result(result)
+            }
             #[cfg(test)]
             Self::Thread(sender) => {
                 let _ = sender.send(std::thread::current().id());
@@ -134,37 +149,56 @@ impl Response {
 type EncodeResult = io::Result<Vec<u8>>;
 type EncodeJob = (Response, mpsc::SyncSender<EncodeResult>);
 
-struct Encoders(mpsc::SyncSender<EncodeJob>);
+struct Encoders {
+    tx: Option<mpsc::SyncSender<EncodeJob>>,
+    threads: Vec<std::thread::JoinHandle<()>>,
+}
 
 impl Encoders {
     fn new() -> io::Result<Self> {
         let (send, recv) = mpsc::sync_channel::<EncodeJob>(MAX_CLIENTS);
         let recv = Arc::new(Mutex::new(recv));
+        let mut threads = Vec::new();
         for _ in 0..2 {
             let recv = Arc::clone(&recv);
-            std::thread::Builder::new()
-                .name("bough-inspector-encode".into())
-                .spawn(move || {
-                    loop {
-                        let job = recv.lock().unwrap().recv();
-                        let Ok((reply, done)) = job else { break };
-                        let _ = done.send(reply.bytes());
-                    }
-                })?;
+            threads.push(
+                std::thread::Builder::new()
+                    .name("bough-inspector-encode".into())
+                    .spawn(move || {
+                        loop {
+                            let job = recv.lock().unwrap_or_else(|e| e.into_inner()).recv();
+                            let Ok((reply, done)) = job else { break };
+                            let _ = done.send(reply.bytes());
+                        }
+                    })?,
+            );
         }
-        Ok(Self(send))
+        Ok(Self {
+            tx: Some(send),
+            threads,
+        })
     }
 
     fn submit(&self, reply: Response) -> Option<mpsc::Receiver<EncodeResult>> {
         let (send, recv) = mpsc::sync_channel(1);
         #[cfg(not(feature = "mutant-inline-reply"))]
-        self.0.try_send((reply, send)).ok()?;
+        self.tx.as_ref()?.try_send((reply, send)).ok()?;
         #[cfg(feature = "mutant-inline-reply")]
         {
-            let _ = &self.0;
+            let _ = &self.tx;
             send.send(reply.bytes()).ok()?;
         }
         Some(recv)
+    }
+}
+
+impl Drop for Encoders {
+    fn drop(&mut self) {
+        // Drop the sender so the workers' recv() returns Err and they exit, then join them cleanly.
+        self.tx = None;
+        for t in self.threads.drain(..) {
+            let _ = t.join();
+        }
     }
 }
 

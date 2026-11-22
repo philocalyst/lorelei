@@ -23,18 +23,23 @@
 
 pub mod client;
 pub mod damage;
+pub mod encoder;
 pub mod frame;
+pub mod hooks;
 pub mod json;
 pub mod png;
+pub mod protocol;
 pub mod record;
 pub mod rpc;
 pub mod schema;
 pub mod schema_read;
+pub mod server;
 pub mod session;
 pub mod socket;
 pub mod testing;
 pub mod ui;
 
+pub use encoder::PngWorker;
 pub use frame::Frame;
 pub use schema::{Key, Loc, Node, PropValue, SCHEMA_VERSION, Snapshot};
 pub use session::{FieldDef, FieldKind, Input, Outcome, Program, Refusal, Session};

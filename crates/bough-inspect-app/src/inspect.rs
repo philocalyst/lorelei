@@ -2,6 +2,7 @@
 use crate::lab::{Event, Lab, Scenario};
 use bough_guibench_x::{rows, search, spinner, table};
 use bough_inspect::Frame;
+use bough_inspect::protocol::Animation;
 use bough_inspect::schema::PropValue;
 use bough_inspect::session::{FieldDef, FieldKind, Input, Program, Refusal};
 use bough_span::Spans;
@@ -93,7 +94,30 @@ impl<V: Fields> Program for Lab<V> {
     fn fresh(&self) -> Option<Self> {
         Some(self.rebuild_with(self.scene.v.rebuild()))
     }
+    /// The records the core is currently moving (a scroll in flight) are reported as transitions; a scenario
+    /// with a real animation bank overrides this with its own spring/cubic-bezier/keyframe state.
+    fn animations(&self, snap: &bough_inspect::Snapshot) -> Vec<Animation> {
+        let mut out = Vec::new();
+        for n in &snap.nodes {
+            if n.moving {
+                out.push(Animation {
+                    id: n.id,
+                    node: Some(n.id),
+                    property: "offset".to_owned(),
+                    kind: "transition".to_owned(),
+                    elapsed_ms: 0.0,
+                    duration_ms: None,
+                    value: n.offset.1 as f64,
+                    velocity: 0.0,
+                    settled: false,
+                    phase: "idle".to_owned(),
+                });
+            }
+        }
+        out
+    }
 }
+
 
 fn int(v: &PropValue, field: &'static str) -> Result<i32, Refusal> {
     match v {
