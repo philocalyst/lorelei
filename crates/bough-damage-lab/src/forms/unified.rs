@@ -63,6 +63,8 @@ pub struct Unified {
     scratch_list: Vec<u32>,
     /// Reusable scratch plane for format-C runs.
     hw_runs: Plane,
+    /// Reusable scratch list of eligible scroll-blit candidates.
+    scratch_cand: Vec<(usize, R, i32, i32)>,
 }
 
 impl Unified {
@@ -81,6 +83,7 @@ impl Unified {
             non_group_slots: Vec::new(),
             scratch_list: Vec::new(),
             hw_runs: Plane::new(1, 1, 5),
+            scratch_cand: Vec::new(),
         }
     }
 
@@ -99,17 +102,6 @@ impl Unified {
         }
     }
 
-    /// Check whether a group event in `f` matches one of our statically known groups
-    /// (by clip / slot range) so we can classify foreground/background hazards cleanly.
-    fn find_group_info(&self, f: &Frame, g: &crate::trace::GroupEv) -> Option<&GroupInfo> {
-        if g.n == 0 {
-            return None;
-        }
-        let sample_slot = f.gslots[g.at as usize] as usize;
-        self.groups.iter().find(|gi| {
-            sample_slot < gi.in_group.len() && gi.in_group[sample_slot]
-        })
-    }
 
     /// Front-to-back opaque cover culling against `self.acc`, emitting surviving slots
     /// in exact back-to-front paint order into `out`.
@@ -267,7 +259,7 @@ impl Form for Unified {
             fs.full.clear();
             fs.scroll.clear();
             fs.copies.clear();
-            exact_events(f, &mut |r| Self::mark_dilated(&mut fs.full, r, dilate, vp));
+            exact_nodes_group_bounds(f, &mut |r| Self::mark_dilated(&mut fs.full, r, dilate, vp));
         }
 
         // Check if any scroll groups qualify for rigid copy-forward blitting.
@@ -275,8 +267,8 @@ impl Form for Unified {
             return;
         }
 
-        // Collect eligible non-overlapping rigid scroll blits.
-        let mut candidates: Vec<(usize, R, i32, i32)> = Vec::new();
+        // Collect eligible non-overlapping rigid scroll blits (zero per-frame heap allocation).
+        self.scratch_cand.clear();
         for (gi, g) in f.groups.iter().enumerate() {
             if (g.dx == 0 && g.dy == 0) || g.clip.is_empty() {
                 continue;
@@ -286,38 +278,37 @@ impl Form for Unified {
                 continue;
             }
             let dst = clip.inter(clip.tr(g.dx, g.dy));
-            // Only worth blitting when at least 1/3 of the clip area survives the shift.
             if dst.is_empty() || dst.area() * 3 < clip.area() {
                 continue;
             }
-            // Reject if clip overlaps an already-chosen scroll group clip.
-            if candidates.iter().any(|&(other_i, _, _, _)| {
+            if self.scratch_cand.iter().any(|&(other_i, _, _, _)| {
                 f.groups[other_i].clip.clip(vp).meets(clip)
             }) {
                 continue;
             }
-            candidates.push((gi, dst, g.dx, g.dy));
+            self.scratch_cand.push((gi, dst, g.dx, g.dy));
         }
 
-        if candidates.is_empty() {
+        if self.scratch_cand.is_empty() {
             return;
         }
 
-        // Build `scroll` damage plane for this frame assuming `candidates` are blitted from `n - 1`.
-        let mut scroll_p = Plane::new(self.w, self.h, self.sh);
+        let multi_group = self.groups.len() > 1;
+        let fs = &mut self.ring_slots[slot_idx];
+        let scroll_p = &mut fs.scroll;
+        let copies_out = &mut fs.copies;
+
         // Copy-forward only replaces pixels inside `dst`; all node events still apply.
         for e in &f.nodes {
             for k in e.at as usize..(e.at + e.n) as usize {
                 let o = &f.olds[k];
                 let n = &f.news[k];
-                exact_slot(o, n, &mut |r| Self::mark_dilated(&mut scroll_p, r, dilate, vp));
-                // If an old node overlapped any blit's `src = dst - (dx, dy)`,
-                // its stale pixels from frame `n - 1` got copied into `dst` at `o.cov + (dx, dy)`.
+                exact_slot(o, n, &mut |r| Self::mark_dilated(scroll_p, r, dilate, vp));
                 if !o.cov.is_empty() {
-                    for &(_, dst, dx, dy) in &candidates {
+                    for &(_, dst, dx, dy) in &self.scratch_cand {
                         let moved = o.cov.tr(dx, dy).clip(dst);
                         if !moved.is_empty() {
-                            Self::mark_dilated(&mut scroll_p, moved, dilate, vp);
+                            Self::mark_dilated(scroll_p, moved, dilate, vp);
                         }
                     }
                 }
@@ -326,25 +317,23 @@ impl Form for Unified {
 
         // Non-blitted groups fall back to exact events.
         for (gi, g) in f.groups.iter().enumerate() {
-            if !candidates.iter().any(|&(ci, _, _, _)| ci == gi) {
+            if !self.scratch_cand.iter().any(|&(ci, _, _, _)| ci == gi) {
                 for j in g.at as usize..(g.at + g.n) as usize {
                     exact_slot(&f.gold[j], &f.gnew[j], &mut |r| {
-                        Self::mark_dilated(&mut scroll_p, r, dilate, vp)
+                        Self::mark_dilated(scroll_p, r, dilate, vp)
                     });
                 }
             }
         }
 
-        // For each blitted group: mark exposed strip, non-rigid group slots, and overlay/non-uniform hazards.
-        let mut copies_out: Vec<(R, i32, i32)> = Vec::with_capacity(candidates.len());
-        for &(gi, dst, dx, dy) in &candidates {
+        for &(gi, dst, dx, dy) in &self.scratch_cand {
             let g = &f.groups[gi];
             let clip = g.clip.clip(vp);
 
             // 1. Newly exposed strip `clip \ dst`.
-            clip.sub(dst, &mut |r| Self::mark_dilated(&mut scroll_p, r, dilate, vp));
+            clip.sub(dst, &mut |r| Self::mark_dilated(scroll_p, r, dilate, vp));
 
-            // 2. Non-rigid slots inside the group (recycled rows, text/color changes, sub-clip changes).
+            // 2. Non-rigid slots inside the group.
             for j in g.at as usize..(g.at + g.n) as usize {
                 let o = &f.gold[j];
                 let n = &f.gnew[j];
@@ -357,85 +346,90 @@ impl Form for Unified {
                     if !o.cov.is_empty() {
                         let moved = o.cov.tr(dx, dy).clip(dst);
                         if !moved.is_empty() {
-                            Self::mark_dilated(&mut scroll_p, moved, dilate, vp);
+                            Self::mark_dilated(scroll_p, moved, dilate, vp);
                         }
                     }
                     if !n.cov.is_empty() {
-                        Self::mark_dilated(&mut scroll_p, n.cov, dilate, vp);
+                        Self::mark_dilated(scroll_p, n.cov, dilate, vp);
                     }
                 }
             }
 
-            // 3. Static hazards outside the group overlapping `clip`:
-            //    - Any slot ABOVE the group overlapping `clip` (e.g. sticky header, modal, tooltip)
-            //    - Any slot BELOW the group overlapping `clip` that is NOT a uniform SOLID fill covering all of `clip`.
-            //    Note: also check other groups' slots if any exist.
-            let ginfo = self.find_group_info(f, g);
+            // 3. Static hazards outside the group overlapping `clip`.
+            // Fast path when there is at most one group: scan ONLY `non_group_slots` instead of all
+            // 26,000+ group slots!
+            let ginfo = if g.n > 0 {
+                let sample = f.gslots[g.at as usize] as usize;
+                self.groups.iter().find(|info| sample < info.in_group.len() && info.in_group[sample])
+            } else {
+                None
+            };
             let min_s = ginfo.map(|info| info.min_slot).unwrap_or(0);
             let clip_n = N::from_r(clip);
-            for (pi, pg) in sc.page.iter().enumerate() {
-                if !pg.meets(clip_n) {
-                    continue;
+            let mut check_slot = |s: usize| {
+                let c = sc.cov[s];
+                if !c.meets(clip_n) {
+                    return;
                 }
-                let base = pi * 64;
-                for k in 0..64 {
-                    let s = base + k;
-                    if let Some(info) = ginfo {
-                        if s < info.in_group.len() && info.in_group[s] {
-                            continue;
-                        }
+                let r = c.to_r();
+                if s < min_s && r.contains(clip) {
+                    if sc.kind[s] == SOLID {
+                        return;
                     }
-                    let c = sc.cov[s];
-                    if !c.meets(clip_n) {
+                    if sc.kind[s] == ROUND {
+                        let rad = 32i32.min(r.x1 - r.x0).min(r.y1 - r.y0);
+                        for c_rect in [
+                            R::new(r.x0, r.y0, r.x0 + rad, r.y0 + rad),
+                            R::new(r.x1 - rad, r.y0, r.x1, r.y0 + rad),
+                            R::new(r.x0, r.y1 - rad, r.x0 + rad, r.y1),
+                            R::new(r.x1 - rad, r.y1 - rad, r.x1, r.y1),
+                        ] {
+                            let in_clip = c_rect.clip(clip);
+                            if !in_clip.is_empty() {
+                                Self::mark_dilated(scroll_p, in_clip, dilate, vp);
+                            }
+                            let moved = c_rect.tr(dx, dy).clip(dst);
+                            if !moved.is_empty() {
+                                Self::mark_dilated(scroll_p, moved, dilate, vp);
+                            }
+                        }
+                        return;
+                    }
+                }
+                let in_clip = r.clip(clip);
+                if !in_clip.is_empty() {
+                    Self::mark_dilated(scroll_p, in_clip, dilate, vp);
+                }
+                let moved = r.tr(dx, dy).clip(dst);
+                if !moved.is_empty() {
+                    Self::mark_dilated(scroll_p, moved, dilate, vp);
+                }
+            };
+
+            if !multi_group {
+                for &su in &self.non_group_slots {
+                    check_slot(su as usize);
+                }
+            } else {
+                for (pi, pg) in sc.page.iter().enumerate() {
+                    if !pg.meets(clip_n) {
                         continue;
                     }
-                    let r = c.to_r();
-                    // Uniform opaque background strictly behind the group covering the whole clip
-                    // is translation-invariant under the blit.
-                    if s < min_s && r.contains(clip) {
-                        if sc.kind[s] == SOLID {
-                            continue;
-                        }
-                        if sc.kind[s] == ROUND {
-                            // A ROUND rect behind the group is uniform everywhere except its 4 corner
-                            // squares (at most 32x32 px each; conservative upper bound for rad <= 32).
-                            let rad = 32i32.min(r.x1 - r.x0).min(r.y1 - r.y0);
-                            let corners = [
-                                R::new(r.x0, r.y0, r.x0 + rad, r.y0 + rad),
-                                R::new(r.x1 - rad, r.y0, r.x1, r.y0 + rad),
-                                R::new(r.x0, r.y1 - rad, r.x0 + rad, r.y1),
-                                R::new(r.x1 - rad, r.y1 - rad, r.x1, r.y1),
-                            ];
-                            for c_rect in corners {
-                                let in_clip = c_rect.clip(clip);
-                                if !in_clip.is_empty() {
-                                    Self::mark_dilated(&mut scroll_p, in_clip, dilate, vp);
-                                }
-                                let moved = c_rect.tr(dx, dy).clip(dst);
-                                if !moved.is_empty() {
-                                    Self::mark_dilated(&mut scroll_p, moved, dilate, vp);
-                                }
+                    let base = pi * 64;
+                    for k in 0..64 {
+                        let s = base + k;
+                        if let Some(info) = ginfo {
+                            if s < info.in_group.len() && info.in_group[s] {
+                                continue;
                             }
-                            continue;
                         }
-                    }
-                    let in_clip = r.clip(clip);
-                    if !in_clip.is_empty() {
-                        Self::mark_dilated(&mut scroll_p, in_clip, dilate, vp);
-                    }
-                    let moved = r.tr(dx, dy).clip(dst);
-                    if !moved.is_empty() {
-                        Self::mark_dilated(&mut scroll_p, moved, dilate, vp);
+                        check_slot(s);
                     }
                 }
             }
 
             copies_out.push((dst, dx, dy));
         }
-
-        let fs = &mut self.ring_slots[slot_idx];
-        fs.scroll = scroll_p;
-        fs.copies = copies_out;
     }
 
     fn repair(&mut self, _surf: usize, age: u32, sc: &Scene, out: &mut Out) {
