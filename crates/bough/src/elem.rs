@@ -126,11 +126,20 @@ pub trait Element<V>: Sized {
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
         s.refuse()
     }
+    /// Describe this element as data for the lowered runtime (`lower/mod.rs`: the typed core). The default
+    /// refuses by name: an element with no lowering is reported, never drawn as something else.
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>)
+    where
+        V: 'static,
+    {
+        l.refuse(std::any::type_name::<Self>())
+    }
 }
 
 impl<V> Element<V> for () {
     fn mount(self, _: &mut Mounter<'_, V>) {}
     fn update(self, _: &mut Mounter<'_, V>) {}
+    fn lower(self, _: &mut crate::lower::Lower<'_, '_, V>) {}
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, _: &mut S) {}
 }
@@ -154,6 +163,14 @@ macro_rules! tuple_elements {
                 let ($($t,)+) = self;
                 $($t.seal(s);)+
             }
+            #[allow(non_snake_case)]
+            fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>)
+            where
+                V: 'static,
+            {
+                let ($($t,)+) = self;
+                $($t.lower(l);)+
+            }
         }
     };
 }
@@ -173,6 +190,12 @@ impl<V, E: Element<V>> Element<V> for Vec<E> {
     fn update(self, m: &mut Mounter<'_, V>) {
         crate::describe::update_dyn(m, self.into_iter());
     }
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>)
+    where
+        V: 'static,
+    {
+        self.into_iter().for_each(|e| e.lower(l))
+    }
 }
 
 /// Children from an iterator (`each((0..30).map(|i| card(i)))`).
@@ -189,6 +212,12 @@ where
     }
     fn update(self, m: &mut Mounter<'_, V>) {
         crate::describe::update_dyn(m, self.0);
+    }
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>)
+    where
+        V: 'static,
+    {
+        self.0.for_each(|e| e.lower(l))
     }
 }
 
@@ -649,7 +678,7 @@ int_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 
 /// `v` in decimal, written at the end of `buf`.
 #[inline]
-fn decimal(v: i128, buf: &mut [u8; 40]) -> &str {
+pub(crate) fn decimal(v: i128, buf: &mut [u8; 40]) -> &str {
     let (neg, mut u) = (v < 0, v.unsigned_abs() as u64);
     let mut i = buf.len();
     loop {

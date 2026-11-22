@@ -399,7 +399,7 @@ impl Kids for Under<'_, '_> {
 }
 
 /// A wrapping leaf by reference, as measured content.
-struct ByRef<'a>(&'a dyn Wrap);
+pub(crate) struct ByRef<'a>(pub(crate) &'a dyn Wrap);
 impl Measure for ByRef<'_> {
     const WRAPS: bool = true;
     #[inline(always)]

@@ -81,6 +81,25 @@ pub trait Sink<V>: Sized + for<'r> ScopeOf<'r, V> {
     ) -> i32 {
         unimplemented!("this sink does not take lists of elements")
     }
+    /// As [`Sink::rows`], for rows that are a relation's: `edits` is its journal, and a pass describes the rows
+    /// the journal names and the rows that enter exposure, not every exposed row. `how.all` asks for every
+    /// exposed row to be described and compared anyway (a pass after which nothing kept from an earlier
+    /// description may be relied on). `how.by_item` says that a row is described from its item alone, never
+    /// from its index: then a row that an insert or a remove elsewhere moves is the same records at another
+    /// place, and is not described again ([`RowsHow`]). A sink that keeps nothing between passes describes
+    /// what it always does.
+    #[track_caller]
+    #[inline(always)]
+    fn rows_j<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
+        &mut self,
+        n: u32,
+        geo: Option<Geo>,
+        _edits: &Journal,
+        _how: RowsHow,
+        f: F,
+    ) -> i32 {
+        self.rows(n, geo, f)
+    }
     /// A row of the fixed shape: its layout (one rect per record, in order) and its operands. The closure is
     /// only called by a sink that wants the row; after a turn that changed no opaque state, none does.
     ///
@@ -88,6 +107,29 @@ pub trait Sink<V>: Sized + for<'r> ScopeOf<'r, V> {
     /// is described; every other sink ignores the location, and after inlining it is not there.
     #[track_caller]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, f: F);
+    /// Whether this sink holds the fixed row of this scope from an earlier pass, so that one record of it can
+    /// be brought up to date alone ([`Sink::leaf`]) instead of the whole row being described.
+    #[inline(always)]
+    fn keeps(&self) -> bool {
+        false
+    }
+    /// Record `k` of this scope's first fixed row is `a` now: stored and damaged if it differs from what the
+    /// row holds, exactly as [`Sink::row`] would do for that record; the row's other records and every rect
+    /// are left as they are. Only for a sink that [`Sink::keeps`]. The record's type is checked against the
+    /// column the row was made with.
+    fn leaf<A: Arch>(&mut self, _k: usize, _a: &A) {
+        unimplemented!("this sink does not keep rows")
+    }
+    /// A scrolled scope's optional projected field and measured content height in device pixels.
+    /// `line` overrides the first list row's default wheel distance, in points.
+    fn scroll_content(
+        &mut self,
+        _field: Option<crate::expr::Slot>,
+        _height: i32,
+        _line: Option<f32>,
+    ) {
+    }
+
     /// A child with its own coordinate space (a clip, a scroll offset read from the block).
     #[track_caller]
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(
@@ -98,6 +140,27 @@ pub trait Sink<V>: Sized + for<'r> ScopeOf<'r, V> {
     /// The rows of a relation, one under another. Only exposed rows are asked for.
     #[track_caller]
     fn list<R: Row<V>, F: FnMut(usize) -> R>(&mut self, l: &List<'_>, f: F);
+    /// Free rows: `n` rows of one record each, every one with its own rect (`f(i)` is row `i` and where it is,
+    /// in the space of this sink). Rows come and go between passes: a pass with fewer rows releases the rest, a
+    /// pass with more writes them, and a row whose record or rect differs from what its slot holds is stored
+    /// and damaged. Rows are painted in index order. This is where a description that is data lives
+    /// ([`free_sync`]).
+    #[track_caller]
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, _n: u32, _f: F) {
+        unimplemented!("this sink does not take free rows")
+    }
+}
+
+/// How the rows of a relation are to be brought up to date ([`Sink::rows_j`]).
+#[derive(Clone, Copy, Default, Debug)]
+pub struct RowsHow {
+    /// Describe and compare every exposed row, whatever the journal says.
+    pub all: bool,
+    /// A row's description depends on its item and not on its index (its handlers name the item, not the
+    /// row; nothing it shows is the row's number). Only then may a row be kept across an insert or a remove
+    /// before it: a list whose row function reads the index (`Sink::list`, `Sink::rows`) describes every row
+    /// from the edit on again, because each of them is another description.
+    pub by_item: bool,
 }
 
 // ---- relations ---------------------------------------------------------------------------------------------
@@ -119,6 +182,14 @@ pub struct Journal {
     watch: std::sync::OnceLock<std::sync::Arc<AtomicU32>>,
     pub ver: u32,
     pub log: [Edit; 8],
+    /// The rows the list reading this journal exposed at its last pass (`lo << 32 | hi`): what whoever keeps
+    /// the relation needs to turn "this item changed" into "this exposed row changed" without searching the
+    /// whole order. Written by the list pass; one list per journal is assumed by its reader.
+    pub win: core::sync::atomic::AtomicU64,
+    /// The rows of this relation are described from their items alone, never from their index
+    /// ([`RowsHow::by_item`]): a list reading this journal keeps a row across an insert or a remove before it.
+    /// False unless the relation's owner says so ([`Journal::by_item`], [`Rel::by_item`]).
+    pub by_item: bool,
 }
 impl Journal {
     pub const fn new() -> Journal {
@@ -126,19 +197,32 @@ impl Journal {
             watch: std::sync::OnceLock::new(),
             ver: 0,
             log: [Edit::Update(0); 8],
+            win: core::sync::atomic::AtomicU64::new(0),
+            by_item: false,
         }
+    }
+    /// A journal of a relation whose rows are described from their items alone (see the field).
+    pub const fn by_item() -> Journal {
+        let mut j = Journal::new();
+        j.by_item = true;
+        j
     }
     fn watch(&self) -> std::sync::Arc<AtomicU32> {
         self.watch
             .get_or_init(|| std::sync::Arc::new(AtomicU32::new(self.ver)))
             .clone()
     }
+    #[inline]
+    fn follows(&self, current: &Option<std::sync::Arc<AtomicU32>>) -> bool {
+        match (self.watch.get(), current.as_ref()) {
+            (Some(watch), Some(current)) => std::sync::Arc::ptr_eq(watch, current),
+            _ => false,
+        }
+    }
     // Once a list is following this journal, its Arc already owns the revision counter.
     // Rebind only when the source journal changes.
     fn follow(&self, current: &mut Option<std::sync::Arc<AtomicU32>>) -> bool {
-        if let (Some(watch), Some(current)) = (self.watch.get(), current.as_ref())
-            && std::sync::Arc::ptr_eq(watch, current)
-        {
+        if self.follows(current) {
             return false;
         }
         *current = Some(self.watch());
@@ -153,6 +237,12 @@ impl Journal {
         }
     }
     /// The rows that changed since version `seen`: every row from `.0` on, and the `.2` rows listed in `.1`.
+    /// The window the reading list exposed at its last pass.
+    #[inline(always)]
+    pub fn window(&self) -> (u32, u32) {
+        let w = self.win.load(Ordering::Relaxed);
+        ((w >> 32) as u32, w as u32)
+    }
     #[inline]
     pub fn since(&self, seen: u32) -> (u32, [u32; 8], usize) {
         let pending = self.ver.wrapping_sub(seen);
@@ -189,6 +279,16 @@ impl Journal {
         true
     }
 }
+impl Drop for Journal {
+    fn drop(&mut self) {
+        // A displayed relation may be replaced by assignment. The world's subscription still owns
+        // this watch. Invalidate it so settle drives the view and binds the replacement journal.
+        #[cfg(not(feature = "mutant_journal_drop"))]
+        if let Some(watch) = self.watch.get() {
+            watch.store(self.ver.wrapping_add(1), Ordering::Relaxed);
+        }
+    }
+}
 impl Default for Journal {
     fn default() -> Self {
         Journal::new()
@@ -207,6 +307,14 @@ impl<T> Rel<T> {
         Rel {
             items,
             journal: Journal::new(),
+        }
+    }
+    /// As [`Rel::new`], for rows described from their items alone ([`Journal::by_item`]): the view's row
+    /// function reads `get(r)` and nothing else of `r`.
+    pub fn by_item(items: Vec<T>) -> Rel<T> {
+        Rel {
+            items,
+            journal: Journal::by_item(),
         }
     }
     #[inline(always)]
@@ -358,7 +466,7 @@ unsafe impl<V, A: Arch> Row<V> for A {
     #[inline(always)]
     unsafe fn write(&self, sites: *const Site, slot: u32) {
         // SAFETY: the caller's contract: the site's column is of archetype `A` and holds `slot`.
-        unsafe { (*sites).write_record(slot, *self) }
+        unsafe { write_arch_record(&*sites, slot, *self) }
     }
     #[inline(always)]
     unsafe fn patch(&self, sites: *const Site, slot: u32, mk: &Mk, cx: &mut Cx<'_>) {
@@ -399,8 +507,32 @@ unsafe fn patch_record<A: Arch>(
         } else if !(*p).same_at(&value, cx.u) {
             replace(site, slot, p, value, mk, cx);
         } else {
+            change_resource(Some(&*p), &value);
             p.write(value);
         }
+    }
+}
+
+#[inline(always)]
+fn change_resource<A: Arch>(old: Option<&A>, new: &A) {
+    if A::OWNS_RESOURCE && !old.is_some_and(|old| old.same_resource(new)) {
+        new.acquire_resource();
+        if let Some(old) = old {
+            old.release_resource();
+        }
+    }
+}
+
+/// SAFETY: the site holds a column of A, and slot is in capacity.
+#[inline(always)]
+unsafe fn write_arch_record<A: Arch>(site: &Site, slot: u32, value: A) {
+    // SAFETY: the caller proves the slot, type and page. Read the old record only when initialized.
+    unsafe {
+        if A::OWNS_RESOURCE {
+            let old = site.initialized_record::<A>(slot).map(|p| &*p);
+            change_resource(old, &value);
+        }
+        site.write_record(slot, value);
     }
 }
 
@@ -415,7 +547,7 @@ unsafe fn write_missing<A: Arch>(site: &Site, slot: u32, value: A, mk: &Mk, cx: 
         let r = site.rect(slot).shift(mk.org);
         cx.tiles.mark(r.shift(value.offset(cx.u)).and(mk.clip));
         cx.tiles.mark(r.and(mk.clip));
-        site.write_record(slot, value);
+        write_arch_record(site, slot, value);
     }
     cx.changed += 1;
 }
@@ -435,6 +567,7 @@ unsafe fn replace<A: Arch>(site: &Site, slot: u32, p: *mut A, a: A, mk: &Mk, cx:
         } else {
             cx.tiles.mark(r.and(mk.clip));
         }
+        change_resource(Some(&*p), &a);
         *p = a;
         cx.changed += 1;
     }
@@ -541,6 +674,10 @@ pub struct Cx<'c> {
     /// over-approximation): what a reader of the stores (reflection, accessibility) compares to know whether
     /// anything it read may have changed.
     pub changed: u32,
+    /// The part of `changed` that is something being somewhere else (a rect, a row entering or leaving, a
+    /// list's window or layout): what may have put other content under a still pointer. A record stored
+    /// again with other operands where it was does not count.
+    pub moved: u32,
 }
 
 struct Discover<'a, B> {
@@ -662,6 +799,7 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
                         // move it further, which this untyped path cannot see, so the whole space is damaged.
                         self.cx.tiles.mark(self.mk.clip);
                         self.cx.changed += 1;
+                        self.cx.moved += 1;
                         s.set_rect(0, *r);
                         moved = true;
                     }
@@ -672,6 +810,46 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
             if moved && !self.st.order_holds() {
                 self.cx.regroup = true;
             }
+        }
+    }
+    #[inline(always)]
+    fn keeps(&self) -> bool {
+        !self.fresh && self.rowc == 0 && !self.st.rows.is_empty()
+    }
+    #[inline]
+    fn leaf<A: Arch>(&mut self, k: usize, a: &A) {
+        let p0 = self.st.rows[0].1 as usize;
+        let end = self
+            .st
+            .rows
+            .get(1)
+            .map_or(self.st.sites.len(), |r| r.1 as usize);
+        let site = self.st.sites[p0..end][k];
+        assert!(
+            site.col != u32::MAX && self.st.cols[site.col as usize].arch == TypeId::of::<A>(),
+            "a record of another type than the row's column"
+        );
+        assert!(
+            self.st.cols[site.col as usize].rec_init(site.base),
+            "an unwritten leaf"
+        );
+        // SAFETY: the site is record `k` of this store's first row (in range, above), not a hole, and its
+        // column was made for archetype `A` (checked above); slot 0 is the fixed row's slot.
+        unsafe { <A as Row<V>>::patch(a, &site, 0, &self.mk, self.cx) }
+    }
+    fn scroll_content(&mut self, field: Option<crate::expr::Slot>, height: i32, line: Option<f32>) {
+        if self.st.scroll_content.as_ref().and_then(|info| info.field) != field {
+            self.st.bump_structure();
+        }
+        let new = crate::store::ScrollContent {
+            field,
+            height,
+            line,
+        };
+        if let Some(info) = self.st.scroll_content.as_mut() {
+            **info = new;
+        } else {
+            self.st.scroll_content = Some(Box::new(new));
         }
     }
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(
@@ -714,6 +892,12 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
         list_sync::<V, R, F, B>(self.st, q, self.cx, l, f, core::panic::Location::caller());
     }
     #[inline(always)]
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, n: u32, f: F) {
+        let q = self.sub as usize;
+        self.sub += 1;
+        free_sync::<V, R, F, B>(self.st, q, self.cx, n, f);
+    }
+    #[inline(always)]
     fn env(&self) -> Env<'_> {
         Env {
             scale: self.cx.scale,
@@ -730,12 +914,42 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Write<'w, 'c, V, B> {
     ) -> i32 {
         let q = self.sub as usize;
         self.sub += 1;
+        let all = self.cx.all;
         rows_sync::<V, R, F, B>(
             self.st,
             q,
             self.cx,
             n,
             geo,
+            (
+                &FIXED,
+                RowsHow {
+                    all,
+                    by_item: false,
+                },
+            ),
+            f,
+            core::panic::Location::caller(),
+        )
+    }
+    #[inline(always)]
+    fn rows_j<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
+        &mut self,
+        n: u32,
+        geo: Option<Geo>,
+        edits: &Journal,
+        how: RowsHow,
+        f: F,
+    ) -> i32 {
+        let q = self.sub as usize;
+        self.sub += 1;
+        rows_sync::<V, R, F, B>(
+            self.st,
+            q,
+            self.cx,
+            n,
+            geo,
+            (edits, how),
             f,
             core::panic::Location::caller(),
         )
@@ -773,18 +987,53 @@ impl<'w, 'c, V, B: Backend> Sink<V> for Patch<'w, 'c, V, B> {
     ) -> i32 {
         let q = self.sub as usize;
         self.sub += 1;
+        let all = self.cx.all;
         rows_sync::<V, R, F, B>(
             self.st,
             q,
             self.cx,
             n,
             None,
+            (
+                &FIXED,
+                RowsHow {
+                    all,
+                    by_item: false,
+                },
+            ),
+            f,
+            core::panic::Location::caller(),
+        )
+    }
+    #[inline(always)]
+    fn rows_j<R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R>(
+        &mut self,
+        n: u32,
+        _: Option<Geo>,
+        edits: &Journal,
+        how: RowsHow,
+        f: F,
+    ) -> i32 {
+        let q = self.sub as usize;
+        self.sub += 1;
+        rows_sync::<V, R, F, B>(
+            self.st,
+            q,
+            self.cx,
+            n,
+            None,
+            (edits, how),
             f,
             core::panic::Location::caller(),
         )
     }
     #[inline(always)]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, _: F) {}
+    /// Free rows read no block word: a pass after a turn has nothing to bring up to date in them.
+    #[inline(always)]
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, _: u32, _: F) {
+        self.sub += 1;
+    }
     #[inline(always)]
     fn scope<F: for<'r> FnOnce(&mut <Self as ScopeOf<'r, V>>::Scope)>(&mut self, _: Space, f: F) {
         let q = self.sub as usize;
@@ -870,8 +1119,39 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
     let st = &mut parent.subs[q];
     let org = space.origin(cx.u);
     let (lo, hi) = exposed(l, org, space.clip);
-    if (lo == st.lo) & (hi == st.hi) & (st.seen == l.edits.ver) & !cx.all {
-        return;
+    if (lo == st.lo) & (hi == st.hi) & !cx.all && l.edits.follows(&st.journal) {
+        let pending = l.edits.ver.wrapping_sub(st.seen);
+        if pending == 0 {
+            return;
+        }
+        #[cfg(not(feature = "mutant_journal"))]
+        if pending == 1
+            && let Edit::Update(row) = l.edits.log[st.seen as usize & 7]
+            && st.geo == (l.x, l.y, l.row_h)
+            && st.space == space
+            && st.n == l.n
+            && st.rows.first().is_some_and(|row| row.0 == tid::<R>())
+            && st.src.is_some_and(|src| {
+                src.1 == R::LEAVES && src.2 == size_of::<R>() as u32
+                    && (core::ptr::eq(src.0, at) || *src.0 == *at)
+            })
+            && same_template(&st.tmpl, l.shape)
+        {
+            st.moved.clear();
+            st.moved_ok = true;
+            st.moved_from = st.seen;
+            if (row >= lo) & (row < hi) {
+                let mk = Mk { org, clip: space.clip };
+                // SAFETY: the source, shape and exposure checks above certify
+                // this row's sites and physical slot. `patch` checks initialization.
+                unsafe { f(row as usize).patch(st.sites.as_ptr(), st.slot_of(row), &mk, cx) };
+            }
+            st.seen = l.edits.ver;
+            if st.timed {
+                st.resweep(cx.u, cx.tiles);
+            }
+            return;
+        }
     }
     if lo < hi
         && !st.rows.is_empty()
@@ -902,21 +1182,27 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
         space,
         R::LEAVES as usize,
         (at, R::LEAVES, size_of::<R>() as u32),
+        RowsHow {
+            all: cx.all,
+            by_item: l.edits.by_item,
+        },
     );
-    let (sites, mask) = (st.sites.as_ptr(), st.cap - 1);
+    let (sites, mask, bias) = (st.sites.as_ptr(), st.cap - 1, st.bias);
     let plan = core::mem::take(&mut st.plan);
-    if cx.all && st.initialized_window == Some((lo, hi)) {
+    // The certificate is about physical slots. Rigid replay can change the bias without
+    // changing the logical window.
+    let window = (lo.wrapping_add(bias) & mask, hi - lo);
+    if cx.all && st.initialized_window == Some(window) {
         for &e in &plan {
             let r = e & 0x3fff_ffff;
             let row = f(r as usize);
-            // SAFETY: this list admitted the row type, and the certificate covers the current sites
-            // and every exposed slot. Discovery or a new store clears the certificate. Typed writes
-            // preserve initialized slots, even when a later row function unwinds.
+            let slot = r.wrapping_add(bias) & mask;
+            // SAFETY: the admitted shape and certificate cover the current sites and slots.
             unsafe {
                 if e >> 31 != 0 {
-                    row.write(sites, r & mask);
+                    row.write(sites, slot);
                 } else {
-                    row.patch_initialized(sites, r & mask, &mk, cx);
+                    row.patch_initialized(sites, slot, &mk, cx);
                 }
             }
         }
@@ -924,12 +1210,13 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
         for &e in &plan {
             let r = e & 0x3fff_ffff;
             let row = f(r as usize);
-            // SAFETY: the sites and slot belong to the type that the list admitted.
+            let slot = r.wrapping_add(bias) & mask;
+            // SAFETY: the sites and slot belong to the admitted row layout.
             unsafe {
                 if e >> 31 != 0 {
-                    row.write(sites, r & mask);
+                    row.write(sites, slot);
                 } else {
-                    row.patch(sites, r & mask, &mk, cx);
+                    row.patch(sites, slot, &mk, cx);
                 }
             }
         }
@@ -939,15 +1226,124 @@ pub fn list_sync<V, R: Row<V>, F: FnMut(usize) -> R, B: Backend>(
                 .iter()
                 .all(|site| {
                     site.col == u32::MAX
-                        || (lo..hi)
-                            .all(|r| st.cols[site.col as usize].rec_init(site.base + (r & mask)))
+                        || (lo..hi).all(|r| {
+                            st.cols[site.col as usize]
+                                .rec_init(site.base + (r.wrapping_add(bias) & mask))
+                        })
                 })
-                .then_some((lo, hi));
+                .then_some(window);
         }
     }
     st.plan = plan;
     if st.timed {
         // rows came, went or were rewritten: which records are in motion, and where, is to be said again
+        st.resweep(cx.u, cx.tiles);
+    }
+    l.edits
+        .win
+        .store((u64::from(lo) << 32) | u64::from(hi), Ordering::Relaxed);
+}
+
+/// Free rows (Integration Card 3, decision D2): store `q` of `parent` holds `n` rows of one record each, row `i`
+/// in slot `i`, each with its own rect. Brought up to date by comparing: a row past the old count is written
+/// and damaged, a row past the new count is released and damaged, a row whose rect moved is damaged where it
+/// was and where it is, and a row whose record differs is stored and damaged (`Row::patch`).
+///
+/// Identity is positional. A row inserted in the middle therefore re-stores every row after it (each is
+/// compared and found to be another record); that is correct and costs the tail, not the world. Keyed rows are
+/// the relation's job (`list_sync`).
+///
+/// One record per row: columns are painted whole, so rows of several records in several columns would not
+/// paint in row order. A row of one record is one column, painted in slot order, which is index order.
+pub fn free_sync<V, R: Row<V>, F: FnMut(usize) -> (Rect, R), B: Backend>(
+    parent: &mut Store,
+    q: usize,
+    cx: &mut Cx<'_>,
+    n: u32,
+    mut f: F,
+) {
+    const { assert!(R::LEAVES == 1, "a free row is one record") };
+    let space = parent.space;
+    let cap_for = |n: u32| (n.max(1)).next_power_of_two().max(64);
+    if q == parent.subs.len() {
+        let mut st = Store::new(cap_for(n), space);
+        st.structure = parent.structure.clone();
+        st.column_count = parent.column_count.clone();
+        parent.order.push(Pass::Sub(q as u32));
+        parent.subs.push(st);
+        parent.bump_structure();
+    }
+    let st = &mut parent.subs[q];
+    let check_site = |st: &Store| {
+        assert!(
+            st.sites.len() == 1 && st.sites[0].col != u32::MAX,
+            "a free row must have one concrete record site"
+        );
+    };
+    if !st.rows.is_empty() {
+        check_site(st);
+    }
+    if st.space != space {
+        // the enclosing space moved or was cut otherwise: what the rows showed and what they show
+        cx.tiles.mark(st.space.clip);
+        cx.tiles.mark(space.clip);
+        st.space = space;
+    }
+    if n > st.cap || st.rows.first().is_some_and(|r| r.0 != tid::<R>()) {
+        // more rows than slots, or rows of another record type than the columns were made for (review
+        // card3-round1): the columns again; every row is written as new
+        list_reset(st, cx, n);
+        st.n = 0;
+    }
+    let mk = Mk {
+        org: space.origin(cx.u),
+        clip: space.clip,
+    };
+    let old = st.n;
+    for i in 0..n {
+        let (rect, row) = f(i as usize);
+        if st.rows.is_empty() {
+            row_new::<V, R, B>(st, core::slice::from_ref(&rect), &row);
+            check_site(st);
+        }
+        let site = &st.sites[0];
+        // SAFETY: the site is a concrete record discovered from `R` (`row_new` and `check_site`); `i` is
+        // under the store's capacity (`n <= cap`, checked or made so above); site pointers are current
+        // (`discover` ends with `fix_sites`, `list_reset` drops the sites).
+        unsafe {
+            if i < old {
+                let was = site.rect(i);
+                if was != rect {
+                    cx.tiles.mark(was.shift(mk.org).and(mk.clip));
+                    cx.tiles.mark(rect.shift(mk.org).and(mk.clip));
+                    site.set_rect(i, rect);
+                    cx.changed += 1;
+                    cx.moved += 1;
+                }
+                row.patch(site, i, &mk, cx);
+            } else {
+                site.set_rect(i, rect);
+                row.write(site, i);
+                st.row_live[(i >> 6) as usize] |= 1 << (i & 63);
+                #[cfg(not(feature = "mutant_free_enter"))]
+                cx.tiles.mark(rect.shift(mk.org).and(mk.clip));
+                cx.changed += 1;
+                cx.moved += 1;
+            }
+        }
+    }
+    for i in n..old {
+        // SAFETY: slot `i` was live (under the old count), so the site exists and holds it.
+        let was = unsafe { st.sites[0].rect(i) };
+        #[cfg(not(feature = "mutant_free_leave"))]
+        cx.tiles.mark(was.shift(mk.org).and(mk.clip));
+        let _ = was;
+        st.row_live[(i >> 6) as usize] &= !(1 << (i & 63));
+        cx.changed += 1;
+        cx.moved += 1;
+    }
+    (st.n, st.lo, st.hi) = (n, 0, n);
+    if st.timed {
         st.resweep(cx.u, cx.tiles);
     }
 }
@@ -957,6 +1353,9 @@ struct Lanes {
     sites: *const Site,
     slot: u32,
     at: (i32, i32),
+    /// The row's height, and (out) whether some rect left the band `0..row_h` (`Store::spill`).
+    row_h: i32,
+    spill: bool,
 }
 impl bough_lay::Out for Lanes {
     #[inline(always)]
@@ -968,6 +1367,7 @@ impl bough_lay::Out for Lanes {
             if (*self.sites.add(k)).col == u32::MAX {
                 return;
             }
+            self.spill |= (r[1] < 0) | (r[3] > self.row_h);
             (*self.sites.add(k)).set_rect(
                 self.slot,
                 Rect {
@@ -991,6 +1391,7 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     cx: &mut Cx<'_>,
     n: u32,
     geo: Option<Geo>,
+    (edits, how): (&Journal, RowsHow),
     mut f: F,
     at: &'static core::panic::Location<'static>,
 ) -> i32 {
@@ -1032,10 +1433,21 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     // a row laid out at no height is content with nothing to show (not refused, as an author's height is)
     admit(n, row_h.max(1));
     if n == 0 || row_h == 0 {
+        if edits.follow(&mut st.journal) {
+            publish_binding_change(st);
+        }
+        edits.win.store(0, Ordering::Relaxed);
+        st.moved_from = st.seen;
+        st.moved.clear();
+        st.moved_ok = false;
+        st.seen = edits.ver;
+        st.n = n;
         if st.hi > st.lo {
             cx.tiles.mark(space.clip);
             st.row_live.fill(0);
             (st.lo, st.hi) = (0, 0);
+            cx.changed += 1;
+            cx.moved += 1;
         }
         return 0;
     }
@@ -1048,10 +1460,11 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
         x: gx,
         y: gy,
         shape: &row0,
-        edits: &FIXED,
+        edits,
     };
+    let all = how.all;
     let (lo, hi) = exposed(&l, org, space.clip);
-    if (lo == st.lo) & (hi == st.hi) & !cx.all {
+    if (lo == st.lo) & (hi == st.hi) & (st.seen == edits.ver) & !all && edits.follows(&st.journal) {
         st.row0 = row0;
         return n as i32 * row_h;
     }
@@ -1074,15 +1487,17 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
         space,
         <R as Row<V>>::LEAVES as usize,
         src,
+        how,
     );
     st.row0 = row0;
-    let (sites, mask) = (st.sites.as_ptr(), st.cap - 1);
+    let (sites, mask, bias) = (st.sites.as_ptr(), st.cap - 1, st.bias);
     let plan = core::mem::take(&mut st.plan);
     for &e in &plan {
         let r = e & 0x3fff_ffff;
         let row = f(r as usize);
+        let slot = r.wrapping_add(bias) & mask;
         // SAFETY: the sites were discovered from a row of type `R` (`list_plan` checked its source and shape);
-        // `r & mask` is a slot of the list.
+        // `slot` is a slot of the list (`Store::slot_of`).
         unsafe {
             if e >> 31 != 0 {
                 if e >> 30 & 1 != 0 {
@@ -1091,15 +1506,18 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
                     // over, is a copy of the kept rects (bough-lay's `Memo`); otherwise the one layout function
                     let mut out = Lanes {
                         sites,
-                        slot: r & mask,
+                        slot,
                         at: (gx, gy + r as i32 * row_h),
+                        row_h,
+                        spill: false,
                     };
                     st.memo
                         .row(&row, cx.scale, cx.u, gw as f32, (0, 0), &mut out);
+                    st.spill |= out.spill;
                 }
-                row.write(sites, r & mask);
+                row.write(sites, slot);
             } else {
-                row.patch(sites, r & mask, &mk, cx);
+                row.patch(sites, slot, &mk, cx);
             }
         }
     }
@@ -1107,6 +1525,9 @@ pub fn rows_sync<V, R: Row<V> + bough_lay::Shape, F: FnMut(usize) -> R, B: Backe
     if st.timed {
         st.resweep(cx.u, cx.tiles);
     }
+    edits
+        .win
+        .store((u64::from(lo) << 32) | u64::from(hi), Ordering::Relaxed);
     n as i32 * row_h
 }
 
@@ -1207,7 +1628,10 @@ impl<V> Leaf<V> for Same<'_> {
     #[inline(always)]
     fn leaf<A: Arch>(&mut self, _: &A, _: TypeId, hov: Option<Hov>) {
         let fits = self.st.sites.get(self.k).is_some_and(|s| {
-            let c = &self.st.cols[s.col as usize];
+            let Some(c) = self.st.cols.get(s.col as usize) else {
+                return false;
+            };
+
             // The record type, and with it the record's layout. A handler is the same handler if its captures
             // have the layout the column's lane was made for (the same closure of a generic `view` is another
             // type in each sink's instantiation; the element layer's views are not generic and need no such
@@ -1225,6 +1649,7 @@ impl<V> Leaf<V> for Same<'_> {
         self.k += 1;
     }
     fn hole(&mut self) {
+        self.ok &= self.st.sites.get(self.k).is_some_and(|s| s.col == u32::MAX);
         self.k += 1;
     }
 }
@@ -1236,15 +1661,20 @@ impl<V> Leaf<V> for Same<'_> {
 fn list_reset(st: &mut Store, cx: &mut Cx<'_>, window: u32) {
     cx.tiles.mark(st.space.clip);
     let cap = st.cap.max((window + 2).next_power_of_two()).max(64);
-    let (space, seen) = (st.space, st.seen);
+    let (space, seen, stamp) = (st.space, st.seen, st.stamp);
     let structure = st.structure.clone();
     let column_count = st.column_count.clone();
     let journal = st.journal.clone();
+    let journal_binding = st.journal_binding;
     *st = Store::new(cap, space);
     st.structure = structure;
     st.column_count = column_count;
     st.journal = journal;
+    st.journal_binding = journal_binding;
     st.seen = seen;
+    // slots are stamped on from where the old columns stopped: a place held from before is never taken for
+    // a row of the new ones
+    st.stamp = stamp;
     st.bump_structure();
 }
 
@@ -1269,12 +1699,35 @@ fn list_new(parent: &mut Store, l: &List<'_>) {
 
 #[inline(always)]
 fn same_template(kept: &[Rect], current: &[Rect]) -> bool {
-    kept.len() == current.len()
-        && kept.iter().zip(current).all(|(a, b)| {
-            let a = [a.x0, a.y0, a.x1, a.y1];
-            let b = [b.x0, b.y0, b.x1, b.y1];
-            a == b
-        })
+    fn lanes(rects: &[Rect]) -> &[[i32; 4]] {
+        const {
+            assert!(size_of::<Rect>() == size_of::<[i32; 4]>());
+            assert!(align_of::<Rect>() == align_of::<i32>());
+        }
+        // SAFETY: Rect is repr(C) and consists of four initialized i32s with no
+        // padding. The source slice bounds and shared borrow cover the new slice.
+        unsafe { core::slice::from_raw_parts(rects.as_ptr().cast(), rects.len()) }
+    }
+    lanes(kept).as_flattened() == lanes(current).as_flattened()
+}
+
+#[cfg(test)]
+#[test]
+fn template_comparison_checks_a_later_changed_lane() {
+    let rect = Rect::new(-4, 2, 12, 78);
+    let original = [rect; 22];
+    let mut changed = original;
+    changed[21].y1 += 1;
+    assert!(same_template(&original, &original));
+    assert!(!same_template(&original, &changed));
+    assert!(!same_template(&original, &original[..21]));
+}
+
+#[cold]
+#[inline(never)]
+fn publish_binding_change(st: &mut Store) {
+    st.bump_structure();
+    st.journal_binding = st.structure_revision();
 }
 
 /// Decide what a list pass does, and do everything that does not need the row's type: replay the relation's
@@ -1292,13 +1745,24 @@ fn list_plan(
     space: Space,
     leaves: usize,
     src: crate::store::RowSrc,
+    how: RowsHow,
 ) -> Mk {
-    if l.edits.follow(&mut st.journal) {
-        st.bump_structure();
+    let all = how.all;
+    let rebound = l.edits.follow(&mut st.journal);
+    if rebound {
+        publish_binding_change(st);
     }
-    let (from, upd, nupd) = l.edits.since(st.seen);
-    // inserts and removes since the last pass, for whoever holds a row by its index (focus, a press)
-    st.moved_ok = if l.edits.ver.wrapping_sub(st.seen) == nupd as u32 {
+    let (from, upd, nupd) = if rebound {
+        // Version numbers certify edits only within the same journal. A replacement
+        // can have the same version while every row holds another item.
+        (0, [0; 8], 0)
+    } else {
+        l.edits.since(st.seen)
+    };
+    st.moved_ok = if rebound {
+        st.moved.clear();
+        false
+    } else if l.edits.ver.wrapping_sub(st.seen) == nupd as u32 {
         // `since` found every outstanding entry, and each one is an update.
         st.moved.clear();
         true
@@ -1343,74 +1807,205 @@ fn list_plan(
     };
     // The owner may mutate the template in place. Compare whole rects even
     // if the template still lives at the address used on the last pass.
-    st.tmpl_at = l.shape.as_ptr() as usize;
     if st.geo != geo || !same_template(&st.tmpl, l.shape) {
         // the layout of the rows changed: every exposed row is laid out again
         st.geo = geo;
         st.tmpl.clear();
         st.tmpl.extend_from_slice(l.shape);
+        st.spill |= l.shape.iter().any(|t| (t.y0 < 0) | (t.y1 > l.row_h));
         if ohi > olo {
             cx.tiles.mark(space.clip);
         }
         cx.changed += 1;
+        cx.moved += 1;
         (olo, ohi) = (0, 0);
     }
-    // rows entered, left or became other rows: what a reader of the stores sees moved (rows only compared
-    // count where `replace` stores one)
-    cx.changed += ((lo != olo) | (hi != ohi) | (from != u32::MAX)) as u32;
-    if (lo == olo) & (hi == ohi) & (from == u32::MAX) & !cx.all {
-        // only updates of single rows: those and nothing else
-        for &r in &upd[..nupd] {
-            if (r >= lo) & (r < hi) {
-                st.plan.push(r);
+    let rigid = (how.by_item | l.edits.by_item)
+        && from != u32::MAX
+        && st.moved_ok
+        && ohi > olo
+        && !st.moved.is_empty();
+    let (from, dirty) = if rigid {
+        let (old, dirty) = replay_rigid(st, cx.tiles, leaves, (olo, ohi), l.row_h);
+        (olo, ohi) = old;
+        (u32::MAX, dirty)
+    } else {
+        (from, (0, 0))
+    };
+    // A changed window or rigid edit moves what a reader sees. Ordinary updates
+    // count only where the record patch stores a value.
+    if (lo != olo) | (hi != ohi) | (from != u32::MAX) | rigid {
+        cx.changed += 1;
+        cx.moved += 1;
+    }
+    if (lo == olo) & (hi == ohi) & (from == u32::MAX) & !rigid {
+        if all {
+            // Every currently exposed record is compared. With the same window and no
+            // structural edit, no damage or new exposure can arise from planning these rows.
+            st.plan.extend(lo..hi);
+        } else {
+            for &r in &upd[..nupd] {
+                if (r >= lo) & (r < hi) {
+                    st.plan.push(r);
+                }
             }
         }
         return mk;
     }
-    // rows that left: what they showed is gone (a no-op when they left by scrolling out of the clip)
-    for r in olo..ohi {
-        if (r < lo) | (r >= hi) {
-            cx.tiles.mark(row_rect(r));
-        }
+    // Only the intervals outside the new window lost pixels.
+    for r in (olo..ohi.min(lo)).chain(olo.max(hi)..ohi) {
+        cx.tiles.mark(row_rect(r));
     }
-    let mask = st.cap - 1;
     for r in lo..hi {
-        let fresh = (r < olo) | (r >= ohi);
+        let fresh = (r < olo) | (r >= ohi) | ((r >= dirty.0) & (r < dirty.1));
         if fresh | (r >= from) {
             // A row that is new here, or another row than was here: its records are written without being
             // compared, and the row is damaged as a whole.
             if fresh {
                 let at = (l.x, l.y + r as i32 * l.row_h);
                 let sites = &st.sites[..leaves];
+                let slot = st.slot_of(r);
                 if st.has_holes {
                     for (s, t) in sites.iter().zip(l.shape) {
                         if s.col != u32::MAX {
-                            // SAFETY: a record's site of this list; the slot is under `cap`.
-                            unsafe { s.set_rect(r & mask, t.shift(at)) }
+                            // SAFETY: a non-hole site of this list, at its physical slot.
+                            unsafe { s.set_rect(slot, t.shift(at)) }
                         }
                     }
                 } else {
                     for (s, t) in sites.iter().zip(l.shape) {
-                        // SAFETY: creating a hole sets `has_holes`, so all these sites have pages.
-                        // `r & mask` is under this store's capacity.
-                        unsafe { s.set_rect(r & mask, t.shift(at)) }
+                        // SAFETY: this list has no holes and the slot is under its capacity.
+                        unsafe { s.set_rect(slot, t.shift(at)) }
                     }
                 }
             }
             cx.tiles.mark(row_rect(r));
             st.plan.push(r | 1 << 31 | (fresh as u32) << 30);
-        } else if cx.all | upd[..nupd].contains(&r) {
+        } else if all | upd[..nupd].contains(&r) {
             st.plan.push(r);
         }
     }
+    if st.stamps_observed.load(Ordering::Relaxed) {
+        stamp_replaced_slots(st);
+    }
     st.lo = lo;
     st.hi = hi;
-    publish_window(&mut st.row_live, (lo & mask) as usize, (hi - lo) as usize);
+    let slot = st.slot_of(lo) as usize;
+    publish_window(&mut st.row_live, slot, (hi - lo) as usize);
     mk
 }
 
-/// A live window has at most two ranges in the ring bitmap. Fill its whole words in one pass.
-/// This records exposure only. Record and capture access still requires initialization.
+// Inserts and removes as rigid moves. A row that stays exposed across an insert or a remove elsewhere is
+// the same records at another index (and another y): its records are not described again. The window is
+// replayed through the edits in the order they happened: an edit before the window moves every index
+// (the bias moves the other way, so every row keeps its slot); an edit inside it moves the indices on
+// one side, and the rows of the other side, the fewer, are the ones written again. `dirty` is that side,
+// in the indices as they are now. Anything this does not follow exactly (a second edit inside the
+// window, an edit after one) writes every exposed row again, which is always right.
+#[inline(never)]
+fn replay_rigid(
+    st: &mut Store,
+    tiles: &mut Tiles,
+    leaves: usize,
+    (mut olo, mut ohi): (u32, u32),
+    row_h: i32,
+) -> ((u32, u32), (u32, u32)) {
+    let mut dirty = (0, 0);
+    let mut lost = false;
+    for i in 0..st.moved.len() {
+        if dirty.1 > dirty.0 {
+            lost = true;
+            break;
+        }
+        match st.moved[i] {
+            Edit::Insert(at) if at <= olo => {
+                st.bias = st.bias.wrapping_sub(1);
+                (olo, ohi) = (olo + 1, ohi + 1);
+                shift_rows(st, leaves, (olo, ohi), row_h);
+            }
+            Edit::Insert(at) if at < ohi => {
+                if at - olo <= ohi - at {
+                    // the rows above are the fewer: the rows from `at` on keep their slots
+                    st.bias = st.bias.wrapping_sub(1);
+                    shift_rows(st, leaves, (at + 1, ohi + 1), row_h);
+                    dirty = (olo, at + 1);
+                } else {
+                    dirty = (at, ohi + 1);
+                }
+                ohi += 1;
+            }
+            Edit::Remove(at) if at < olo => {
+                st.bias = st.bias.wrapping_add(1);
+                (olo, ohi) = (olo - 1, ohi - 1);
+                shift_rows(st, leaves, (olo, ohi), -row_h);
+            }
+            Edit::Remove(at) if at < ohi => {
+                if at - olo <= ohi - at - 1 {
+                    st.bias = st.bias.wrapping_add(1);
+                    shift_rows(st, leaves, (at, ohi - 1), -row_h);
+                    dirty = (olo, at);
+                } else {
+                    dirty = (at, ohi - 1);
+                }
+                ohi -= 1;
+            }
+            // past the window: nothing exposed moved
+            Edit::Insert(_) | Edit::Remove(_) => {}
+            Edit::Update(_) | Edit::Shift(_) => {
+                unreachable!("`moves_since` keeps inserts and removes")
+            }
+        }
+    }
+    if lost {
+        (olo, ohi) = (0, 0);
+        dirty = (0, 0);
+    }
+    // everything from the first edit on is somewhere else on screen
+    tiles.mark(st.space.clip);
+    ((olo, ohi), dirty)
+}
+
+/// A token identifies its slot as well as its generation, so all slots replaced
+/// by one pass can share a stamp. Unobserved stores need no stamp storage.
+#[cold]
+#[inline(never)]
+fn stamp_replaced_slots(st: &mut Store) {
+    if !st.plan.iter().any(|&row| row >> 31 != 0) {
+        return;
+    }
+    st.row_stamp.resize(st.cap as usize, 0);
+    st.stamp = st.stamp.checked_add(1).expect("row stamp exhausted");
+    for &row in &st.plan {
+        if row >> 31 != 0 {
+            let slot = st.slot_of(row & 0x3fff_ffff) as usize;
+            st.row_stamp[slot] = st.stamp;
+        }
+    }
+}
+
+/// Rows `rows.0..rows.1` of a list (indices as they are now, slots by the store's bias as it is now) are `dy`
+/// further down: every record of each keeps its slot and gets its rect there.
+fn shift_rows(st: &mut Store, leaves: usize, rows: (u32, u32), dy: i32) {
+    #[cfg(feature = "mutant_rigid")]
+    let dy = 0 * dy;
+    for r in rows.0..rows.1 {
+        let slot = st.slot_of(r);
+        for s in &st.sites[..leaves] {
+            if s.col == u32::MAX {
+                continue;
+            }
+            // SAFETY: a record's site of this list (not a hole); the slot is under its capacity.
+            unsafe {
+                let mut b = s.rect(slot);
+                b.y0 += dy;
+                b.y1 += dy;
+                s.set_rect(slot, b);
+            }
+        }
+    }
+}
+
+/// A live window has at most two ranges in the ring bitmap. This tracks exposure only.
 #[inline]
 fn publish_window(words: &mut [u64], start: usize, rows: usize) {
     let cap = words.len() * 64;

@@ -1,6 +1,7 @@
 #![feature(type_info, ptr_metadata, rustc_attrs, const_trait_impl, const_cmp, arbitrary_self_types_pointers, f16)]
 #![cfg_attr(target_arch = "aarch64", feature(stdarch_neon_f16))]
-#![allow(internal_features)]
+#![allow(internal_features, incomplete_features)]
+#![feature(specialization, impl_trait_in_assoc_type)]
 //! bough: the public façade over bough-core (records, damage), bough-text (shaping into the glyph pool),
 //! cephal (layout) and bough-metal's fused presenter. One region holds everything the GPU reads
 //! (`rt.rs`); a frame's CPU work ends at the tile list (`app.rs`).
@@ -21,6 +22,7 @@ pub mod lay_deep;
 pub mod layout;
 pub mod ledger;
 pub mod list;
+pub mod lower;
 pub mod listview;
 pub mod ltemplate;
 pub mod mlist;
@@ -34,6 +36,7 @@ pub mod store;
 pub mod template;
 pub mod text;
 pub mod transition;
+pub mod typed;
 pub mod ui;
 
 pub use bough_text::numeric::NumFmt;

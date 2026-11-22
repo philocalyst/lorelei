@@ -26,6 +26,15 @@ pub trait Prims {
     fn text(&mut self, r: Rect, cut: Rect, s: &[u8], align: Align, c: u32);
     /// A rounded box of `radius` turned by `turn` (a full turn is 65,536) about its centre, antialiased.
     fn rbox(&mut self, r: Rect, cut: Rect, radius: i32, turn: u32, c: u32);
+    /// A record of the generic archetype ([`crate::prim::Prim`]): a box with radius, border and alpha, a shaped
+    /// line, an image. A backend that cannot draw one refuses it (it panics): a record is never dropped and an
+    /// alpha is never forced opaque.
+    fn prim(&mut self, _r: Rect, _cut: Rect, p: &crate::prim::Prim) {
+        panic!(
+            "this backend does not draw generic records (kind {})",
+            p.kind
+        )
+    }
 }
 
 /// A record that draws itself.

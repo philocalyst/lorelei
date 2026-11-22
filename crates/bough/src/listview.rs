@@ -1515,6 +1515,14 @@ pub trait RowSource<V>: Sized + sealed::Sealed {
     /// Wire the source to region `reg` (a list: its log's patch).
     #[doc(hidden)]
     fn wire(&self, m: &mut Mounter<'_, V>, reg: u32);
+    /// The rows on the lowered runtime (`lower/list.rs`). The default refuses by name.
+    #[doc(hidden)]
+    fn lower_rows(self, l: &mut crate::lower::Lower<'_, '_, V>, _p: crate::lower::list::ListParams)
+    where
+        V: 'static,
+    {
+        l.refuse(std::any::type_name::<Self>())
+    }
 }
 mod sealed {
     pub trait Sealed {}
@@ -1534,11 +1542,23 @@ pub struct SrcParts {
 
 /// A `List<T>` field and its row function.
 pub struct ListRows<'a, T, V> {
-    list: LWired<'a, T, V>,
+    pub(crate) list: LWired<'a, T, V>,
     row: fn(&T, &mut Mounter<'_, T>),
+    /// The row on the lowered runtime: `T::view` lowered (`list`); a row given as a legacy mount function
+    /// (`list_with`) has none and is refused there.
+    lower: Option<for<'c, 'x> fn(&T, &mut crate::lower::Lower<'c, 'x, T>)>,
+}
+fn lower_row<T: crate::app::View>(v: &T, l: &mut crate::lower::Lower<'_, '_, T>) {
+    v.view().lower(l)
 }
 impl<T, V> sealed::Sealed for ListRows<'_, T, V> {}
 impl<T: 'static, V: 'static> RowSource<V> for ListRows<'_, T, V> {
+    fn lower_rows(self, l: &mut crate::lower::Lower<'_, '_, V>, p: crate::lower::list::ListParams) {
+        match self.lower {
+            Some(f) => crate::lower::list::lower_list::<V, T>(l, p, self.list.list, self.list.off, f),
+            None => l.refuse("list_with (a legacy row mount function)"),
+        }
+    }
     fn parts(&self) -> SrcParts {
         let l = self.list.list;
         SrcParts {
@@ -1575,24 +1595,24 @@ impl<V: 'static> RowSource<V> for IndexRows<V> {
 /// A list region (see the module docs): every item of its source is one row, laid out at the container's
 /// content width; all of them, or (`viewport` / `scroll`) the ones its box shows.
 pub struct LList<'a, S, V> {
-    src: S,
-    spec: Spec,
-    bg: Option<Color>,
-    radius: f32,
-    virt: bool,
-    scroll: Option<Wired<'a, f32, V>>,
-    estimate: f32,
+    pub(crate) src: S,
+    pub(crate) spec: Spec,
+    pub(crate) bg: Option<Color>,
+    pub(crate) radius: f32,
+    pub(crate) virt: bool,
+    pub(crate) scroll: Option<Wired<'a, f32, V>>,
+    pub(crate) estimate: f32,
     overscan: usize,
-    animate: Option<Spring>,
+    pub(crate) animate: Option<Spring>,
 }
 
 /// A `List<T>` of views: item `T` is mounted by its `View::view`.
 pub fn list<'a, T: crate::app::View, V>(l: LWired<'a, T, V>) -> LList<'a, ListRows<'a, T, V>, V> {
-    list_with(l, view_row::<T>)
+    LList::new(ListRows { list: l, row: view_row::<T>, lower: Some(lower_row::<T>) })
 }
 /// A `List<T>` whose rows are mounted by `row`.
 pub fn list_with<'a, T, V>(l: LWired<'a, T, V>, row: fn(&T, &mut Mounter<'_, T>)) -> LList<'a, ListRows<'a, T, V>, V> {
-    LList::new(ListRows { list: l, row })
+    LList::new(ListRows { list: l, row, lower: None })
 }
 /// `n` rows, row `i` mounted by `row(owner, i)` (an index source: no list, no per-row storage).
 pub fn index_list<'a, V>(n: usize, row: fn(&V, usize, &mut Mounter<'_, V>)) -> LList<'a, IndexRows<V>, V> {
@@ -1653,6 +1673,19 @@ impl<'a, S, V> LList<'a, S, V> {
 }
 
 impl<'a, S: RowSource<V>, V: 'static> Element<V> for LList<'a, S, V> {
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>) {
+        let p = crate::lower::list::ListParams {
+            spec: self.spec,
+            bg: self.bg,
+            radius: self.radius,
+            virt: self.virt,
+            scroll: self.scroll.map(|w| (*w.get(), w.off)),
+            estimate: self.estimate,
+            overscan: self.overscan,
+            source: std::any::type_name::<Self>(),
+        };
+        self.src.lower_rows(l, p);
+    }
     fn mount(self, m: &mut Mounter<'_, V>) {
         let s = m.rt.scale;
         let hd = m.rt.bough.new_handle();

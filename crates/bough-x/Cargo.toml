@@ -15,6 +15,8 @@ bough-face = { path = "../bough-face" }
 bough-mem = { path = "../bough-mem" }
 
 [features]
+# phase marks for splitting a pass's cost (`probe.rs`); off: a mark is nothing
+phase_probe = []
 inspect-metadata = ["bough-lay/inspect-metadata"]
 # Negative control of the leaf-site gate: every leaf keeps the row/list call site.
 mutant_same_site = []
@@ -24,6 +26,10 @@ mutant_repair_bounds = []
 mutant_delta = []
 # a list ignores the relation's journal
 mutant_journal = []
+# Dropping a subscribed journal fails to notify the world of source replacement.
+mutant_journal_drop = []
+# rows kept across an insert or a remove keep their old rects (bough's typed list gates must fail)
+mutant_rigid = []
 # a moved record damages only where it is now; a record in motion only where it will rest
 mutant_moves = []
 # a frame with records in motion damages nothing
@@ -32,6 +38,11 @@ mutant_sweep = []
 mutant_line = []
 # reflection takes a list record's ring slot for its row (tests/reflect.rs must fail)
 mutant_reflect = []
+
+# a free row that enters is not damaged (bough's lowered pixel gates must fail)
+mutant_free_enter = []
+# a free row that leaves is not damaged
+mutant_free_leave = []
 
 # Drops the second changed word from the sparse reader union.
 mutant_sparse_union = []

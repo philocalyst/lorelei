@@ -195,7 +195,7 @@ impl Styled for ImageBox {
 }
 
 /// `png` decoded to premultiplied RGBA8 into `out` (`w * h * 4` bytes).
-fn decode_premultiplied(png: &[u8], out: &mut [u8]) {
+pub(crate) fn decode_premultiplied(png: &[u8], out: &mut [u8]) {
     let mut dec = png::Decoder::new(std::io::Cursor::new(png));
     dec.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = dec.read_info().expect("a PNG image");
@@ -218,7 +218,7 @@ fn decode_premultiplied(png: &[u8], out: &mut [u8]) {
 }
 
 /// Bilinear resample of premultiplied RGBA8 (`sw` x `sh` into `dw` x `dh`), texel centres aligned.
-fn resample(src: &[u8], sw: u32, sh: u32, dst: &mut [u8], dw: u32, dh: u32) {
+pub(crate) fn resample(src: &[u8], sw: u32, sh: u32, dst: &mut [u8], dw: u32, dh: u32) {
     let at = |x: i64, y: i64, c: usize| src[(((y.clamp(0, sh as i64 - 1) as u32) * sw + x.clamp(0, sw as i64 - 1) as u32) * 4) as usize + c] as f32;
     for y in 0..dh {
         let fy = (y as f32 + 0.5) * sh as f32 / dh as f32 - 0.5;
@@ -236,6 +236,17 @@ fn resample(src: &[u8], sw: u32, sh: u32, dst: &mut [u8], dw: u32, dh: u32) {
 }
 
 impl<V: 'static> Element<V> for ImageBox {
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>) {
+        let s = l.scale();
+        // the image is drawn 1:1 on device pixels: resampled once to the box's device size, as on the legacy path
+        let dev = |d: Dim, n: u32| (d.pt().unwrap_or(n as f32) * s).round().max(1.0) as u32;
+        let (tw, th) = (dev(self.spec.w, self.px.0), dev(self.spec.h, self.px.1));
+        let id = l.core.images.put(self.png, self.px, tw, th);
+        let i = l.core.line(&self.spec, tw as f32, th as f32, std::any::type_name::<Self>());
+        let n = l.core.node(i);
+        n.paint = crate::lower::Paint::Image { id };
+        n.solid = true;
+    }
     fn mount(self, m: &mut Mounter<'_, V>) {
         // state lives in signals, the atlas or the region: a re-description steps over it
         crate::describe::mount_opaque(m, move |m: &mut Mounter<'_, V>| {

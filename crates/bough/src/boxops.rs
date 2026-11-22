@@ -118,13 +118,23 @@ pub trait BoxOps<V>: Sized {
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, node: u32, spec: &mut Spec);
     /// Re-description: apply the operands' current values.
     fn refresh(self, rt: &mut Rt, lid: u32, node: u32);
+    /// The operands' values now, for the lowered runtime: sizes into the spec, paint into `o`.
+    fn lower_ops(self, spec: &mut Spec, o: &mut BoxLow);
     /// The operands' part of the box's seal (`seal.rs`); refuses by default.
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
         s.refuse()
     }
 }
+/// A box's paint operands as the lowered runtime takes them.
+pub struct BoxLow {
+    pub alpha: f32,
+    /// Points.
+    pub shift: (f32, f32),
+}
 impl<V> BoxOps<V> for () {
+    #[inline]
+    fn lower_ops(self, _: &mut Spec, _: &mut BoxLow) {}
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, _: &mut S) {}
     const SIZE: bool = false;
@@ -135,6 +145,10 @@ impl<V> BoxOps<V> for () {
     fn refresh(self, _: &mut Rt, _: u32, _: u32) {}
 }
 impl<V, A: BoxOps<V>, B: BoxOps<V>> BoxOps<V> for (A, B) {
+    fn lower_ops(self, spec: &mut Spec, o: &mut BoxLow) {
+        self.0.lower_ops(spec, o);
+        self.1.lower_ops(spec, o);
+    }
     const SIZE: bool = A::SIZE || B::SIZE;
     const PAINT: bool = A::PAINT || B::PAINT;
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, node: u32, spec: &mut Spec) {
@@ -153,6 +167,9 @@ pub struct WidthOp<P>(pub P);
 pub struct HeightOp<P>(pub P);
 
 impl<V, P: IntoProp<f32, V>> BoxOps<V> for Opacity<P> {
+    fn lower_ops(self, _: &mut Spec, o: &mut BoxLow) {
+        o.alpha = self.0.value();
+    }
     const SIZE: bool = false;
     const PAINT: bool = true;
     fn install(self, m: &mut Mounter<'_, V>, _lid: u32, node: u32, _: &mut Spec) {
@@ -164,6 +181,9 @@ impl<V, P: IntoProp<f32, V>> BoxOps<V> for Opacity<P> {
     }
 }
 impl<V, P: IntoProp<(f32, f32), V>> BoxOps<V> for Translate<P> {
+    fn lower_ops(self, _: &mut Spec, o: &mut BoxLow) {
+        o.shift = self.0.value();
+    }
     const SIZE: bool = false;
     const PAINT: bool = true;
     fn install(self, m: &mut Mounter<'_, V>, _lid: u32, node: u32, _: &mut Spec) {
@@ -177,6 +197,9 @@ impl<V, P: IntoProp<(f32, f32), V>> BoxOps<V> for Translate<P> {
     }
 }
 impl<V, P: IntoProp<f32, V>> BoxOps<V> for WidthOp<P> {
+    fn lower_ops(self, spec: &mut Spec, _: &mut BoxLow) {
+        spec.w = Dim::Pt(self.0.value());
+    }
     const SIZE: bool = true;
     const PAINT: bool = false;
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, _node: u32, spec: &mut Spec) {
@@ -187,6 +210,9 @@ impl<V, P: IntoProp<f32, V>> BoxOps<V> for WidthOp<P> {
     }
 }
 impl<V, P: IntoProp<f32, V>> BoxOps<V> for HeightOp<P> {
+    fn lower_ops(self, spec: &mut Spec, _: &mut BoxLow) {
+        spec.h = Dim::Pt(self.0.value());
+    }
     const SIZE: bool = true;
     const PAINT: bool = false;
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, _node: u32, spec: &mut Spec) {

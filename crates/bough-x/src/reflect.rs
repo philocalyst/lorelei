@@ -320,6 +320,12 @@ impl<'a, V> Sink<V> for Learn<'a> {
         }
     }
 
+    /// Free rows are not reflected yet (the inspector's hook): the position is taken so the walk stays in step.
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, _: u32, _: F) {
+        let q = self.sub;
+        self.sub += 1;
+        self.out.seq.push(Part::Sub(q));
+    }
     #[track_caller]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, f: F) {
         let loc = Location::caller();
@@ -786,7 +792,7 @@ fn walk_owned<'w>(
                             slot
                         } else {
                             // the row of the window that lives at this slot
-                            st.lo + (slot + st.cap - st.lo % st.cap) % st.cap
+                            st.row_at_slot(slot)
                         };
                         if !c.rec_init(rec) {
                             // live, never written (soundness review S04): there is no record to read
@@ -914,6 +920,9 @@ impl<'r, 'a, V> ScopeOf<'r, V> for Detach<'a> {
     type Scope = Detach<'r>;
 }
 impl<'a, V> Sink<V> for Detach<'a> {
+    fn free<R: Row<V>, F: FnMut(usize) -> (Rect, R)>(&mut self, _: u32, _: F) {
+        let _ = self.next();
+    }
     #[track_caller]
     fn row<R: Row<V>, L: AsRef<[Rect]>, F: FnOnce() -> (L, R)>(&mut self, _: F) {}
     #[track_caller]

@@ -84,6 +84,11 @@ impl Dim {
             _ => None,
         }
     }
+    /// The tag (0 auto, 1 points, 2 fraction, 3 device pixels) and the value.
+    #[inline(always)]
+    pub(crate) fn parts(self) -> (u32, f32) {
+        (self.tag, self.v)
+    }
     /// The length in points, if it was given in points.
     #[inline(always)]
     pub fn pt(self) -> Option<f32> {
@@ -1369,14 +1374,14 @@ impl Rt {
 
 /// A layout box: a flex container (`column` / `row`) or a leaf rectangle (`block`), optionally painted.
 pub struct LBox<Bg = Color, Ch = (), X = ()> {
-    spec: Spec,
-    draw: bool,
-    bg: Bg,
-    radius: f32,
-    border: Option<(f32, Color)>,
-    ch: Ch,
+    pub(crate) spec: Spec,
+    pub(crate) draw: bool,
+    pub(crate) bg: Bg,
+    pub(crate) radius: f32,
+    pub(crate) border: Option<(f32, Color)>,
+    pub(crate) ch: Ch,
     /// Reactive operands (`boxops.rs`): opacity, translate, width, height.
-    x: X,
+    pub(crate) x: X,
 }
 
 pub fn column<Ch>(ch: Ch) -> LBox<Color, Ch> {
@@ -1511,6 +1516,23 @@ where
     Bg: IntoProp<Color, V>,
     Ch: Element<V>,
 {
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>) {
+        let mut spec = self.spec;
+        let mut ops = crate::boxops::BoxLow { alpha: 1.0, shift: (0.0, 0.0) };
+        self.x.lower_ops(&mut spec, &mut ops);
+        let color = self.bg.value();
+        let s = l.scale();
+        let i = l.core.open(&spec, std::any::type_name::<Self>());
+        let n = l.core.node(i);
+        if self.draw {
+            n.paint = crate::lower::Paint::Box { color: color.0, radius: self.radius, border: self.border.map(|(w, c)| (w, c.0)) };
+            n.solid = true;
+        }
+        n.alpha = (ops.alpha.clamp(0.0, 1.0) * 255.0).round() as u32;
+        n.shift = ((ops.shift.0 * s).round() as i32, (ops.shift.1 * s).round() as i32);
+        self.ch.lower(l);
+        l.core.close(i);
+    }
     fn mount(self, m: &mut Mounter<'_, V>) {
         let s = m.rt.scale;
         let hd = m.rt.bough.new_handle();
@@ -1661,13 +1683,13 @@ pub(crate) fn restyle_to(rt: &mut Rt, lid: u32, style: cephal::Style) {
 
 /// Wrapping text (`para`) or a single-line label (`label`), measured by the shaper.
 pub struct Para<S, C = Color> {
-    s: S,
-    spec: Spec,
-    size: f32,
-    lh: f32,
+    pub(crate) s: S,
+    pub(crate) spec: Spec,
+    pub(crate) size: f32,
+    pub(crate) lh: f32,
     /// A colour operand (a constant, `sig!(..)`, `sig!(..).map(f)`): a paint-only write of the lines' colour.
-    color: C,
-    wrap: bool,
+    pub(crate) color: C,
+    pub(crate) wrap: bool,
 }
 
 /// A paragraph that wraps at its width (set `.w(..)`, or it fills the available width).
@@ -1696,6 +1718,26 @@ impl<S, C> Para<S, C> {
 }
 
 impl<V: 'static, S: TextSrc<V>, C: IntoProp<Color, V>> Element<V> for Para<S, C> {
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>) {
+        let s = l.scale();
+        let (size, lh) = (self.size * s, self.lh * s);
+        let color = self.color.value().0;
+        let (spec, wrap, src) = (self.spec, self.wrap, std::any::type_name::<Self>());
+        self.s.with_str(|t| {
+            if wrap {
+                let mut para = l.core.text.words(t, size);
+                para.lh = lh;
+                let para = std::rc::Rc::new(para);
+                let i = l.core.wrap(&spec, Box::new(crate::lower::text::RcPara(para.clone())), src);
+                l.core.node(i).paint = crate::lower::Paint::Para { para, size, color };
+            } else {
+                let run = l.core.text.run(t, size);
+                let w = l.core.text.get(run.0, run.1).map_or(0.0, |r| r.w).ceil();
+                let i = l.core.line(&spec, w, lh, src);
+                l.core.node(i).paint = crate::lower::Paint::Line { run, size, color };
+            }
+        });
+    }
     fn mount(self, m: &mut Mounter<'_, V>) {
         let s = m.rt.scale;
         let node = m.rt.alloc_node();

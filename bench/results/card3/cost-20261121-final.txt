@@ -1,0 +1,12 @@
+legacy repair: Kernel; load average: { 16.69 19.85 21.54 }
+cell (instructions, median)         legacy turn      lowered   ratio   legacy +frame      lowered   ratio
+mount, 1,000 rows                      26032196      7433388   0.29x       36391097     18363153   0.50x
+mount, 100,000 rows (virtual)          26295112      9607771   0.37x       36620048     20537771   0.56x
+hover, one row to the next                14597        17869   1.22x          29022       906854  31.25x
+one signal (the title)                    21876       255793  11.69x          90447       367358   4.06x
+click Add first (insert at 0)            131655       698992   5.31x        5108251      7596445   1.49x
+scroll by one row                        104433       700412   6.71x        7316464      7485207   1.02x
+theme (opaque state)                      21094       221184  10.49x        8024129     11330830   1.41x
+resize by 40 pt                         4341181      1824905   0.42x       14748543     13032228   0.88x
+still frame                               14151        12922   0.91x          28545        25883   0.91x
+lowered title edit, thread instructions per turn: view+lower 170489 / layout+emit 64606 / world compare 8921 (96 records)

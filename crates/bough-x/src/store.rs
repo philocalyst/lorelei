@@ -386,6 +386,14 @@ pub struct Op {
 
 /// An archetype: a paint kind applied to expression types. The value is one record's constants.
 pub trait Arch: Record {
+    /// Records that keep a resource alive while stored in a column slot. Copies outside the column
+    /// have no ownership. This is false for ordinary paint archetypes.
+    const OWNS_RESOURCE: bool = false;
+    fn same_resource(&self, _other: &Self) -> bool {
+        false
+    }
+    fn acquire_resource(&self) {}
+    fn release_resource(&self) {}
     /// Compare evaluated values for opaque CPU records; never inspect padding.
     fn same_at(&self, other: &Self, u: &U) -> bool {
         if Self::WORD_LAYOUT {
@@ -608,6 +616,7 @@ pub struct Desc {
     pub name: &'static str,
     pub stage: StageId,
     pub rec_size: usize,
+    pub rec_align: usize,
     pub rec_off: usize,
     /// Where a page's `initialized` mask is (a byte offset into the page).
     pub init_off: usize,
@@ -622,6 +631,7 @@ pub struct Desc {
     active: ActiveFn,
     pub slots: fn(&mut dyn FnMut(Slot)),
     paint: unsafe fn(&RawCol, &StoreView, &U, *mut ()),
+    release_resources: Option<unsafe fn(&RawCol)>,
     /// The bounded deltas the archetype admits ([`fast`]).
     pub fast: fast::FastFns,
 }
@@ -632,6 +642,7 @@ impl<A: Arch, B: Backend> Holder<A, B> {
         name: A::NAME,
         stage: A::STAGE,
         rec_size: size_of::<A>(),
+        rec_align: align_of::<A>(),
         rec_off: core::mem::offset_of!(Page<A>, rec),
         init_off: core::mem::offset_of!(Page<A>, initialized),
         page: Layout::new::<Page<A>>(),
@@ -647,6 +658,11 @@ impl<A: Arch, B: Backend> Holder<A, B> {
         },
         slots: A::slots,
         paint: paint_col::<A, B>,
+        release_resources: if A::OWNS_RESOURCE {
+            Some(release_resources::<A>)
+        } else {
+            None
+        },
         fast: fast::fns::<A>(),
     };
 }
@@ -821,9 +837,26 @@ impl RawCol {
         }
     }
 }
+/// SAFETY: the column's descriptor was instantiated for A.
+unsafe fn release_resources<A: Arch>(col: &RawCol) {
+    // SAFETY: this callback comes from the column's own descriptor.
+    for page in unsafe { col.all::<A>() } {
+        let mut initialized = page.initialized;
+        while initialized != 0 {
+            let index = initialized.trailing_zeros() as usize;
+            initialized &= initialized - 1;
+            page.record(index).release_resource();
+        }
+    }
+}
+
 impl Drop for RawCol {
     fn drop(&mut self) {
         if self.npages != 0 {
+            if let Some(release) = self.desc.release_resources {
+                // SAFETY: this is the callback made for the archetype of these pages.
+                unsafe { release(self) };
+            }
             let one = self.desc.page;
             // SAFETY: allocated in `grow` with exactly this layout.
             unsafe {
@@ -1069,6 +1102,12 @@ impl core::ops::IndexMut<usize> for StoreChildren {
     }
 }
 
+pub(crate) struct ScrollContent {
+    pub field: Option<crate::expr::Slot>,
+    pub height: i32,
+    pub line: Option<f32>,
+}
+
 /// A store is made and changed only by the world that owns it (soundness review S01): its sites and column
 /// headers hold raw pointers that its safe passes dereference, so outside code may read a store
 /// ([`crate::world::World::root`]) but never own one or reach it mutably.
@@ -1093,12 +1132,27 @@ pub struct Store {
     pub row_live: Vec<u64>,
     pub(crate) initialized_window: Option<(u32, u32)>,
     pub space: Space,
+    pub(crate) scroll_content: Option<Box<ScrollContent>>,
     disc: Vec<(u32, Rect)>,
-    /// A list's materialised window of rows, `lo..hi`; row `r` is at slot `r mod cap`.
+    /// A list's materialised window of rows, `lo..hi`; row `r` is at slot `(r + bias) mod cap`
+    /// ([`Store::slot_of`]).
     pub lo: u32,
     pub hi: u32,
+    /// What a row's index is offset by to find its slot. An insert or a remove before rows that stay
+    /// exposed changes their indices and not their records: the bias moves the other way, so each keeps
+    /// its slot (`sink::list_plan`).
+    pub(crate) bias: u32,
+    /// A list: per slot, the number of the write that put the row there (`stamp` counts them). A record
+    /// someone holds by its place (the hovered set) is still the record they were given exactly while its
+    /// slot's stamp is the one they saw: a row described again in place (an edit) keeps it, a row written
+    /// over another does not.
+    pub(crate) stamps_observed: core::sync::atomic::AtomicBool,
+    pub(crate) row_stamp: Vec<u32>,
+    pub(crate) stamp: u32,
     /// The relation version this window was last brought up to.
     pub seen: u32,
+    /// Changes when the source relation is rebound, independently of its version.
+    pub(crate) journal_binding: u64,
     /// The rows of the shape: the type of each row value described here and its first site.
     pub rows: Vec<(TypeId, u32)>,
     /// A list's rows: where they are described, how many records a row has, a row's size (`sink::list_sync`).
@@ -1126,8 +1180,26 @@ pub struct Store {
     pub lay: (i32, i32, i32),
     /// A list of elements: the rects of the last row shape it laid out, and the widths they hold over.
     pub memo: bough_lay::Memo,
+    /// A list: some record of some row was given a rect that leaves its row's band (an out-of-flow child
+    /// past the row). While false, the records under a point are those of the one row the point is in, found
+    /// by arithmetic (`World::chain_into`); once true (until the list's columns are made again) the columns
+    /// are searched.
+    pub(crate) spill: bool,
 }
 
+impl Store {
+    /// The slot row `r` of a list's window is kept at (0 in a fixed shape).
+    #[inline(always)]
+    pub fn slot_of(&self, r: u32) -> u32 {
+        r.wrapping_add(self.bias) & (self.cap - 1)
+    }
+    /// The row of the window that is kept at `slot` (the inverse of [`Store::slot_of`] over `lo..lo + cap`).
+    #[inline(always)]
+    pub fn row_at_slot(&self, slot: u32) -> u32 {
+        self.lo
+            .wrapping_add(slot.wrapping_sub(self.lo.wrapping_add(self.bias)) & (self.cap - 1))
+    }
+}
 impl Drop for Store {
     fn drop(&mut self) {
         self.column_count
@@ -1177,10 +1249,12 @@ impl Store {
             row_live: vec![0; (cap as usize / 64).max(1)],
             initialized_window: None,
             space,
+            scroll_content: None,
             disc: Vec::new(),
             lo: 0,
             hi: 0,
             seen: 0,
+            journal_binding: 0,
             rows: Vec::new(),
             src: None,
             n: 0,
@@ -1196,6 +1270,11 @@ impl Store {
             row0: Vec::new(),
             lay: (0, 0, 0),
             memo: bough_lay::Memo::new(),
+            spill: false,
+            bias: 0,
+            stamps_observed: core::sync::atomic::AtomicBool::new(false),
+            row_stamp: Vec::new(),
+            stamp: 0,
         }
     }
     #[inline(always)]
@@ -1253,7 +1332,9 @@ impl Store {
                 k: 0,
                 reads: d.reads,
                 delta: d.delta,
-                id: COL_ID.fetch_add(1, Ordering::Relaxed),
+                id: COL_ID
+                    .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))
+                    .expect("column identity exhausted"),
                 key,
                 arch,
                 desc: d,

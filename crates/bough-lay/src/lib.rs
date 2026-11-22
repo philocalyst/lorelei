@@ -15,6 +15,7 @@
 pub mod el;
 pub mod extent;
 pub mod flex;
+pub mod heap;
 pub mod shape;
 pub mod tree;
 pub mod val;

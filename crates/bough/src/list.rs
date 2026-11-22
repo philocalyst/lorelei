@@ -55,6 +55,13 @@ impl<T> std::fmt::Debug for Slot<T> {
     }
 }
 impl<T> Slot<T> {
+    /// A slot from its parts (the typed path keeps them as record words).
+    pub(crate) fn raw(idx: u32, generation: u32) -> Slot<T> {
+        Slot { idx, generation, _t: PhantomData }
+    }
+    pub(crate) fn generation(&self) -> u32 {
+        self.generation
+    }
     pub fn index(&self) -> u32 {
         self.idx
     }

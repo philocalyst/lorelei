@@ -460,6 +460,14 @@ pub trait ActOp<V> {
     /// Kind flags the record gets besides [`KF_INTERACT`].
     const FLAGS: u8 = 0;
     fn install(self, m: &mut Mounter<'_, V>, act: u32);
+    /// The op on node `node` of the lowered description (`lower/mod.rs`). The default refuses by name.
+    fn lower_act(self, l: &mut crate::lower::Lower<'_, '_, V>, _node: usize)
+    where
+        Self: Sized,
+        V: 'static,
+    {
+        l.refuse(std::any::type_name::<Self>())
+    }
 }
 
 /// An element with an interaction op on its first record.
@@ -476,10 +484,28 @@ impl<V, E: Element<V>, O: ActOp<V>> Element<V> for On<E, O> {
     fn update(self, m: &mut Mounter<'_, V>) {
         self.0.update(m);
     }
+    fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>)
+    where
+        V: 'static,
+    {
+        let n = l.core.next();
+        self.0.lower(l);
+        // (an element that described no node has nothing to hear with)
+        if l.core.next() > n {
+            self.1.lower_act(l, n);
+        }
+    }
 }
 
 pub struct Click<F>(pub F);
 impl<V: 'static, F: Fn(&mut V) + Copy + 'static> ActOp<V> for Click<F> {
+    fn lower_act(self, l: &mut crate::lower::Lower<'_, '_, V>, node: usize)
+    where
+        V: 'static,
+    {
+        let f = self.0;
+        l.handler(node, crate::lower::Kind::Click, move |v, _| f(v));
+    }
     fn install(self, m: &mut Mounter<'_, V>, a: u32) {
         root_owner_only(m, "click");
         m.rt.input.acts[a as usize].click = Some(route_plain::<V, F>(self.0));
@@ -487,6 +513,12 @@ impl<V: 'static, F: Fn(&mut V) + Copy + 'static> ActOp<V> for Click<F> {
 }
 pub struct Press<F>(pub F);
 impl<V: 'static, F: Fn(&mut V, &Ev) + Copy + 'static> ActOp<V> for Press<F> {
+    fn lower_act(self, l: &mut crate::lower::Lower<'_, '_, V>, node: usize)
+    where
+        V: 'static,
+    {
+        l.handler(node, crate::lower::Kind::Press, self.0);
+    }
     fn install(self, m: &mut Mounter<'_, V>, a: u32) {
         root_owner_only(m, "press");
         m.rt.input.acts[a as usize].press = Some(route_ev::<V, F>(self.0));
@@ -494,6 +526,12 @@ impl<V: 'static, F: Fn(&mut V, &Ev) + Copy + 'static> ActOp<V> for Press<F> {
 }
 pub struct Hover<F>(pub F);
 impl<V: 'static, F: Fn(&mut V, &Ev) + Copy + 'static> ActOp<V> for Hover<F> {
+    fn lower_act(self, l: &mut crate::lower::Lower<'_, '_, V>, node: usize)
+    where
+        V: 'static,
+    {
+        l.handler(node, crate::lower::Kind::Hover, self.0);
+    }
     fn install(self, m: &mut Mounter<'_, V>, a: u32) {
         root_owner_only(m, "hover");
         m.rt.input.acts[a as usize].hover = Some(route_ev::<V, F>(self.0));
@@ -501,6 +539,14 @@ impl<V: 'static, F: Fn(&mut V, &Ev) + Copy + 'static> ActOp<V> for Hover<F> {
 }
 pub struct HoverBg(pub Color);
 impl<V> ActOp<V> for HoverBg {
+    fn lower_act(self, l: &mut crate::lower::Lower<'_, '_, V>, node: usize)
+    where
+        V: 'static,
+    {
+        let n = l.core.node(node);
+        n.hover_bg = Some(self.0 .0);
+        n.solid = true;
+    }
     fn install(self, m: &mut Mounter<'_, V>, a: u32) {
         let inst = m.rt.input.acts[a as usize].inst;
         assert!(inst != NONE, "hover_bg needs a painted quad");
@@ -515,11 +561,26 @@ impl<V> ActOp<V> for HoverBg {
 }
 pub struct Focusable;
 impl<V> ActOp<V> for Focusable {
+    fn lower_act(self, l: &mut crate::lower::Lower<'_, '_, V>, node: usize)
+    where
+        V: 'static,
+    {
+        let n = l.core.node(node);
+        n.focusable = true;
+        n.solid = true;
+    }
     const FLAGS: u8 = KF_FOCUS;
     fn install(self, _: &mut Mounter<'_, V>, _: u32) {}
 }
 pub struct OnKey<F>(pub F);
 impl<V: 'static, F: Fn(&mut V, &Ev) + Copy + 'static> ActOp<V> for OnKey<F> {
+    fn lower_act(self, l: &mut crate::lower::Lower<'_, '_, V>, node: usize)
+    where
+        V: 'static,
+    {
+        l.core.node(node).focusable = true;
+        l.handler(node, crate::lower::Kind::Key, self.0);
+    }
     const FLAGS: u8 = KF_FOCUS;
     fn install(self, m: &mut Mounter<'_, V>, a: u32) {
         root_owner_only(m, "onkey");
@@ -528,6 +589,12 @@ impl<V: 'static, F: Fn(&mut V, &Ev) + Copy + 'static> ActOp<V> for OnKey<F> {
 }
 pub struct Drag<F>(pub F);
 impl<V: 'static, F: Fn(&mut V, &Ev) + Copy + 'static> ActOp<V> for Drag<F> {
+    fn lower_act(self, l: &mut crate::lower::Lower<'_, '_, V>, node: usize)
+    where
+        V: 'static,
+    {
+        l.handler(node, crate::lower::Kind::Drag, self.0);
+    }
     fn install(self, m: &mut Mounter<'_, V>, a: u32) {
         root_owner_only(m, "drag");
         m.rt.input.acts[a as usize].drag = Some(route_ev::<V, F>(self.0));
@@ -996,6 +1063,7 @@ impl<V: View> App<V> {
 
     /// Settle what routes queued and lay out what changed (the end of an input turn).
     fn settle_input(&mut self) {
+        crate::lower::provenance::count(|c| c.rt_settle += 1);
         self.settle_input_once();
         self.rehover();
     }

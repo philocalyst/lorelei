@@ -1,0 +1,15 @@
+legacy repair: Kernel; load average: { 29.03 33.64 32.98 }
+cell (instructions, net)           legacy    lowered      typed   t/leg     legacy+f  lowered+f    typed+f   t/leg
+mount, 1,000 rows                26411807    6428614    6107040   0.23x     36863293   17251283   16962035   0.46x
+mount, 100,000 rows              26742530    8608728    6101859   0.23x     37308418   19431321   16958431   0.45x
+hover, one row to the next            415       5039       3623   8.73x         2224     864330     868389 390.46x
+one signal (the title)               8098     199050      22971   2.84x        64472     296334     149844   2.32x
+insert at 0 (click)                120546     616893      54487   0.45x      5417392    7677640    7182370   1.33x
+scroll by one row                   89494     450663      19676   0.22x      7574401    7440577    7034451   0.93x
+theme (opaque state)                 7171     200622       5907   0.82x      8114159   11335985   11168731   1.38x
+resize by 40 pt                   3480254    1805477    1593976   0.46x     14985155   13040135   12855889   0.86x
+still frame                             0          0          0    NaNx         1809       1609       1609   0.89x
+typed: the author's view() alone 501
+units x1000 (context read, spec convert+pack): (8037, 108017)
+typed, thread instructions: view + conversion of the fixed part 6049; a re-description of an unchanged view 4633
+lowered title edit, thread instructions per turn: view+lower 122893 / layout+emit 65149 / world compare 10083 (96 records)

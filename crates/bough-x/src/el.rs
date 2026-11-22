@@ -339,7 +339,7 @@ pub trait Rooted<V> {}
 impl<V> Rooted<V> for Color {}
 
 impl<'a, V: 'static, X: Word, const OFF: usize> Sig<'a, V, Signal<X>, OFF> {
-    fn admit(&self) {
+    fn admit(&self) -> Slot {
         self.r.observe();
         let create = || {
             let mut fields = field_registry().lock().unwrap();
@@ -372,6 +372,7 @@ impl<'a, V: 'static, X: Word, const OFF: usize> Sig<'a, V, Signal<X>, OFF> {
             "field cache owner mismatch"
         );
         assert_eq!(slot.offset(), OFF, "field cache projection mismatch");
+        slot
     }
     /// The field through a function. The closure may capture: its captures are the record's own words.
     #[inline(always)]
@@ -1407,6 +1408,36 @@ impl<V, X: Boxy<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Boxy<V> for Hd<X,
         self.0.kids()
     }
 }
+/// The one position a scrolled box's content takes in its row: a hole.
+#[derive(Clone, Copy)]
+pub struct HoleRow;
+// SAFETY (`Row`'s contract): one position, a hole: it writes and compares nothing.
+unsafe impl<V> Row<V> for HoleRow {
+    const LEAVES: u32 = 1;
+    #[inline(always)]
+    fn visit<L: Leaf<V>>(&self, l: &mut L) {
+        l.hole()
+    }
+    #[inline(always)]
+    unsafe fn write(&self, _: *const Site, _: u32) {}
+    #[inline(always)]
+    unsafe fn patch(&self, _: *const Site, _: u32, _: &Mk, _: &mut Cx<'_>) {}
+}
+/// A painted scrolled box carries handlers on its own record (a list that hears keys, a port that hears the
+/// wheel): its record, then the hole.
+impl<V, P: Paints<V>, C> Boxy<V> for Scroll<Rec1<P>, C> {
+    type Tgt = P::A;
+    type Kids = HoleRow;
+    #[inline(always)]
+    fn tgt(&self) -> P::A {
+        self.paint.0.arch()
+    }
+    #[inline(always)]
+    fn kids(&self) -> &HoleRow {
+        &HoleRow
+    }
+}
+impl<P, C> Interactive for Scroll<Rec1<P>, C> {}
 // SAFETY (`Row`'s contract): the box's record with its handlers (one leaf, `On<X::Tgt, H>`), then the children's leaves.
 unsafe impl<V: 'static, X: Boxy<V>, H: Handler<V, <X::Tgt as Target<V>>::Rec>> Row<V> for Hd<X, H> {
     const LEAVES: u32 = 1 + <X::Kids as Row<V>>::LEAVES;
@@ -1499,9 +1530,33 @@ pub struct Scroll<P, C> {
     pub content: C,
     /// The block word of the scroll offset (an `f32` of points).
     pub word: u8,
+    field: Option<Slot>,
+    wheel_line: Option<f32>,
     /// Where `.scroll(..)` was written: cold, and only for the inspector.
     #[cfg(feature = "inspect-metadata")]
     loc: &'static core::panic::Location<'static>,
+}
+impl<P, C> Scroll<P, C> {
+    /// Construct a scroll scope driven by an existing block word.
+    #[track_caller]
+    pub fn new(spec: Spec, paint: P, content: C, word: u8) -> Self {
+        Self {
+            spec,
+            paint,
+            content,
+            word,
+            field: None,
+            wheel_line: None,
+            #[cfg(feature = "inspect-metadata")]
+            loc: core::panic::Location::caller(),
+        }
+    }
+
+    /// The plain scroller's points per wheel line.
+    pub fn wheel_line(mut self, line: f32) -> Self {
+        self.wheel_line = Some(line);
+        self
+    }
 }
 /// `.scroll(sig!(self.y))` on a box: its children scroll by the field's value (points).
 pub trait Scrolls<P, C>: Sized {
@@ -1512,14 +1567,10 @@ impl<P, C, H> Scrolls<P, C> for LBox<P, C, H> {
     #[cfg_attr(feature = "inspect-metadata", track_caller)]
     #[inline(always)]
     fn scroll<V: 'static, const OFF: usize>(self, y: Sig<'_, V, Signal<f32>, OFF>) -> Scroll<P, C> {
-        Scroll {
-            spec: self.spec,
-            paint: self.paint,
-            content: self.kids,
-            word: y.word(),
-            #[cfg(feature = "inspect-metadata")]
-            loc: core::panic::Location::caller(),
-        }
+        let field = y.admit();
+        let mut scroll = Scroll::new(self.spec, self.paint, self.kids, field.index() as u8);
+        scroll.field = Some(field);
+        scroll
     }
 }
 /// The hole of a scrolled box, as layout: out of flow at the box's corner and as large as the box, so its rect
@@ -1634,7 +1685,7 @@ where
 }
 /// An element in a scrolled box's content: laid out as a row of the content's width, where the flow is.
 #[inline(always)]
-fn seg_el<V, E: Part<V> + Shape, S: Sink<V>>(e: &mut E, s: &mut S, f: &mut Flow) {
+pub fn seg_el<V, E: Part<V> + Shape, S: Sink<V>>(e: &mut E, s: &mut S, f: &mut Flow) {
     if !f.lay {
         return e.holes(None, &mut 0, s);
     }
@@ -1873,7 +1924,14 @@ macro_rules! scroll_part {
                     None => (Space::root(0, 0), 0),
                 };
                 let content = &mut self.content;
-                s.scope(space, |s| content.seg(s, &mut Flow { w, y: 0, lay: rects.is_some() }));
+                let (field, line) = (self.field, self.wheel_line);
+                s.scope(space, |s| {
+                    let mut flow = Flow { w, y: 0, lay: rects.is_some() };
+                    content.seg(s, &mut flow);
+                    if flow.lay && (field.is_some() || line.is_some()) {
+                        s.scroll_content(field, flow.y, line);
+                    }
+                });
             }
         }
     };

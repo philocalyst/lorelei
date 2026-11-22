@@ -1,0 +1,12 @@
+cell	legacy_turn	lowered_turn	ratio_turn	legacy_turn_frame	lowered_turn_frame	ratio_turn_frame
+mount, 1,000 rows	25840263	7420549	0.287	36067740	18350580	0.509
+mount, 100,000 rows (virtual)	26207134	9601437	0.366	36446953	20531343	0.563
+hover, one row to the next	14572	17809	1.222	28972	906826	31.300
+one signal (the title)	22120	256525	11.597	90687	368074	4.059
+click Add first (insert at 0)	131389	700186	5.329	5104359	7592845	1.488
+scroll by one row	104383	702479	6.730	7310525	7487181	1.024
+theme (opaque state)	21216	221879	10.458	8016983	11331534	1.413
+resize by 40 pt	4382194	1825581	0.417	14823515	13032916	0.879
+still frame	14151	12897	0.911	28545	25833	0.905
+# lowered title edit, thread instructions per turn: view+lower 170228 / layout+emit 64997 / world compare 8921 (96 records)
+# load average: { 15.53 19.44 21.37 }; legacy repair: Kernel
