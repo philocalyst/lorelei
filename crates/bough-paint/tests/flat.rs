@@ -658,3 +658,213 @@ fn the_oracle_catches_a_broken_surface_read() {
         assert!(gbad > 0, "{name} was not caught");
     }
 }
+
+// ---- images, video, glyphs, the pan, structure, nesting ------------------------------------------------
+
+struct Media {
+    flat: FlatScene,
+    image: NodeId,
+    video: NodeId,
+    src: bough_paint::media::Synth,
+}
+/// A scene of media and text over panned content: a retained image, a video, glyphs, a tall panned world.
+fn media_scene() -> Media {
+    use bough_paint::media::Synth;
+    let cfg = FlatConfig::default()
+        .with(EffectKind::Glyph, Space::Fixed, 64)
+        .with(EffectKind::RRect, Space::Panned, 128)
+        .with(EffectKind::Shadow, Space::Panned, 128)
+        .with(EffectKind::Ramp, Space::Panned, 64)
+        .with(EffectKind::Image, Space::Panned, 8)
+        .media(1 << 16);
+    let mut flat = FlatScene::new(288, 224, cfg);
+    flat.push(Node::new([0.0, 0.0, 288.0, 224.0], DrawCmd::Solid { color: 0xff20_2428 })).unwrap();
+    // a world taller than the frame, scrolled by the pan
+    let l = flat.lut(&[(0.0, 0xffa0_4020), (0.5, 0xff20_a0e0), (1.0, 0xffe0_e040)]).unwrap();
+    for i in 0..40 {
+        let (x, y) = (12.0 + 90.0 * (i % 3) as f32, 16.0 + 70.0 * (i / 3) as f32);
+        let r = [x, y, x + 78.0, y + 54.0];
+        flat.push(Node::new(r, DrawCmd::Shadow { radius: 9.0, spread: 0.0, dx: 0.0, dy: 3.0, blur: 9.0, color: 0x8000_0000 }).panned()).unwrap();
+        if i % 4 == 1 {
+            flat.push(Node::new(r, DrawCmd::Ramp { radius: 9.0, geo: RampGeo::Linear { angle_deg: 30.0 * i as f32 }, lut: l }).panned()).unwrap();
+        } else {
+            flat.push(Node::new(r, DrawCmd::RRect { radius: 9.0, color: [0xfff0_f0f0, 0xffd0_e0ff, 0xc0ff_d0d0][i % 3] }).panned()).unwrap();
+        }
+    }
+    // a retained image (premultiplied BGRA, as a decoder or an SVG rasteriser publishes it), in the world
+    let (iw, ih) = (40u32, 30u32);
+    let pixels: Vec<u32> = (0..iw * ih).map(|i| {
+        let (x, y) = (i % iw, i / iw);
+        let a = if (x / 5 + y / 5) % 2 == 0 { 255 } else { 96 };
+        let ch = |v: u32| v * a / 255;
+        ch(x * 6) | ch(y * 8) << 8 | ch(200) << 16 | a << 24
+    }).collect();
+    let slot = flat.scene_mut().media.publish_bgra(iw, ih, &pixels, 0, None).unwrap();
+    let image = flat.push(Node::new([100.0, 300.0, 180.0, 360.0], DrawCmd::Image { radius: 8.0, slot, dims: iw | ih << 16 }).panned().opacity(0.9)).unwrap();
+    // a video, fixed over the world
+    let mut src = Synth::new(64, 48, 3);
+    let vslot = src.next(&mut flat.scene_mut().media).unwrap();
+    let video = flat.push(Node::new([180.5, 20.0, 276.0, 92.0], DrawCmd::Image { radius: 12.0, slot: vslot, dims: 64 | 48 << 16 })).unwrap();
+    // glyphs: a 6 x 8 texel face in the scene's atlas
+    let (gw, gh, n) = (6usize, 8usize, 10usize);
+    let mut atlas = vec![0u8; gw * n * gh];
+    for g in 0..n {
+        for y in 0..gh {
+            for x in 0..gw {
+                atlas[y * gw * n + g * gw + x] = if (x + y + g) % 3 == 0 || x == g % gw { 255 } else if (x * y) % 4 == 1 { 120 } else { 0 };
+            }
+        }
+    }
+    (flat.scene_mut().atlas, flat.scene_mut().aw) = (atlas, (gw * n) as u32);
+    for g in 0..n {
+        let x = 16.0 + 9.0 * g as f32;
+        flat.push(Node::new([x, 200.0, x + gw as f32, 200.0 + gh as f32], DrawCmd::Glyph { texel: (g * gw) as u32, color: 0xffff_ffff }).opacity(0.5 + 0.05 * g as f32)).unwrap();
+    }
+    Media { flat, image, video, src }
+}
+
+#[test]
+fn media_text_and_a_scrolled_world_are_exact() {
+    let pool = Pool::new(2);
+    let (mut a, mut b) = (media_scene(), media_scene());
+    // SAFETY: `b.flat` outlives `gpu` (declared after it) and is written only between its calls.
+    #[cfg(target_os = "macos")]
+    let mut gpu = unsafe { FlatGpu::new(&b.flat, 256) };
+    let words = 288 * 224;
+    let (mut keep, mut spec) = (vec![0u32; words], vec![0u32; words]);
+    let mut g = Rng(31);
+    let (mut bad, mut gbad, mut frames) = (0, 0, 0);
+    let (mut pan, mut scrolled_recs, mut world_recs) = (0.0f32, 0u64, 0u64);
+    for k in 0..70u32 {
+        let pick = if k == 0 { 99 } else { k % 7 };
+        let (x, y) = (g.f(0.0, 1.0), g.f(-1.0, 1.0));
+        match pick {
+            // scroll, by whole and by fractional pixels
+            0 | 1 | 2 => pan = (pan + if pick == 1 { -37.25 } else { -3.0 - 9.0 * x }).clamp(-760.0, 0.0),
+            _ => {}
+        }
+        for m in [&mut a, &mut b] {
+            match pick {
+                0 | 1 | 2 => m.flat.set_pan(0.0, pan),
+                // the video shows a new frame: a slot word, nothing else
+                3 => {
+                    let slot = m.src.next(&mut m.flat.scene_mut().media).unwrap();
+                    m.flat.set(m.video, DrawCmd::Image { radius: 12.0, slot, dims: 64 | 48 << 16 });
+                }
+                4 => m.flat.set_xf(m.image, y * 30.0, x * 12.0, 0.8 + x),
+                5 => m.flat.set_opacity(NodeId(m.flat.nodes() as u32 - 1 - (k % 10)), x),
+                _ => {}
+            }
+        }
+        let st = a.flat.frame(&mut keep, 288, &pool, 1);
+        a.flat.spec(&mut spec, 288);
+        frames += 1;
+        if matches!(pick, 0 | 1 | 2) {
+            scrolled_recs += st.frame.recs_visited as u64;
+            world_recs += 81;
+        }
+        if diff(&keep, &spec) != 0 {
+            eprintln!("media step {k} (change {pick}): {} words differ from the specification", diff(&keep, &spec));
+            bad += 1;
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(gpu) = gpu.as_mut() {
+            gpu.frame(&mut b.flat, &pool, 1);
+            if diff(gpu.out(), &spec) != 0 {
+                eprintln!("media step {k} (change {pick}): {} words differ on Metal", diff(gpu.out(), &spec));
+                gbad += 1;
+            }
+        }
+    }
+    eprintln!("flat media: {frames} frames (scrolls, video frames, a scaled image, glyphs) exact on the CPU and on Metal; a scroll visited {scrolled_recs} of {world_recs} panned records; {bad} + {gbad} failing");
+    assert_eq!((bad, gbad), (0, 0));
+    // a scroll is two block words: the pan index answers it with the records near the viewport
+    assert!(scrolled_recs * 2 < world_recs, "a scroll visited {scrolled_recs} of {world_recs} records");
+}
+
+/// Structural edits (a node inserted beneath others, removed, the scene compacted) rebuild the scene and
+/// re-sync the executor; nested groups repair from the inside out. Drawn by Metal's resident plan too.
+#[test]
+fn structure_and_nesting_rebuild_and_stay_exact() {
+    let make = || {
+        let mut inner = FlatScene::new(64, 64, FlatConfig::default());
+        inner.push(Node::new([4.0, 4.0, 60.0, 60.0], DrawCmd::RRect { radius: 12.0, color: 0xff40_c040 })).unwrap();
+        let dot = inner.push(Node::new([20.0, 20.0, 44.0, 44.0], DrawCmd::RRect { radius: 12.0, color: 0xffff_ffff })).unwrap();
+        let mut mid = FlatScene::new(128, 96, FlatConfig::default().media(surface_words(64, 64, 3) + 64));
+        mid.push(Node::new([0.0, 0.0, 128.0, 96.0], DrawCmd::RRect { radius: 20.0, color: 0x8020_20c0 })).unwrap();
+        let gi = mid.group(inner, 3).unwrap();
+        let inner_node = mid.push(Node::new([30.0, 16.0, 94.0, 80.0], DrawCmd::Group { radius: 0.0, blur: 2.0, group: gi })).unwrap();
+        let mut flat = FlatScene::new(256, 192, FlatConfig::default().media(surface_words(128, 96, 5) + 64));
+        let l = flat.lut(&[(0.0, 0xff10_1010), (1.0, 0xff80_8890)]).unwrap();
+        flat.push(Node::new([0.0, 0.0, 256.0, 192.0], DrawCmd::Ramp { radius: 0.0, geo: RampGeo::Linear { angle_deg: 0.0 }, lut: l })).unwrap();
+        let gm = flat.group(mid, 5).unwrap();
+        let mid_node = flat.push(Node::new([40.0, 30.0, 168.0, 126.0], DrawCmd::Group { radius: 14.0, blur: 0.0, group: gm }).opacity(0.9)).unwrap();
+        let top = flat.push(Node::new([120.0, 90.0, 240.0, 180.0], DrawCmd::Glass { radius: 12.0, blur: 4.0, brightness: 1.0, saturation: 1.2, contrast: 1.0, tint: 0x20ff_ffff })).unwrap();
+        (flat, gm, gi, dot, inner_node, mid_node, top)
+    };
+    let pool = Pool::new(2);
+    let (mut a, gm, gi, dot, inner_node, mid_node, top) = make();
+    let (mut b, ..) = make();
+    let (mut c, ..) = make();
+    // SAFETY: `b` and `c` outlive their executors (declared before them) and are written only between calls.
+    #[cfg(target_os = "macos")]
+    let (mut staged, mut resident) = unsafe { (FlatGpu::new(&b, 256), FlatGpu::resident(&mut c, 256)) };
+    let words = 256 * 192;
+    let (mut keep, mut spec) = (vec![0u32; words], vec![0u32; words]);
+    let mut extra: Vec<NodeId> = Vec::new();
+    let (mut bad, mut rebuilt, mut nested) = (0, 0, 0);
+    for k in 0..36u32 {
+        let step = |s: &mut FlatScene, extra: &mut Vec<NodeId>, record: bool| match k % 9 {
+            // the innermost scene changes: both surfaces above it repair what that reaches
+            1 => s.child_mut(gm).child_mut(gi).set_color(dot, 0xff00_00ff | k << 12),
+            2 => s.child_mut(gm).set_prop(inner_node, Prop::Blur, (k % 5) as f32),
+            3 => s.set_xf(mid_node, k as f32, 0.0, 1.0 + (k % 4) as f32 * 0.1),
+            // structure: beneath the group, then beneath the pane
+            4 => {
+                let id = s.insert_before(mid_node, Node::new([10.0 + k as f32, 100.0, 90.0 + k as f32, 170.0], DrawCmd::RRect { radius: 6.0, color: 0xffe0_6020 })).unwrap();
+                if record {
+                    extra.push(id);
+                }
+            }
+            5 => {
+                let id = s.insert_before(top, Node::new([150.0, 60.0 + k as f32, 230.0, 110.0 + k as f32], DrawCmd::Shadow { radius: 8.0, spread: 2.0, dx: 0.0, dy: 4.0, blur: 10.0, color: 0xa000_0000 })).unwrap();
+                if record {
+                    extra.push(id);
+                }
+            }
+            6 => {
+                if let Some(&id) = extra.first() {
+                    s.remove(id);
+                }
+            }
+            7 => s.compact(),
+            _ => {}
+        };
+        step(&mut a, &mut extra, true);
+        let mut none = extra.clone();
+        step(&mut b, &mut none, false);
+        step(&mut c, &mut none, false);
+        if k % 9 == 6 && !extra.is_empty() {
+            extra.remove(0);
+        }
+        let st = a.frame(&mut keep, 256, &pool, 1);
+        a.spec(&mut spec, 256);
+        rebuilt += st.rebuilt as u32;
+        nested += (k % 9 == 1 && st.groups_changed == 2) as u32;
+        let mut d = [diff(&keep, &spec), 0, 0];
+        #[cfg(target_os = "macos")]
+        if let (Some(s), Some(r)) = (staged.as_mut(), resident.as_mut()) {
+            s.frame(&mut b, &pool, 1);
+            r.frame(&mut c, &pool, 1);
+            d[1] = diff(s.out(), &spec);
+            d[2] = diff(r.out(), &spec);
+        }
+        if d != [0; 3] {
+            eprintln!("structure step {k} (change {}): {} words differ on the CPU, {} on Metal staged, {} on Metal resident", k % 9, d[0], d[1], d[2]);
+            bad += 1;
+        }
+    }
+    eprintln!("flat structure: 36 frames exact on the CPU, Metal staged and Metal resident; {rebuilt} rebuilds; {nested} nested repairs reached both surfaces; {bad} failing");
+    assert!(rebuilt >= 8 && nested == 4);
+    assert_eq!(bad, 0);
+}

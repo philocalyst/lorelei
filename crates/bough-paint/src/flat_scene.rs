@@ -1116,9 +1116,26 @@ pub struct FlatGpu {
     tiles: Vec<u32>,
     stride: usize,
     words: usize,
+    /// The resident plan (`metal::Gpu::resident`: the layers' schedule decided on the GPU, its jobs
+    /// encoded once in indirect command buffers) rather than the staged frame.
+    resident: bool,
+    era: u32,
 }
 #[cfg(target_os = "macos")]
 impl FlatGpu {
+    /// As `new`, drawing by the resident plan: the scene's events are routed to its layers on the GPU and
+    /// the frame is the same dispatches whatever changed. The scene is then this executor's alone (its
+    /// CPU `frame` must not be used: `Scene::route_off`).
+    ///
+    /// # Safety
+    /// As `new`.
+    pub unsafe fn resident(flat: &mut FlatScene, cap: usize) -> Option<FlatGpu> {
+        flat.scene.route_off = true;
+        // SAFETY: the caller's contract is this function's.
+        let mut g = unsafe { FlatGpu::new(flat, cap) }?;
+        g.resident = true;
+        Some(g)
+    }
     /// `None` without a Metal device.
     ///
     /// # Safety
@@ -1129,7 +1146,7 @@ impl FlatGpu {
         let words = (fw * fh) as usize;
         // SAFETY: the caller's contract is this function's.
         let gpu = unsafe { crate::metal::Gpu::new(&flat.scene, words, cap) }?;
-        Some(FlatGpu { gpu, epoch: flat.mount_epoch, tiles: Vec::new(), stride: fw as usize, words })
+        Some(FlatGpu { gpu, epoch: flat.mount_epoch, tiles: Vec::new(), stride: fw as usize, words, resident: false, era: 0 })
     }
     /// The Metal source of `flat`'s scene (what `new` compiles).
     pub fn source(flat: &FlatScene) -> String {
@@ -1147,7 +1164,7 @@ impl FlatGpu {
         let words = (fw * fh) as usize;
         // SAFETY: the caller's contract is this function's.
         let gpu = unsafe { crate::metal::Gpu::with_source(&flat.scene, words, cap, src) }?;
-        Some(FlatGpu { gpu, epoch: flat.mount_epoch, tiles: Vec::new(), stride: fw as usize, words })
+        Some(FlatGpu { gpu, epoch: flat.mount_epoch, tiles: Vec::new(), stride: fw as usize, words, resident: false, era: 0 })
     }
     /// One frame: the surface is `out()`.
     pub fn frame(&mut self, flat: &mut FlatScene, workers: &Pool, extra: usize) -> FlatStats {
@@ -1157,12 +1174,16 @@ impl FlatGpu {
             self.epoch = flat.mount_epoch;
         }
         let u = flat.u;
-        st.frame = flat.scene.update_eager(&u);
+        st.frame = if self.resident { flat.scene.update(&u) } else { flat.scene.update_eager(&u) };
         flat.scene.damage.tiles(&mut self.tiles);
         flat.scene.damage.clear();
         st.frame.tiles = self.tiles.len() as u32;
         let block = *flat.scene.block();
-        self.gpu.staged(&flat.scene, &block, &self.tiles, self.stride);
+        if self.resident {
+            self.era = self.gpu.resident(&mut flat.scene, &block, &self.tiles, Some(self.era), self.stride).1;
+        } else {
+            self.gpu.staged(&flat.scene, &block, &self.tiles, self.stride);
+        }
         flat.scene.media.reclaim();
         st
     }
