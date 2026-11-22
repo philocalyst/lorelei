@@ -445,6 +445,77 @@ impl Shade<'_, '_, '_> {
         }
     }
 }
+impl Shade<'_, '_, '_> {
+    /// A stored surface (a retained group, an image) scaled into a rounded box under an opacity: what
+    /// `ops::p_video` over `media::Surf::at` is at every pixel, by rows. The surface is opened once per
+    /// tile and its column positions are made once; a row whose reads fall on texel centres at one texel
+    /// a pixel (a group shown as it is, at a whole-pixel offset: every frame of a slide) blends the stored
+    /// words themselves, sixteen lanes at a time.
+    #[inline(always)]
+    fn surface(&mut self, c: Cmd, s: Option<crate::media::Surf>) {
+        let t = &mut *self.0;
+        let (x0, x1, mut m) = t.span(&c);
+        // (no surface: every read is transparent, and blending nothing changes nothing)
+        let Some(s) = s else { return };
+        if x0 >= x1 {
+            return;
+        }
+        let op = c.pm.x;
+        let (ox, oy) = (t.ox, t.oy);
+        let (mut tx, mut fracs) = ([0i32; 32], 0);
+        for col in x0..x1 {
+            tx[col as usize] = x::vd_pos(c, ox + col, 0).x;
+            fracs |= tx[col as usize] & 255;
+        }
+        // one texel a pixel, on texel centres: column `col` reads texel `tx >> 8`, and the next column the next
+        let straight = s.sharp() && fracs == 0 && c.rad.z == 4096;
+        let (kx0, kx1) = (c.core.x - ox, c.core.z - ox);
+        let (sw, sh) = s.size();
+        let rows_of = s.rows();
+        let at = |tx: i32, ty: i32| {
+            let v = rows_of.at(tx, ty);
+            Vec4 { x: v[0], y: v[1], z: v[2], w: v[3] }
+        };
+        let mut cols = [[0u16; 4]; 32];
+        while m != 0 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            let gy = oy + y;
+            let ty = x::vd_pos(c, 0, gy).y;
+            let core_row = gy >= c.core.y && gy < c.core.w && kx0 < kx1;
+            let direct = straight && ty & 255 == 0 && ty >= 0 && (ty >> 8) < sh;
+            for (s0, s1) in t.runs(y, x0, x1) {
+                if s0 >= s1 {
+                    continue;
+                }
+                let (a, b) = if core_row { (kx0.clamp(s0, s1), kx1.clamp(s0, s1)) } else { (s1, s1) };
+                let row = &mut t.acc[(y * 32) as usize..(y * 32 + 32) as usize];
+                // beside the core: under the box's coverage, pixel by pixel
+                for (ea, eb) in [(s0, a), (b, s1)] {
+                    for xx in ea..eb {
+                        let v = k::scale(at(tx[xx as usize], ty), op);
+                        let v = k::scale(v, k::cov(k::sd((ox + xx) * 256 + 128, gy * 256 + 128, c.b, c.rad.x, c.par.y)));
+                        let p = &mut row[xx as usize];
+                        *p = st(k::blend(ld(p), v));
+                    }
+                }
+                if a >= b {
+                    continue;
+                }
+                let (i0, i1) = (tx[a as usize] >> 8, tx[b as usize - 1] >> 8);
+                if direct && i0 >= 0 && i1 < sw {
+                    let src = &s.row((ty >> 8) as u32)[i0 as usize..=i1 as usize];
+                    simd::blend_bgra(&mut row[a as usize..b as usize], src, op as u16);
+                } else {
+                    for xx in a..b {
+                        cols[xx as usize] = st(at(tx[xx as usize], ty));
+                    }
+                    simd::blend_rows(&mut row[a as usize..b as usize], &cols[a as usize..b as usize], op as u16);
+                }
+            }
+        }
+    }
+}
 impl Sink for Shade<'_, '_, '_> {
     #[inline(always)]
     fn backdrop(&mut self, c: Cmd) {
@@ -480,6 +551,10 @@ impl Sink for Shade<'_, '_, '_> {
     #[inline(always)]
     fn video(&mut self, c: Cmd) {
         let m = self.1.media;
+        if c.par.z & crate::media::BGRA_BIT != 0 {
+            // a retained image: rows of stored pixels
+            return self.surface(c, crate::media::Surf::open_plain(m, c));
+        }
         self.each(&c, |x, y| crate::ops::ops::p_video(c, x, y, crate::media::sample(m, c, x, y)))
     }
     fn author(&mut self, c: Cmd, program: crate::author::ColourFn) {
@@ -488,8 +563,7 @@ impl Sink for Shade<'_, '_, '_> {
     }
     #[inline(always)]
     fn mip(&mut self, c: Cmd) {
-        let m = self.1.media;
-        self.each(&c, |x, y| x::p_video(c, x, y, crate::media::sample_mip(m, c, x, y)))
+        self.surface(c, crate::media::Surf::open(self.1.media, c))
     }
     #[inline(always)]
     fn ramp(&mut self, c: Cmd) {

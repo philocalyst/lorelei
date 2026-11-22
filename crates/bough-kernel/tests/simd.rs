@@ -74,3 +74,64 @@ fn vector_loops_equal_the_scalar_kernel() {
         assert_eq!(got, want, "store_row, round {round}");
     }
 }
+
+/// A stored premultiplied pixel (BGRA8), the extremes over-represented.
+fn stored(r: &mut Rng) -> u32 {
+    let a = match r.u(5) {
+        0 => 0,
+        1 => 255,
+        _ => r.u(256),
+    };
+    let ch = |r: &mut Rng| match r.u(4) {
+        0 => 0,
+        1 => a,
+        _ => r.u(a + 1),
+    };
+    ch(r) | ch(r) << 8 | ch(r) << 16 | a << 24
+}
+fn unstore(w: u32) -> wgsl_rs::std::Vec4u {
+    Vec4 { x: k::q15((w >> 16) & 255), y: k::q15((w >> 8) & 255), z: k::q15(w & 255), w: k::q15(w >> 24) }
+}
+
+/// The rows of stored pixels and of colours under an opacity, the bilinear read and the mix: each against
+/// the scalar arithmetic it stands for.
+#[test]
+fn surface_loops_equal_the_scalar_kernel() {
+    use bough_kernel::simd;
+    let mut r = Rng(0x0dd_ba11_5eed);
+    for round in 0..20_000 {
+        let n = 1 + r.u(40) as usize;
+        let row: Vec<[u16; 4]> = (0..n).map(|_| px(&mut r)).collect();
+        let src: Vec<u32> = (0..n).map(|_| if round % 7 == 0 { 0 } else { stored(&mut r) }).collect();
+        let cols: Vec<[u16; 4]> = (0..n).map(|_| px(&mut r)).collect();
+        let op = match r.u(4) {
+            0 => 0,
+            1 => k::ONE,
+            _ => r.u(k::ONE + 1),
+        };
+        let mut got = row.clone();
+        simd::blend_bgra(&mut got, &src, op as u16);
+        let want: Vec<[u16; 4]> = row.iter().zip(&src).map(|(p, &w)| a(k::blend(v(*p), k::scale(unstore(w), op)))).collect();
+        assert_eq!(got, want, "blend_bgra, round {round}");
+        let mut got = row.clone();
+        simd::blend_rows(&mut got, &cols, op as u16);
+        let want: Vec<[u16; 4]> = row.iter().zip(&cols).map(|(p, c)| a(k::blend(v(*p), k::scale(v(*c), op)))).collect();
+        assert_eq!(got, want, "blend_rows, round {round}");
+        // the bilinear read: every weight, the extremes over-represented
+        let t = [stored(&mut r), stored(&mut r), stored(&mut r), stored(&mut r)];
+        let f = |r: &mut Rng| match r.u(4) {
+            0 => 0,
+            1 => 255,
+            _ => r.u(256),
+        };
+        let (fx, fy) = (f(&mut r), f(&mut r));
+        let (p, q, d, e) = (unstore(t[0]), unstore(t[1]), unstore(t[2]), unstore(t[3]));
+        let (w0, w1, w2, w3) = ((256 - fx) * (256 - fy), fx * (256 - fy), (256 - fx) * fy, fx * fy);
+        let bil = |a: u32, b: u32, c: u32, d: u32| (a * w0 + b * w1 + c * w2 + d * w3) >> 16;
+        let want = [bil(p.x, q.x, d.x, e.x), bil(p.y, q.y, d.y, e.y), bil(p.z, q.z, d.z, e.z), bil(p.w, q.w, d.w, e.w)];
+        assert_eq!(simd::bil_bgra(t, fx, fy), want, "bil_bgra, round {round}");
+        let (m0, m1) = (v(px(&mut r)), v(px(&mut r)));
+        let m = k::mix4u(m0, m1, op);
+        assert_eq!(simd::mix15([m0.x, m0.y, m0.z, m0.w], [m1.x, m1.y, m1.z, m1.w], op), [m.x, m.y, m.z, m.w], "mix15, round {round}");
+    }
+}

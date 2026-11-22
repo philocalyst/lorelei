@@ -578,7 +578,7 @@ impl PageRouter {
                     let (g, t) = (p.group, p.tracks);
                     let v: [f32; 5] = std::array::from_fn(|k| self.bank.get(t[k]));
                     self.stage.set(node, DrawCmd::Group { radius: 0.0, blur: v[4], group: g });
-                    self.stage.set_xf(node, v[0], v[1], v[2]);
+                    self.stage.set_xf(node, v[0].round(), v[1].round(), v[2]);
                     self.stage.set_opacity(node, v[3]);
                     self.stage.show(node, true);
                 }
@@ -595,6 +595,9 @@ impl PageRouter {
             let (i, k) = (((tag >> 8) & 0xffff_ffff) as usize, (tag & 255) as usize);
             if tag & TAG_PAGE != 0 {
                 if let Some(slot) = pages.get(i).and_then(Option::as_ref).and_then(|p| p.slot) {
+                    // a page moves by whole pixels: its surface is then shown as it is (no resampling, on
+                    // either executor), which is also what keeps its text sharp on the way
+                    let v = if k < 2 { v.round() } else { v };
                     stage.set_prop(slots[slot], LAYER_PROPS[k], v);
                 }
             } else if tag & TAG_HERO != 0 {
