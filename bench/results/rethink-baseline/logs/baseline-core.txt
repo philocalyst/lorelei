@@ -1,0 +1,20 @@
+build anim_x
+build events_x
+build sheet_x
+build text_x
+anim_x/208 rep 0: 5 operation rows
+text_x rep 0: 15 operation rows
+sheet_x/rows10000 rep 0: 25 operation rows
+sheet_x/rows1000 rep 0: 25 operation rows
+events_x/rows10000 rep 0: 5 operation rows
+anim_x/208 rep 1: 5 operation rows
+text_x rep 1: 15 operation rows
+sheet_x/rows1000 rep 1: 25 operation rows
+events_x/rows10000 rep 1: 5 operation rows
+sheet_x/rows10000 rep 1: 25 operation rows
+sheet_x/rows10000 rep 2: 25 operation rows
+text_x rep 2: 15 operation rows
+events_x/rows10000 rep 2: 5 operation rows
+sheet_x/rows1000 rep 2: 25 operation rows
+anim_x/208 rep 2: 5 operation rows
+baseline: wrote /Users/rmccrar6/work/lorelei-wt/rethink-bench/runtime/baseline/rethink-baseline/rethink-baseline.json (0 errors)

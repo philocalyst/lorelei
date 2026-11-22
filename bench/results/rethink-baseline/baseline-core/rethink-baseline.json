@@ -1,0 +1,2733 @@
+{
+  "format": 2,
+  "name": "rethink-baseline",
+  "commit": "b9a196b6eccd0130377b844e900ccd335d9b9a26",
+  "source": {
+    "commit": "b9a196b6eccd0130377b844e900ccd335d9b9a26",
+    "dirty": false,
+    "changes_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "locks": {
+      "Cargo.lock": "fd8524e85752d221095d15825ae6c1db43622e15a729c38a963a60d107ac25cb",
+      "comparisons/bough-guibench/Cargo.lock": "0cd565850b1b4f65f1a2280bfdb4da4f26b7ab83382561d801135328a45e731e",
+      "comparisons/bough-fx-bench/Cargo.lock": "3f51bcd06939e27763bfe6728c50a161daff2974d8617958e5304da96575986c"
+    }
+  },
+  "rustc": "rustc 1.101.0-nightly (5d8fec066 2026-10-16)\nbinary: rustc\ncommit-hash: 5d8fec0669a64607db9ccbf663e7c23125bf4748\ncommit-date: 2026-10-16\nhost: aarch64-apple-darwin\nrelease: 1.101.0-nightly\nLLVM version: 23.1.4",
+  "host": {
+    "os": "26.7.3",
+    "machine": "arm64",
+    "cpu": "Apple M3 Ultra",
+    "cpus": 32
+  },
+  "harness": {
+    "run.py": "92c08ef8716ccf2783dc4294e8ef9ad7361ffccd7a7288f8c37ffa3cbd06e7bd",
+    "operations.py": "17394e0ddb631536588b9bba7eefea377d8ab89c0887c4c221a054e7a07b5abe"
+  },
+  "reps": 3,
+  "order": [
+    [
+      "anim_x/208",
+      "text_x",
+      "sheet_x/rows10000",
+      "sheet_x/rows1000",
+      "events_x/rows10000"
+    ],
+    [
+      "anim_x/208",
+      "text_x",
+      "sheet_x/rows1000",
+      "events_x/rows10000",
+      "sheet_x/rows10000"
+    ],
+    [
+      "sheet_x/rows10000",
+      "text_x",
+      "events_x/rows10000",
+      "sheet_x/rows1000",
+      "anim_x/208"
+    ]
+  ],
+  "load": {
+    "before": [
+      9.24365234375,
+      8.6708984375,
+      7.69287109375
+    ],
+    "after": [
+      8.74365234375,
+      8.57666015625,
+      7.6650390625
+    ],
+    "peak": 9.24365234375,
+    "ceiling": 2.0,
+    "ok": false,
+    "timing_locked": false
+  },
+  "runtime_inputs": {
+    "BOUGH_FONT": "7da195a74c55bef988d0d48f9508bd5d849425c1770dba5d7bfc6ce9ed848954"
+  },
+  "binaries": {
+    "anim_x": {
+      "path": "dist/examples/anim_x",
+      "cargo_args": [
+        "--locked",
+        "--profile",
+        "dist",
+        "-p",
+        "bough-x",
+        "--example",
+        "anim_x"
+      ],
+      "sha256": "9e7e816c5c051bccfd8a5344c5c3ea94e76e2d21114354adbe64b6624f1fc109",
+      "bytes": 638384,
+      "text_bytes": 345000
+    },
+    "events_x": {
+      "path": "dist/examples/events_x",
+      "cargo_args": [
+        "--locked",
+        "--profile",
+        "dist",
+        "-p",
+        "bough-x",
+        "--example",
+        "events_x"
+      ],
+      "sha256": "abe66fbbac22aecc4d41bb7068afafff84dd02ca53febbf673fa71ee7d8d71c2",
+      "bytes": 623328,
+      "text_bytes": 337268
+    },
+    "sheet_x": {
+      "path": "dist/examples/sheet_x",
+      "cargo_args": [
+        "--locked",
+        "--profile",
+        "dist",
+        "-p",
+        "bough-x",
+        "--example",
+        "sheet_x"
+      ],
+      "sha256": "18a9fdf1218bfd5fa6f87101663542a0865382a784cb1b8c7a33273b3ed77607",
+      "bytes": 777072,
+      "text_bytes": 471528
+    },
+    "text_x": {
+      "path": "dist/examples/text_x",
+      "cargo_args": [
+        "--locked",
+        "--profile",
+        "dist",
+        "-p",
+        "bough-x",
+        "--example",
+        "text_x"
+      ],
+      "sha256": "202b3eb8466e9512a535fdc91d982748a2bacf479b939402fd37719e5b752ef9",
+      "bytes": 883280,
+      "text_bytes": 509680
+    }
+  },
+  "cells": {
+    "sheet_x/rows1000": {
+      "binary": "sheet_x",
+      "argv": [],
+      "env": {
+        "ROWS": "1000",
+        "REPS": "32"
+      },
+      "parser": "sheet",
+      "load": [
+        8.74365234375,
+        8.74365234375,
+        8.74365234375
+      ],
+      "valid": true,
+      "counter_scope": "calling-thread instructions per operation",
+      "check": [],
+      "process": {
+        "wall_ms": {
+          "median": 12.259208,
+          "min": 12.117542,
+          "max": 47.314042,
+          "n": 3
+        },
+        "instructions": {
+          "median": 25194965,
+          "min": 25157577,
+          "max": 25352836,
+          "n": 3
+        },
+        "rss_bytes": {
+          "median": 2457600,
+          "min": 2457600,
+          "max": 2473984,
+          "n": 3
+        }
+      },
+      "operations": {
+        "mount": {
+          "steps": {
+            "median": 1,
+            "min": 1,
+            "max": 1,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 357339,
+            "min": 355895,
+            "max": 366201,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 357339,
+            "min": 355895,
+            "max": 366201,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 181141,
+            "min": 161878,
+            "max": 192238,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 4000,
+            "min": 4000,
+            "max": 4000,
+            "n": 3
+          }
+        },
+        "floor": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 3,
+            "min": 0,
+            "max": 3,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "idle": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 63,
+            "min": 63,
+            "max": 63,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 63,
+            "min": 63,
+            "max": 63,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 22,
+            "min": 16,
+            "max": 23,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "hover": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 5192,
+            "min": 5192,
+            "max": 5192,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 5192,
+            "min": 5192,
+            "max": 5192,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 1001,
+            "min": 975,
+            "max": 1508,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 329,
+            "min": 329,
+            "max": 329,
+            "n": 3
+          }
+        },
+        "hover_move": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 6359,
+            "min": 6359,
+            "max": 6359,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 6359,
+            "min": 6359,
+            "max": 6359,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 1415,
+            "min": 1403,
+            "max": 1993,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 705,
+            "min": 705,
+            "max": 705,
+            "n": 3
+          }
+        },
+        "theme": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 27283,
+            "min": 27283,
+            "max": 27283,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 27283,
+            "min": 27283,
+            "max": 27283,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 6432,
+            "min": 6409,
+            "max": 8150,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 4000,
+            "min": 4000,
+            "max": 4000,
+            "n": 3
+          }
+        },
+        "edit_exposed": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1928,
+            "min": 1928,
+            "max": 1928,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 1933,
+            "min": 1933,
+            "max": 1933,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 476,
+            "min": 454,
+            "max": 655,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          }
+        },
+        "edit_unexposed": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1344,
+            "min": 1344,
+            "max": 1344,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 1344,
+            "min": 1344,
+            "max": 1344,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 291,
+            "min": 274,
+            "max": 415,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          }
+        },
+        "part_model_edit": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 58,
+            "min": 58,
+            "max": 58,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 58,
+            "min": 58,
+            "max": 58,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 38,
+            "min": 33,
+            "max": 40,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "part_total_word": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 714,
+            "min": 714,
+            "max": 714,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 714,
+            "min": 714,
+            "max": 714,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 229,
+            "min": 203,
+            "max": 260,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          }
+        },
+        "part_delta_total": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 634,
+            "min": 634,
+            "max": 634,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 634,
+            "min": 634,
+            "max": 634,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 154,
+            "min": 150,
+            "max": 189,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          }
+        },
+        "part_diff_only": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 162,
+            "min": 162,
+            "max": 162,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 162,
+            "min": 162,
+            "max": 162,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 54,
+            "min": 39,
+            "max": 57,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "part_journal_only": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 724,
+            "min": 724,
+            "max": 724,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 724,
+            "min": 724,
+            "max": 724,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 120,
+            "min": 116,
+            "max": 189,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "part_mark_cell": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 89,
+            "min": 89,
+            "max": 89,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 89,
+            "min": 89,
+            "max": 89,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 39,
+            "min": 38,
+            "max": 40,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          }
+        },
+        "part_pointer_same": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 439,
+            "min": 439,
+            "max": 439,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 439,
+            "min": 439,
+            "max": 439,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 72,
+            "min": 72,
+            "max": 121,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "select": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 766,
+            "min": 766,
+            "max": 766,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 766,
+            "min": 766,
+            "max": 766,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 150,
+            "min": 147,
+            "max": 257,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "frame_in_motion": {
+          "steps": {
+            "median": 8,
+            "min": 8,
+            "max": 8,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 168,
+            "min": 168,
+            "max": 168,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 168,
+            "min": 168,
+            "max": 168,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 65,
+            "min": 59,
+            "max": 67,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 252,
+            "min": 252,
+            "max": 252,
+            "n": 3
+          }
+        },
+        "frame_at_rest": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 10,
+            "min": 10,
+            "max": 10,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 10,
+            "min": 10,
+            "max": 10,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 1,
+            "min": 0,
+            "max": 2,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "scroll_3_rows": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 5116,
+            "min": 5116,
+            "max": 5116,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 5116,
+            "min": 5116,
+            "max": 5116,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 860,
+            "min": 832,
+            "max": 1401,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 3600,
+            "min": 3600,
+            "max": 3600,
+            "n": 3
+          }
+        },
+        "scroll_6px": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 980,
+            "min": 980,
+            "max": 980,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 980,
+            "min": 980,
+            "max": 980,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 208,
+            "min": 203,
+            "max": 328,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 3600,
+            "min": 3600,
+            "max": 3600,
+            "n": 3
+          }
+        },
+        "scroll_page": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 33196,
+            "min": 33196,
+            "max": 33196,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 33196,
+            "min": 33196,
+            "max": 36534,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 5097,
+            "min": 5022,
+            "max": 9099,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 3600,
+            "min": 3600,
+            "max": 3600,
+            "n": 3
+          }
+        },
+        "insert_row": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 20140,
+            "min": 20140,
+            "max": 20140,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 23310,
+            "min": 23310,
+            "max": 23311,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 3885,
+            "min": 3824,
+            "max": 6861,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 2390,
+            "min": 2390,
+            "max": 2390,
+            "n": 3
+          }
+        },
+        "remove_row": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 19840,
+            "min": 19840,
+            "max": 19840,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 23476,
+            "min": 23476,
+            "max": 23476,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 3781,
+            "min": 3756,
+            "max": 6979,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 2390,
+            "min": 2390,
+            "max": 2390,
+            "n": 3
+          }
+        },
+        "redescribe_idle": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 13988,
+            "min": 13988,
+            "max": 13988,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 13988,
+            "min": 13988,
+            "max": 13988,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 2174,
+            "min": 2128,
+            "max": 3645,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "redescribe_edit": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 14048,
+            "min": 14048,
+            "max": 14048,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 14783,
+            "min": 14783,
+            "max": 14783,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 2296,
+            "min": 2252,
+            "max": 3761,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        }
+      }
+    },
+    "sheet_x/rows10000": {
+      "binary": "sheet_x",
+      "argv": [],
+      "env": {
+        "ROWS": "10000",
+        "REPS": "32"
+      },
+      "parser": "sheet",
+      "load": [
+        8.74365234375,
+        8.74365234375,
+        8.74365234375
+      ],
+      "valid": true,
+      "counter_scope": "calling-thread instructions per operation",
+      "check": [],
+      "process": {
+        "wall_ms": {
+          "median": 42.86575,
+          "min": 11.987709,
+          "max": 197.483708,
+          "n": 3
+        },
+        "instructions": {
+          "median": 30920326,
+          "min": 30889883,
+          "max": 32488053,
+          "n": 3
+        },
+        "rss_bytes": {
+          "median": 2834432,
+          "min": 2834432,
+          "max": 2850816,
+          "n": 3
+        }
+      },
+      "operations": {
+        "mount": {
+          "steps": {
+            "median": 1,
+            "min": 1,
+            "max": 1,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 355733,
+            "min": 355407,
+            "max": 481378,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 355733,
+            "min": 355407,
+            "max": 481378,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 155822,
+            "min": 152025,
+            "max": 272303,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 4000,
+            "min": 4000,
+            "max": 4000,
+            "n": 3
+          }
+        },
+        "floor": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 2,
+            "min": 0,
+            "max": 3,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "idle": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 63,
+            "min": 63,
+            "max": 63,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 63,
+            "min": 63,
+            "max": 63,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 21,
+            "min": 20,
+            "max": 24,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "hover": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 5192,
+            "min": 5192,
+            "max": 5192,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 5192,
+            "min": 5192,
+            "max": 6132,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 984,
+            "min": 975,
+            "max": 1510,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 329,
+            "min": 329,
+            "max": 329,
+            "n": 3
+          }
+        },
+        "hover_move": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 6359,
+            "min": 6359,
+            "max": 6359,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 6359,
+            "min": 6359,
+            "max": 6359,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 1402,
+            "min": 1376,
+            "max": 1965,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 705,
+            "min": 705,
+            "max": 705,
+            "n": 3
+          }
+        },
+        "theme": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 27283,
+            "min": 27283,
+            "max": 27283,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 27283,
+            "min": 27283,
+            "max": 27283,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 6459,
+            "min": 6445,
+            "max": 8254,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 4000,
+            "min": 4000,
+            "max": 4000,
+            "n": 3
+          }
+        },
+        "edit_exposed": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1928,
+            "min": 1928,
+            "max": 1928,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 1933,
+            "min": 1933,
+            "max": 1933,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 452,
+            "min": 448,
+            "max": 660,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          }
+        },
+        "edit_unexposed": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1344,
+            "min": 1344,
+            "max": 1344,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 1344,
+            "min": 1344,
+            "max": 1344,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 281,
+            "min": 277,
+            "max": 427,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          }
+        },
+        "part_model_edit": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 58,
+            "min": 58,
+            "max": 58,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 58,
+            "min": 58,
+            "max": 58,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 39,
+            "min": 36,
+            "max": 39,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "part_total_word": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 714,
+            "min": 714,
+            "max": 714,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 714,
+            "min": 714,
+            "max": 714,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 221,
+            "min": 217,
+            "max": 263,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          }
+        },
+        "part_delta_total": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 634,
+            "min": 634,
+            "max": 634,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 634,
+            "min": 634,
+            "max": 634,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 151,
+            "min": 144,
+            "max": 196,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          }
+        },
+        "part_diff_only": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 162,
+            "min": 162,
+            "max": 162,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 162,
+            "min": 162,
+            "max": 162,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 57,
+            "min": 46,
+            "max": 58,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "part_journal_only": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 724,
+            "min": 724,
+            "max": 724,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 724,
+            "min": 724,
+            "max": 724,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 113,
+            "min": 112,
+            "max": 195,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "part_mark_cell": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 89,
+            "min": 89,
+            "max": 89,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 89,
+            "min": 89,
+            "max": 89,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 40,
+            "min": 39,
+            "max": 40,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          }
+        },
+        "part_pointer_same": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 439,
+            "min": 439,
+            "max": 439,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 439,
+            "min": 439,
+            "max": 439,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 85,
+            "min": 69,
+            "max": 125,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "select": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 766,
+            "min": 766,
+            "max": 766,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 766,
+            "min": 766,
+            "max": 766,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 154,
+            "min": 153,
+            "max": 234,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "frame_in_motion": {
+          "steps": {
+            "median": 8,
+            "min": 8,
+            "max": 8,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 168,
+            "min": 168,
+            "max": 168,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 168,
+            "min": 168,
+            "max": 168,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 67,
+            "min": 64,
+            "max": 73,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 252,
+            "min": 252,
+            "max": 252,
+            "n": 3
+          }
+        },
+        "frame_at_rest": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 10,
+            "min": 10,
+            "max": 10,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 10,
+            "min": 10,
+            "max": 10,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 9,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "scroll_3_rows": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 5116,
+            "min": 5116,
+            "max": 5116,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 5116,
+            "min": 5116,
+            "max": 5116,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 824,
+            "min": 821,
+            "max": 1421,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 3600,
+            "min": 3600,
+            "max": 3600,
+            "n": 3
+          }
+        },
+        "scroll_6px": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 980,
+            "min": 980,
+            "max": 980,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 980,
+            "min": 980,
+            "max": 980,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 205,
+            "min": 205,
+            "max": 331,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 3600,
+            "min": 3600,
+            "max": 3600,
+            "n": 3
+          }
+        },
+        "scroll_page": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 33196,
+            "min": 33196,
+            "max": 33196,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 33196,
+            "min": 33196,
+            "max": 33197,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 5010,
+            "min": 4987,
+            "max": 9047,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 3600,
+            "min": 3600,
+            "max": 3600,
+            "n": 3
+          }
+        },
+        "insert_row": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 87640,
+            "min": 87640,
+            "max": 87640,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 91005,
+            "min": 90901,
+            "max": 91005,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 27741,
+            "min": 27636,
+            "max": 34564,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 2390,
+            "min": 2390,
+            "max": 2390,
+            "n": 3
+          }
+        },
+        "remove_row": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 87340,
+            "min": 87340,
+            "max": 87340,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 90976,
+            "min": 90976,
+            "max": 92237,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 27717,
+            "min": 27347,
+            "max": 34868,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 2390,
+            "min": 2390,
+            "max": 2390,
+            "n": 3
+          }
+        },
+        "redescribe_idle": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 13988,
+            "min": 13988,
+            "max": 13988,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 13988,
+            "min": 13988,
+            "max": 13988,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 2139,
+            "min": 2118,
+            "max": 3674,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "redescribe_edit": {
+          "steps": {
+            "median": 32,
+            "min": 32,
+            "max": 32,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 14048,
+            "min": 14048,
+            "max": 14048,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 14783,
+            "min": 14783,
+            "max": 14783,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 2285,
+            "min": 2180,
+            "max": 3784,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        }
+      }
+    },
+    "events_x/rows10000": {
+      "binary": "events_x",
+      "argv": [],
+      "env": {
+        "ROWS": "10000",
+        "REPS": "31"
+      },
+      "parser": "events",
+      "load": [
+        8.74365234375,
+        8.74365234375,
+        8.74365234375
+      ],
+      "valid": true,
+      "counter_scope": "calling-thread dispatch and dispatch-plus-settle instructions per operation",
+      "check": [],
+      "process": {
+        "wall_ms": {
+          "median": 210.189,
+          "min": 194.354292,
+          "max": 358.568084,
+          "n": 3
+        },
+        "instructions": {
+          "median": 2322146055,
+          "min": 2322135950,
+          "max": 2323910382,
+          "n": 3
+        },
+        "rss_bytes": {
+          "median": 69238784,
+          "min": 69222400,
+          "max": 69238784,
+          "n": 3
+        }
+      },
+      "operations": {
+        "pointer_onto_row": {
+          "dispatch_allocs": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "dispatch_instr": {
+            "median": 724,
+            "min": 724,
+            "max": 724,
+            "n": 3
+          },
+          "step_instr": {
+            "median": 1578,
+            "min": 1578,
+            "max": 1578,
+            "n": 3
+          },
+          "step_cycles_warm": {
+            "median": 324,
+            "min": 324,
+            "max": 524,
+            "n": 3
+          },
+          "step_cycles_cold": {
+            "median": 1405,
+            "min": 1336,
+            "max": 2025,
+            "n": 3
+          },
+          "cold_minus_warm": {
+            "median": 1081,
+            "min": 1012,
+            "max": 1501,
+            "n": 3
+          }
+        },
+        "pointer_same_row": {
+          "dispatch_allocs": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "dispatch_instr": {
+            "median": 462,
+            "min": 462,
+            "max": 462,
+            "n": 3
+          },
+          "step_instr": {
+            "median": 527,
+            "min": 527,
+            "max": 527,
+            "n": 3
+          },
+          "step_cycles_warm": {
+            "median": 91,
+            "min": 0,
+            "max": 104,
+            "n": 3
+          },
+          "step_cycles_cold": {
+            "median": 1144,
+            "min": 1022,
+            "max": 1423,
+            "n": 3
+          },
+          "cold_minus_warm": {
+            "median": 1040,
+            "min": 1022,
+            "max": 1332,
+            "n": 3
+          }
+        },
+        "click_row": {
+          "dispatch_allocs": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "dispatch_instr": {
+            "median": 2221,
+            "min": 2221,
+            "max": 2221,
+            "n": 3
+          },
+          "step_instr": {
+            "median": 3137,
+            "min": 3137,
+            "max": 3137,
+            "n": 3
+          },
+          "step_cycles_warm": {
+            "median": 639,
+            "min": 531,
+            "max": 649,
+            "n": 3
+          },
+          "step_cycles_cold": {
+            "median": 3054,
+            "min": 2324,
+            "max": 3668,
+            "n": 3
+          },
+          "cold_minus_warm": {
+            "median": 2523,
+            "min": 1685,
+            "max": 3019,
+            "n": 3
+          }
+        },
+        "key_unfocused": {
+          "dispatch_allocs": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "dispatch_instr": {
+            "median": 115,
+            "min": 115,
+            "max": 115,
+            "n": 3
+          },
+          "step_instr": {
+            "median": 331,
+            "min": 331,
+            "max": 331,
+            "n": 3
+          },
+          "step_cycles_warm": {
+            "median": 61,
+            "min": 0,
+            "max": 63,
+            "n": 3
+          },
+          "step_cycles_cold": {
+            "median": 1512,
+            "min": 1492,
+            "max": 1546,
+            "n": 3
+          },
+          "cold_minus_warm": {
+            "median": 1485,
+            "min": 1429,
+            "max": 1512,
+            "n": 3
+          }
+        },
+        "text_focused_field": {
+          "dispatch_allocs": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          },
+          "dispatch_instr": {
+            "median": 233,
+            "min": 233,
+            "max": 233,
+            "n": 3
+          },
+          "step_instr": {
+            "median": 1421,
+            "min": 1421,
+            "max": 1421,
+            "n": 3
+          },
+          "step_cycles_warm": {
+            "median": 265,
+            "min": 140,
+            "max": 271,
+            "n": 3
+          },
+          "step_cycles_cold": {
+            "median": 2322,
+            "min": 2019,
+            "max": 2492,
+            "n": 3
+          },
+          "cold_minus_warm": {
+            "median": 2051,
+            "min": 1754,
+            "max": 2352,
+            "n": 3
+          }
+        }
+      }
+    },
+    "text_x": {
+      "binary": "text_x",
+      "argv": [],
+      "env": {
+        "ROWS": "3000",
+        "REPS": "64"
+      },
+      "parser": "text",
+      "load": [
+        8.74365234375,
+        8.74365234375,
+        8.74365234375
+      ],
+      "valid": true,
+      "counter_scope": "calling-thread instructions per operation",
+      "check": [],
+      "process": {
+        "wall_ms": {
+          "median": 39.168417,
+          "min": 24.076583,
+          "max": 242.705583,
+          "n": 3
+        },
+        "instructions": {
+          "median": 231578588,
+          "min": 231350548,
+          "max": 233242168,
+          "n": 3
+        },
+        "rss_bytes": {
+          "median": 6356992,
+          "min": 6340608,
+          "max": 6406144,
+          "n": 3
+        }
+      },
+      "operations": {
+        "rows/mount": {
+          "steps": {
+            "median": 16,
+            "min": 16,
+            "max": 16,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 120273,
+            "min": 115019,
+            "max": 122444,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 154408,
+            "min": 153446,
+            "max": 231152,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 29447,
+            "min": 28685,
+            "max": 43371,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "rows/idle": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 53,
+            "min": 53,
+            "max": 53,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 53,
+            "min": 53,
+            "max": 53,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 11,
+            "min": 10,
+            "max": 17,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "rows/hover": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 2444,
+            "min": 2444,
+            "max": 2444,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 2444,
+            "min": 2444,
+            "max": 2444,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 560,
+            "min": 560,
+            "max": 912,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 120,
+            "min": 120,
+            "max": 120,
+            "n": 3
+          }
+        },
+        "rows/tint (text colour alone, every line)": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1528,
+            "min": 1528,
+            "max": 1528,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 1528,
+            "min": 1528,
+            "max": 1528,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 336,
+            "min": 333,
+            "max": 497,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 341,
+            "min": 341,
+            "max": 341,
+            "n": 3
+          }
+        },
+        "rows/scroll 3 rows": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 3813,
+            "min": 3813,
+            "max": 3813,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 3829,
+            "min": 3829,
+            "max": 3829,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 634,
+            "min": 627,
+            "max": 1074,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 960,
+            "min": 960,
+            "max": 960,
+            "n": 3
+          }
+        },
+        "rows/scroll a page (24 rows enter)": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 18585,
+            "min": 18585,
+            "max": 18585,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 18585,
+            "min": 18585,
+            "max": 18585,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 2748,
+            "min": 2745,
+            "max": 5315,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 960,
+            "min": 960,
+            "max": 960,
+            "n": 3
+          }
+        },
+        "rows/label edit (toggle a suffix on an exposed row)": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1886,
+            "min": 1875,
+            "max": 1971,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 3614,
+            "min": 3376,
+            "max": 3614,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 433,
+            "min": 432,
+            "max": 677,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 28,
+            "min": 28,
+            "max": 28,
+            "n": 3
+          }
+        },
+        "rows/value edit (an exposed row's number)": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1184,
+            "min": 1184,
+            "max": 1184,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 1188,
+            "min": 1188,
+            "max": 1188,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 211,
+            "min": 206,
+            "max": 358,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 12,
+            "min": 12,
+            "max": 12,
+            "n": 3
+          }
+        },
+        "rows/remove a row then insert one": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 32171,
+            "min": 32171,
+            "max": 32171,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 32181,
+            "min": 32181,
+            "max": 32182,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 6459,
+            "min": 6429,
+            "max": 11871,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 766,
+            "min": 766,
+            "max": 766,
+            "n": 3
+          }
+        },
+        "rows/collect the glyph memo (clear, re-describe what is exposed)": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 40300,
+            "min": 40300,
+            "max": 40300,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 40300,
+            "min": 40300,
+            "max": 40300,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 5954,
+            "min": 5918,
+            "max": 10924,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 389,
+            "min": 389,
+            "max": 389,
+            "n": 3
+          }
+        },
+        "typing/type a character (event, handler, settle)": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 3014,
+            "min": 3014,
+            "max": 3014,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 4134,
+            "min": 4132,
+            "max": 4134,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 483,
+            "min": 469,
+            "max": 844,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 26,
+            "min": 26,
+            "max": 26,
+            "n": 3
+          }
+        },
+        "typing/caret move": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1370,
+            "min": 1370,
+            "max": 1370,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 1499,
+            "min": 1499,
+            "max": 1499,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 250,
+            "min": 249,
+            "max": 399,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 1,
+            "min": 1,
+            "max": 1,
+            "n": 3
+          }
+        },
+        "search/type a character (event, handler, settle)": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 832961,
+            "min": 832960,
+            "max": 833014,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 833015,
+            "min": 832961,
+            "max": 836400,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 215244,
+            "min": 215140,
+            "max": 215317,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 26,
+            "min": 26,
+            "max": 26,
+            "n": 3
+          }
+        },
+        "search/caret move": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 1370,
+            "min": 1370,
+            "max": 1370,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 1499,
+            "min": 1499,
+            "max": 1499,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 241,
+            "min": 113,
+            "max": 252,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 1,
+            "min": 1,
+            "max": 1,
+            "n": 3
+          }
+        },
+        "search/narrow by a key, widen by a backspace (24 rows re-enter)": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 199468,
+            "min": 199468,
+            "max": 199468,
+            "n": 3
+          },
+          "instr_p95": {
+            "median": 199468,
+            "min": 199468,
+            "max": 199469,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 31895,
+            "min": 31818,
+            "max": 32127,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 976,
+            "min": 976,
+            "max": 976,
+            "n": 3
+          }
+        }
+      }
+    },
+    "anim_x/208": {
+      "binary": "anim_x",
+      "argv": [],
+      "env": {
+        "H": "208"
+      },
+      "parser": "anim",
+      "load": [
+        8.74365234375,
+        8.74365234375,
+        8.74365234375
+      ],
+      "valid": true,
+      "counter_scope": "calling-thread instructions per operation",
+      "check": [],
+      "process": {
+        "wall_ms": {
+          "median": 12.284542,
+          "min": 11.967459,
+          "max": 206.861125,
+          "n": 3
+        },
+        "instructions": {
+          "median": 18001035,
+          "min": 17972156,
+          "max": 19239847,
+          "n": 3
+        },
+        "rss_bytes": {
+          "median": 2195456,
+          "min": 2195456,
+          "max": 2211840,
+          "n": 3
+        }
+      },
+      "operations": {
+        "frame_endless": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 161,
+            "min": 161,
+            "max": 161,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 51,
+            "min": 50,
+            "max": 63,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 192,
+            "min": 192,
+            "max": 192,
+            "n": 3
+          }
+        },
+        "frame_endless_and_fade": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 265,
+            "min": 265,
+            "max": 265,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 59,
+            "min": 58,
+            "max": 111,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 224,
+            "min": 224,
+            "max": 224,
+            "n": 3
+          }
+        },
+        "fade_start_turn": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 676,
+            "min": 676,
+            "max": 676,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 119,
+            "min": 114,
+            "max": 207,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 0,
+            "min": 0,
+            "max": 0,
+            "n": 3
+          }
+        },
+        "pointer_words": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 4182,
+            "min": 4182,
+            "max": 4182,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 987,
+            "min": 949,
+            "max": 1895,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 82,
+            "min": 82,
+            "max": 82,
+            "n": 3
+          }
+        },
+        "scroll_3_rows": {
+          "steps": {
+            "median": 64,
+            "min": 64,
+            "max": 64,
+            "n": 3
+          },
+          "instr_p50": {
+            "median": 3413,
+            "min": 3413,
+            "max": 3413,
+            "n": 3
+          },
+          "cycles_p50": {
+            "median": 514,
+            "min": 489,
+            "max": 960,
+            "n": 3
+          },
+          "tiles_p50": {
+            "median": 192,
+            "min": 192,
+            "max": 192,
+            "n": 3
+          }
+        }
+      }
+    }
+  },
+  "errors": [],
+  "unavailable": {
+    "windowed": "see the VM runbook for compositor scenarios"
+  },
+  "date": "2026-11-22T07:59:07Z",
+  "contract": "Native headless macOS. Typed core: prepared Latin-1 DejaVu Sans 14/28 px, opaque colors, arithmetic rows, remount on resize, group-1 keymap and CPU spans. pbench includes offscreen Metal."
+}

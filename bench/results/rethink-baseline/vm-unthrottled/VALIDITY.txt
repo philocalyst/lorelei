@@ -1,0 +1,1 @@
+check: 26 cells, 86 validity-bearing reports: 86 valid, 0 invalid, 0 unchecked, 0 failures -> exit 0

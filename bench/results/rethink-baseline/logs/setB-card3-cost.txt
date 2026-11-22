@@ -1,0 +1,26 @@
+# Set B1 card3_cost  2:51  up 5 days,  5:44, 1 user, load averages: 12.72 10.74 7.47
+# bin: bf406c5290f8f0ea604b67f4c9b54793ad08e7bee797bdee64114812e32952ac  /Users/rmccrar6/work/targets/rethink-bench/release/examples/card3_cost
+# sizes:
+-rwxr-xr-x  1 rmccrar6  WIN\Domain Users  6671704 Nov 22 02:47 /Users/rmccrar6/work/targets/rethink-bench/release/examples/card3_cost
+Segment __TEXT: 4784128
+	total 4768380
+	total 188304
+	total 73648
+total 4301651968
+# command: lockf ... sh bench/card3/cost.sh <tsv>
+legacy repair: Kernel; load average: { 12.72 10.74 7.47 }
+cell (instructions, net)           legacy    lowered      typed   t/leg     legacy+f  lowered+f    typed+f   t/leg
+mount, 1,000 rows                25753521    6187495    5899643   0.23x     36647464   17520040   17270615   0.47x
+mount, 100,000 rows              25984463    7771629    5898787   0.23x     36807160   19104239   17267248   0.47x
+hover, one row to the next            415       4999       3145   7.58x         2224     919599     922387 414.74x
+one signal (the title)               7977     197574      24443   3.06x        43870     291119     146288   3.33x
+insert at 0 (click)                126910     609013      51811   0.41x      5923083    7996824    7522677   1.27x
+scroll by one row                   80203     443704      19053   0.24x      7917713    7765440    7369802   0.93x
+theme (opaque state)                 7059     197544       5717   0.81x      8640036   11895568   11733729   1.36x
+resize by 40 pt                   3368343    1798139    1589261   0.47x     15163778   13598962   13420107   0.89x
+still frame                             0          0          0    NaNx         1784       1610       1585   0.89x
+typed: the author's view() alone 501
+units x1000 (context read, spec convert+pack): (8041, 108017)
+typed, thread instructions: view + conversion of the fixed part 6898; a re-description of an unchanged view 4592
+lowered title edit, thread instructions per turn: view+lower 125485 / layout+emit 63952 / world compare 9264 (96 records)
+# end  2:51  up 5 days,  5:44, 1 user, load averages: 12.72 10.74 7.47

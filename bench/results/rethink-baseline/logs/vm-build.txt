@@ -1,0 +1,124 @@
+cannot delete non-empty directory: apps/bough
+cannot delete non-empty directory: apps/bough-x
+sync: /home/rmccrar6.guest/src/lorelei and /home/rmccrar6.guest/src/gui-bench up to date
+build: bough-guibench-x
+    Updating crates.io index
+   Compiling bough-expr v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-expr)
+   Compiling bough-face v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-face)
+   Compiling bough-glyph v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-glyph)
+   Compiling bough-host v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-host)
+   Compiling bough-lay v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-lay)
+   Compiling bough-x v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-x)
+   Compiling bough-span v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-span)
+   Compiling bough-guibench-x v0.1.0 (/home/rmccrar6.guest/src/lorelei/comparisons/bough-guibench-x)
+    Finished `release` profile [optimized + debuginfo] target(s) in 3.52s
+build: bough-guibench
+    Updating git repository `https://github.com/schell/wgsl-rs`
+    Updating crates.io index
+warning: patch `wgpu-hal v29.0.4 (/home/rmccrar6.guest/src/lorelei/vendor/wgpu-hal)` was not used in the crate graph
+warning: patch `wgpu-types v29.0.4 (/home/rmccrar6.guest/src/lorelei/vendor/wgpu-types)` was not used in the crate graph
+help: Check that the patched package version and available features are compatible
+      with the dependency requirements. If the patch has a different version from
+      what is locked in the Cargo.lock file, run `cargo update` to use the new
+      version. This may also occur with an optional dependency that is not enabled.
+     Locking 6 packages to highest Rust 1.101.0-nightly compatible versions
+      Adding bough-expr v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-expr)
+      Adding bough-face v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-face)
+      Adding bough-fused v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-fused)
+      Adding bough-lay v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-lay)
+      Adding bough-vk v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-vk)
+      Adding bough-x v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-x)
+   Compiling wgsl-rs-macros v0.1.0 (/home/rmccrar6.guest/src/lorelei/vendor/wgsl-rs/crates/wgsl-rs-macros)
+   Compiling wgsl-rs-ir v0.1.0 (/home/rmccrar6.guest/src/lorelei/vendor/wgsl-rs/crates/wgsl-rs-ir)
+   Compiling naga v29.0.4 (/home/rmccrar6.guest/src/lorelei/vendor/naga)
+   Compiling fontique v0.11.1 (/home/rmccrar6.guest/src/lorelei/vendor/fontique)
+   Compiling bough-vk v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-vk)
+   Compiling harfrust v0.12.0 (/home/rmccrar6.guest/src/lorelei/vendor/harfrust)
+   Compiling skrifa v0.44.0 (/home/rmccrar6.guest/src/lorelei/vendor/skrifa)
+   Compiling bough-face v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-face)
+   Compiling bough-expr v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-expr)
+   Compiling bough-mem v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-mem)
+   Compiling bough-lay v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-lay)
+   Compiling bough-frame v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-frame)
+   Compiling bough-wayland v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-wayland)
+   Compiling bough-core v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-core)
+   Compiling bough-x v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-x)
+   Compiling bough-sys v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-sys)
+   Compiling cephal v0.2.0 (/home/rmccrar6.guest/src/lorelei/vendor/cephal)
+   Compiling parley v0.11.1 (/home/rmccrar6.guest/src/lorelei/vendor/parley)
+   Compiling wgsl-rs v0.1.0 (/home/rmccrar6.guest/src/lorelei/vendor/wgsl-rs/crates/wgsl-rs)
+   Compiling bough-text v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-text)
+   Compiling bough-fused v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-fused)
+   Compiling bough-kernel v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough-kernel)
+   Compiling bough v0.0.0 (/home/rmccrar6.guest/src/lorelei/crates/bough)
+   Compiling bough-guibench v0.1.0 (/home/rmccrar6.guest/src/lorelei/comparisons/bough-guibench)
+warning: feature `f16` is declared but not used
+ --> /home/rmccrar6.guest/src/lorelei/crates/bough/src/lib.rs:1:110
+  |
+1 | #![feature(type_info, ptr_metadata, rustc_attrs, const_trait_impl, const_cmp, arbitrary_self_types_pointers, f16)]
+  |                                                                                                              ^^^
+  |
+  = note: `#[warn(unused_features)]` (part of `#[warn(unused)]`) on by default
+
+warning: feature `stdarch_neon_f16` is declared but not used
+ --> /home/rmccrar6.guest/src/lorelei/crates/bough/src/lib.rs:2:46
+  |
+2 | #![cfg_attr(target_arch = "aarch64", feature(stdarch_neon_f16))]
+  |                                              ^^^^^^^^^^^^^^^^
+
+warning: `bough` (lib) generated 2 warnings
+warning: field `v` is never read
+   --> src/bin/adversarial.rs:807:13
+    |
+804 | macro_rules! vrow {
+...
+807 |             v: Signal<u32>,
+    |             ^
+...
+825 | vrow!(RowC, _s, row((text("x").font(10.0, 12.0).color(rgb(0x000000)),)).w_pct(1.0).h(14.0).shrink(0.0).px(4.0));
+    | ---------------------------------------------------------------------------------------------------------------
+    | |     |
+    | |     field in this struct
+    | in this macro invocation
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `v` is never read
+   --> src/bin/adversarial.rs:807:13
+    |
+804 | macro_rules! vrow {
+...
+807 |             v: Signal<u32>,
+    |             ^
+...
+827 | vrow!(RowE, _s, block(0.0, 14.0).w_pct(1.0).shrink(0.0).bg(rgb(0xeeeeee)));
+    | --------------------------------------------------------------------------
+    | |     |
+    | |     field in this struct
+    | in this macro invocation
+
+warning: field `v` is never read
+   --> src/bin/adversarial.rs:807:13
+    |
+804 | macro_rules! vrow {
+...
+807 |             v: Signal<u32>,
+    |             ^
+...
+828 | vrow!(RowF, _s, block(0.0, 14.0).w_pct(1.0).shrink(0.0));
+    | --------------------------------------------------------
+    | |     |
+    | |     field in this struct
+    | in this macro invocation
+
+warning: `bough-guibench` (bin "adversarial") generated 3 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 33.11s
+build: gui-bench runner
+   Compiling gui-bench v0.1.0 (/home/rmccrar6.guest/src/gui-bench/runner)
+    Finished `release` profile [optimized] target(s) in 1.77s
+build: manifest
+apps/bough/target/release/bough-bench         12a92ab54f14440f5ec1bbab660949228b01e2a889ae25f745bdc4fa65bc3452 49287656
+apps/bough-x/target/release/bough-bench       ed1a3cd9927d623a82b018a7b5fed50741986ea5cc960b1c41a44e83d40631c4 7510608
+apps/zgui/target/release/zgui-bench           63d22b5d81fa1dff3b2bf4f1cb1bfbc661e8dc885e2df879c0b8eae92cfdea36 398176104
+target/release/gui-bench                      cc52f037f1aebc376b5f35fffd64425c1c7b23cbf92f56801b83c126604a4b7f 19487408
+build: done

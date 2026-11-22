@@ -1,0 +1,50 @@
+# Set C: bough-fx-bench (release, --features full-effects, BOUGH_FX_SAMPLES=40)
+# bin: dbb86f664386222bb25d2481656e305f61e1e061417ca18ffbbb4538135dfdd0  /Users/rmccrar6/work/targets/rethink-bench/release/bough-fx-bench
+# host: Darwin arm64
+## n=200 start  2:51  up 5 days,  5:43, 1 user, load averages: 14.56 10.83 7.39
+GATE PASS 200 startup
+MEASURED 200 startup rc=0
+GATE PASS 200 idle
+MEASURED 200 idle rc=0
+GATE PASS 200 one
+MEASURED 200 one rc=0
+GATE PASS 200 many
+MEASURED 200 many rc=0
+GATE PASS 200 hover
+MEASURED 200 hover rc=0
+GATE PASS 200 theme
+MEASURED 200 theme rc=0
+GATE PASS 200 scroll
+MEASURED 200 scroll rc=0
+GATE PASS 200 resize
+MEASURED 200 resize rc=0
+spawn_to_first,200,20962000,63033267,7828958,17825792,8962600
+spawn_to_first,200,19534000,63013455,7591416,17842176,8978984
+spawn_to_first,200,15166000,63000567,8032833,17793024,8929832
+spawn_to_first,200,14682000,63059739,7634208,17809408,8946216
+spawn_to_first,200,63309000,63100692,7754666,17874944,9011752
+## n=200 end  2:51  up 5 days,  5:44, 1 user, load averages: 14.56 10.83 7.39
+## n=1000 start  2:51  up 5 days,  5:44, 1 user, load averages: 14.56 10.83 7.39
+GATE PASS 1000 startup
+MEASURED 1000 startup rc=0
+GATE PASS 1000 idle
+MEASURED 1000 idle rc=0
+GATE PASS 1000 one
+MEASURED 1000 one rc=0
+GATE PASS 1000 many
+MEASURED 1000 many rc=0
+GATE PASS 1000 hover
+MEASURED 1000 hover rc=0
+GATE PASS 1000 theme
+MEASURED 1000 theme rc=0
+GATE PASS 1000 scroll
+MEASURED 1000 scroll rc=0
+GATE PASS 1000 resize
+MEASURED 1000 resize rc=0
+spawn_to_first,1000,24677000,132489748,11253125,20971520,12108328
+spawn_to_first,1000,23379000,132240629,10694250,20955136,12091944
+spawn_to_first,1000,20132000,132501075,11144291,21053440,12190248
+spawn_to_first,1000,19465000,132422143,10840000,20987904,12124712
+spawn_to_first,1000,16541000,132550496,11606208,21053440,12206656
+## n=1000 end  2:51  up 5 days,  5:44, 1 user, load averages: 13.78 10.79 7.41
+# done  2:51  up 5 days,  5:44, 1 user, load averages: 13.78 10.79 7.41
