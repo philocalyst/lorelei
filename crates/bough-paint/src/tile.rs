@@ -220,7 +220,8 @@ impl<'a> Tile<'a> {
         self.st.tiles += 1;
         self.st.prefix += 1;
         self.st.prefix_same += same as u64;
-        (!same).then_some([self.ox + bb[0], self.oy + bb[1], self.ox + bb[2], self.oy + bb[3]])
+        // (not `then_some`: its argument is evaluated either way, and an empty box's sentinels overflow)
+        if same { None } else { Some([self.ox + bb[0], self.oy + bb[1], self.ox + bb[2], self.oy + bb[3]]) }
     }
     /// Write the tile: shaded rows from the accumulator, flat rows from the row above.
     ///
@@ -403,6 +404,20 @@ impl Sink for Flat<'_, '_> {
         self.note(&c, false, false)
     }
     #[inline(always)]
+    fn ramp(&mut self, c: Cmd) {
+        // a linear ramp with no vertical component is one colour per column on its core rows
+        self.note(&c, c.par.w == x::RAMP_LINEAR && c.xi.w == 0, false)
+    }
+    #[inline(always)]
+    fn inset(&mut self, c: Cmd) {
+        // on its core rows neither the blurred shape nor the box it is cut to depends on the row
+        self.note(&c, true, false)
+    }
+    #[inline(always)]
+    fn mip(&mut self, c: Cmd) {
+        self.note(&c, false, false)
+    }
+    #[inline(always)]
     fn user(&mut self, c: Cmd) {
         self.note(&c, false, false)
     }
@@ -426,6 +441,77 @@ impl Shade<'_, '_, '_> {
                 for xx in a..b {
                     let p = &mut t.acc[(y * 32 + xx) as usize];
                     *p = st(k::blend(ld(p), f(t.ox + xx, t.oy + y)));
+                }
+            }
+        }
+    }
+}
+impl Shade<'_, '_, '_> {
+    /// A stored surface (a retained group, an image) scaled into a rounded box under an opacity: what
+    /// `ops::p_video` over `media::Surf::at` is at every pixel, by rows. The surface is opened once per
+    /// tile and its column positions are made once; a row whose reads fall on texel centres at one texel
+    /// a pixel (a group shown as it is, at a whole-pixel offset: every frame of a slide) blends the stored
+    /// words themselves, sixteen lanes at a time.
+    #[inline(always)]
+    fn surface(&mut self, c: Cmd, s: Option<crate::media::Surf>) {
+        let t = &mut *self.0;
+        let (x0, x1, mut m) = t.span(&c);
+        // (no surface: every read is transparent, and blending nothing changes nothing)
+        let Some(s) = s else { return };
+        if x0 >= x1 {
+            return;
+        }
+        let op = c.pm.x;
+        let (ox, oy) = (t.ox, t.oy);
+        let (mut tx, mut fracs) = ([0i32; 32], 0);
+        for col in x0..x1 {
+            tx[col as usize] = x::vd_pos(c, ox + col, 0).x;
+            fracs |= tx[col as usize] & 255;
+        }
+        // one texel a pixel, on texel centres: column `col` reads texel `tx >> 8`, and the next column the next
+        let straight = s.sharp() && fracs == 0 && c.rad.z == 4096;
+        let (kx0, kx1) = (c.core.x - ox, c.core.z - ox);
+        let (sw, sh) = s.size();
+        let rows_of = s.rows();
+        let at = |tx: i32, ty: i32| {
+            let v = rows_of.at(tx, ty);
+            Vec4 { x: v[0], y: v[1], z: v[2], w: v[3] }
+        };
+        let mut cols = [[0u16; 4]; 32];
+        while m != 0 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            let gy = oy + y;
+            let ty = x::vd_pos(c, 0, gy).y;
+            let core_row = gy >= c.core.y && gy < c.core.w && kx0 < kx1;
+            let direct = straight && ty & 255 == 0 && ty >= 0 && (ty >> 8) < sh;
+            for (s0, s1) in t.runs(y, x0, x1) {
+                if s0 >= s1 {
+                    continue;
+                }
+                let (a, b) = if core_row { (kx0.clamp(s0, s1), kx1.clamp(s0, s1)) } else { (s1, s1) };
+                let row = &mut t.acc[(y * 32) as usize..(y * 32 + 32) as usize];
+                // beside the core: under the box's coverage, pixel by pixel
+                for (ea, eb) in [(s0, a), (b, s1)] {
+                    for xx in ea..eb {
+                        let v = k::scale(at(tx[xx as usize], ty), op);
+                        let v = k::scale(v, k::cov(k::sd((ox + xx) * 256 + 128, gy * 256 + 128, c.b, c.rad.x, c.par.y)));
+                        let p = &mut row[xx as usize];
+                        *p = st(k::blend(ld(p), v));
+                    }
+                }
+                if a >= b {
+                    continue;
+                }
+                let (i0, i1) = (tx[a as usize] >> 8, tx[b as usize - 1] >> 8);
+                if direct && i0 >= 0 && i1 < sw {
+                    let src = &s.row((ty >> 8) as u32)[i0 as usize..=i1 as usize];
+                    simd::blend_bgra(&mut row[a as usize..b as usize], src, op as u16);
+                } else {
+                    for xx in a..b {
+                        cols[xx as usize] = st(at(tx[xx as usize], ty));
+                    }
+                    simd::blend_rows(&mut row[a as usize..b as usize], &cols[a as usize..b as usize], op as u16);
                 }
             }
         }
@@ -466,11 +552,175 @@ impl Sink for Shade<'_, '_, '_> {
     #[inline(always)]
     fn video(&mut self, c: Cmd) {
         let m = self.1.media;
+        if c.par.z & crate::media::BGRA_BIT != 0 {
+            // a retained image: rows of stored pixels
+            return self.surface(c, crate::media::Surf::open_plain(m, c));
+        }
         self.each(&c, |x, y| crate::ops::ops::p_video(c, x, y, crate::media::sample(m, c, x, y)))
     }
     fn author(&mut self, c: Cmd, program: crate::author::ColourFn) {
         let state = if cfg!(feature = "mutant_author_clock") { 0 } else { c.par.w };
         self.each(&c, |px, py| x::p_author(c, px, py, program(px, py, state, c.pm, c.pm2)));
+    }
+    #[inline(always)]
+    fn mip(&mut self, c: Cmd) {
+        self.surface(c, crate::media::Surf::open(self.1.media, c))
+    }
+    #[inline(always)]
+    fn ramp(&mut self, c: Cmd) {
+        let tabs = self.0.tabs;
+        let base = c.par.z as usize;
+        // the table: the 256 words its handle names (a handle that names none draws nothing, here as on
+        // every executor: `paint::ramp_taps`)
+        let lut = if base + 254 < crate::scene::TAB_WORDS - 3 { tabs.get(base..base + 256) } else { None };
+        let Some(lut) = lut else {
+            self.each(&c, |px, py| match crate::paint::ramp_taps(c, px, py, tabs) {
+                Some((w0, w1, at)) => x::p_ramp(c, px, py, w0, w1, at),
+                None => Vec4 { x: 0, y: 0, z: 0, w: 0 },
+            });
+            return;
+        };
+        let t = &mut *self.0;
+        let (x0, x1, mut m) = t.span(&c);
+        if x0 >= x1 {
+            return;
+        }
+        let (kx0, kx1) = t.core_x(&c);
+        let (ox, oy) = (t.ox, t.oy);
+        // a linear ramp with no horizontal component is one colour per row
+        let row_const = c.par.w == x::RAMP_LINEAR && c.xi.z == 0;
+        let (mut w0, mut w1, mut ws) = ([0u32; 32], [0u32; 32], [0u16; 32]);
+        // a linear ramp's parameter is `ops::gl_t`'s two products and a sum: the row's product is made
+        // once, the column's is one 64-bit product (`km::mulq16` is the floor of the magnitudes' product,
+        // which its 16-bit limbs spell out for the shading languages)
+        let linear = c.par.w == x::RAMP_LINEAR;
+        let mq = |a: i32, m: i32| {
+            let r = ((a.unsigned_abs() as u64 * m.unsigned_abs() as u64) >> 16) as i32;
+            if (a < 0) != (m < 0) { -r } else { r }
+        };
+        let (mx, my) = (c.xi.z.clamp(-8_388_607, 8_388_607), c.xi.w.clamp(-8_388_607, 8_388_607));
+        let (mid_x, mid_y) = (((c.b.x + c.b.z) >> 1) + c.xi.x, ((c.b.y + c.b.w) >> 1) + c.xi.y);
+        let stop = |at: u32| if cfg!(feature = "mutant_ramp_stop") { (at >> 16) as usize ^ 1 } else { (at >> 16) as usize };
+        while m != 0 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            let gy = oy + y;
+            let core_row = gy >= c.core.y && gy < c.core.w && kx0 < kx1;
+            for (s0, s1) in t.runs(y, x0, x1) {
+                if s0 >= s1 {
+                    continue;
+                }
+                let (a, b) = if core_row { (kx0.clamp(s0, s1), kx1.clamp(s0, s1)) } else { (s1, s1) };
+                let row = &mut t.acc[(y * 32) as usize..(y * 32 + 32) as usize];
+                for (ea, eb) in [(s0, a), (b, s1)] {
+                    for xx in ea..eb {
+                        let at = x::gl_at(c, ox + xx, gy);
+                        let i = stop(at);
+                        let p = &mut row[xx as usize];
+                        *p = st(k::blend(ld(p), x::p_ramp(c, ox + xx, gy, lut[i], lut[i + 1], at & 0xFFFF)));
+                    }
+                }
+                if a < b {
+                    if row_const {
+                        let at = x::gl_at(c, ox + a, gy);
+                        let i = stop(at);
+                        over(&mut row[a as usize..b as usize], x::gl_color(c, lut[i], lut[i + 1], at & 0xFFFF));
+                    } else {
+                        // the parameter pixel by pixel (its rounding is the leaf's), then the two table
+                        // words and the mix sixteen lanes at a time
+                        let n = (b - a) as usize;
+                        let row_t = mq((gy * 256 + 128 - mid_y).clamp(-4_194_303, 4_194_303), my) + 16384;
+                        for (j, xx) in (a..b).enumerate() {
+                            let at = if linear {
+                                let px = ((ox + xx) * 256 + 128 - mid_x).clamp(-4_194_303, 4_194_303);
+                                x::gl_slot((mq(px, mx) + row_t).clamp(0, 32768) as u32)
+                            } else {
+                                x::gl_at(c, ox + xx, gy)
+                            };
+                            debug_assert_eq!(at, x::gl_at(c, ox + xx, gy));
+                            let i = stop(at);
+                            (w0[j], w1[j], ws[j]) = (lut[i], lut[i + 1], (at & 0xFFFF).min(k::ONE) as u16);
+                        }
+                        simd::blend_ramp(&mut row[a as usize..b as usize], &w0[..n], &w1[..n], &ws[..n], c.rad.y as u16);
+                    }
+                }
+            }
+        }
+    }
+    #[inline(always)]
+    fn inset(&mut self, c: Cmd) {
+        let t = &mut *self.0;
+        let (x0, x1, mut m) = t.span(&c);
+        if x0 >= x1 {
+            return;
+        }
+        let pm = st(c.pm);
+        let dead = c.par.z != 0;
+        let (kx0, kx1) = (c.core.x - t.ox, c.core.z - t.ox);
+        let (ox, oy) = (t.ox, t.oy);
+        // the blurred shape's column profile over this tile's columns, made at the first row that needs it
+        let (mut sx, mut cov) = ([0u16; 32], [0u16; 32]);
+        let (mut zone_x, mut sx_ready) = (0u32, false);
+        let (hx, hy, lim) = ((c.b.z - c.b.x) >> 1, (c.b.w - c.b.y) >> 1, c.rad.y + (c.rad.y >> 1));
+        // where the box the shadow is cut to covers a pixel whole
+        let oc = x::core_of(c.xk, c.xi.x.max(128) + 136, c.win);
+        while m != 0 {
+            let y = m.trailing_zeros() as i32;
+            m &= m - 1;
+            let gy = oy + y;
+            let cy = gy * 256 + 128;
+            let core_row = gy >= c.core.y && gy < c.core.w && kx0 < kx1;
+            let whole_row = gy >= oc.y && gy < oc.w;
+            for (s0, s1) in t.runs(y, x0, x1) {
+                if s0 >= s1 {
+                    continue;
+                }
+                // inside the core the blurred shape covers everything: the inset shadow is nothing there
+                let (a, b) = if core_row { (kx0.clamp(s0, s1), kx1.clamp(s0, s1)) } else { (s1, s1) };
+                if !dead && !sx_ready && (s0 < a || b < s1) {
+                    for (i, o) in sx[..(x1 - x0) as usize].iter_mut().enumerate() {
+                        let px = (ox + x0 + i as i32) * 256 + 128 - (c.b.x + hx);
+                        *o = k::span3(px, hx, c.rad.y, c.rad.z) as u16;
+                        if c.rad.x != 0 && px.abs() > hx - c.rad.x - lim {
+                            zone_x |= 1 << i;
+                        }
+                    }
+                    sx_ready = true;
+                }
+                let py = cy - (c.b.y + hy);
+                let (sy, zone_y) = if dead { (0, false) } else { (k::span3(py, hy, c.rad.y, c.rad.z) as u16, c.rad.x != 0 && py.abs() > hy - c.rad.x - lim) };
+                let row = &mut t.acc[(y * 32) as usize..(y * 32 + 32) as usize];
+                for (ea, eb) in [(s0, a), (b, s1)] {
+                    if ea >= eb {
+                        continue;
+                    }
+                    let (n, i0) = ((eb - ea) as usize, (ea - x0) as usize);
+                    if dead {
+                        cov[..n].fill(0);
+                    } else {
+                        simd::scale_row(&sx[i0..i0 + n], sy, &mut cov[..n]);
+                        if zone_y {
+                            let mut zm = (zone_x >> i0) & (u32::MAX >> (32 - n));
+                            while zm != 0 {
+                                let i = zm.trailing_zeros() as usize;
+                                zm &= zm - 1;
+                                cov[i] = k::shadow(c, (ox + ea + i as i32) * 256 + 128, cy) as u16;
+                            }
+                        }
+                    }
+                    t.st.px_shadow += n as u64;
+                    // the complement of the blurred shape, cut to the box
+                    if !cfg!(feature = "mutant_inset") {
+                        for (i, o) in cov[..n].iter_mut().enumerate() {
+                            let gx = ox + ea + i as i32;
+                            let co = if whole_row && gx >= oc.x && gx < oc.z { k::ONE } else { x::in_clip(c, gx * 256 + 128, cy) };
+                            *o = x::in_cov(co, *o as u32) as u16;
+                        }
+                    }
+                    simd::blend_cov(&mut row[ea as usize..eb as usize], pm, &cov[..n]);
+                }
+            }
+        }
     }
     #[inline(always)]
     fn user(&mut self, c: Cmd) {

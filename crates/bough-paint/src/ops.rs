@@ -479,12 +479,9 @@ pub mod ops {
     pub fn x_flat(acc: Vec4u) -> Vec4u {
         x_unstore(store8(acc))
     }
-    /// A backdrop: what is beneath the rounded box `b`, blurred by about `blur` (Q8 px, a standard
-    /// deviation) and passed through brightness, saturation and contrast (`f`: Q8 each, 256 = unchanged).
-    /// `rad.y` is the finer level read, `rad.z` the weight (Q15) of the next coarser one.
-    pub fn mk_backdrop(b: Vec4i, r0: i32, blur: i32, f: Vec4u, clip: Vec4i) -> Cmd {
-        let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
-        let r = radius_in(b, r0);
+    /// The pyramid levels a blur of `blur` (Q8 px, a standard deviation) reads: the finer level, and the
+    /// weight (Q15) of the next coarser one.
+    pub fn bd_level(blur: i32) -> Vec2i {
         let s = max(blur, 0i32);
         let mut lvl = 0i32;
         let mut base = BD_SIGMA;
@@ -501,7 +498,16 @@ pub mod ops {
                 fr = min(((s - base) * 512i32 / base) * 64i32, 32767i32);
             }
         }
-        mk(K_BACKDROP, shift_of(r), win, core_of(b, max(r, 128i32) + 136i32, win), b, vec4i(r, lvl, fr, 0i32), 0u32, vec4u(min(f.x(), 4096u32), min(f.y(), 4096u32), min(f.z(), 4096u32), 0u32), splat(0u32))
+        vec2i(lvl, fr)
+    }
+    /// A backdrop: what is beneath the rounded box `b`, blurred by about `blur` (Q8 px, a standard
+    /// deviation) and passed through brightness, saturation and contrast (`f`: Q8 each, 256 = unchanged).
+    /// `rad.y` is the finer level read, `rad.z` the weight (Q15) of the next coarser one.
+    pub fn mk_backdrop(b: Vec4i, r0: i32, blur: i32, f: Vec4u, clip: Vec4i) -> Cmd {
+        let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
+        let r = radius_in(b, r0);
+        let lv = bd_level(blur);
+        mk(K_BACKDROP, shift_of(r), win, core_of(b, max(r, 128i32) + 136i32, win), b, vec4i(r, lv.x(), lv.y(), 0i32), 0u32, vec4u(min(f.x(), 4096u32), min(f.y(), 4096u32), min(f.z(), 4096u32), 0u32), splat(0u32))
     }
     /// The coarsest level a backdrop reads.
     pub fn bd_top(c: Cmd) -> u32 {
@@ -645,6 +651,236 @@ pub mod ops {
             return v;
         }
         scale(v, cov(sd(x * 256i32 + 128i32, y * 256i32 + 128i32, c.b, c.rad.x(), c.par.y())))
+    }
+
+    // ---- ramps: an N-stop gradient is a 256-entry table of premultiplied RGBA8, so a pixel is one
+    // ---- parameter, two table words and a mix, whatever the number of stops ---------------------------
+
+    pub const K_LUTRAMP: u32 = 18u32;
+    pub const K_INSET: u32 = 19u32;
+    pub const K_MIP: u32 = 20u32;
+    pub const RAMP_LINEAR: u32 = 0u32;
+    pub const RAMP_RADIAL: u32 = 1u32;
+    pub const RAMP_CONIC: u32 = 2u32;
+
+    /// A ramp in a rounded box. `kind` and the two parameter vectors (the origin `p.xy` is an offset from
+    /// the box's centre, Q8, so the gradient moves and is clipped with its box):
+    /// * linear: `p.zw` the direction per pixel, Q23 (the parameter is 1/2 at the origin);
+    /// * radial: `p.zw` = 2^28 / (rx, ry) (radii Q8), `q.xy` the focal point's offset in radii (Q12, each
+    ///   component at most 0.98), `q.z` = 2^28 / a and `q.w` = a with a = 4096 (1 - |focal|^2);
+    /// * conic: `p.z` the start angle (Q19 turns, clockwise from 12 o'clock).
+    /// `lut`: the table's handle (`Scene::lut`), `op`: opacity (Q15). `cov`: a colour whose alpha is full
+    /// exactly when the table is opaque and `op` is ONE (it is never drawn: it carries the cover claim).
+    pub fn mk_ramp(b: Vec4i, r0: i32, kind: u32, p: Vec4i, q: Vec4i, lut: u32, op: u32, cov: Vec4u, clip: Vec4i) -> Cmd {
+        let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
+        let r = radius_in(b, r0);
+        Cmd {
+            win: win,
+            core: core_of(b, max(r, 128i32) + 136i32, win),
+            b: b,
+            par: vec4u(K_LUTRAMP, shift_of(r), lut, kind),
+            rad: vec4i(r, min(op, ONE) as i32, 0i32, 0i32),
+            pm: cov,
+            pm2: splat(0u32),
+            xi: p,
+            xk: q,
+            xs: 0i32,
+        }
+    }
+    /// atan2(y, x) in Q19 turns, [0, 2^19): a ninth-order odd polynomial on the first octant (good to
+    /// about 2e-5 rad), unfolded by octant. Integers only: every executor returns the same word.
+    pub fn gl_atan(y: i32, x: i32) -> u32 {
+        let ax = abs(x) as u32;
+        let ay = abs(y) as u32;
+        let mut hi = max(ax, ay);
+        let mut lo = min(ax, ay);
+        if hi == 0u32 {
+            return 0u32;
+        }
+        while hi >= 65536u32 {
+            hi = hi >> 1u32;
+            lo = lo >> 1u32;
+        }
+        let z = (lo << 15u32) / hi;
+        let z2 = mul15(z, z);
+        let p = 83430u32 - mul15(z2, 27561u32 - mul15(z2, 15032u32 - mul15(z2, 7104u32 - mul15(z2, 1739u32))));
+        let mut a = min(mul15(z, p), 65536u32);
+        if ay > ax {
+            a = 131072u32 - a;
+        }
+        if x < 0i32 {
+            a = 262144u32 - a;
+        }
+        if y < 0i32 {
+            a = 524288u32 - a;
+        }
+        a & 0x7FFFFu32
+    }
+    /// A ramp's parameter (Q15, 0 ..= ONE) at the point (cx, cy) (Q8).
+    pub fn gl_t(c: Cmd, cx: i32, cy: i32) -> u32 {
+        let px = clamp(cx - ((c.b.x() + c.b.z()) >> 1u32) - c.xi.x(), -4194303i32, 4194303i32);
+        let py = clamp(cy - ((c.b.y() + c.b.w()) >> 1u32) - c.xi.y(), -4194303i32, 4194303i32);
+        let kind = c.par.w();
+        if kind == RAMP_LINEAR {
+            let mx = clamp(c.xi.z(), -8388607i32, 8388607i32);
+            let my = clamp(c.xi.w(), -8388607i32, 8388607i32);
+            return clamp(mulq16(px, mx) + mulq16(py, my) + 16384i32, 0i32, 32768i32) as u32;
+        }
+        if kind == RAMP_RADIAL {
+            // the pixel in radii (Q12, cut at two radii: beyond the unit circle the parameter is ONE)
+            let nx = clamp(mulq16(px, clamp(c.xi.z(), 1i32, 8388607i32)), -8191i32, 8191i32);
+            let ny = clamp(mulq16(py, clamp(c.xi.w(), 1i32, 8388607i32)), -8191i32, 8191i32);
+            let gx = clamp(c.xk.x(), -4014i32, 4014i32);
+            let gy = clamp(c.xk.y(), -4014i32, 4014i32);
+            let qx = nx - gx;
+            let qy = ny - gy;
+            // the circle through the pixel of the family from the focal point (radius 0) to the unit
+            // circle: a t^2 - 2 (q.g) t - |q|^2 = 0
+            let qg = (qx * gx + qy * gy) >> 12u32;
+            let qq = (qx * qx + qy * qy) as u32;
+            let aa = clamp(c.xk.w(), 1i32, 4096i32) as u32;
+            let aq = aa * (qq >> 12u32) + ((aa * (qq & 4095u32)) >> 12u32);
+            let root = isqrt(((qg * qg) as u32) + aq) as i32;
+            let t = mulq16(root + qg, clamp(c.xk.z(), 1i32, 8388607i32));
+            return min((max(t, 0i32) as u32) * 8u32, ONE);
+        }
+        let turn = gl_atan(px, -py);
+        ((turn + 524288u32 - ((c.xi.z() as u32) & 0x7FFFFu32)) & 0x7FFFFu32) >> 4u32
+    }
+    /// The table's lower entry (0 ..= 254) and the weight of the next (Q15), packed (index << 16 | weight).
+    pub fn gl_slot(t: u32) -> u32 {
+        let x = min(t, ONE) * 255u32;
+        let i = min(x >> 15u32, 254u32);
+        (i << 16u32) | (x - (i << 15u32))
+    }
+    pub fn gl_at(c: Cmd, x: i32, y: i32) -> u32 {
+        gl_slot(gl_t(c, x * 256i32 + 128i32, y * 256i32 + 128i32))
+    }
+    /// The ramp's colour from the two table words `gl_at` names and its weight.
+    pub fn gl_color(c: Cmd, w0: u32, w1: u32, at: u32) -> Vec4u {
+        scale(mix4u(rgba15(w0), rgba15(w1), min(at & 0xFFFFu32, ONE)), c.rad.y() as u32)
+    }
+    pub fn p_ramp(c: Cmd, x: i32, y: i32, w0: u32, w1: u32, at: u32) -> Vec4u {
+        if !inside(c.win, x, y) {
+            return splat(0u32);
+        }
+        let col = gl_color(c, w0, w1, at);
+        if inside(c.core, x, y) {
+            return col;
+        }
+        scale(col, cov(sd(x * 256i32 + 128i32, y * 256i32 + 128i32, c.b, c.rad.x(), c.par.y())))
+    }
+
+    // ---- inset shadows: the complement of a blurred rounded box, inside a rounded box ------------------
+
+    /// The inset shadow of the rounded box `b`: the colour wherever the box shrunk by `spread` and moved by
+    /// (dx, dy), blurred by `blur` (two sigma, as `mk_shadow`), does not reach, cut to the box itself. The
+    /// command's `b` and `rad` are the blurred shape's (what `km::shadow` reads); the box it is cut to is
+    /// `xk`, its radius `xi.x` and root shift `par.w`. `core`: pixels where the result is exactly nothing.
+    pub fn mk_inset(b: Vec4i, r0: i32, spread: i32, dx: i32, dy: i32, blur: i32, pm: Vec4u, clip: Vec4i) -> Cmd {
+        let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
+        let ro = radius_in(b, r0);
+        let inner = x_off(x_grow(b, -spread), dx, dy);
+        let bw = min(max(blur, 16i32), 32768i32);
+        let mut dead = 0u32;
+        if inner.z() <= inner.x() || inner.w() <= inner.y() {
+            dead = 1u32;
+        }
+        let ri = radius_in(inner, max(ro - spread, 0i32));
+        let inv = (16777216i32 + bw - 1i32) / bw;
+        let mut curve = 0i32;
+        if ri > 0i32 {
+            curve = min((bw * 32768i32) / (8i32 * ri), 32768i32);
+        }
+        let mut core = x_and(core_of(inner, bw + bw / 2i32 + ri + 2i32, win), core_of(b, max(ro, 128i32) + 136i32, win));
+        if dead == 1u32 || core.x() >= core.z() || core.y() >= core.w() {
+            core = vec4i(0i32, 0i32, 0i32, 0i32);
+        }
+        Cmd {
+            win: win,
+            core: core,
+            b: inner,
+            par: vec4u(K_INSET, shift_of(ri), dead, shift_of(ro)),
+            rad: vec4i(ri, bw, inv, curve),
+            pm: pm,
+            pm2: splat(0u32),
+            xi: vec4i(ro, 0i32, 0i32, 0i32),
+            xk: b,
+            xs: 0i32,
+        }
+    }
+    /// Coverage (Q15) of the box an inset shadow is cut to.
+    pub fn in_clip(c: Cmd, cx: i32, cy: i32) -> u32 {
+        cov(sd(cx, cy, c.xk, c.xi.x(), c.par.w()))
+    }
+    /// An inset shadow's coverage from its box's coverage and the blurred shape's.
+    pub fn in_cov(co: u32, s: u32) -> u32 {
+        mul15(co, ONE - min(s, ONE))
+    }
+    pub fn p_inset(c: Cmd, x: i32, y: i32) -> Vec4u {
+        if !inside(c.win, x, y) || inside(c.core, x, y) {
+            return splat(0u32);
+        }
+        let cx = x * 256i32 + 128i32;
+        let cy = y * 256i32 + 128i32;
+        let co = in_clip(c, cx, cy);
+        if co == 0u32 {
+            return splat(0u32);
+        }
+        let mut s = 0u32;
+        if c.par.z() == 0u32 {
+            s = shadow(c, cx, cy);
+        }
+        scale(c.pm, in_cov(co, s))
+    }
+
+    // ---- retained surfaces: a premultiplied BGRA image with its [1 3 3 1] pyramid, read at two levels ---
+
+    /// A retained surface (`media::Pool::surface`) scaled into a rounded box and blurred by `blur` (Q8
+    /// texels of its level 0, a standard deviation; 0: sharp). `op`: opacity, Q15. `xi.xy`: the finer
+    /// level read and the weight of the next (as a backdrop).
+    pub fn mk_mip(b: Vec4i, r0: i32, slot: u32, dims: u32, op: u32, blur: i32, clip: Vec4i) -> Cmd {
+        let win = window(b.x() - 256i32, b.y() - 256i32, b.z() + 256i32, b.w() + 256i32, clip);
+        let r = radius_in(b, r0);
+        let vw = clamp(dims & 65535u32, 1u32, 2047u32) as i32;
+        let vh = clamp(dims >> 16u32, 1u32, 2047u32) as i32;
+        let kx = min((vw << 20u32) / max(b.z() - b.x(), 1i32), 8388607i32);
+        let ky = min((vh << 20u32) / max(b.w() - b.y(), 1i32), 8388607i32);
+        let lv = bd_level(blur);
+        Cmd {
+            win: win,
+            core: core_of(b, max(r, 128i32) + 136i32, win),
+            b: b,
+            par: vec4u(K_MIP, shift_of(r), slot, 0u32),
+            rad: vec4i(r, 0i32, kx, ky),
+            pm: vec4u(min(op, ONE), vw as u32, vh as u32, 0u32),
+            pm2: splat(0u32),
+            xi: vec4i(lv.x(), lv.y(), 0i32, 0i32),
+            xk: vec4i(0i32, 0i32, 0i32, 0i32),
+            xs: 0i32,
+        }
+    }
+    /// Words of levels 0 .. k of a `w` x `h` surface (level k's first word after the header).
+    pub fn mp_off(w: i32, h: i32, k: u32) -> u32 {
+        let mut o = 0u32;
+        let mut j = 0u32;
+        while j < k {
+            o += (bd_dim(w as u32, j) * bd_dim(h as u32, j)) as u32;
+            j += 1u32;
+        }
+        o
+    }
+    /// The level a command reads and the weight of the next, in a pyramid whose coarsest level is `top`.
+    pub fn mp_lvl(c: Cmd, top: u32) -> Vec2i {
+        let t = min(top, BD_LMAX) as i32;
+        if c.xi.x() >= t {
+            return vec2i(t, 0i32);
+        }
+        vec2i(max(c.xi.x(), 0i32), clamp(c.xi.y(), 0i32, 32767i32))
+    }
+    /// A level-0 texel position (Q8, texel 0's centre at 0) in level `k`'s texels.
+    pub fn mp_pos(t: i32, k: u32) -> i32 {
+        ((t + 128i32) >> k) - 128i32
     }
 
     // ---- author shaders: the kernel's user node as a paint -------------------------------------------

@@ -85,3 +85,14 @@ mutant_drop_image_frame = []
 mutant_group_stale = []
 mutant_author_clock = []
 mutant_svg_size = []
+# Mutants for the flat-scene gates (tests/flat.rs must fail with each):
+# a table gradient reads the neighbour of the stop entry it should
+mutant_ramp_stop = []
+# the CPU tile kernel draws an inset shadow's blurred shape instead of its complement inside the box
+mutant_inset = []
+# a retained surface's pyramid is not repaired after its content changed
+mutant_blur_stale = []
+# a retained group damages its parent for the first repainted tile only
+mutant_group_tile = []
+# a retargeted spring forgets the velocity it had
+mutant_spring_velocity = []

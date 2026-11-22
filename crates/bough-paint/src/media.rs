@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use wgsl_rs::std::Vec4u;
 
 pub const HDR: usize = 8;
-const BGRA_BIT: u32 = 1 << 31;
+pub(crate) const BGRA_BIT: u32 = 1 << 31;
 const BGRA_MAGIC: u32 = u32::from_le_bytes(*b"BGRA");
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -30,6 +30,8 @@ enum State {
     Shown,
     /// Replaced: free after the next `reclaim` (the frame that stopped showing it has been drawn).
     Retired,
+    /// A retained surface: readable, and written in place by its one owner between frames.
+    Surface,
 }
 struct Slot {
     at: usize,
@@ -59,7 +61,7 @@ impl Pool {
         static NEXT_POOL: AtomicU64 = AtomicU64::new(1);
         Pool { identity: NEXT_POOL.fetch_add(1, Ordering::Relaxed), arena: Arena::new(words.max(VM_PAGE / 4)), used: 0, slots: Vec::new() }
     }
-    pub(crate) fn identity(&self) -> u64 {
+    pub fn identity(&self) -> u64 {
         self.identity
     }
     pub fn words(&self) -> &[u32] {
@@ -115,6 +117,38 @@ impl Pool {
         self.slots[slot].state = State::Shown;
         self.retire(previous);
         Some(at as u32 | BGRA_BIT)
+    }
+
+    /// A retained `width` x `height` premultiplied BGRA8 surface with pyramid levels 1 ..= `top` after it
+    /// (`ops::mp_off`), all transparent. Its handle is an image's slot word (`paint::Image` reads level 0,
+    /// `paint::Mip` the pyramid); its owner repaints it in place through [`Pool::surface_mut`], between
+    /// frames, so a small change writes a few tiles and nothing is copied or re-published.
+    pub fn surface(&mut self, width: u32, height: u32, top: u32) -> Option<u32> {
+        if !(1..=2047).contains(&width) || !(1..=2047).contains(&height) || top > x::BD_LMAX {
+            return None;
+        }
+        let words = x::mp_off(width as i32, height as i32, top + 1) as usize;
+        let slot = self.allocate(HDR + words)?;
+        let at = self.slots[slot].at;
+        let m = self.arena_mut();
+        m[at..at + HDR].copy_from_slice(&[width, height, top, 0, 0, 0, 0, BGRA_MAGIC]);
+        m[at + HDR..at + HDR + words].fill(0);
+        self.slots[slot].state = State::Surface;
+        Some(at as u32 | BGRA_BIT)
+    }
+    /// A surface's words (level 0, then each pyramid level), for its owner. `None` for any other handle.
+    pub fn surface_mut(&mut self, handle: u32) -> Option<&mut [u32]> {
+        let at = (handle & !BGRA_BIT) as usize;
+        let s = self.slots.iter().find(|s| s.at == at && s.state == State::Surface)?;
+        let words = s.words - HDR;
+        Some(&mut self.arena_mut()[at + HDR..at + HDR + words])
+    }
+    /// Give a surface back (after the frame that stopped showing it).
+    pub fn release_surface(&mut self, handle: u32) {
+        let at = (handle & !BGRA_BIT) as usize;
+        if let Some(s) = self.slots.iter_mut().find(|s| s.at == at && s.state == State::Surface) {
+            s.state = State::Retired;
+        }
     }
 
     fn arena_mut(&mut self) -> &mut [u32] {
@@ -207,6 +241,134 @@ fn sample_bgra(m: &[u32], c: Cmd, px: i32, py: i32) -> Vec4u {
         std::mem::swap(&mut colour.x, &mut colour.z);
     }
     colour
+}
+
+/// A surface a command reads, opened once (its header checked, its levels found): what a tile's rows, or a
+/// single pixel, sample. A stale or forged slot word opens nothing and reads transparent.
+#[derive(Clone, Copy)]
+pub struct Surf<'a> {
+    pixels: &'a [u32],
+    w: i32,
+    h: i32,
+    /// The finer level read, and the weight (Q15) of the next.
+    lvl: u32,
+    frac: u32,
+}
+impl<'a> Surf<'a> {
+    /// The retained surface a mip command names (`ops::mk_mip`), with the pyramid levels its blur reads.
+    #[inline(always)]
+    pub fn open(m: &'a [u32], c: Cmd) -> Option<Surf<'a>> {
+        let at = (c.par.z & !BGRA_BIT) as usize;
+        let header = m.get(at..at + HDR)?;
+        let (w, h) = (c.pm.y as i32, c.pm.z as i32);
+        if header[7] != BGRA_MAGIC || header[0] != w as u32 || header[1] != h as u32 {
+            return None;
+        }
+        let top = header[2].min(x::BD_LMAX);
+        let pixels = m.get(at + HDR..at + HDR + x::mp_off(w, h, top + 1) as usize)?;
+        let lv = x::mp_lvl(c, top);
+        Some(Surf { pixels, w, h, lvl: lv.x as u32, frac: lv.y as u32 })
+    }
+    /// The image a video command names when its slot is a BGRA one: level 0 alone (`sample_bgra`).
+    #[inline(always)]
+    pub fn open_plain(m: &'a [u32], c: Cmd) -> Option<Surf<'a>> {
+        let at = (c.par.z & !BGRA_BIT) as usize;
+        let header = m.get(at..at + HDR)?;
+        let (w, h) = (c.pm.y, c.pm.z);
+        if header[7] != BGRA_MAGIC || header[0] != w || header[1] != h {
+            return None;
+        }
+        let pixels = m.get(at + HDR..at + HDR + (w * h) as usize)?;
+        Some(Surf { pixels, w: w as i32, h: h as i32, lvl: 0, frac: 0 })
+    }
+    /// The read is of level 0 alone.
+    #[inline(always)]
+    pub fn sharp(&self) -> bool {
+        self.lvl == 0 && self.frac == 0
+    }
+    /// Row `y` of level 0.
+    #[inline(always)]
+    pub fn row(&self, y: u32) -> &'a [u32] {
+        &self.pixels[(y * self.w as u32) as usize..((y + 1) * self.w as u32) as usize]
+    }
+    pub fn size(&self) -> (i32, i32) {
+        (self.w, self.h)
+    }
+    /// One level under bilinear weights at the level-0 texel position `t` (Q8).
+    #[inline(always)]
+    fn level(&self, k: u32, t: wgsl_rs::std::Vec2i) -> Vec4u {
+        let (dw, dh) = (x::bd_dim(self.w as u32, k), x::bd_dim(self.h as u32, k));
+        let level = &self.pixels[x::mp_off(self.w, self.h, k) as usize..];
+        let (tx, ty) = (x::mp_pos(t.x, k), x::mp_pos(t.y, k));
+        let (x0, x1, y0, y1) = (x::vd_ix(tx, 0, dw), x::vd_ix(tx, 1, dw), x::vd_ix(ty, 0, dh), x::vd_ix(ty, 1, dh));
+        let px = |x: u32, y: u32| level[(y * dw as u32 + x) as usize];
+        x::bd_bil(px(x0, y0), px(x1, y0), px(x0, y1), px(x1, y1), (tx & 255) as u32, (ty & 255) as u32)
+    }
+    /// The surface at the level-0 texel position `t` (`ops::vd_pos`), through the levels the command reads.
+    #[inline(always)]
+    pub fn at(&self, t: wgsl_rs::std::Vec2i) -> Vec4u {
+        let v = self.level(self.lvl, t);
+        if self.frac == 0 {
+            return v;
+        }
+        x::x_mixv(v, self.level(self.lvl + 1, t), self.frac)
+    }
+}
+/// One level of an opened surface, found once.
+#[derive(Clone, Copy)]
+struct Lv<'a> {
+    px: &'a [u32],
+    dw: i32,
+    dh: i32,
+    k: u32,
+}
+impl Lv<'_> {
+    #[inline(always)]
+    fn at(&self, tx: i32, ty: i32) -> [u32; 4] {
+        let (tx, ty) = (x::mp_pos(tx, self.k), x::mp_pos(ty, self.k));
+        let (x0, x1, y0, y1) = (x::vd_ix(tx, 0, self.dw), x::vd_ix(tx, 1, self.dw), x::vd_ix(ty, 0, self.dh), x::vd_ix(ty, 1, self.dh));
+        let (r0, r1) = ((y0 * self.dw as u32) as usize, (y1 * self.dw as u32) as usize);
+        bough_kernel::simd::bil_bgra([self.px[r0 + x0 as usize], self.px[r0 + x1 as usize], self.px[r1 + x0 as usize], self.px[r1 + x1 as usize]], (tx & 255) as u32, (ty & 255) as u32)
+    }
+}
+/// [`Surf::at`] for a tile's rows: the levels' places found once, the taps weighed in vector lanes. The
+/// same integers (the tile kernel is held to the plain form by the specification).
+#[derive(Clone, Copy)]
+pub struct Rows<'a> {
+    a: Lv<'a>,
+    b: Lv<'a>,
+    frac: u32,
+}
+impl<'a> Surf<'a> {
+    #[inline(always)]
+    fn lv(&self, k: u32) -> Lv<'a> {
+        Lv { px: &self.pixels[x::mp_off(self.w, self.h, k) as usize..], dw: x::bd_dim(self.w as u32, k), dh: x::bd_dim(self.h as u32, k), k }
+    }
+    #[inline(always)]
+    pub fn rows(&self) -> Rows<'a> {
+        let a = self.lv(self.lvl);
+        Rows { a, b: if self.frac == 0 { a } else { self.lv(self.lvl + 1) }, frac: self.frac }
+    }
+}
+impl Rows<'_> {
+    /// The surface at the level-0 texel position (tx, ty) (Q8), as Q15 channels.
+    #[inline(always)]
+    pub fn at(&self, tx: i32, ty: i32) -> [u32; 4] {
+        let v = self.a.at(tx, ty);
+        if self.frac == 0 {
+            return v;
+        }
+        bough_kernel::simd::mix15(v, self.b.at(tx, ty), self.frac)
+    }
+}
+/// The retained surface a mip command names, read at frame pixel (px, py) through its pyramid: the level
+/// the command's blur asks for and, by its weight, the next. Transparent for a stale or forged slot word.
+#[inline(always)]
+pub fn sample_mip(m: &[u32], c: Cmd, px: i32, py: i32) -> Vec4u {
+    match Surf::open(m, c) {
+        Some(s) => s.at(x::vd_pos(c, px, py)),
+        None => Vec4u { x: 0, y: 0, z: 0, w: 0 },
+    }
 }
 
 /// A deterministic frame source: moving colour bars and a bouncing box, a function of (seed, sequence).

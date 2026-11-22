@@ -15,6 +15,8 @@ pub mod deco;
 pub mod describe;
 pub mod elem;
 pub mod entity;
+// (rethink/fx) the non-generic style and motion surface over the paint lane's flat bank, and page transitions
+pub mod fx_api;
 pub mod input;
 pub mod inspect;
 pub mod lanes;
@@ -26,6 +28,7 @@ pub mod lower;
 pub mod listview;
 pub mod ltemplate;
 pub mod mlist;
+pub mod pages;
 pub mod reader;
 pub mod reflect;
 pub mod rethink;

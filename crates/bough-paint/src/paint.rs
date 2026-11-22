@@ -99,12 +99,16 @@ pub enum Glue {
     /// A leased frame of the media pool (`media.rs`).
     Video,
     Author(&'static crate::author::Module),
+    /// A 256-entry colour table in the scene's table region (`Scene::lut`): two words per pixel.
+    Ramp,
+    /// A retained surface of the media pool with its pyramid (`media::Pool::surface`).
+    Mip,
 }
 
 impl PartialEq for Glue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::None, Self::None) | (Self::Backdrop, Self::Backdrop) | (Self::Video, Self::Video) => true,
+            (Self::None, Self::None) | (Self::Backdrop, Self::Backdrop) | (Self::Video, Self::Video) | (Self::Ramp, Self::Ramp) | (Self::Mip, Self::Mip) => true,
             (Self::Author(a), Self::Author(b)) => std::ptr::eq(*a, *b),
             _ => false,
         }
@@ -128,6 +132,12 @@ pub trait Sink {
     fn video(&mut self, c: Cmd);
     /// A user shader node (`ops::p_user`).
     fn user(&mut self, c: Cmd);
+    /// A table gradient (`ops::p_ramp`): linear, radial or conic, any number of stops.
+    fn ramp(&mut self, c: Cmd);
+    /// An inset shadow (`ops::p_inset`).
+    fn inset(&mut self, c: Cmd);
+    /// A retained surface read through its pyramid (`ops::mk_mip`).
+    fn mip(&mut self, c: Cmd);
     fn author(&mut self, c: Cmd, _program: crate::author::ColourFn) {
         self.user(c);
     }
@@ -194,7 +204,7 @@ fn swept_window<B: Expr<Out = Vec4i>>(b: &B, cx: &Cx, margin: i32) -> Option<Vec
 /// `prim!(Name: sink_method = mk_leaf, p_leaf(field: Type: Out: moves_window, ..); full = [colour operands
 /// whose full alpha makes the core a cover, with their positions]; cover = ..; cost = ..)`.
 macro_rules! prim {
-    ($(#[$m:meta])* $name:ident : $sink:ident = $mk:ident, $p:ident ( $($f:ident : $T:ident : $ty:ty : $geom:literal),* ); full = [$($ff:ident : $FT:ident = $fi:literal),*]; cover = $cov:literal; cost = $cost:expr; glyph = $gl:literal; window = $b:ident + $margin:literal) => {
+    ($(#[$m:meta])* $name:ident : $sink:ident = $mk:ident, $p:ident ( $($f:ident : $T:ident : $ty:ty : $geom:literal),* ); full = [$($ff:ident : $FT:ident = $fi:literal),*]; cover = $cov:literal; cost = $cost:expr; glyph = $gl:literal; window = $b:ident + $margin:literal $(; glue = $glue:expr)?) => {
         $(#[$m])*
         #[repr(C)]
         #[derive(Clone, Copy)]
@@ -210,7 +220,7 @@ macro_rules! prim {
             const OPAQUE_CORE: bool = $cov $(&& $FT::MAY)*;
             const COST: Cost = $cost;
             const LAYERS: usize = 1;
-            const CODE: &'static PCode = &PCode::Prim { mk: stringify!($mk), p: stringify!($p), args: &[$($T::CODE),*], tys: &[$(<$ty as Val>::TY),*], glyph: $gl, opaque: Self::OPAQUE_CORE, full: &[$($fi),*], tab: false, glue: Glue::None };
+            const CODE: &'static PCode = &PCode::Prim { mk: stringify!($mk), p: stringify!($p), args: &[$($T::CODE),*], tys: &[$(<$ty as Val>::TY),*], glyph: $gl, opaque: Self::OPAQUE_CORE, full: &[$($fi),*], tab: false, glue: prim!(@glue $($glue)?) };
             fn motion_hull(&self, cx: &Cx) -> Option<Vec4i> {
                 swept_window(&self.$b, cx, $margin)
             }
@@ -239,6 +249,8 @@ macro_rules! prim {
             }
         }
     };
+    (@glue) => { Glue::None };
+    (@glue $glue:expr) => { $glue };
 }
 
 prim!(/// A solid box (no antialiasing: pixels whose centres it holds).
@@ -411,6 +423,18 @@ prim!(/// An author shader node filling a rounded box: `id` picks the function (
     /// `now` is its clock (any expression: the frame clock, a scaled clock, a constant for a still), `c`
     /// and `c2` its two colours. It is damaged where it shows and only when one of these moves.
     Shader: user = mk_user, p_user(b: B: Vec4i: true, r: R: i32: true, id: I: u32: false, now: N: u32: false, c: C: Vec4u: false, c2: D: Vec4u: false); full = []; cover = false; cost = Cost::PerPixel; glyph = false; window = b + 256);
+
+prim!(/// An N-stop gradient in a rounded box, read from a 256-entry table (`Scene::lut`): `kind` is
+    /// `ops::RAMP_LINEAR`, `RAMP_RADIAL` or `RAMP_CONIC`, `p` and `q` its geometry (`ops::mk_ramp`), `op` its
+    /// opacity (Q15). `cov` is never drawn: a colour whose alpha is full exactly when the table is opaque and
+    /// `op` is ONE, which is what lets the box cover what is beneath it.
+    Ramp: ramp = mk_ramp, p_ramp(b: B: Vec4i: true, r: R: i32: true, kind: K: u32: false, p: P: Vec4i: false, q: Q: Vec4i: false, lut: T: u32: false, op: O: u32: false, cov: C: Vec4u: false); full = [cov: C = 7]; cover = true; cost = Cost::PerPixel; glyph = false; window = b + 256; glue = Glue::Ramp);
+prim!(/// The inset shadow of a rounded box: `spread`, (`dx`, `dy`) and `blur` (two sigma) as CSS gives them.
+    Inset: inset = mk_inset, p_inset(b: B: Vec4i: true, r: R: i32: true, spread: SP: i32: true, dx: X: i32: true, dy: Y: i32: true, blur: S: i32: true, c: C: Vec4u: false); full = []; cover = false; cost = Cost::Wide; glyph = false; window = b + 256);
+prim!(/// A retained surface (`media::Pool::surface`) scaled into a rounded box, blurred by `blur` (Q8 texels, a
+    /// standard deviation) through its pyramid, under opacity `op` (Q15). Changing `blur` or `op` rewrites
+    /// one record word: the surface and its pyramid are not touched.
+    Mip: mip = mk_mip, p_video(b: B: Vec4i: true, r: R: i32: true, slot: S: u32: false, dims: M: u32: false, op: O: u32: false, blur: L: i32: false); full = []; cover = false; cost = Cost::PerPixel; glyph = false; window = b + 256; glue = Glue::Mip);
 
 /// An application's validated integer colour function and its declared read operands.
 #[repr(C)]
@@ -797,8 +821,26 @@ impl Sink for LaySink {
     fn video(&mut self, _: Cmd) {}
     #[inline(always)]
     fn user(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn ramp(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn inset(&mut self, _: Cmd) {}
+    #[inline(always)]
+    fn mip(&mut self, _: Cmd) {}
 }
 impl Sink for WinSink {
+    #[inline(always)]
+    fn ramp(&mut self, c: Cmd) {
+        self.add(c)
+    }
+    #[inline(always)]
+    fn inset(&mut self, c: Cmd) {
+        self.add(c)
+    }
+    #[inline(always)]
+    fn mip(&mut self, c: Cmd) {
+        self.add(c)
+    }
     #[inline(always)]
     fn backdrop(&mut self, c: Cmd) {
         self.add(c);
@@ -901,7 +943,36 @@ impl SpecSink<'_> {
         self.acc = x::x_over(self.acc, sh);
     }
 }
+/// The two table words and the weight (`ops::gl_at`) a ramp reads at one pixel; `None` when its handle
+/// names no table (the pixel is then transparent, on every executor).
+#[inline(always)]
+pub fn ramp_taps(c: Cmd, x: i32, y: i32, tabs: &[u32]) -> Option<(u32, u32, u32)> {
+    let at = x::gl_at(c, x, y);
+    let base = c.par.z.wrapping_add(at >> 16) as usize;
+    if base >= crate::scene::TAB_WORDS - 3 || base + 1 >= tabs.len() {
+        return None;
+    }
+    Some((tabs[base], tabs[base + 1], at & 0xFFFF))
+}
 impl Sink for SpecSink<'_> {
+    #[inline(always)]
+    fn ramp(&mut self, c: Cmd) {
+        if x::x_in(c.win, self.x, self.y) {
+            if let Some((w0, w1, at)) = ramp_taps(c, self.x, self.y, self.tabs) {
+                self.put(x::p_ramp(c, self.x, self.y, w0, w1, at))
+            }
+        }
+    }
+    #[inline(always)]
+    fn inset(&mut self, c: Cmd) {
+        self.put(x::p_inset(c, self.x, self.y))
+    }
+    #[inline(always)]
+    fn mip(&mut self, c: Cmd) {
+        if x::x_in(c.win, self.x, self.y) {
+            self.put(x::p_video(c, self.x, self.y, crate::media::sample_mip(self.media, c, self.x, self.y)))
+        }
+    }
     #[inline(always)]
     fn solid(&mut self, c: Cmd) {
         self.put(x::p_solid(c, self.x, self.y))
@@ -976,6 +1047,9 @@ impl Sink for StageSink<'_> {
     /// (its oracle is `Scene::spec`). A user node is the kernel's own.
     fn backdrop(&mut self, _: Cmd) {}
     fn video(&mut self, _: Cmd) {}
+    fn ramp(&mut self, _: Cmd) {}
+    fn inset(&mut self, _: Cmd) {}
+    fn mip(&mut self, _: Cmd) {}
     fn user(&mut self, c: Cmd) {
         self.add(c)
     }

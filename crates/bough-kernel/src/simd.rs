@@ -135,3 +135,107 @@ pub fn q15_row(t: &[u8], out: &mut [u16]) -> bool {
     }
     any != 0
 }
+
+/// A stored pixel (BGRA8, premultiplied) as Q15 channels in accumulator order.
+#[inline(always)]
+fn unstore1(w: u32) -> wgsl_rs::std::Vec4u {
+    wgsl_rs::std::Vec4 { x: k::q15((w >> 16) & 255), y: k::q15((w >> 8) & 255), z: k::q15(w & 255), w: k::q15(w >> 24) }
+}
+/// `acc = blend(acc, scale(unstore(src[x]), op))` over a span: a row of stored premultiplied BGRA8 pixels
+/// (a retained surface, an image) under an opacity. `mul15(v, ONE) == v`, so a full opacity needs no branch.
+#[inline(always)]
+pub fn blend_bgra(row: &mut [[u16; 4]], src: &[u32], op: u16) {
+    debug_assert_eq!(row.len(), src.len());
+    let (quads, rest) = row.as_chunks_mut::<4>();
+    let (sq, sr) = src.as_chunks::<4>();
+    let o = V::splat(op);
+    for (q, s) in quads.iter_mut().zip(sq) {
+        if s[0] | s[1] | s[2] | s[3] == 0 {
+            continue;
+        }
+        let mut b = [0u8; 16];
+        for (d, w) in b.as_chunks_mut::<4>().0.iter_mut().zip(s) {
+            *d = w.to_le_bytes();
+        }
+        let t = simd_swizzle!(Simd::<u8, 16>::from_array(b), [2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15]).cast::<u16>();
+        // k::q15 in 16-bit lanes (255 -> 32768 fits)
+        let v = (t << 7) + (t >> 1) + (t >> 7);
+        let a = V::from_array(*q.as_flattened().first_chunk().unwrap());
+        q.as_flattened_mut().copy_from_slice(&over4(a, mul15(v, o)).to_array());
+    }
+    for (px, &w) in rest.iter_mut().zip(sr) {
+        *px = st1(k::blend(ld1(px), k::scale(unstore1(w), op as u32)));
+    }
+}
+
+/// `acc = blend(acc, scale(sh[x], op))` over a span: a row of Q15 colours under an opacity.
+#[inline(always)]
+pub fn blend_rows(row: &mut [[u16; 4]], sh: &[[u16; 4]], op: u16) {
+    debug_assert_eq!(row.len(), sh.len());
+    let (quads, rest) = row.as_chunks_mut::<4>();
+    let (sq, sr) = sh.as_chunks::<4>();
+    let o = V::splat(op);
+    for (q, s) in quads.iter_mut().zip(sq) {
+        let v = V::from_array(*s.as_flattened().first_chunk().unwrap());
+        let a = V::from_array(*q.as_flattened().first_chunk().unwrap());
+        q.as_flattened_mut().copy_from_slice(&over4(a, mul15(v, o)).to_array());
+    }
+    for (px, s) in rest.iter_mut().zip(sr) {
+        *px = st1(k::blend(ld1(px), k::scale(ld1(s), op as u32)));
+    }
+}
+
+type Q = Simd<u32, 4>;
+/// A stored pixel as four Q15 lanes in accumulator order (`unstore1`).
+#[inline(always)]
+fn unstore4(w: u32) -> Q {
+    let t = simd_swizzle!(Simd::<u8, 4>::from_array(w.to_le_bytes()), [2, 1, 0, 3]).cast::<u32>();
+    (t << 7) + (t >> 1) + (t >> 7)
+}
+/// Four stored pixels under bilinear weights (Q8 fractions), as Q15 channels: the layers' and the
+/// surfaces' read (`ops::bd_bil`), a channel a lane. The weights sum to 2^16 and a channel is at most
+/// 2^15, so a lane's sum fits 32 bits, as the scalar form's does.
+#[inline(always)]
+pub fn bil_bgra(t: [u32; 4], fx: u32, fy: u32) -> [u32; 4] {
+    let (w0, w1, w2, w3) = ((256 - fx) * (256 - fy), fx * (256 - fy), (256 - fx) * fy, fx * fy);
+    ((unstore4(t[0]) * Q::splat(w0) + unstore4(t[1]) * Q::splat(w1) + unstore4(t[2]) * Q::splat(w2) + unstore4(t[3]) * Q::splat(w3)) >> Q::splat(16)).to_array()
+}
+/// `k::mix4u(a, b, t)`: `scale(a, ONE - t) + scale(b, t)`, a channel a lane.
+#[inline(always)]
+pub fn mix15(a: [u32; 4], b: [u32; 4], t: u32) -> [u32; 4] {
+    let h = Q::splat(k::HALF);
+    (((Q::from_array(a) * Q::splat(k::ONE - t) + h) >> Q::splat(15)) + ((Q::from_array(b) * Q::splat(t) + h) >> Q::splat(15))).to_array()
+}
+
+/// Four premultiplied RGBA8 words (red in the low byte: a colour table's entries) as Q15 lanes.
+#[inline(always)]
+fn rgba4(w: &[u32; 4]) -> V {
+    let mut b = [0u8; 16];
+    for (d, w) in b.as_chunks_mut::<4>().0.iter_mut().zip(w) {
+        *d = w.to_le_bytes();
+    }
+    let t = Simd::<u8, 16>::from_array(b).cast::<u16>();
+    (t << 7) + (t >> 1) + (t >> 7)
+}
+#[inline(always)]
+fn rgba1(w: u32) -> wgsl_rs::std::Vec4u {
+    wgsl_rs::std::Vec4 { x: k::q15(w & 255), y: k::q15((w >> 8) & 255), z: k::q15((w >> 16) & 255), w: k::q15(w >> 24) }
+}
+/// `acc = blend(acc, scale(mix4u(rgba15(w0[x]), rgba15(w1[x]), t[x]), op))` over a span: a table
+/// gradient's row from the two table words and the weight (Q15) each pixel reads (`ops::gl_color`).
+#[inline(always)]
+pub fn blend_ramp(row: &mut [[u16; 4]], w0: &[u32], w1: &[u32], t: &[u16], op: u16) {
+    debug_assert!(row.len() == w0.len() && row.len() == w1.len() && row.len() == t.len());
+    let (quads, rest) = row.as_chunks_mut::<4>();
+    let ((aq, ar), (bq, br), (tq, tr)) = (w0.as_chunks::<4>(), w1.as_chunks::<4>(), t.as_chunks::<4>());
+    let (o, one) = (V::splat(op), V::splat(k::ONE as u16));
+    for (((q, a), b), t) in quads.iter_mut().zip(aq).zip(bq).zip(tq) {
+        let tt = per_px(*t);
+        let v = mul15(rgba4(a), one - tt) + mul15(rgba4(b), tt);
+        let acc = V::from_array(*q.as_flattened().first_chunk().unwrap());
+        q.as_flattened_mut().copy_from_slice(&over4(acc, mul15(v, o)).to_array());
+    }
+    for (((px, &a), &b), &t) in rest.iter_mut().zip(ar).zip(br).zip(tr) {
+        *px = st1(k::blend(ld1(px), k::scale(k::mix4u(rgba1(a), rgba1(b), t as u32), op as u32)));
+    }
+}
