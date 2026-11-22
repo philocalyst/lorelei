@@ -253,6 +253,12 @@ impl PoolMem {
 }
 
 impl Layers {
+    /// Forget every layer; the pool's reservation stays where it is (an executor may have wrapped it).
+    pub fn reset(&mut self) {
+        let pool = std::mem::take(&mut self.pool);
+        let (epoch, alloc_epoch) = (self.epoch, self.alloc_epoch);
+        *self = Layers { pool, epoch: epoch + 1, alloc_epoch: alloc_epoch + 1, moved_all: true, ..Default::default() };
+    }
     /// The layers whose table row changed since the last call (`None`: assume every one).
     pub fn take_moved(&mut self) -> Option<Vec<u32>> {
         let m = std::mem::take(&mut self.moved);
@@ -680,5 +686,151 @@ impl Isolated {
             None
         };
         IsolatedFrame { child, published, pending: self.pending }
+    }
+}
+
+/// Downsample the pixels `r` of level `k` of a retained surface (`media::Pool::surface`: `surf` is its
+/// words, level 0 first) from level `k - 1`. Returns whether a word changed.
+pub fn down_flat(surf: &mut [u32], w: u32, h: u32, k: u32, r: [i32; 4]) -> bool {
+    let (sw, sh) = (x::bd_dim(w, k - 1), x::bd_dim(h, k - 1));
+    let (dw, dh) = (x::bd_dim(w, k), x::bd_dim(h, k));
+    let (so, d0) = (x::mp_off(w as i32, h as i32, k - 1) as usize, x::mp_off(w as i32, h as i32, k) as usize);
+    let r = cut(r, [0, 0, dw, dh]);
+    let mut changed = false;
+    for y in r[1]..r[3] {
+        for xx in r[0]..r[2] {
+            let mut rows = [Vec4 { x: 0, y: 0, z: 0, w: 0 }; 4];
+            for (j, row) in rows.iter_mut().enumerate() {
+                let sy = (2 * y - 1 + j as i32).clamp(0, sh - 1);
+                let t = |i: i32| surf[so + (sy * sw + (2 * xx - 1 + i).clamp(0, sw - 1)) as usize];
+                *row = x::dn_row(t(0), t(1), t(2), t(3));
+            }
+            let v = x::dn_fin(rows[0], rows[1], rows[2], rows[3]);
+            let at = d0 + (y * dw + xx) as usize;
+            if surf[at] != v {
+                surf[at] = v;
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
+/// A retained group's surface: a child scene painted into a surface of its parent's media pool, which the
+/// parent composites with one record (`paint::Image` for the surface as it is, `paint::Mip` to blur it
+/// through its pyramid). It is what group opacity, an element blur and a page in transition are made of.
+///
+/// * The child is repainted **in place, at the grain of its own damage**: a small change in the child
+///   shades the tiles it damaged straight into the surface (the pool is the memory the GPU binds, so that
+///   is also the whole of the upload) and repairs the pyramid blocks those tiles reach, stopping where a
+///   block comes out as it was. The pixel rects that changed are returned for the parent, which damages its
+///   record there and nowhere else (`Scene::damage_part`).
+/// * An idle child costs nothing: no tile, no block, no parent damage. The parent may change the record's
+///   opacity, blur, box or corner radius every frame (an animation, a page transition) without the child
+///   being asked anything: the blurred content is retained under its content, not under its use.
+pub struct Surface {
+    slot: u32,
+    pool: u64,
+    w: u32,
+    h: u32,
+    top: u32,
+    dirty: Blocks,
+    next: Blocks,
+    /// Bumped by every repair that changed a pixel: the content revision the pyramid is retained under.
+    pub revision: u64,
+}
+
+/// What one repair of a retained group did.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RetainedFrame {
+    pub child: crate::scene::FrameStats,
+    /// Level-0 tiles repainted, pyramid blocks recomputed, and of those the ones left as they were.
+    pub tiles: u32,
+    pub blocks: u32,
+    pub blocks_same: u32,
+}
+
+impl Surface {
+    /// A `w` x `h` surface with pyramid levels 1 ..= `top` (0: none, for a group that is never blurred;
+    /// `ops::BD_LMAX` admits any blur). `None` when it does not fit the pool.
+    pub fn new(w: u32, h: u32, media: &mut crate::media::Pool, top: u32) -> Option<Self> {
+        let slot = media.surface(w, h, top)?;
+        Some(Self { slot, pool: media.identity(), w, h, top, dirty: Blocks::default(), next: Blocks::default(), revision: 0 })
+    }
+    /// The slot word and the dims word of the record that shows the group.
+    pub fn handle(&self) -> u32 {
+        self.slot
+    }
+    pub fn dimensions(&self) -> u32 {
+        self.w | self.h << 16
+    }
+    pub fn size(&self) -> (u32, u32) {
+        (self.w, self.h)
+    }
+    pub fn top(&self) -> u32 {
+        self.top
+    }
+    /// How far (surface pixels) a changed pixel reaches in a read blurred by `blur` (Q8, as the record
+    /// holds it): the taps of the levels that read is made from.
+    pub fn reach(&self, blur: i32) -> i32 {
+        let lv = x::bd_level(blur);
+        let l = ((lv.x + (lv.y != 0) as i32) as u32).min(self.top);
+        (3 << l) + 1
+    }
+    /// Repaint what `child` (a scene of this surface's size; the same one every time) damaged and repair
+    /// the pyramid above it. `changed` receives the surface pixel rects whose level 0 was repainted
+    /// (nothing pushed: the group is as it was).
+    pub fn repair(&mut self, child: &mut crate::scene::Scene, u: &crate::expr::U, media: &mut crate::media::Pool, workers: &bough_kernel::cpu::Pool, extra: usize, changed: &mut Vec<[i32; 4]>) -> RetainedFrame {
+        assert_eq!(media.identity(), self.pool, "a retained group is repaired in the pool it was made in");
+        assert_eq!((child.fw, child.fh), (self.w, self.h), "the child scene is not the surface's size");
+        let (w, h) = (self.w, self.h);
+        let surf = media.surface_mut(self.slot).expect("the group's surface");
+        let fs = child.frame(u, &mut surf[..(w * h) as usize], w as usize, workers, extra);
+        let mut out = RetainedFrame { child: fs, tiles: fs.tiles, ..Default::default() };
+        if fs.tiles == 0 {
+            return out;
+        }
+        self.revision += 1;
+        let tx = child.tx as u32;
+        self.dirty.over([0, 0, w as i32, h as i32], 0);
+        for (i, &t) in child.last_tiles().iter().enumerate() {
+            let (bx, by) = ((t % tx) as i32, (t / tx) as i32);
+            self.dirty.set(bx, by);
+            if !(cfg!(feature = "mutant_group_tile") && i > 0) {
+                changed.push([bx * 32, by * 32, (bx * 32 + 32).min(w as i32), (by * 32 + 32).min(h as i32)]);
+            }
+        }
+        if cfg!(feature = "mutant_blur_stale") && self.revision > 1 {
+            return out;
+        }
+        for k in 1..=self.top {
+            // the blocks of this level whose taps reach a changed block of the level beneath
+            self.next.over([0, 0, x::bd_dim(w, k), x::bd_dim(h, k)], k);
+            dilate(&self.dirty, &mut self.next, k);
+            std::mem::swap(&mut self.dirty, &mut self.next);
+            let bs = bshift(k);
+            self.next.over([0, 0, x::bd_dim(w, k), x::bd_dim(h, k)], k);
+            let (next, mut n, mut same) = (&mut self.next, 0, 0);
+            self.dirty.each(|bx, by| {
+                n += 1;
+                if down_flat(surf, w, h, k, [bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs]) {
+                    next.set(bx, by);
+                } else {
+                    same += 1;
+                }
+            });
+            out.blocks += n;
+            out.blocks_same += same;
+            // only the blocks that changed go on to dirty the level above
+            std::mem::swap(&mut self.dirty, &mut self.next);
+            if self.dirty.n == 0 {
+                break;
+            }
+        }
+        out
+    }
+    /// Give the surface back to the pool (after the frame that stopped showing it).
+    pub fn release(self, media: &mut crate::media::Pool) {
+        media.release_surface(self.slot);
     }
 }

@@ -934,6 +934,48 @@ pub struct Scene {
     tab_jobs: Vec<TabJob>,
     patch_used: usize,
     patch_map: std::collections::HashMap<[u32; 4], u32>,
+    /// Colour tables by content hash (`Scene::lut`): handles of the tables with that hash.
+    lut_map: std::collections::HashMap<u64, Vec<u32>>,
+    lut_free: Vec<u32>,
+    luts: usize,
+    /// Pixel rects of records whose content changed without a record write (`Scene::damage_part`).
+    part: Vec<([i32; 4], u32)>,
+}
+
+/// Words of a colour table.
+pub const LUT_WORDS: usize = 256;
+
+/// A gradient's stops as a 256-entry table of premultiplied RGBA8 (entry i is the colour at i / 255), and
+/// whether every entry is opaque. `stops`: (position 0..1, straight RGBA8 with red in the low byte), in
+/// any order; positions are clamped and sorted (stable), as CSS resolves them. Colours are interpolated
+/// premultiplied. No stop: transparent; one stop: its colour throughout.
+pub fn bake_ramp(stops: &[(f32, u32)]) -> ([u32; LUT_WORDS], bool) {
+    let mut st: Vec<(f32, [f32; 4])> = stops
+        .iter()
+        .map(|&(t, c)| {
+            let a = (c >> 24) as f32 / 255.0;
+            (if t.is_finite() { t.clamp(0.0, 1.0) } else { 0.0 }, [(c & 255) as f32 * a, ((c >> 8) & 255) as f32 * a, ((c >> 16) & 255) as f32 * a, (c >> 24) as f32])
+        })
+        .collect();
+    st.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut out = [0u32; LUT_WORDS];
+    if st.is_empty() {
+        return (out, false);
+    }
+    let mut seg = 0;
+    for (i, o) in out.iter_mut().enumerate() {
+        let t = i as f32 / 255.0;
+        while seg + 1 < st.len() && st[seg + 1].0 <= t {
+            seg += 1;
+        }
+        let (a, b) = (st[seg], st[(seg + 1).min(st.len() - 1)]);
+        let f = if t <= a.0 || b.0 <= a.0 { 0.0 } else { ((t - a.0) / (b.0 - a.0)).clamp(0.0, 1.0) };
+        let ch = |k: usize| (a.1[k] + (b.1[k] - a.1[k]) * f).round().clamp(0.0, 255.0) as u32;
+        let al = ch(3);
+        *o = ch(0).min(al) | ch(1).min(al) << 8 | ch(2).min(al) << 16 | al << 24;
+    }
+    let opaque = out.iter().all(|w| w >> 24 == 255);
+    (out, opaque)
 }
 
 /// Words reserved for corner tables (16 MiB of address space; pages are touched only when a table is filled).
@@ -994,6 +1036,10 @@ impl Scene {
             tab_jobs: Vec::new(),
             patch_used: 0,
             patch_map: Default::default(),
+            lut_map: Default::default(),
+            lut_free: Vec::new(),
+            luts: 0,
+            part: Vec::new(),
             used: 0,
             cols: Vec::new(),
             order: Vec::new(),
@@ -1309,6 +1355,103 @@ impl Scene {
         self.patch_map.insert(key, handle);
         Some(handle)
     }
+    /// The handle of the colour table holding `words` (premultiplied RGBA8, `bake_ramp`), written into the
+    /// table region once per distinct content: every gradient with the same stops shares one table, on
+    /// both executors (the region is the arena the GPU already binds). `None` when the region is full.
+    pub fn lut_words(&mut self, words: &[u32; LUT_WORDS]) -> Option<u32> {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        words.hash(&mut h);
+        let key = h.finish();
+        let tb = self.tab_base;
+        if let Some(list) = self.lut_map.get(&key) {
+            for &handle in list {
+                if self.arena.words()[tb + handle as usize..tb + handle as usize + LUT_WORDS] == words[..] {
+                    return Some(handle);
+                }
+            }
+        }
+        let handle = match self.lut_free.pop() {
+            Some(handle) => handle,
+            None => {
+                if self.tab_used + LUT_WORDS > TAB_WORDS - PATCH_WORDS {
+                    return None;
+                }
+                self.tab_used += LUT_WORDS;
+                (self.tab_used - LUT_WORDS) as u32
+            }
+        };
+        self.arena.words_mut()[tb + handle as usize..tb + handle as usize + LUT_WORDS].copy_from_slice(words);
+        self.lut_map.entry(key).or_default().push(handle);
+        self.luts += 1;
+        Some(handle)
+    }
+    /// The table for `stops` (`bake_ramp`) and whether it is opaque.
+    pub fn lut(&mut self, stops: &[(f32, u32)]) -> Option<(u32, bool)> {
+        let (words, opaque) = bake_ramp(stops);
+        Some((self.lut_words(&words)?, opaque))
+    }
+    /// Give a table back: no record may name `handle` any more. Its words are reused by the next new table.
+    pub fn lut_release(&mut self, handle: u32) {
+        let mut found = false;
+        self.lut_map.retain(|_, list| {
+            let n = list.len();
+            list.retain(|&h| h != handle);
+            found |= list.len() != n;
+            !list.is_empty()
+        });
+        if found {
+            self.lut_free.push(handle);
+            self.luts -= 1;
+        }
+    }
+    /// Distinct colour tables the scene holds.
+    pub fn luts(&self) -> usize {
+        self.luts
+    }
+    /// The content record `z` shows changed inside the pixel rect `r` without a record write (a retained
+    /// surface repainted in place): the next `update` damages `r` cut to the record's window, and it is an
+    /// event for the layers above, exactly as a rewrite is, but for those pixels only.
+    pub fn damage_part(&mut self, z: u32, r: [i32; 4]) {
+        if r[0] < r[2] && r[1] < r[3] && (z as usize) < self.order.len() {
+            self.part.push((r, z));
+        }
+    }
+    /// Forget every record, keeping the columns (so an executor bound to this scene stays valid: re-`sync`
+    /// it), the tables and the media pool. The next frame is a first frame.
+    pub fn clear_records(&mut self) {
+        for c in self.cols.iter_mut() {
+            c.len = 0;
+            c.active.clear();
+        }
+        self.order.clear();
+        self.win.clear();
+        self.cover.clear();
+        self.halo.clear();
+        self.layers.reset();
+        self.plan = layer::Plan::default();
+        self.events.clear();
+        self.regeo.clear();
+        self.lay_todo.clear();
+        for sc in self.scrolls.iter_mut().flatten() {
+            sc.rows.clear();
+            sc.at.clear();
+            sc.unbounded.clear();
+        }
+        for k in self.keys.iter_mut().flatten() {
+            k.by_id.clear();
+            k.id.clear();
+        }
+        self.touched.clear();
+        self.part.clear();
+        self.lane_dirty.clear();
+        self.lane_mark.clear();
+        self.lane_all = true;
+        self.world_frame = false;
+        self.bins = Bins::default();
+        self.bins_epoch += 1;
+        self.first = true;
+    }
     /// Bytes of retained Q15 shadow coverage in this scene.
     pub fn shadow_coverage_bytes(&self) -> usize {
         4 * self.patch_used
@@ -1451,6 +1594,18 @@ impl Scene {
         }
         touched.clear();
         self.touched = touched;
+        let mut part = std::mem::take(&mut self.part);
+        if !first {
+            for &(r, z) in &part {
+                let w = self.win[z as usize];
+                let c = [r[0].max(w[0] as i32), r[1].max(w[1] as i32), r[2].min(w[2] as i32), r[3].min(w[3] as i32)];
+                if c[0] < c[2] && c[1] < c[3] {
+                    pass!().mark([c[0] as i16, c[1] as i16, c[2] as i16, c[3] as i16], z);
+                }
+            }
+        }
+        part.clear();
+        self.part = part;
         // the clock alone never sends a pass over a whole column: its readers said when they stop
         let tbit = 1u64 << U_TIME;
         // a broad word is not differentiated: it damages the frame as one fact (below)

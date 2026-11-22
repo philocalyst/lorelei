@@ -103,6 +103,26 @@ static metal::uint4 bgra_px(const device uint* M, Cmd c, int px, int py) {
     uint x0 = vd_ix(t.x, 0, width), x1 = vd_ix(t.x, 1, width), y0 = vd_ix(t.y, 0, height), y1 = vd_ix(t.y, 1, height);
     return bd_bil(pixels[y0 * uint(width) + x0], pixels[y0 * uint(width) + x1], pixels[y1 * uint(width) + x0], pixels[y1 * uint(width) + x1], uint(t.x & 255), uint(t.y & 255));
 }
+// a retained surface read through its pyramid (`media::sample_mip`)
+static metal::uint4 mip_read(const device uint* M, uint at, int w, int h, uint k, metal::int2 t) {
+    int dw = bd_dim(uint(w), k), dh = bd_dim(uint(h), k);
+    const device uint* P = M + at + 8u + mp_off(w, h, k);
+    int tx = mp_pos(t.x, k), ty = mp_pos(t.y, k);
+    uint x0 = vd_ix(tx, 0, dw), x1 = vd_ix(tx, 1, dw), y0 = vd_ix(ty, 0, dh), y1 = vd_ix(ty, 1, dh);
+    return bd_bil(P[y0 * uint(dw) + x0], P[y0 * uint(dw) + x1], P[y1 * uint(dw) + x0], P[y1 * uint(dw) + x1], uint(tx & 255), uint(ty & 255));
+}
+static metal::uint4 mip_px(const device uint* POOL, const device uint* LT, const device uint* M, Cmd c, int px, int py) {
+    uint at = c_slot(c) & 0x7FFFFFFFu;
+    int w = c_vw(c), h = c_vh(c);
+    if (at > MEDIALIM - 7u || M[at + 7u] != 0x41524742u || M[at] != uint(w) || M[at + 1u] != uint(h)) { return metal::uint4(0u); }
+    uint top = metal::min(M[at + 2u], 5u);
+    if (mp_off(w, h, top + 1u) > MEDIALIM - at - 7u) { return metal::uint4(0u); }
+    metal::int2 lv = mp_lvl(c, top);
+    metal::int2 t = vd_pos(c, px, py);
+    metal::uint4 v = mip_read(M, at, w, h, uint(lv.x), t);
+    if (lv.y != 0) { v = x_mixv(v, mip_read(M, at, w, h, uint(lv.x) + 1u, t), uint(lv.y)); }
+    return v;
+}
 static metal::uint4 vd_px(const device uint* POOL, const device uint* LT, const device uint* M, Cmd c, int px, int py) {
     if (c_slot(c) >= 0x80000000u) { return bgra_px(M, c, px, py); }
     uint at = metal::min(c_slot(c), MEDIALIM - 7u);
@@ -337,6 +357,16 @@ static inline metal::uint4 tab_shadow(const device uint* T, Cmd c, metal::int4 s
     }
     metal::uint4 taps = x_ctaps(c, x, y, corners);
     return p_shadowm(c, x, y, tab_v(T, handle, taps.x), tab_v(T, handle, taps.y), tab_v(T, handle, taps.z), tab_v(T, handle, taps.w));
+}
+"#,
+    );
+    s.push_str(
+        r#"// a ramp's table: the 256 words its handle names (`paint::ramp_taps`)
+static inline metal::uint4 ramp_px(const device uint* T, Cmd c, int x, int y) {
+    if (!x_in(c.win, x, y)) { return metal::uint4(0u); }
+    uint at = gl_at(c, x, y), base = c_tab(c) + (at >> 16u);
+    if (base >= TABLIM - 1u) { return metal::uint4(0u); }
+    return p_ramp(c, x, y, T[base], T[base + 1u], at & 0xFFFFu);
 }
 "#,
     );

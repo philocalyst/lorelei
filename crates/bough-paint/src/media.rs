@@ -30,6 +30,8 @@ enum State {
     Shown,
     /// Replaced: free after the next `reclaim` (the frame that stopped showing it has been drawn).
     Retired,
+    /// A retained surface: readable, and written in place by its one owner between frames.
+    Surface,
 }
 struct Slot {
     at: usize,
@@ -59,7 +61,7 @@ impl Pool {
         static NEXT_POOL: AtomicU64 = AtomicU64::new(1);
         Pool { identity: NEXT_POOL.fetch_add(1, Ordering::Relaxed), arena: Arena::new(words.max(VM_PAGE / 4)), used: 0, slots: Vec::new() }
     }
-    pub(crate) fn identity(&self) -> u64 {
+    pub fn identity(&self) -> u64 {
         self.identity
     }
     pub fn words(&self) -> &[u32] {
@@ -115,6 +117,38 @@ impl Pool {
         self.slots[slot].state = State::Shown;
         self.retire(previous);
         Some(at as u32 | BGRA_BIT)
+    }
+
+    /// A retained `width` x `height` premultiplied BGRA8 surface with pyramid levels 1 ..= `top` after it
+    /// (`ops::mp_off`), all transparent. Its handle is an image's slot word (`paint::Image` reads level 0,
+    /// `paint::Mip` the pyramid); its owner repaints it in place through [`Pool::surface_mut`], between
+    /// frames, so a small change writes a few tiles and nothing is copied or re-published.
+    pub fn surface(&mut self, width: u32, height: u32, top: u32) -> Option<u32> {
+        if !(1..=2047).contains(&width) || !(1..=2047).contains(&height) || top > x::BD_LMAX {
+            return None;
+        }
+        let words = x::mp_off(width as i32, height as i32, top + 1) as usize;
+        let slot = self.allocate(HDR + words)?;
+        let at = self.slots[slot].at;
+        let m = self.arena_mut();
+        m[at..at + HDR].copy_from_slice(&[width, height, top, 0, 0, 0, 0, BGRA_MAGIC]);
+        m[at + HDR..at + HDR + words].fill(0);
+        self.slots[slot].state = State::Surface;
+        Some(at as u32 | BGRA_BIT)
+    }
+    /// A surface's words (level 0, then each pyramid level), for its owner. `None` for any other handle.
+    pub fn surface_mut(&mut self, handle: u32) -> Option<&mut [u32]> {
+        let at = (handle & !BGRA_BIT) as usize;
+        let s = self.slots.iter().find(|s| s.at == at && s.state == State::Surface)?;
+        let words = s.words - HDR;
+        Some(&mut self.arena_mut()[at + HDR..at + HDR + words])
+    }
+    /// Give a surface back (after the frame that stopped showing it).
+    pub fn release_surface(&mut self, handle: u32) {
+        let at = (handle & !BGRA_BIT) as usize;
+        if let Some(s) = self.slots.iter_mut().find(|s| s.at == at && s.state == State::Surface) {
+            s.state = State::Retired;
+        }
     }
 
     fn arena_mut(&mut self) -> &mut [u32] {
@@ -207,6 +241,37 @@ fn sample_bgra(m: &[u32], c: Cmd, px: i32, py: i32) -> Vec4u {
         std::mem::swap(&mut colour.x, &mut colour.z);
     }
     colour
+}
+
+/// One level of a retained surface under bilinear weights at the level-0 texel position `t` (Q8).
+#[inline(always)]
+fn mip_read(pixels: &[u32], w: i32, h: i32, k: u32, t: wgsl_rs::std::Vec2i) -> Vec4u {
+    let (dw, dh) = (x::bd_dim(w as u32, k), x::bd_dim(h as u32, k));
+    let level = &pixels[x::mp_off(w, h, k) as usize..];
+    let (tx, ty) = (x::mp_pos(t.x, k), x::mp_pos(t.y, k));
+    let (x0, x1, y0, y1) = (x::vd_ix(tx, 0, dw), x::vd_ix(tx, 1, dw), x::vd_ix(ty, 0, dh), x::vd_ix(ty, 1, dh));
+    let px = |x: u32, y: u32| level[(y * dw as u32 + x) as usize];
+    x::bd_bil(px(x0, y0), px(x1, y0), px(x0, y1), px(x1, y1), (tx & 255) as u32, (ty & 255) as u32)
+}
+/// The retained surface a mip command names, read at frame pixel (px, py) through its pyramid: the level
+/// the command's blur asks for and, by its weight, the next. Transparent for a stale or forged slot word.
+#[inline(always)]
+pub fn sample_mip(m: &[u32], c: Cmd, px: i32, py: i32) -> Vec4u {
+    let clear = Vec4u { x: 0, y: 0, z: 0, w: 0 };
+    let at = (c.par.z & !BGRA_BIT) as usize;
+    let Some(header) = m.get(at..at + HDR) else { return clear };
+    let (w, h) = (c.pm.y as i32, c.pm.z as i32);
+    if header[7] != BGRA_MAGIC || header[0] != w as u32 || header[1] != h as u32 {
+        return clear;
+    }
+    let top = header[2].min(x::BD_LMAX);
+    let Some(pixels) = m.get(at + HDR..at + HDR + x::mp_off(w, h, top + 1) as usize) else { return clear };
+    let (lv, t) = (x::mp_lvl(c, top), x::vd_pos(c, px, py));
+    let v = mip_read(pixels, w, h, lv.x as u32, t);
+    if lv.y == 0 {
+        return v;
+    }
+    x::x_mixv(v, mip_read(pixels, w, h, lv.x as u32 + 1, t), lv.y as u32)
 }
 
 /// A deterministic frame source: moving colour bars and a bouncing box, a function of (seed, sequence).

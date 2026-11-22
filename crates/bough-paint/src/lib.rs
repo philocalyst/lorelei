@@ -14,6 +14,7 @@ pub mod expr;
 #[cfg(target_os = "macos")]
 pub mod driver;
 pub mod emit;
+pub mod flat_scene;
 pub mod layer;
 pub mod media;
 #[cfg(target_os = "macos")]
