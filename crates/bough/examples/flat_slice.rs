@@ -1,4 +1,4 @@
-//! The vertical slice (`examples/slice.rs`) written against the flat core's bindings (`bough::rethink::ui`):
+//! The vertical slice (`examples/slice.rs`) written against the flat core's bindings (`bough::flat::ui`):
 //! a title and a counter that are state words, a themed header with buttons, a scrolled list of hoverable
 //! rows, a translucent overlay. No view type, no generic element: every row is the same plain data.
 //!
@@ -6,8 +6,8 @@
 //! at run time (layout is computed at mount; `Add` appends nothing here and only counts), a resize that
 //! re-flows. `examples/flat_cost.rs` states this next to every number it prints for this file.
 use bough::layout::{Align, Styled};
-use bough::rethink::flat::{Slot, StrSlot, Val};
-use bough::rethink::ui::*;
+use bough::flat::{Slot, StrSlot, Val};
+use bough::flat::ui::*;
 
 pub const ROW_H: f32 = 28.0;
 pub const P_BG: u16 = 0;

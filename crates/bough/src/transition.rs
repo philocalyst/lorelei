@@ -357,7 +357,7 @@ where
     }
 }
 
-// ---- the same timings as values of the animation bank (`fx_api`) ----
+// ---- the same timings as values of the animation bank (`motion`) ----
 
 impl Ease {
     /// This easing as a cubic Bézier. Exact for the three plain cubics and for `Smooth` as a curve (a
@@ -375,14 +375,14 @@ impl Ease {
         }
     }
 }
-impl From<Curve> for crate::fx_api::AnimSpec {
+impl From<Curve> for crate::motion::AnimSpec {
     /// A curve's duration and easing as a motion of the animation bank. `Curve::smooth` promises that a
     /// retarget keeps the displayed velocity: that is a spring's property, so it becomes a critically
     /// damped spring that arrives in about the curve's duration.
     fn from(c: Curve) -> Self {
         match c.ease {
-            Ease::Smooth => crate::fx_api::AnimSpec::response((c.dur * 0.6).max(0.01), 1.0),
-            e => crate::fx_api::AnimSpec::ease((c.dur * 1000.0).round().max(0.0) as u32, bough_paint::motion::Ease::Bezier(e.bezier())),
+            Ease::Smooth => crate::motion::AnimSpec::response((c.dur * 0.6).max(0.01), 1.0),
+            e => crate::motion::AnimSpec::ease((c.dur * 1000.0).round().max(0.0) as u32, bough_paint::motion::Ease::Bezier(e.bezier())),
         }
     }
 }

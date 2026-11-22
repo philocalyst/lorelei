@@ -1,9 +1,9 @@
-//! Head-to-head benchmark for the non-generic flat core (`bough_x::flat::FlatWorld` + `DamageEngine`)
+//! Head-to-head benchmark for the non-generic flat core (`bough_flat::FlatWorld` over `bough-damage`)
 //! directly beside `typed-core.rs`: same 640x400 card grid, same cells (`startup`, `idle`, `one`, `many`,
 //! `theme`, plus `scroll` and `hover` which `typed-core`'s opaque-rect adapter could not even express!).
 use bough_sys::perf;
-use bough_x::flat::store::ROOT;
-use bough_x::flat::{Effect, FlatWorld, NoExt, RecordDesc, Rect, Slot, SpaceId, Val};
+use bough_flat::store::ROOT;
+use bough_flat::{Effect, FlatWorld, NoExt, RecordDesc, Rect, Slot, SpaceId, Val};
 use std::time::Instant;
 
 const W: i32 = 640;
@@ -74,7 +74,7 @@ fn build(n: usize, cell: &'static str) -> BenchWorld {
         let site = if cell == "hover" {
             world.add_site(1)
         } else {
-            bough_x::flat::NO_SITE
+            bough_flat::NO_SITE
         };
 
         let fill: Val = if cell == "hover" {
@@ -115,7 +115,7 @@ fn run(n: usize, cell: &'static str, check: bool, steps: usize) {
     let mut bw = build(n, cell);
     let a1 = perf::snap();
     println!(
-        "rethink_startup,{n},{cell},{},{},{},{}",
+        "flat_startup,{n},{cell},{},{},{},{}",
         start.elapsed().as_nanos(),
         a1.instrs.saturating_sub(a0.instrs).saturating_sub(overhead),
         a1.rss,
@@ -134,7 +134,7 @@ fn run(n: usize, cell: &'static str, check: bool, steps: usize) {
         let info = bw.world.frame();
         let a1 = perf::snap();
         println!(
-            "rethink_idle,{n},{},{},{},{}",
+            "flat_idle,{n},{},{},{},{}",
             a1.instrs.saturating_sub(a0.instrs).saturating_sub(overhead),
             a1.rss,
             a1.footprint,
@@ -197,15 +197,15 @@ fn run(n: usize, cell: &'static str, check: bool, steps: usize) {
             assert_eq!(
                 bw.world.pixels(),
                 full.px.as_slice(),
-                "rethink-core pixel mismatch on cell={cell} step={step}"
+                "flat-core pixel mismatch on cell={cell} step={step}"
             );
         }
     }
     if check {
-        assert!(any_dirty, "rethink-core cell={cell} never produced any dirty tiles!");
+        assert!(any_dirty, "flat-core cell={cell} never produced any dirty tiles!");
     }
     println!(
-        "rethink_summary,{n},{cell},{steps},{},{},{:.2}",
+        "flat_summary,{n},{cell},{steps},{},{},{:.2}",
         total_ns / steps as u128,
         total_instr / steps as u64,
         total_repair / steps as f64
@@ -215,7 +215,7 @@ fn run(n: usize, cell: &'static str, check: bool, steps: usize) {
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let [mode, count, cell, rest @ ..] = &args[..] else {
-        eprintln!("usage: rethink-core check|measure CARD_COUNT CELL [STEPS]");
+        eprintln!("usage: flat-core check|measure CARD_COUNT CELL [STEPS]");
         std::process::exit(2);
     };
     let steps = rest.first().and_then(|s| s.parse().ok()).unwrap_or(20);

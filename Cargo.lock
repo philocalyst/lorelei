@@ -113,6 +113,7 @@ version = "0.0.0"
 dependencies = [
  "block2",
  "bough-core",
+ "bough-flat",
  "bough-frame",
  "bough-fused",
  "bough-gpu",
@@ -191,6 +192,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bough-damage"
+version = "0.0.0"
+
+[[package]]
 name = "bough-damage-lab"
 version = "0.0.0"
 
@@ -211,6 +216,14 @@ version = "0.0.0"
 [[package]]
 name = "bough-face"
 version = "0.0.0"
+
+[[package]]
+name = "bough-flat"
+version = "0.0.0"
+dependencies = [
+ "bough-damage",
+ "bough-mem",
+]
 
 [[package]]
 name = "bough-frame"
@@ -286,6 +299,7 @@ name = "bough-inspect"
 version = "0.1.0"
 dependencies = [
  "bough-ax",
+ "bough-damage",
  "bough-expr",
  "bough-x",
  "libc",

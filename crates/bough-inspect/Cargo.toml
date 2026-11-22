@@ -10,6 +10,8 @@ description = "The inspector, agent/test socket and schema over the typed core (
 libc = "0.2"
 bough-x = { path = "../bough-x", features = ["inspect-metadata"] }
 bough-expr = { path = "../bough-expr" }
+# The damage engine's report, projected onto the protocol's damage map and frame profile (`hooks`).
+bough-damage = { path = "../bough-damage" }
 bough-ax = { path = "../bough-ax" }
 
 [features]

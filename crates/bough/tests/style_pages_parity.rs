@@ -1,23 +1,14 @@
-//! End-to-end integration test uniting ALL 5 rethink pillars:
-//! 1. Non-generic SoA core (`bough_x::flat::FlatWorld` + `bough::rethink::ui`)
-//! 2. Complete effects (`FlatScene`: stacked outer + inset shadows, linear/radial/conic LUT gradients,
-//!    backdrop blur glass panel, tile-grain retained group opacity)
-//! 3. Deeper animations & interruptible retained-layer `PageRouter` transitions with CPU == Metal parity
-//! 4. Unified `DamageEngine` (opaque cover culling, backdrop-blur dilation, rigid scroll blit)
-//! 5. Unified cross-crate telemetry (`bough::rethink::bridge`) feeding inspector JSON.
-
+//! A page that uses every part of a box's style at once (a conic backdrop, a linear card under two drop
+//! shadows and an inset one, a radial badge, a glass pane, an opaque panel), pushed by a blur reveal and
+//! popped in mid-flight: the CPU tile kernel, the specification and Metal must agree word for word on every
+//! frame of it.
 use bough::color::{rgb, Color};
-use bough::fx_api::*;
+use bough::motion::*;
 use bough::pages::*;
-use bough::rethink::bridge::{
-    inspect_flat_effects, step_unified_telemetry, sync_flat_scene_to_damage_engine,
-};
-use bough::rethink::ui::{column, div, row, text, FlatUi};
-use bough::layout::Styled;
+use bough::style::*;
 use bough_kernel::cpu::Pool;
 #[cfg(target_os = "macos")]
 use bough_paint::flat_scene::FlatGpu;
-use bough_x::damage_engine::{DamageEngine, Rect, Work};
 
 fn make_rich_page(w: u32, h: u32, accent: u32) -> FlatScene {
     let mut s = FlatScene::new(w, h, FlatConfig::default());
@@ -83,38 +74,23 @@ fn make_rich_page(w: u32, h: u32, accent: u32) -> FlatScene {
 }
 
 #[test]
-fn unified_all_five_pillars_cpu_metal_damage_and_telemetry() {
+fn a_styled_page_is_lowered_to_one_node_per_part() {
+    let scene = make_rich_page(320, 224, 0x1e3a8a);
+    let n = scene.kind_counts();
+    assert_eq!(n[EffectKind::Shadow as usize], 2);
+    assert_eq!(n[EffectKind::Inset as usize], 1);
+    // the conic backdrop, the linear card, the radial badge
+    assert_eq!(n[EffectKind::Ramp as usize], 3);
+    assert_eq!(n[EffectKind::Glass as usize], 1);
+    // the card's and the pane's
+    assert_eq!(n[EffectKind::Border as usize], 2);
+    assert_eq!(n[EffectKind::Solid as usize], 1);
+    assert_eq!(n.iter().sum::<u32>() as usize, scene.nodes());
+}
+
+#[test]
+fn an_interrupted_blur_reveal_is_the_same_on_cpu_spec_and_metal() {
     let (w, h) = (320u32, 224u32);
-    let scene = make_rich_page(w, h, 0x1e3a8a);
-
-    // 1. Verify full effects inventory on non-generic FlatScene
-    let fx = inspect_flat_effects(&scene);
-    assert_eq!(fx.drop_shadows, 2);
-    assert_eq!(fx.inset_shadows, 1);
-    assert_eq!(fx.linear_gradients, 1);
-    assert_eq!(fx.radial_gradients, 1);
-    assert_eq!(fx.conic_gradients, 1);
-    assert_eq!(fx.backdrop_blurs, 1);
-
-    // 2. Verify DamageEngine occlusion culling + blur propagation + rigid scroll synced from FlatScene
-    let mut engine = DamageEngine::new(w as i32, h as i32);
-    engine.begin_frame();
-    sync_flat_scene_to_damage_engine(&scene, &mut engine);
-    // Damage strictly behind the opaque modal at z=0 -> must be occluded!
-    engine.damage(0, Rect::new(224, 160, 288, 192), Work::Flat);
-    // Damage behind the backdrop blur glass panel -> must trigger blur propagation!
-    engine.damage(0, Rect::new(128, 96, 160, 128), Work::Flat);
-    // Rigid scroll on left band -> must emit ScrollBlit!
-    let blit = engine.scroll(0, 2, Rect::new(0, 0, 96, 224), 0, -16);
-    assert!(blit.is_some());
-    engine.resolve(&mut |_layer, rect| Some(rect));
-    let rep = engine.report();
-    assert!(rep.occluded_tiles_skipped > 0, "opaque modal must cull occluded tiles");
-    assert!(!rep.blur_blocks.is_empty(), "backdrop blur must produce dilated blur blocks");
-    assert!(!rep.scroll_blits.is_empty(), "rigid scroll must emit a scroll blit");
-    assert!(rep.to_json().contains("\"repair_percent\""));
-
-    // 3. Verify PageRouter with mid-flight interruption AND word-for-word CPU == Spec == Metal parity
     let mut router = PageRouter::new(w, h, RouterConfig::default()).expect("router");
     let p1 = router.add_page(make_rich_page(w, h, 0x1e3a8a)).expect("p1");
     let p2 = router.add_page(make_rich_page(w, h, 0x0f766e)).expect("p2");
@@ -133,7 +109,6 @@ fn unified_all_five_pillars_cpu_metal_damage_and_telemetry() {
     #[cfg(target_os = "macos")]
     let mut gpu = unsafe { FlatGpu::new(twin.stage(), 256) };
 
-    let motion = Motion::new();
     for step in 0..12u64 {
         let now = ClockNs::from_ms(step * 16);
         if step == 5 {
@@ -141,17 +116,9 @@ fn unified_all_five_pillars_cpu_metal_damage_and_telemetry() {
             router.pop(now);
             twin.pop(now);
         }
-        let tel = step_unified_telemetry(
-            &scene,
-            &mut engine,
-            &mut router,
-            &motion,
-            &[(0, Rect::new(128, 96, 160, 128), Work::Flat)],
-            now,
-        );
         let _ = twin.tick(now);
-        assert!(tel.router_in_flight);
-        router.frame(now, &mut cpu_px, w as usize, &pool, 1);
+        let st = router.frame(now, &mut cpu_px, w as usize, &pool, 1);
+        assert!(st.animating, "the transition is still in flight at step {step}");
         router.stage_mut().spec(&mut spec_px, w as usize);
         assert_eq!(cpu_px, spec_px, "CPU != spec at step {step}");
         #[cfg(target_os = "macos")]
@@ -160,17 +127,4 @@ fn unified_all_five_pillars_cpu_metal_damage_and_telemetry() {
             assert_eq!(g.out(), spec_px.as_slice(), "Metal != spec at step {step}");
         }
     }
-
-    // 4. Verify non-generic FlatUi builder + zero-unsafe SoA core
-    let mut ui = FlatUi::new(320, 224, 1.0);
-    let count = ui.world.slot(0u32);
-    let root = column()
-        .w_pct(1.0)
-        .h_pct(1.0)
-        .bg(0xff10_141cu32)
-        .child(row().h(40.0).bg(0xff1b_2434u32).child(text("Unified Rethink").color(0xffff_ffffu32)))
-        .child(div().grow(1.0).bg(0xff14_1c28u32));
-    ui.mount(root);
-    ui.world.set(count, 42);
-    ui.check().expect("FlatUi oracle check passed");
 }

@@ -1,6 +1,6 @@
 //! Default, snapshot-derived provider implementations, shared by `Program`'s default hook methods.
 //!
-//! A root integration plugs a live `DamageEngine`, `FlatPaintScene` or `AnimBank` in by overriding the matching
+//! A root integration plugs a live `DamageEngine`, `FlatScene` or `AnimBank` in by overriding the matching
 //! `Program` method (see [`crate::session::Program`]); every method's default lives here and costs nothing more
 //! than reading the snapshot it already built.
 use crate::protocol::{
@@ -120,10 +120,10 @@ pub(crate) fn default_animations(_snap: &Snapshot) -> Vec<Animation> {
     Vec::new()
 }
 
-/// Convert a live `bough_x::damage_engine::DamageReport` into the inspector's `DamageMap`
+/// Convert a live `bough_damage::DamageReport` into the inspector's `DamageMap`
 /// (with real damaged tile rects, repair %, opaque-occluded skips, backdrop-blur dilation count,
 /// tile bitmap words, per-tile heat, and scroll blit vector).
-pub fn damage_map_from_report(report: &bough_x::damage_engine::DamageReport) -> DamageMap {
+pub fn damage_map_from_report(report: &bough_damage::DamageReport) -> DamageMap {
     let tile = report.tile.max(1);
     let w = report.width.max(0);
     let h = report.height.max(0);
@@ -190,9 +190,9 @@ pub fn damage_map_from_report(report: &bough_x::damage_engine::DamageReport) -> 
     }
 }
 
-/// Convert a live `bough_x::damage_engine::DamageReport` and measured phase timings into a `FrameProfile`.
+/// Convert a live `bough_damage::DamageReport` and measured phase timings into a `FrameProfile`.
 pub fn frame_profile_from_report(
-    report: &bough_x::damage_engine::DamageReport,
+    report: &bough_damage::DamageReport,
     input_us: u64,
     eval_us: u64,
     layout_us: u64,
@@ -202,9 +202,9 @@ pub fn frame_profile_from_report(
     allocated_bytes_warm: u64,
 ) -> FrameProfile {
     let executor = match report.choice {
-        bough_x::damage_engine::ExecutorChoice::Idle => "idle",
-        bough_x::damage_engine::ExecutorChoice::Cpu => "cpu",
-        bough_x::damage_engine::ExecutorChoice::Gpu => "metal",
+        bough_damage::ExecutorChoice::Idle => "idle",
+        bough_damage::ExecutorChoice::Cpu => "cpu",
+        bough_damage::ExecutorChoice::Gpu => "metal",
     };
     let total_us = input_us
         .saturating_add(eval_us)
@@ -239,7 +239,7 @@ pub fn frame_profile_from_report(
 #[cfg(test)]
 mod bridge_tests {
     use super::*;
-    use bough_x::damage_engine::{BlurLayer, DamageEngine, OpaqueCover, Rect, Work};
+    use bough_damage::{BlurLayer, DamageEngine, OpaqueCover, Rect, Work};
 
     #[test]
     fn damage_engine_report_bridges_to_inspector_protocol_and_heatmap() {

@@ -18,9 +18,9 @@
 //! binding moves or recolours a box, it does not re-flow its siblings); lengths in [`Styled`] are points.
 use crate::layout::{Spec, Styled};
 use bough_lay::heap::Tree;
-use bough_x::flat::raster::cell;
-use bough_x::flat::store::ROOT;
-use bough_x::flat::{Effect, FlatWorld, FrameInfo, Kind, NoExt, Rect, RecordDesc, Slot, SpaceId, StateBlock, TextSrc, Val};
+use bough_flat::raster::cell;
+use bough_flat::store::ROOT;
+use bough_flat::{Effect, FlatWorld, FrameInfo, Kind, NoExt, Rect, RecordDesc, Slot, SpaceId, StateBlock, TextSrc, Val};
 
 /// What a click runs: it writes state words; the next frame shows it.
 pub type Action = Box<dyn FnMut(&mut StateBlock)>;
@@ -95,7 +95,7 @@ pub fn num(prefix: &str, slot: Slot<u32>, suffix: &str, digits: usize) -> El {
     El { text: Some((TextSrc::Num { prefix: prefix.into(), slot: slot.id(), suffix: suffix.into() }, n)), fill: Val::Const(0xff00_0000), ..el(Spec::new(false, false)) }
 }
 /// A string of the state block's side table; laid out for up to `chars` characters.
-pub fn label(s: bough_x::flat::StrSlot, chars: usize) -> El {
+pub fn label(s: bough_flat::StrSlot, chars: usize) -> El {
     El { text: Some((TextSrc::Str(s), chars)), fill: Val::Const(0xff00_0000), ..el(Spec::new(false, false)) }
 }
 /// `n` children in a column, child `i` from `f(i)`.
@@ -226,7 +226,7 @@ impl FlatUi {
             Val::Const(c) => Val::Const((base + c as i32) as u32),
             Val::Slot(s) => {
                 let mut b = self.world.tape.build();
-                let (a, o) = (b.konst(base), b.slot(bough_x::flat::SlotId(s)));
+                let (a, o) = (b.konst(base), b.slot(bough_flat::SlotId(s)));
                 let r = b.add(a, o);
                 b.finish(r)
             }
@@ -242,7 +242,7 @@ impl FlatUi {
         let El { fill, hover, transition_ms, border, radius, opacity, effect, text, text_scale, kids, scroll, clip, click, shift, shift_scaled, solid, .. } = e;
         let w = &mut self.world;
         let mut depth = depth;
-        let mut site = bough_x::flat::NO_SITE;
+        let mut site = bough_flat::NO_SITE;
         let mut paint = fill;
         if let Some(on) = hover {
             site = w.add_site(depth.min(7));
@@ -252,7 +252,7 @@ impl FlatUi {
                 Val::Palette { slot, theme_slot } => Val::HoverPal { site, slot, theme_slot, on },
                 Val::Slot(s) => {
                     let mut b = w.tape.build();
-                    let (h, on, off) = (b.hovered(site), b.konst(on), b.slot(bough_x::flat::SlotId(s)));
+                    let (h, on, off) = (b.hovered(site), b.konst(on), b.slot(bough_flat::SlotId(s)));
                     let r = b.select(h, on, off);
                     b.finish(r)
                 }

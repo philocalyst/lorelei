@@ -7,7 +7,7 @@
 //! Columns:
 //! * `lowered`: `bough::lower::App<Slice>` (the prelude slice described as data onto `World<V, B>`).
 //! * `typed`: `bough::typed::App<Slice>` (the prelude slice on the typed-dataflow path).
-//! * `flat`: `bough::rethink::FlatApp<Slice>` (the same prelude slice, described as data onto the flat core).
+//! * `flat`: `bough::flat::FlatApp<Slice>` (the same prelude slice, described as data onto the flat core).
 //! * `flat-ui`: `examples/flat_slice.rs`, the slice written against the flat core's bindings. Its contract is
 //!   narrower and is not the other columns': the built-in 5 x 7 face instead of shaped text, every row
 //!   materialised (no virtual list), layout computed at mount. "insert" and "resize" have no cell there.
@@ -87,7 +87,7 @@ rt!(Typed, bough::typed::App<Slice>, |v| match bough::typed::App::new(v, cfg()) 
     Ok(a) => a,
     Err((_, why)) => panic!("the slice is not admitted to the typed path: {why:?}"),
 });
-rt!(Flat, bough::rethink::FlatApp<Slice>, |v| bough::rethink::FlatApp::new(v, cfg()));
+rt!(Flat, bough::flat::FlatApp<Slice>, |v| bough::flat::FlatApp::new(v, cfg()));
 
 /// (turn alone, turn + frame) medians of `op(k)` then `frame()`, net of the brackets' own cost.
 fn cell(mut op: impl FnMut(u32), mut frame: impl FnMut()) -> (u64, u64) {
@@ -229,7 +229,7 @@ fn main() {
         }
     }
     // what the flat columns' frames were made of
-    let mut app = bough::rethink::FlatApp::new(Slice::new(1000), cfg());
+    let mut app = bough::flat::FlatApp::new(Slice::new(1000), cfg());
     app.frame();
     let mut line = String::from("flat (prelude slice), last frame of each kind:");
     app.pointer_move(320.0, 200.0);
@@ -294,13 +294,13 @@ fn deep(tsv: bool) {
         Err((_, why)) => println!("{}the deep view is not admitted to the typed path: {why:?}", if tsv { "# " } else { "" }),
     }
     head.push("flat".to_string());
-    push(prelude!(bough::rethink::FlatApp::new(Deep::new(), dcfg())));
+    push(prelude!(bough::flat::FlatApp::new(Deep::new(), dcfg())));
     head.push("flat-ui".to_string());
     {
         let (ui, v) = flat_deep::mount(900, 1400);
         let ui = std::cell::RefCell::new(ui);
         ui.borrow_mut().frame();
-        let mut c = |op: &dyn Fn(&mut bough::rethink::ui::FlatUi, u32)| {
+        let mut c = |op: &dyn Fn(&mut bough::flat::ui::FlatUi, u32)| {
             cell(
                 |k| {
                     let mut ui = ui.borrow_mut();

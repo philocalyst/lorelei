@@ -2,8 +2,8 @@
 //! selection, a counter, a card with stacked shadows that moves, two overlapping glass panels, a fixed header
 //! over the list and an opaque cover over part of everything.
 #![allow(dead_code)]
-use bough_x::flat::store::ROOT;
-use bough_x::flat::*;
+use bough_flat::store::ROOT;
+use bough_flat::*;
 
 pub const W: i32 = 640;
 pub const H: i32 = 480;
@@ -102,7 +102,7 @@ impl Scene {
         }
         let w = &mut s.w;
         // a card with two stacked shadows whose blur is a state word; it moves with `card_x`
-        let fx = Effect::new().shadow(0, 0x5000_0000u32, 0, 6, shadow_blur, 2).shadow(1, 0x3020_10ffu32, -3, -2, 4, 0).gradient(1, 0xffd0_e0ffu32);
+        let fx = Effect::new().shadow(0, 0x5000_0000u32, 0, 6, shadow_blur, 2).shadow(1, 0x3020_10ffu32, -3, -2, 4, 0).gradient(GradDir::Down, 0xffd0_e0ffu32);
         let mut card = RecordDesc::rect(ROOT, Rect::new(0, 130, 120, 210), 0xffff_ffffu32).radius_px(10).effect(fx);
         card.x = card_x.into();
         s.card = w.add_record(card);

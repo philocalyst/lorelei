@@ -1,9 +1,9 @@
 //! The flat core's warm paths allocate nothing: a counting global allocator around turns and frames of each
 //! kind, after a warm-up of the same kinds. One test function: the counter is the process's.
-mod flat_common;
+mod common;
 use bough_mem::count::{Counting, allocs};
-use bough_x::flat::*;
-use flat_common::*;
+use bough_flat::*;
+use common::*;
 
 #[global_allocator]
 static A: Counting = Counting;

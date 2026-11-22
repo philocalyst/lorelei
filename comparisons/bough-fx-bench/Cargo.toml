@@ -11,6 +11,7 @@ default-run = "bough-fx-bench"
 bough = { path = "../../crates/bough" }
 bough-sys = { path = "../../crates/bough-sys" }
 bough-x = { path = "../../crates/bough-x", optional = true }
+bough-flat = { path = "../../crates/bough-flat" }
 
 [features]
 full-effects = []
@@ -22,9 +23,8 @@ path = "src/bin/typed-core.rs"
 required-features = ["typed-core"]
 
 [[bin]]
-name = "rethink-core"
-path = "src/bin/rethink-core.rs"
-required-features = ["typed-core"]
+name = "flat-core"
+path = "src/bin/flat-core.rs"
 
 [patch.crates-io]
 wgpu-hal = { path = "../../vendor/wgpu-hal" }

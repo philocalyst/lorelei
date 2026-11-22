@@ -1,15 +1,15 @@
 //! The deep heterogeneous view (`examples/deep_view.rs`: sixteen levels, each a different mix of flex, text,
 //! handlers, hover paint, translucent paint and reactive operands, each wrapping the next) written against the
-//! flat core's bindings (`bough::rethink::ui`). Its purpose is the same as the original's: to be built. Every
+//! flat core's bindings (`bough::flat::ui`). Its purpose is the same as the original's: to be built. Every
 //! level here returns the one element type, so there is nothing for the compiler to monomorphise per level.
 //!
-//! Differences from the original, by contract of `rethink::ui`: the built-in face instead of shaped text, and
+//! Differences from the original, by contract of `flat::ui`: the built-in face instead of shaped text, and
 //! the paragraphs are single lines (no wrapping); hover handlers are hover paints only.
 //!
 //! The leaf (`leaf`) is the function the incremental measurement edits.
 use bough::layout::{Align, Justify, Styled};
-use bough::rethink::flat::Slot;
-use bough::rethink::ui::*;
+use bough::flat::Slot;
+use bough::flat::ui::*;
 
 #[derive(Clone, Copy)]
 pub struct Deep {

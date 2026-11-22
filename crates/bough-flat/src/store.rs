@@ -3,9 +3,10 @@
 //! A record is not a type. Its kind is a byte, its properties are words in columns, and what makes a property
 //! reactive is a [`Bind`] row beside the store naming the property and the [`Val`] it follows. Properties that
 //! are constants have no row and cost nothing after they are written.
+use super::effect::{Effect, EffectRow, ef};
 use super::expr::{NO_SITE, Val};
 use super::state::{DepMask, SlotId, StrSlot};
-use crate::damage_engine::{Rect, shadow_reach};
+use bough_damage::Rect;
 
 pub const NONE: u32 = u32::MAX;
 
@@ -61,67 +62,6 @@ pub mod flag {
     pub const BLUR: u32 = 1 << 7;
     /// Too tall for the band index: found through the wide list.
     pub const WIDE: u32 = 1 << 8;
-}
-
-/// The fields of an effect row.
-pub mod ef {
-    pub const SH0_COLOR: usize = 0;
-    pub const SH0_DX: usize = 1;
-    pub const SH0_DY: usize = 2;
-    pub const SH0_BLUR: usize = 3;
-    pub const SH0_SPREAD: usize = 4;
-    pub const SH1_COLOR: usize = 5;
-    pub const SH1_DX: usize = 6;
-    pub const SH1_DY: usize = 7;
-    pub const SH1_BLUR: usize = 8;
-    pub const SH1_SPREAD: usize = 9;
-    /// 0: none; 1: top to bottom; 2: left to right.
-    pub const GRAD_DIR: usize = 10;
-    pub const GRAD_TO: usize = 11;
-    /// Backdrop blur radius in pixels (0: none).
-    pub const BACKDROP: usize = 12;
-    /// Blur of the box itself, pixels.
-    pub const ELEM_BLUR: usize = 13;
-    pub const N: usize = 14;
-}
-
-/// An effect as described: every field a [`Val`], so a shadow that grows on hover or a blur that animates in
-/// is a binding like any other.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Effect(pub [Val; ef::N]);
-impl Default for Effect {
-    fn default() -> Effect {
-        Effect([Val::Const(0); ef::N])
-    }
-}
-impl Effect {
-    pub fn new() -> Effect {
-        Effect::default()
-    }
-    /// Shadow `k` (0 or 1; 0 is painted first). Lengths in pixels.
-    pub fn shadow(mut self, k: usize, color: impl Into<Val>, dx: impl Into<Val>, dy: impl Into<Val>, blur: impl Into<Val>, spread: impl Into<Val>) -> Effect {
-        let o = if k == 0 { ef::SH0_COLOR } else { ef::SH1_COLOR };
-        self.0[o] = color.into();
-        self.0[o + 1] = dx.into();
-        self.0[o + 2] = dy.into();
-        self.0[o + 3] = blur.into();
-        self.0[o + 4] = spread.into();
-        self
-    }
-    /// A linear gradient from the fill to `to`: `dir` 1 top to bottom, 2 left to right.
-    pub fn gradient(mut self, dir: impl Into<Val>, to: impl Into<Val>) -> Effect {
-        self.0[ef::GRAD_DIR] = dir.into();
-        self.0[ef::GRAD_TO] = to.into();
-        self
-    }
-    pub fn backdrop_blur(mut self, radius_px: impl Into<Val>) -> Effect {
-        self.0[ef::BACKDROP] = radius_px.into();
-        self
-    }
-    pub fn blur(mut self, radius_px: impl Into<Val>) -> Effect {
-        self.0[ef::ELEM_BLUR] = radius_px.into();
-        self
-    }
 }
 
 /// A record's handle: its index and the generation the index had when it was issued.
@@ -434,9 +374,9 @@ impl FlatStore {
     }
     /// The effect row of record `i`, if it has one.
     #[inline]
-    pub fn effect(&self, i: usize) -> Option<&[u32; ef::N]> {
+    pub fn effect(&self, i: usize) -> Option<EffectRow<'_>> {
         let e = self.effect_id[i];
-        if e == NONE { None } else { Some(&self.effects[e as usize]) }
+        if e == NONE { None } else { Some(EffectRow(&self.effects[e as usize])) }
     }
     /// The record's window in its space: its box, grown by its own blur, joined with its shadows' boxes. With
     /// `bare` (the `NO_EFFECT_HULL` mutant) the box alone.
@@ -463,11 +403,10 @@ impl FlatStore {
         if bare {
             return r;
         }
-        let mut w = r.expand((e[ef::ELEM_BLUR] as i32).max(0));
-        for o in [ef::SH0_COLOR, ef::SH1_COLOR] {
-            if e[o] >> 24 != 0 {
-                let grow = (e[o + 4] as i32 + shadow_reach(e[o + 3] as i32)).max(0);
-                w = w.hull(r.shift(e[o + 1] as i32, e[o + 2] as i32).expand(grow));
+        let mut w = r.expand(e.blur().max(0));
+        for sh in e.shadows() {
+            if sh.is_some() {
+                w = w.hull(sh.window(r));
             }
         }
         w

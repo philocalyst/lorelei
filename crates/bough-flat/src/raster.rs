@@ -7,7 +7,9 @@
 //! Pixels are premultiplied RGBA8 with red in the low byte; colours handed in are straight alpha, red low (the
 //! façade's `Color`). Boxes without effects are composited exactly as the lowered runtime's canvas does, so the
 //! two can be compared pixel for pixel.
-use crate::damage_engine::{Rect, ScrollBlit, shadow_reach};
+use super::effect::GradDir;
+use super::expr::lerp_color;
+use bough_damage::{Rect, ScrollBlit, shadow_reach};
 
 /// A pixel buffer placed in the window: `px[0]` is the pixel at `org`.
 #[derive(Clone, Debug, Default)]
@@ -190,8 +192,8 @@ pub struct BoxPaint {
     pub radius: u32,
     /// 0 ..= 255.
     pub opacity: u32,
-    /// 0: solid; 1: `fill` at the top to `grad_to` at the bottom; 2: left to right.
-    pub grad_dir: u32,
+    /// From `fill` to `grad_to`.
+    pub grad_dir: GradDir,
     pub grad_to: u32,
     /// Blur of the box itself, pixels (0: crisp, with a border if it has one).
     pub elem_blur: i32,
@@ -200,9 +202,9 @@ pub struct BoxPaint {
 #[inline]
 fn grad_at(p: &BoxPaint, r: Rect, x: i32, y: i32) -> u32 {
     match p.grad_dir {
-        1 => super::expr::lerp_color(p.fill, p.grad_to, ((y - r.y0) * 256 / (r.y1 - r.y0).max(1)) as u32),
-        2 => super::expr::lerp_color(p.fill, p.grad_to, ((x - r.x0) * 256 / (r.x1 - r.x0).max(1)) as u32),
-        _ => p.fill,
+        GradDir::Down => lerp_color(p.fill, p.grad_to, ((y - r.y0) * 256 / (r.y1 - r.y0).max(1)) as u32),
+        GradDir::Right => lerp_color(p.fill, p.grad_to, ((x - r.x0) * 256 / (r.x1 - r.x0).max(1)) as u32),
+        GradDir::None => p.fill,
     }
 }
 
@@ -238,7 +240,7 @@ pub fn paint_box(s: &mut Surface, cut: Rect, r: Rect, p: &BoxPaint) {
         r
     };
     let irad = if bw > 0 { (rad - bw).max(0) } else { rad };
-    let solid = p.grad_dir == 0;
+    let solid = p.grad_dir == GradDir::None;
     let opaque = solid && p.fill >> 24 == 255 && p.opacity == 255 && rad <= 0 && bw <= 0;
     // Away from the corners' squares a borderless solid box covers every pixel whole: those runs are one
     // source colour, composited (or stored) without asking the coverage. The same pixels as the general path.
@@ -335,248 +337,15 @@ pub fn paint_shadow(s: &mut Surface, cut: Rect, r: Rect, radius: u32, sh: &Shado
     }
 }
 
-// ---- the built-in face: 5 x 7 cells, for the core's own tests and examples ----------------------------------
-
-const GLYPHS: [(u8, [u8; 7]); 43] = [
-    (b'0', [0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E]),
-    (b'1', [0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E]),
-    (b'2', [0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F]),
-    (b'3', [0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E]),
-    (b'4', [0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02]),
-    (b'5', [0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E]),
-    (b'6', [0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E]),
-    (b'7', [0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08]),
-    (b'8', [0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E]),
-    (b'9', [0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C]),
-    (b'A', [0x0E, 0x11, 0x11, 0x11, 0x1F, 0x11, 0x11]),
-    (b'B', [0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E]),
-    (b'C', [0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E]),
-    (b'D', [0x1C, 0x12, 0x11, 0x11, 0x11, 0x12, 0x1C]),
-    (b'E', [0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F]),
-    (b'F', [0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10]),
-    (b'G', [0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F]),
-    (b'H', [0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11]),
-    (b'I', [0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E]),
-    (b'J', [0x07, 0x02, 0x02, 0x02, 0x02, 0x12, 0x0C]),
-    (b'K', [0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11]),
-    (b'L', [0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F]),
-    (b'M', [0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11]),
-    (b'N', [0x11, 0x11, 0x19, 0x15, 0x13, 0x11, 0x11]),
-    (b'O', [0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E]),
-    (b'P', [0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10]),
-    (b'Q', [0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D]),
-    (b'R', [0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11]),
-    (b'S', [0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E]),
-    (b'T', [0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04]),
-    (b'U', [0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E]),
-    (b'V', [0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04]),
-    (b'W', [0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A]),
-    (b'X', [0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11]),
-    (b'Y', [0x11, 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04]),
-    (b'Z', [0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F]),
-    (b'#', [0x0A, 0x0A, 0x1F, 0x0A, 0x1F, 0x0A, 0x0A]),
-    (b'.', [0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C]),
-    (b':', [0x00, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x00]),
-    (b'-', [0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00]),
-    (b'+', [0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00]),
-    (b'%', [0x18, 0x19, 0x02, 0x04, 0x08, 0x13, 0x03]),
-    (b'?', [0x1F, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1F]),
-];
-
-fn glyph(c: u8) -> [u8; 7] {
-    let c = c.to_ascii_uppercase();
-    if c == b' ' {
-        return [0; 7];
-    }
-    GLYPHS.iter().find(|g| g.0 == c).map_or(GLYPHS[42].1, |g| g.1)
-}
-
-/// The advance of one cell at `scale`, and the line height.
-pub const fn cell(scale: u32) -> (i32, i32) {
-    (6 * scale as i32, 8 * scale as i32)
-}
-pub fn text_width(text: &str, scale: u32) -> i32 {
-    text.len() as i32 * cell(scale).0
-}
-
-/// A line of the built-in face from the top-left corner of `r`, cut to `r`.
-pub fn paint_text(s: &mut Surface, cut: Rect, r: Rect, text: &str, scale: u32, color: u32, opacity: u32) {
-    let c = r.and(cut);
-    if c.is_empty() || opacity == 0 || color >> 24 == 0 {
-        return;
-    }
-    let sc = scale.max(1) as i32;
-    let src = pm(color, 255, opacity);
-    for (k, ch) in text.bytes().enumerate() {
-        let gx = r.x0 + k as i32 * 6 * sc;
-        if gx >= c.x1 {
-            break;
-        }
-        if gx + 5 * sc <= c.x0 {
-            continue;
-        }
-        let g = glyph(ch);
-        for y in c.y0.max(r.y0)..c.y1.min(r.y0 + 7 * sc) {
-            let bits = g[((y - r.y0) / sc) as usize];
-            if bits == 0 {
-                continue;
-            }
-            for x in c.x0.max(gx)..c.x1.min(gx + 5 * sc) {
-                if bits >> (4 - (x - gx) / sc) & 1 != 0 {
-                    let d = &mut s.row_mut(y, x, x + 1)[0];
-                    *d = over(*d, src);
-                }
-            }
-        }
-    }
-}
-
-// ---- the backdrop blur ---------------------------------------------------------------------------------------
-
-/// Buffers of the blur pyramid, kept between frames.
-#[derive(Clone, Debug, Default)]
-pub struct BlurScratch {
-    a: Vec<u32>,
-    b: Vec<u32>,
-}
-
-#[derive(Clone, Copy)]
-struct Grid {
-    x0: i32,
-    y0: i32,
-    x1: i32,
-    y1: i32,
-}
-impl Grid {
-    fn w(&self) -> usize {
-        (self.x1 - self.x0 + 1).max(0) as usize
-    }
-    fn h(&self) -> usize {
-        (self.y1 - self.y0 + 1).max(0) as usize
-    }
-    fn cut(self, d: Grid) -> Grid {
-        Grid { x0: self.x0.max(d.x0), y0: self.y0.max(d.y0), x1: self.x1.min(d.x1), y1: self.y1.min(d.y1) }
-    }
-}
-
-#[inline(always)]
-fn mix4(t: [u32; 4], w: [u32; 4], acc: &mut [u32; 4], wy: u32) {
-    for (k, a) in acc.iter_mut().enumerate() {
-        let sh = k as u32 * 8;
-        *a += wy * (w[0] * (t[0] >> sh & 0xff) + w[1] * (t[1] >> sh & 0xff) + w[2] * (t[2] >> sh & 0xff) + w[3] * (t[3] >> sh & 0xff));
-    }
-}
-#[inline(always)]
-fn pack(acc: [u32; 4], round: u32, shift: u32) -> u32 {
-    ((acc[0] + round) >> shift) | ((acc[1] + round) >> shift) << 8 | ((acc[2] + round) >> shift) << 16 | ((acc[3] + round) >> shift) << 24
-}
-
-/// Replace the backdrop inside the rounded box `r` by its blur through a pyramid of `levels`, for the pixels of
-/// `cut`. `backdrop` holds what is below the layer over (at least) the layer's read rect cut to the window; its
-/// bounds are the pyramid's domain (reads past them take the edge texel).
-///
-/// The pyramid is the one `damage_engine` documents: anchored to the window, `[1 3 3 1]` down, `[1 3]`/`[3 1]`
-/// up, each level rounded to 8 bits.
-pub fn paint_backdrop_blur(s: &mut Surface, cut: Rect, r: Rect, radius: u32, levels: u8, opacity: u32, backdrop: &Surface, sc: &mut BlurScratch) {
-    let out = r.and(cut).and(backdrop.bounds());
-    if out.is_empty() || levels == 0 || opacity == 0 {
-        return;
-    }
-    let l = levels as usize;
-    let dom0 = backdrop.bounds();
-    let dom = |lv: usize| Grid { x0: dom0.x0 >> lv, y0: dom0.y0 >> lv, x1: (dom0.x1 - 1) >> lv, y1: (dom0.y1 - 1) >> lv };
-    // need[lv]: the texels of level lv the way up reads
-    let mut need = [Grid { x0: out.x0, y0: out.y0, x1: out.x1 - 1, y1: out.y1 - 1 }; 8];
-    for lv in 0..l {
-        let n = need[lv];
-        need[lv + 1] = Grid { x0: (n.x0 - 1) >> 1, y0: (n.y0 - 1) >> 1, x1: (n.x1 + 1) >> 1, y1: (n.y1 + 1) >> 1 };
-    }
-    // down[lv]: the texels of level lv the way down computes, for lv 1 ..= l
-    let mut down = [need[l].cut(dom(l)); 8];
-    for lv in (1..l).rev() {
-        let d = down[lv + 1];
-        down[lv] = Grid { x0: 2 * d.x0 - 1, y0: 2 * d.y0 - 1, x1: 2 * d.x1 + 2, y1: 2 * d.y1 + 2 }.cut(dom(lv));
-    }
-    let (mut cur, mut nxt) = (std::mem::take(&mut sc.a), std::mem::take(&mut sc.b));
-    const W: [u32; 4] = [1, 3, 3, 1];
-    // level 1 from the backdrop, then each level from the one before
-    let mut have = Grid { x0: 0, y0: 0, x1: -1, y1: -1 };
-    for lv in 1..=l {
-        let g = down[lv];
-        let src_dom = dom(lv - 1);
-        nxt.clear();
-        nxt.resize(g.w() * g.h(), 0);
-        for j in g.y0..=g.y1 {
-            for i in g.x0..=g.x1 {
-                let mut acc = [0u32; 4];
-                for (ty, wy) in W.iter().enumerate() {
-                    let yy = 2 * j - 1 + ty as i32;
-                    let mut t = [0u32; 4];
-                    for (tx, tt) in t.iter_mut().enumerate() {
-                        let xx = 2 * i - 1 + tx as i32;
-                        *tt = if lv == 1 {
-                            backdrop.clamped(xx, yy)
-                        } else {
-                            let (cx, cy) = (xx.clamp(src_dom.x0, src_dom.x1).clamp(have.x0, have.x1), yy.clamp(src_dom.y0, src_dom.y1).clamp(have.y0, have.y1));
-                            cur[(cy - have.y0) as usize * have.w() + (cx - have.x0) as usize]
-                        };
-                    }
-                    mix4(t, W, &mut acc, *wy);
-                }
-                nxt[(j - g.y0) as usize * g.w() + (i - g.x0) as usize] = pack(acc, 32, 6);
-            }
-        }
-        std::mem::swap(&mut cur, &mut nxt);
-        have = g;
-    }
-    // back up: level lv from level lv + 1, for lv = l - 1 .. 1 into the scratch, and level 0 into the surface
-    for lv in (0..l).rev() {
-        let g = if lv == 0 { need[0] } else { need[lv].cut(dom(lv)) };
-        let src_dom = dom(lv + 1);
-        if lv != 0 {
-            nxt.clear();
-            nxt.resize(g.w() * g.h(), 0);
-        }
-        for j in g.y0..=g.y1 {
-            for i in g.x0..=g.x1 {
-                let at = |cur: &Vec<u32>, x: i32, y: i32| {
-                    let (cx, cy) = (x.clamp(src_dom.x0, src_dom.x1).clamp(have.x0, have.x1), y.clamp(src_dom.y0, src_dom.y1).clamp(have.y0, have.y1));
-                    cur[(cy - have.y0) as usize * have.w() + (cx - have.x0) as usize]
-                };
-                // even texel 2k reads (k-1, k) with weights (1, 3); odd texel 2k+1 reads (k, k+1) with (3, 1)
-                let (xa, wxa, wxb) = if i & 1 == 0 { ((i >> 1) - 1, 1, 3) } else { (i >> 1, 3, 1) };
-                let (ya, wya, wyb) = if j & 1 == 0 { ((j >> 1) - 1, 1, 3) } else { (j >> 1, 3, 1) };
-                let mut acc = [0u32; 4];
-                mix4([at(&cur, xa, ya), at(&cur, xa + 1, ya), 0, 0], [wxa, wxb, 0, 0], &mut acc, wya);
-                mix4([at(&cur, xa, ya + 1), at(&cur, xa + 1, ya + 1), 0, 0], [wxa, wxb, 0, 0], &mut acc, wyb);
-                let v = pack(acc, 8, 4);
-                if lv != 0 {
-                    nxt[(j - g.y0) as usize * g.w() + (i - g.x0) as usize] = v;
-                } else {
-                    let cov = div255(rcov(r, radius as i32, i, j) * opacity);
-                    if cov != 0 {
-                        let d = &mut s.row_mut(j, i, i + 1)[0];
-                        // dst = blurred * cov + dst * (1 - cov), per premultiplied channel
-                        let ia = 255 - cov;
-                        let ch = |sh: u32| (div255((v >> sh & 0xff) * cov) + div255((*d >> sh & 0xff) * ia)).min(255) << sh;
-                        *d = ch(0) | ch(8) | ch(16) | ch(24);
-                    }
-                }
-            }
-        }
-        if lv != 0 {
-            std::mem::swap(&mut cur, &mut nxt);
-            have = g;
-        }
-    }
-    sc.a = cur;
-    sc.b = nxt;
-}
+mod blur;
+mod face;
+pub use blur::{BlurScratch, paint_backdrop_blur};
+pub use face::{cell, paint_text, text_width};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::damage_engine::BlurLayer;
+    use bough_damage::BlurLayer;
 
     fn noise(w: i32, h: i32, seed: u32) -> Surface {
         let mut s = Surface::new(w, h);

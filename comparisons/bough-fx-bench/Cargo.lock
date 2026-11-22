@@ -83,14 +83,18 @@ version = "0.0.0"
 dependencies = [
  "block2",
  "bough-core",
+ "bough-flat",
  "bough-frame",
  "bough-fused",
  "bough-kernel",
+ "bough-lay",
  "bough-mem",
  "bough-metal",
+ "bough-paint",
  "bough-sys",
  "bough-text",
  "bough-wayland",
+ "bough-x",
  "cephal",
  "dispatch2",
  "libc",
@@ -115,12 +119,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "bough-damage"
+version = "0.0.0"
+
+[[package]]
 name = "bough-expr"
 version = "0.0.0"
 
 [[package]]
 name = "bough-face"
 version = "0.0.0"
+
+[[package]]
+name = "bough-flat"
+version = "0.0.0"
+dependencies = [
+ "bough-damage",
+]
 
 [[package]]
 name = "bough-frame"
@@ -142,6 +157,7 @@ name = "bough-fx-bench"
 version = "0.0.0"
 dependencies = [
  "bough",
+ "bough-flat",
  "bough-sys",
  "bough-x",
 ]
@@ -185,6 +201,19 @@ dependencies = [
  "objc2-io-surface",
  "objc2-metal",
  "objc2-quartz-core",
+]
+
+[[package]]
+name = "bough-paint"
+version = "0.0.0"
+dependencies = [
+ "bough-expr",
+ "bough-kernel",
+ "naga",
+ "objc2",
+ "objc2-foundation",
+ "objc2-metal",
+ "wgsl-rs",
 ]
 
 [[package]]

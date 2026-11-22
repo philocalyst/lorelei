@@ -3,7 +3,8 @@
 //! router's full redraw, and to the promises of the design (no page is asked anything in flight; an
 //! interruption keeps position and velocity).
 use bough::color::{rgb, Color};
-use bough::fx_api::*;
+use bough::motion::*;
+use bough::style::*;
 use bough::pages::*;
 use bough_kernel::cpu::Pool;
 #[cfg(target_os = "macos")]

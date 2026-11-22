@@ -131,6 +131,44 @@ impl DrawCmd {
     }
 }
 
+impl DrawCmd {
+    /// The effect's main colour (a glass pane's is its tint; a ramp, an image and a group have none).
+    pub fn color(&self) -> Option<u32> {
+        match *self {
+            DrawCmd::Solid { color } | DrawCmd::RRect { color, .. } | DrawCmd::Border { color, .. } | DrawCmd::Shadow { color, .. } | DrawCmd::Inset { color, .. } | DrawCmd::Glyph { color, .. } => Some(color),
+            DrawCmd::Glass { tint, .. } => Some(tint),
+            DrawCmd::Ramp { .. } | DrawCmd::Image { .. } | DrawCmd::Group { .. } => None,
+        }
+    }
+    pub fn color_mut(&mut self) -> Option<&mut u32> {
+        match self {
+            DrawCmd::Solid { color } | DrawCmd::RRect { color, .. } | DrawCmd::Border { color, .. } | DrawCmd::Shadow { color, .. } | DrawCmd::Inset { color, .. } | DrawCmd::Glyph { color, .. } => Some(color),
+            DrawCmd::Glass { tint, .. } => Some(tint),
+            DrawCmd::Ramp { .. } | DrawCmd::Image { .. } | DrawCmd::Group { .. } => None,
+        }
+    }
+    /// The length of the effect that `p` names (its corner radius, its blur, a shadow's spread and offset, a
+    /// border's width); `None` when the kind has no such length, or `p` is not a length of the effect.
+    ///
+    /// A blur is what its kind says it is: a shadow's CSS blur radius (two sigma), a glass pane's and a
+    /// group's standard deviation.
+    pub fn length_mut(&mut self, p: Prop) -> Option<&mut f32> {
+        match (p, self) {
+            (Prop::Radius, DrawCmd::RRect { radius, .. } | DrawCmd::Border { radius, .. } | DrawCmd::Shadow { radius, .. } | DrawCmd::Inset { radius, .. } | DrawCmd::Ramp { radius, .. } | DrawCmd::Glass { radius, .. } | DrawCmd::Image { radius, .. } | DrawCmd::Group { radius, .. }) => Some(radius),
+            (Prop::Blur, DrawCmd::Shadow { blur, .. } | DrawCmd::Inset { blur, .. } | DrawCmd::Glass { blur, .. } | DrawCmd::Group { blur, .. }) => Some(blur),
+            (Prop::Spread, DrawCmd::Shadow { spread, .. } | DrawCmd::Inset { spread, .. }) => Some(spread),
+            (Prop::OffX, DrawCmd::Shadow { dx, .. } | DrawCmd::Inset { dx, .. }) => Some(dx),
+            (Prop::OffY, DrawCmd::Shadow { dy, .. } | DrawCmd::Inset { dy, .. }) => Some(dy),
+            (Prop::Width, DrawCmd::Border { width, .. }) => Some(width),
+            _ => None,
+        }
+    }
+    pub fn length(&self, p: Prop) -> Option<f32> {
+        let mut c = *self;
+        c.length_mut(p).map(|v| *v)
+    }
+}
+
 /// A node as it is described.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Node {
@@ -386,6 +424,14 @@ struct Group {
     /// The nodes that show it.
     nodes: Vec<u32>,
 }
+impl Group {
+    /// A blur given in the parent's pixels (a standard deviation), for a node `shown_w` pixels wide, as the
+    /// surface reads it: in its own texels, Q8.
+    fn blur_texels(&self, blur: f32, shown_w: f32) -> i32 {
+        let per = if shown_w > 0.0 { self.surf.size().0 as f32 / shown_w } else { 1.0 };
+        q8pos(blur * per)
+    }
+}
 
 /// What a `prepare` did.
 #[derive(Clone, Copy, Debug, Default)]
@@ -549,6 +595,15 @@ impl FlatScene {
     }
     pub fn nodes(&self) -> usize {
         self.cmd.len()
+    }
+    /// How many live nodes of each kind the scene holds (its groups' own scenes not counted), indexed by
+    /// [`EffectKind`]: what an inspector lists.
+    pub fn kind_counts(&self) -> [u32; KINDS] {
+        let mut n = [0; KINDS];
+        for (c, _) in self.cmd.iter().zip(&self.live).filter(|(_, live)| **live) {
+            n[c.kind() as usize] += 1;
+        }
+        n
     }
     /// Records the column of `kind` in `space` can hold, and holds.
     pub fn capacity(&self, kind: EffectKind, space: Space) -> (usize, usize) {
@@ -735,19 +790,13 @@ impl FlatScene {
     /// The node's main colour (a ramp, an image and a group have none).
     pub fn set_color(&mut self, id: NodeId, c: u32) {
         let mut cmd = self.cmd[id.0 as usize];
-        match &mut cmd {
-            DrawCmd::Solid { color } | DrawCmd::RRect { color, .. } | DrawCmd::Border { color, .. } | DrawCmd::Shadow { color, .. } | DrawCmd::Inset { color, .. } | DrawCmd::Glyph { color, .. } => *color = c,
-            DrawCmd::Glass { tint, .. } => *tint = c,
-            DrawCmd::Ramp { .. } | DrawCmd::Image { .. } | DrawCmd::Group { .. } => {}
+        if let Some(color) = cmd.color_mut() {
+            *color = c;
         }
         self.set(id, cmd);
     }
     pub fn color(&self, id: NodeId) -> u32 {
-        match self.cmd[id.0 as usize] {
-            DrawCmd::Solid { color } | DrawCmd::RRect { color, .. } | DrawCmd::Border { color, .. } | DrawCmd::Shadow { color, .. } | DrawCmd::Inset { color, .. } | DrawCmd::Glyph { color, .. } => color,
-            DrawCmd::Glass { tint, .. } => tint,
-            DrawCmd::Ramp { .. } | DrawCmd::Image { .. } | DrawCmd::Group { .. } => 0,
-        }
+        self.cmd[id.0 as usize].color().unwrap_or(0)
     }
     /// One scalar property (what an animation track writes). A property the node's kind does not have is
     /// ignored.
@@ -760,39 +809,15 @@ impl FlatScene {
             Prop::Dy => self.xf[i][1] = v,
             Prop::Scale => self.xf[i][2] = v,
             Prop::Opacity => self.opacity[i] = v,
-            Prop::Radius => match &mut self.cmd[i] {
-                DrawCmd::RRect { radius, .. } | DrawCmd::Border { radius, .. } | DrawCmd::Shadow { radius, .. } | DrawCmd::Inset { radius, .. } | DrawCmd::Ramp { radius, .. } | DrawCmd::Glass { radius, .. } | DrawCmd::Image { radius, .. } | DrawCmd::Group { radius, .. } => *radius = v,
-                _ => {}
-            },
-            Prop::Blur => match &mut self.cmd[i] {
-                DrawCmd::Shadow { blur, .. } | DrawCmd::Inset { blur, .. } | DrawCmd::Glass { blur, .. } | DrawCmd::Group { blur, .. } => *blur = v,
-                _ => {}
-            },
-            Prop::Spread => match &mut self.cmd[i] {
-                DrawCmd::Shadow { spread, .. } | DrawCmd::Inset { spread, .. } => *spread = v,
-                _ => {}
-            },
-            Prop::OffX => match &mut self.cmd[i] {
-                DrawCmd::Shadow { dx, .. } | DrawCmd::Inset { dx, .. } => *dx = v,
-                _ => {}
-            },
-            Prop::OffY => match &mut self.cmd[i] {
-                DrawCmd::Shadow { dy, .. } | DrawCmd::Inset { dy, .. } => *dy = v,
-                _ => {}
-            },
-            Prop::Width => {
-                if let DrawCmd::Border { width, .. } = &mut self.cmd[i] {
-                    *width = v;
+            Prop::Radius | Prop::Blur | Prop::Spread | Prop::OffX | Prop::OffY | Prop::Width => {
+                if let Some(len) = self.cmd[i].length_mut(p) {
+                    *len = v;
                 }
             }
             Prop::Red | Prop::Green | Prop::Blue | Prop::Alpha => {
-                let sh = 8 * (p as u32 - Prop::Red as u32);
-                let c = self.color(id) & !(255 << sh) | (v.round().clamp(0.0, 255.0) as u32) << sh;
-                let cmd = &mut self.cmd[i];
-                match cmd {
-                    DrawCmd::Solid { color } | DrawCmd::RRect { color, .. } | DrawCmd::Border { color, .. } | DrawCmd::Shadow { color, .. } | DrawCmd::Inset { color, .. } | DrawCmd::Glyph { color, .. } => *color = c,
-                    DrawCmd::Glass { tint, .. } => *tint = c,
-                    _ => {}
+                if let Some(color) = self.cmd[i].color_mut() {
+                    let sh = 8 * (p as u32 - Prop::Red as u32);
+                    *color = *color & !(255 << sh) | (v.round().clamp(0.0, 255.0) as u32) << sh;
                 }
             }
         }
@@ -808,30 +833,7 @@ impl FlatScene {
             Prop::Dy => self.xf[i][1],
             Prop::Scale => self.xf[i][2],
             Prop::Opacity => self.opacity[i],
-            Prop::Radius => match self.cmd[i] {
-                DrawCmd::RRect { radius, .. } | DrawCmd::Border { radius, .. } | DrawCmd::Shadow { radius, .. } | DrawCmd::Inset { radius, .. } | DrawCmd::Ramp { radius, .. } | DrawCmd::Glass { radius, .. } | DrawCmd::Image { radius, .. } | DrawCmd::Group { radius, .. } => radius,
-                _ => 0.0,
-            },
-            Prop::Blur => match self.cmd[i] {
-                DrawCmd::Shadow { blur, .. } | DrawCmd::Inset { blur, .. } | DrawCmd::Glass { blur, .. } | DrawCmd::Group { blur, .. } => blur,
-                _ => 0.0,
-            },
-            Prop::Spread => match self.cmd[i] {
-                DrawCmd::Shadow { spread, .. } | DrawCmd::Inset { spread, .. } => spread,
-                _ => 0.0,
-            },
-            Prop::OffX => match self.cmd[i] {
-                DrawCmd::Shadow { dx, .. } | DrawCmd::Inset { dx, .. } => dx,
-                _ => 0.0,
-            },
-            Prop::OffY => match self.cmd[i] {
-                DrawCmd::Shadow { dy, .. } | DrawCmd::Inset { dy, .. } => dy,
-                _ => 0.0,
-            },
-            Prop::Width => match self.cmd[i] {
-                DrawCmd::Border { width, .. } => width,
-                _ => 0.0,
-            },
+            Prop::Radius | Prop::Blur | Prop::Spread | Prop::OffX | Prop::OffY | Prop::Width => self.cmd[i].length(p).unwrap_or(0.0),
             Prop::Red | Prop::Green | Prop::Blue | Prop::Alpha => ((self.color(id) >> (8 * (p as u32 - Prop::Red as u32))) & 255) as f32,
         }
     }
@@ -927,11 +929,7 @@ impl FlatScene {
             }
             DrawCmd::Image { radius, slot, dims } => Low::Image { r: q8pos(radius * s), slot, dims, op: q15(op) },
             DrawCmd::Group { radius, blur, group } => match self.groups.get(group.0 as usize).and_then(Option::as_ref) {
-                Some(g) => {
-                    // the blur is given in this scene's pixels; the surface is read in its own texels
-                    let per = if w > 0.0 { g.surf.size().0 as f32 / w } else { 1.0 };
-                    Low::Group { r: q8pos(radius * s), slot: g.surf.handle(), dims: g.surf.dimensions(), op: q15(op), blur: q8pos(blur * per) }
-                }
+                Some(g) => Low::Group { r: q8pos(radius * s), slot: g.surf.handle(), dims: g.surf.dimensions(), op: q15(op), blur: g.blur_texels(blur, w) },
                 None => Low::Solid { c: 0 },
             },
             DrawCmd::Glyph { texel, color } => Low::Glyph { texel, c: fade(color, op) },
@@ -1097,10 +1095,7 @@ impl FlatScene {
                 let (ox, oy) = (r[0] as f64 / 256.0, r[1] as f64 / 256.0);
                 let (kx, ky) = ((r[2] - r[0]) as f64 / 256.0 / sw as f64, (r[3] - r[1]) as f64 / 256.0 / sh as f64);
                 let reach = match self.cmd[i] {
-                    DrawCmd::Group { blur, .. } => {
-                        let w = (r[2] - r[0]) as f32 / 256.0;
-                        g.surf.reach(q8pos(blur * if w > 0.0 { sw as f32 / w } else { 1.0 })) as f64
-                    }
+                    DrawCmd::Group { blur, .. } => g.surf.reach(g.blur_texels(blur, (r[2] - r[0]) as f32 / 256.0)) as f64,
                     _ => 1.0,
                 };
                 let (px, py) = if self.space[i] == Space::Panned { (self.u.w[PAN_X] as i32 as f64 / 256.0, self.u.w[PAN_Y] as i32 as f64 / 256.0) } else { (0.0, 0.0) };
@@ -1131,10 +1126,6 @@ impl FlatScene {
         self.scene.spec(&self.u, out, stride);
     }
 }
-
-/// The bank under the names it was asked for.
-pub type FlatPaintScene = FlatScene;
-pub type PaintBank = FlatScene;
 
 /// A gradient's geometry in a `w` x `h` px box as the words of `ops::mk_ramp`.
 fn ramp_geo(geo: RampGeo, w: f32, h: f32, s: f32) -> (u32, [i32; 4], [i32; 4]) {

@@ -18,19 +18,18 @@ use bough_kernel::stage::{self, Scene};
 const PAY_RUN: u32 = 0x8000_0000;
 const PAY_IRUN: u32 = 0x4000_0000;
 
-/// Counters.
-/// Per-frame kernel telemetry snapshot (zero-allocation, read by `bough-inspect` `profile_frame`).
+/// What the last frame staged and which executor drew it (`App::last_frame_profile`).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct KFrameTelemetry {
     pub staged: u64,
     pub tiles: u64,
     pub entries: u64,
     pub est_cpu_ns: u64,
-    pub wall_ns: u64,
     /// 0 = Cpu1, 1 = CpuN, 2 = Gpu.
     pub exec_kind: u8,
 }
 
+/// Counters.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct KStats {
     pub frames: u64,
@@ -529,7 +528,6 @@ impl KernelBackend {
             tiles,
             entries,
             est_cpu_ns: self.bin.est_cpu_ns,
-            wall_ns: 0,
             exec_kind: match exec {
                 Exec::Cpu1 => 0,
                 Exec::CpuN(_) => 1,

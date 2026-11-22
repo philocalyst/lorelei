@@ -5,6 +5,11 @@
 //! bough: the public façade over bough-core (records, damage), bough-text (shaping into the glyph pool),
 //! cephal (layout) and bough-metal's fused presenter. One region holds everything the GPU reads
 //! (`rt.rs`); a frame's CPU work ends at the tile list (`app.rs`).
+//!
+//! Beside the typed path there is a path with no type-level dataflow: [`flat`] (a prelude view, or a small
+//! builder, on the flat core `bough-flat` and the damage engine `bough-damage`), and the author's side of the
+//! paint lane's flat bank: [`style`] (boxes, gradients, shadows, blurs as values), [`motion`] (springs, curves,
+//! keyframes) and [`pages`] (retained pages and the transitions between them).
 pub mod app;
 pub mod backend;
 pub mod boxops;
@@ -15,8 +20,7 @@ pub mod deco;
 pub mod describe;
 pub mod elem;
 pub mod entity;
-// (rethink/fx) the non-generic style and motion surface over the paint lane's flat bank, and page transitions
-pub mod fx_api;
+pub mod flat;
 pub mod input;
 pub mod inspect;
 pub mod lanes;
@@ -28,15 +32,16 @@ pub mod lower;
 pub mod listview;
 pub mod ltemplate;
 pub mod mlist;
+pub mod motion;
 pub mod pages;
 pub mod reader;
 pub mod reflect;
-pub mod rethink;
 pub mod rt;
 pub mod seal;
 pub mod select;
 pub mod signal;
 pub mod store;
+pub mod style;
 pub mod template;
 pub mod text;
 pub mod transition;

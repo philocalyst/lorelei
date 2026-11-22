@@ -831,7 +831,7 @@ mod shader_compile_tests {
     use objc2_metal::MTLCreateSystemDefaultDevice;
 
     #[test]
-    fn metal_shaders_compile_with_conic_and_inset_shadow() {
+    fn the_presenter_and_its_oracle_compile_from_source() {
         let Some(device) = MTLCreateSystemDefaultDevice() else {
             return; // headless host without Metal
         };

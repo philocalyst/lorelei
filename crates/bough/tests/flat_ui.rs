@@ -1,10 +1,10 @@
-//! The non-generic builder (`bough::rethink::ui`) held to the flat core's oracles, and to its cost bands: a
+//! The non-generic builder (`bough::flat::ui`) held to the flat core's oracles, and to its cost bands: a
 //! turn costs the bindings that read what changed.
 #[path = "../examples/flat_slice.rs"]
 mod flat_slice;
 use bough::layout::Styled;
-use bough::rethink::flat::{Effect, ExecutorChoice};
-use bough::rethink::ui::*;
+use bough::flat::{Effect, ExecutorChoice};
+use bough::flat::ui::*;
 use flat_slice::FlatSlice;
 
 #[test]

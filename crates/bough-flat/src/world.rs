@@ -16,10 +16,11 @@
 //! layer keeps the backdrop it reads; the engine's gate repaints the part that may have changed and stops the
 //! propagation where the pixels came out the same), applies the blits and repaints the dirty tile spans.
 use super::expr::{Dep, EvalCx, ExprTape, HOVER_DEPTHS, NO_SITE, Palette, Val, each_dep, eval, lerp_color, lerp_i32, site_depth, spring_q8};
-use super::raster::{BlurScratch, BoxPaint, Shadow, Surface, paint_backdrop_blur, paint_box, paint_shadow, paint_text};
+use super::raster::{BlurScratch, BoxPaint, Surface, paint_backdrop_blur, paint_box, paint_shadow, paint_text};
 use super::state::{DepMask, Slot, SlotId, SlotValue, StateBlock};
-use super::store::{Bind, Csr, Effect, FlatStore, Kind, NONE, PROPS, Prop, RecId, RecordDesc, SpaceId, Target, TextRun, TextSrc, ef, flag, touch};
-use crate::damage_engine::{BlurLayer, DamageEngine, DamageReport, ExecutorChoice, OpaqueCover, Rect, ScrollBlit, TileMask, Work, blur_level, mutant, opaque_core};
+use super::effect::{Effect, GradDir};
+use super::store::{Bind, Csr, FlatStore, Kind, NONE, PROPS, Prop, RecId, RecordDesc, SpaceId, Target, TextRun, TextSrc, flag, touch};
+use bough_damage::{BlurLayer, DamageEngine, DamageReport, ExecutorChoice, OpaqueCover, Rect, ScrollBlit, TileMask, Work, blur_level, mutant, opaque_core};
 
 /// Paints records of kind [`Kind::Ext`]: the embedder's shaped text and images. It must be a pure function of
 /// its arguments (the oracles and tile repair rest on that).
@@ -241,27 +242,25 @@ impl Painter<'_> {
             return;
         }
         let fill = self.color(i, st.fill[i], flag::PAL_FILL);
-        let mut bp = BoxPaint { fill, border_color: 0, border_w: st.border_w[i], radius: st.radius[i], opacity, grad_dir: 0, grad_to: 0, elem_blur: 0 };
+        let mut bp = BoxPaint { fill, border_color: 0, border_w: st.border_w[i], radius: st.radius[i], opacity, grad_dir: GradDir::None, grad_to: 0, elem_blur: 0 };
         if let Some(e) = st.effect(i) {
-            for o in [ef::SH0_COLOR, ef::SH1_COLOR] {
-                let sh = Shadow { color: e[o], dx: e[o + 1] as i32, dy: e[o + 2] as i32, blur: e[o + 3] as i32, spread: e[o + 4] as i32 };
+            for sh in e.shadows() {
                 paint_shadow(t, clip, r, st.radius[i], &sh, opacity);
             }
-            if e[ef::BACKDROP] != 0 {
+            if e.backdrop_blur() != 0 {
                 if let Some(b) = self.backdrops.iter().find(|b| b.rec == i as u32) {
                     paint_backdrop_blur(t, clip, r, st.radius[i], b.layer.max_level, opacity, &b.surf, blur);
                 }
             }
-            bp.grad_dir = e[ef::GRAD_DIR];
-            bp.grad_to = e[ef::GRAD_TO];
-            bp.elem_blur = e[ef::ELEM_BLUR] as i32;
+            (bp.grad_dir, bp.grad_to) = e.gradient();
+            bp.elem_blur = e.blur();
         }
         match st.kinds[i] {
             k if k == Kind::Box as u8 => {
                 if bp.border_w != 0 {
                     bp.border_color = self.color(i, st.border[i], flag::PAL_BORDER);
                 }
-                if fill >> 24 != 0 || bp.border_w != 0 || bp.grad_dir != 0 {
+                if fill >> 24 != 0 || bp.border_w != 0 || bp.grad_dir != GradDir::None {
                     paint_box(t, clip, r, &bp);
                 }
             }
@@ -679,7 +678,7 @@ impl FlatWorld {
             // it has been on screen: where it was is damaged by the next turn
             self.removed.push((self.store.z_key[i], self.store.window(i, false), self.store.clips[i], self.work_of(i), 0));
         }
-        if self.store.effect(i).is_some_and(|e| e[ef::BACKDROP] != 0) {
+        if self.store.effect(i).is_some_and(|e| e.backdrop_blur() != 0) {
             self.layers_dirty = true;
         }
         self.store.release(i);
@@ -890,7 +889,7 @@ impl FlatWorld {
             return false;
         }
         let opaque = if st.flags[i] & flag::PAL_FILL != 0 { self.palette.always_opaque(st.fill[i] as u16) } else { st.fill[i] >> 24 == 255 };
-        opaque && st.effect(i).is_none_or(|e| e[ef::ELEM_BLUR] == 0 && (e[ef::GRAD_DIR] == 0 || e[ef::GRAD_TO] >> 24 == 255))
+        opaque && st.effect(i).is_none_or(|e| e.blur() == 0 && matches!(e.gradient(), (GradDir::None, _) | (_, 0xff00_0000..)))
     }
     /// The part of a cover that is its fill alone, in the window, cut to its clip.
     fn cover_core(&self, i: usize) -> Rect {
@@ -906,12 +905,12 @@ impl FlatWorld {
         c.shift(s.origin.0, s.origin.1).and(s.clip)
     }
     fn is_uniform(&self, i: usize) -> bool {
-        self.store.flags[i] & flag::COVER != 0 && self.store.effect(i).is_none_or(|e| e[ef::GRAD_DIR] == 0)
+        self.store.flags[i] & flag::COVER != 0 && self.store.effect(i).is_none_or(|e| e.gradient().0 == GradDir::None)
     }
     fn work_of(&self, i: usize) -> Work {
         match self.store.effect(i) {
-            Some(e) if e[ef::SH0_COLOR] >> 24 != 0 || e[ef::SH1_COLOR] >> 24 != 0 => Work::Shadow,
-            Some(e) if e[ef::GRAD_DIR] != 0 => Work::Gradient,
+            Some(e) if e.has_shadow() => Work::Shadow,
+            Some(e) if e.gradient().0 != GradDir::None => Work::Gradient,
             _ => Work::Flat,
         }
     }
@@ -1177,7 +1176,7 @@ impl FlatWorld {
                 continue;
             }
             let cover = self.is_cover(i);
-            let blur = self.store.effect(i).is_some_and(|e| e[ef::BACKDROP] != 0);
+            let blur = self.store.effect(i).is_some_and(|e| e.backdrop_blur() != 0);
             let f = &mut self.store.flags[i];
             *f = *f & !(flag::COVER | flag::BLUR) | if cover { flag::COVER } else { 0 } | if blur { flag::BLUR } else { 0 };
             self.blur_records += blur as u32;
@@ -1273,7 +1272,7 @@ impl FlatWorld {
     }
     fn layer_of(&self, i: usize) -> Option<BlurLayer> {
         let st = &self.store;
-        let radius = st.effect(i)?[ef::BACKDROP] as i32;
+        let radius = st.effect(i)?.backdrop_blur();
         if radius <= 0 || st.opacity[i] == 0 {
             return None;
         }
@@ -1456,7 +1455,7 @@ impl FlatWorld {
                 self.store.flags[i] ^= flag::COVER;
             }
             self.covers_dirty |= was_cover != is_cover || (is_cover && geom);
-            let (was_blur, is_blur) = (self.store.flags[i] & flag::BLUR != 0, self.store.effect(i).is_some_and(|e| e[ef::BACKDROP] != 0));
+            let (was_blur, is_blur) = (self.store.flags[i] & flag::BLUR != 0, self.store.effect(i).is_some_and(|e| e.backdrop_blur() != 0));
             if was_blur != is_blur {
                 self.store.flags[i] ^= flag::BLUR;
                 self.blur_records = if is_blur { self.blur_records + 1 } else { self.blur_records - 1 };
@@ -1732,7 +1731,7 @@ impl FlatWorld {
     /// placed, every index built, one whole frame painted. Animations rest on their goals.
     pub fn fresh_mount(&self, ext: &mut dyn ExtPaint) -> FlatWorld {
         let mut w = self.clone();
-        #[cfg(feature = "flat_mutants")]
+        #[cfg(feature = "mutants")]
         {
             w.engine.mutants = 0;
         }

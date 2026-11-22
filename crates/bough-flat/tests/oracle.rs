@@ -1,9 +1,9 @@
 //! The flat core's pixel gates: after every operation the retained surface equals a full redraw of the stores
 //! and (animations at rest) the same state mounted from nothing.
-mod flat_common;
-use bough_x::flat::store::ROOT;
-use bough_x::flat::*;
-use flat_common::*;
+mod common;
+use bough_flat::store::ROOT;
+use bough_flat::*;
+use common::*;
 
 fn ok(s: &mut Scene, what: &str) -> FrameInfo {
     match s.w.check(&mut NoExt) {

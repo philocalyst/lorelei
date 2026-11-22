@@ -658,9 +658,9 @@ pub mod fused {
         get_mut!(RB)[at as usize] = vec4f(p0.x(), p0.y(), p1.x(), p1.y());
         get_mut!(RCOL)[at as usize] = vec2u(color, c_inst(iw + 5u32));
         let uvw = c_inst(iw + 8u32);
-        // uv.z low 8 bits: gradient form (0 linear, 1 radial, 2 conic) or shadow form (0 outer, 1 inset)
-        let pad = (c_inst(iw + 9u32) & 255u32) << 8u32;
-        get_mut!(RPAR)[at as usize] = vec4u(bitcast_u32(rad), bitcast_u32(bw), uvw, kind | pad | (spc << 16u32));
+        // the gradient's form (uv.z: 0 linear, else radial) as one bit, the space for a transformed record's inverse
+        let radial = select(0u32, 256u32, (c_inst(iw + 9u32) & 65535u32) != 0u32);
+        get_mut!(RPAR)[at as usize] = vec4u(bitcast_u32(rad), bitcast_u32(bw), uvw, kind | radial | (spc << 16u32));
         let mut k = max(rad, 0.5 + bw) + 1.0;
         if kind == 1u32 {
             k = max(rad, 0.5) + 1.0;
@@ -906,24 +906,17 @@ pub mod fused {
             }
             return acc * unpack4x8unorm(col.x()).w();
         }
-        let pad = (par.w() >> 8u32) & 255u32;
         if kind == 5u32 {
-            // a 256-texel premultiplied ramp: linear (0), radial (1), or conic (2) in a rounded box
+            // a 256-texel premultiplied ramp: linear at angle `bw` or radial about `gc`, in a rounded box
             let mut t = 0.0;
-            if pad == 0u32 {
+            if (par.w() & 256u32) == 0u32 {
                 let dir = vec2f(sin(bw), -cos(bw));
                 let len = abs(2.0 * hs.x() * dir.x()) + abs(2.0 * hs.y() * dir.y());
                 t = dot(p, dir) / max(len, 1e-6) + 0.5;
-            } else if pad == 1u32 {
-                let gc = vec2f(bitcast_f32(col.x()), bitcast_f32(col.y()));
-                let g = (gc - vec2f(0.5, 0.5)) * 2.0 * hs;
-                t = length(p - g) / max(length(abs(g) + hs), 1e-6);
             } else {
                 let gc = vec2f(bitcast_f32(col.x()), bitcast_f32(col.y()));
                 let g = (gc - vec2f(0.5, 0.5)) * 2.0 * hs;
-                let d = p - g;
-                let ang = atan2(d.x(), -d.y()) - bw;
-                t = fract(ang * 0.15915494309189535);
+                t = length(p - g) / max(length(abs(g) + hs), 1e-6);
             }
             let x = clamp(t, 0.0, 1.0) * 255.0;
             let i = min(floor(x), 254.0);
@@ -937,16 +930,7 @@ pub mod fused {
             let cov = clamp(0.5 - sd(c, b, r) * sc, 0.0, 1.0);
             return mix(c0v, c1v, vec4f(f, f, f, f)) * cov;
         }
-        let sh = clamp(shadow(p, hs, max(bw, 1e-3), r), 0.0, 1.0);
-        if pad == 1u32 {
-            let mut sc = 1.0;
-            if xs != 0.0 {
-                sc = xs;
-            }
-            let cov = clamp(0.5 - sd(c, b, r) * sc, 0.0, 1.0);
-            return premul(col.x()) * ((1.0 - sh) * cov);
-        }
-        premul(col.x()) * sh
+        premul(col.x()) * clamp(shadow(p, hs, max(bw, 1e-3), r), 0.0, 1.0)
     }
 
     /// Source-over of `s` onto `a` with one rounding.

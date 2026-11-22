@@ -1,6 +1,6 @@
 //! Pages and the transitions between them.
 //!
-//! A page is a flat scene (`fx_api`) described once. The router keeps each page as a **retained group**
+//! A page is a flat scene ([`crate::style`]) described once. The router keeps each page as a **retained group**
 //! of one stage scene: the page is painted into its own surface when its content changes, at the grain of
 //! that change, and otherwise not at all. A transition never asks a page anything. It moves, scales,
 //! fades and blurs the one stage record that shows the page's surface (the blur reads the surface's
@@ -21,7 +21,8 @@
 //! router.pop(now);          // the detail page turns round where it is, at the speed it had
 //! ```
 use crate::color::Color;
-use crate::fx_api::*;
+use crate::motion::*;
+use crate::style::*;
 use bough_paint::flat_scene::surface_words;
 use std::collections::HashMap;
 

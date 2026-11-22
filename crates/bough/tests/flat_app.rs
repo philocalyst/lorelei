@@ -1,4 +1,4 @@
-//! The façade on the flat core (`bough::rethink`), held to its gates: the same prelude views as the lowered
+//! The façade on the flat core (`bough::flat`), held to its gates: the same prelude views as the lowered
 //! runtime, pixel for pixel, through scripts of every kind of turn; and the flat core's own oracles on every
 //! frame (retained == full redraw == fresh mount == the lowered canvas's immediate paint).
 #[path = "../examples/deep_view.rs"]
@@ -8,7 +8,7 @@ mod slice;
 
 use bough::input::{Button, Key, Mods};
 use bough::raw::Config;
-use bough::rethink::FlatApp;
+use bough::flat::FlatApp;
 use slice::{ROW_H, Slice};
 
 fn cfg(w: f32, h: f32, scale: f32) -> Config {
@@ -171,7 +171,7 @@ fn a_wheel_scroll_of_the_slice_is_a_blit_and_a_hover_is_two_patches() {
     app.check().unwrap();
     assert_eq!((app.stats.describes - d, app.stats.patches - p), (0, 2));
     assert!(app.last.dirty_tiles <= 2 * 40 * 3, "{:?}", app.last);
-    assert_eq!(app.last.choice, bough::rethink::flat::ExecutorChoice::Cpu);
+    assert_eq!(app.last.choice, bough::flat::ExecutorChoice::Cpu);
     // a turn that changes nothing compares every record and patches none
     let s = app.host.sync;
     app.turn(|_| {});

@@ -17,7 +17,9 @@ bough-kernel = { path = "../bough-kernel" }
 # The typed dataflow core the façade lowers onto (Integration Card 3): the world, layout as data.
 bough-x = { path = "../bough-x" }
 bough-lay = { path = "../bough-lay" }
-# The paint lane's flat bank, animation bank and retained surfaces: what `fx_api` and `pages` are made of.
+# The flat core (`flat`): state words, bindings, records, the damage engine underneath.
+bough-flat = { path = "../bough-flat" }
+# The paint lane's flat bank, animation bank and retained surfaces: what `style`, `motion` and `pages` are made of.
 bough-paint = { path = "../bough-paint" }
 rustybuzz = "0.20"
 ttf-parser = { version = "0.25", default-features = false, features = ["std"] }

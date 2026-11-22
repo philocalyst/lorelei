@@ -1,9 +1,9 @@
-//! The façade on the flat core (`bough_x::flat`): no type-level dataflow, no specialisation, no field offsets.
+//! The façade on the flat core (`bough-flat`): no type-level dataflow, no specialisation, no field offsets.
 //!
 //! Two ways in, one engine under both:
 //!
 //! * [`FlatApp`]: any `bough::prelude` view, unchanged. The view is described as data by the lowering every
-//!   element already has ([`crate::lower`]), and the description is kept in a [`bough_x::flat::FlatWorld`]:
+//!   element already has ([`crate::lower`]), and the description is kept in a [`FlatWorld`]:
 //!   a turn describes again and *patches* the records that differ, a scrolled port is a space whose offset is
 //!   a state word (so a scroll is a blit and its seams), and the damage engine decides what is repainted.
 //!   Generic only in its outermost shell (it holds the author's `V`); everything it calls is not.
@@ -16,8 +16,8 @@
 //! and transitions exist in `ui` and in the core; the prelude's elements do not describe them yet, so
 //! [`FlatApp`] never sees one.
 pub mod app;
-pub mod bridge;
 pub mod ui;
 
 pub use app::FlatApp;
-pub use bough_x::flat;
+/// The flat core itself: state words, bindings, records, the world, the reference raster.
+pub use bough_flat::*;
