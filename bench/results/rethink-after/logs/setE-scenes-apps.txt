@@ -1,0 +1,41 @@
+# Set E scenes/apps AFTER  4:23  up 5 days,  7:15, 1 user, load averages: 4.75 5.89 5.97
+# 5063c89bcbe4d3952f864f47c0c95272a55d0f781431259ba9689bb131f3b1ab  /Users/rmccrar6/work/targets/rethink-bench/release/lab_headless
+# ae13dae701bc6cef9077e915b2bef335290928cc85dd474691ae59a7b914e264  /Users/rmccrar6/work/targets/rethink-bench/release/animate_headless
+# b28e5d139a14ed2799b9ebc144a79ac8b376c07915562cc9fedd3aa94ab611dd  /Users/rmccrar6/work/targets/rethink-bench/release/micro_bench
+# 58d8a7a4a73b8d977af416c0856c0050ed2bbf01771896caef2015801286837a  /Users/rmccrar6/work/targets/rethink-bench/release/kernel_bench
+# 5d545819a590119720ab1ece437c2f3aab96c320169511241232b473286b17fe  /Users/rmccrar6/work/targets/rethink-bench/release/apps_bench
+# c1c399af65e2f224e9c87b2a307e917469977dc9b51f8efc2fdda1d568e4b836  /Users/rmccrar6/work/targets/rethink-bench/release/apps_bench_sketch_code
+## lab stream TICKS=900  4:23  up 5 days,  7:15, 1 user, load averages: 4.75 5.89 5.97
+repaired tiles/frame 157.3
+Stream render=true: 0.3203 ms/tick, frames 900/900, ri_instructions total 368364605, instr/tick 255006, footprint 426.0 MB, fallbacks 0, text shaped 899, rows mounted 17
+## lab scroll TICKS=600  4:23  up 5 days,  7:15, 1 user, load averages: 4.75 5.89 5.97
+repaired tiles/frame 64.2
+Scroll render=true: 0.3322 ms/tick, frames 600/600, ri_instructions total 314303636, instr/tick 310007, footprint 425.9 MB, fallbacks 0, text shaped 0, rows mounted 316
+## animate FRAMES=1200  4:23  up 5 days,  7:15, 1 user, load averages: 4.75 5.89 5.97
+animate: 126502 instr/frame after 120 warm-up, frames drawn 1080/1080 render=true, ri_instructions total 402608670, footprint 457.5 MB
+## micro state  4:23  up 5 days,  7:15, 1 user, load averages: 4.75 5.89 5.97
+{"framework":"bough","scene":"state","figure":"write","render":true,"clock":"process_cpu","ops":2000,"batch":50,"median_ns":20.0,"p10_ns":0.0,"p90_ns":20.0,"min_ns":0.0,"max_ns":60.0,"batches":40}
+{"framework":"bough","scene":"state","figure":"frame","render":true,"clock":"process_cpu","ops":2000,"batch":10,"median_ns":44700.0,"p10_ns":36500.0,"p90_ns":57800.0,"min_ns":31000.0,"max_ns":92400.0,"batches":200}
+## micro vscroll  4:23  up 5 days,  7:15, 1 user, load averages: 4.75 5.89 5.97
+{"framework":"bough","scene":"vscroll-fixed","figure":"write","render":true,"clock":"process_cpu","ops":2000,"batch":50,"median_ns":20.0,"p10_ns":0.0,"p90_ns":20.0,"min_ns":0.0,"max_ns":40.0,"batches":40}
+{"framework":"bough","scene":"vscroll-fixed","figure":"frame","render":true,"clock":"process_cpu","ops":2000,"batch":10,"median_ns":60300.0,"p10_ns":44200.0,"p90_ns":93400.0,"min_ns":35400.0,"max_ns":211100.0,"batches":200}
+## kernel stream REPS=100  4:23  up 5 days,  7:15, 1 user, load averages: 4.45 5.81 5.94
+Stream debug 0: repair (499 tiles) 0.0519 ms [0.0408..0.0762]   full redraw 0.0855 ms [0.0853..0.0877]
+copy 1920x1412 px (debug 2: no tile pass): 0.0136 ms [0.0135..0.0138]
+## apps mail+dash REPS=5  4:23  up 5 days,  7:15, 1 user, load averages: 4.45 5.81 5.94
+mail: open a message: 1.86 ms, 2.75 M instructions
+mail: search keystroke: 0.32 ms, 1.12 M instructions
+mail: archive: 0.35 ms, 1.13 M instructions
+dashboard: feed tick, sorted by price: 0.75 ms, 2.58 M instructions
+dashboard: sort: 0.42 ms, 2.29 M instructions
+dashboard: sort, a column not sorted by last: 0.37 ms, 2.01 M instructions
+dashboard: filter keystroke: 0.36 ms, 1.93 M instructions
+## sketch-code REPS=5  4:23  up 5 days,  7:15, 1 user, load averages: 4.45 5.81 5.94
+sketch: drag a shape: 0.44 ms, 1.93 M instructions
+sketch: pan: 0.48 ms, 1.07 M instructions
+sketch: zoom: 0.53 ms, 1.06 M instructions
+code: keystroke: 0.56 ms, 1.76 M instructions
+code: scroll a page: 0.49 ms, 1.25 M instructions
+code: find-all keystroke: 0.42 ms, 0.83 M instructions
+code: find-all, a new letter: 0.36 ms, 0.82 M instructions
+## end  4:23  up 5 days,  7:15, 1 user, load averages: 4.45 5.81 5.94

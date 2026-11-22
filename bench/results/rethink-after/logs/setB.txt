@@ -1,0 +1,23 @@
+# Set B AFTER  4:22  up 5 days,  7:15, 1 user, load averages: 6.77 6.40 6.14
+# fx-bench 6a81126c0afb3106dfbea540ee1cd948a64517ec9e7ef0aa62d844eee294475b  /Users/rmccrar6/work/targets/rethink-bench/release/bough-fx-bench
+# rethink-core 38f4ca5f4321d3739c637207065d735715dbb9b7a022ad2a3899304e0137802c  /Users/rmccrar6/work/targets/rethink-bench/release/rethink-core
+## fx-bench n=200  4:22  up 5 days,  7:15, 1 user, load averages: 6.77 6.40 6.14
+GATE PASS 200 startup
+MEASURED 200 startup rc=0
+GATE PASS 200 idle
+MEASURED 200 idle rc=0
+GATE PASS 200 one
+MEASURED 200 one rc=0
+GATE PASS 200 many
+MEASURED 200 many rc=0
+GATE PASS 200 hover
+MEASURED 200 hover rc=0
+GATE PASS 200 theme
+MEASURED 200 theme rc=0
+GATE PASS 200 scroll
+MEASURED 200 scroll rc=0
+GATE PASS 200 resize
+MEASURED 200 resize rc=0
+## rethink-core n=200  4:22  up 5 days,  7:15, 1 user, load averages: 6.46 6.34 6.12
+check 200 startup rethink_startup,200,startup,2256458,13461929,3178496,2474296
+sh: line 14: cell_rc: unbound variable

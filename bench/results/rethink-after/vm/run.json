@@ -1,0 +1,830 @@
+{
+  "cells": [
+    {
+      "args": [
+        "--scenario",
+        "rows",
+        "--rows",
+        "1000"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "rows",
+        "updates": null,
+        "variant": "default"
+      },
+      "dir": "rows/bough/default/60hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "hover",
+        "scroll"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "rows",
+        "--rows",
+        "1000"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "rows",
+        "updates": null,
+        "variant": "default"
+      },
+      "dir": "rows/bough/default/144hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "hover",
+        "scroll"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "rows",
+        "--rows",
+        "1000"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "rows",
+        "updates": null,
+        "variant": "default"
+      },
+      "dir": "rows/bough-x/default/60hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "hover",
+        "scroll"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "rows",
+        "--rows",
+        "1000"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "rows",
+        "updates": null,
+        "variant": "default"
+      },
+      "dir": "rows/bough-x/default/144hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "hover",
+        "scroll"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "table",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "table",
+        "updates": null,
+        "variant": "fine"
+      },
+      "dir": "table/bough/fine/60hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "op-select",
+        "op-update10",
+        "op-swap",
+        "op-remove",
+        "op-insert",
+        "op-replace",
+        "op-append",
+        "op-clear",
+        "churn"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "table",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "table",
+        "updates": null,
+        "variant": "coarse"
+      },
+      "dir": "table/bough/coarse/60hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "op-select",
+        "op-update10",
+        "op-swap",
+        "op-remove",
+        "op-insert",
+        "op-replace",
+        "op-append",
+        "op-clear",
+        "churn"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "table",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "table",
+        "updates": null,
+        "variant": "fine"
+      },
+      "dir": "table/bough-x/fine/60hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "op-select",
+        "op-update10",
+        "op-swap",
+        "op-remove",
+        "op-insert",
+        "op-replace",
+        "op-append",
+        "op-clear",
+        "churn"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "table",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "table",
+        "updates": null,
+        "variant": "coarse"
+      },
+      "dir": "table/bough-x/coarse/60hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "op-select",
+        "op-update10",
+        "op-swap",
+        "op-remove",
+        "op-insert",
+        "op-replace",
+        "op-append",
+        "op-clear",
+        "churn"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "search",
+        "--rows",
+        "1000"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "search",
+        "updates": null,
+        "variant": "default"
+      },
+      "dir": "search/bough/default/60hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "filter",
+        "typing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "search",
+        "--rows",
+        "1000"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "search",
+        "updates": null,
+        "variant": "default"
+      },
+      "dir": "search/bough-x/default/60hz/1000",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "filter",
+        "typing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine",
+        "--updates",
+        "1",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 1,
+        "variant": "fine"
+      },
+      "dir": "ticker/bough/fine/60hz/1000-u1",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine",
+        "--updates",
+        "100",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 100,
+        "variant": "fine"
+      },
+      "dir": "ticker/bough/fine/60hz/1000-u100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine",
+        "--updates",
+        "1",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 1,
+        "variant": "fine"
+      },
+      "dir": "ticker/bough/fine/144hz/1000-u1",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine",
+        "--updates",
+        "100",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 100,
+        "variant": "fine"
+      },
+      "dir": "ticker/bough/fine/144hz/1000-u100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse",
+        "--updates",
+        "1",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 1,
+        "variant": "coarse"
+      },
+      "dir": "ticker/bough/coarse/60hz/1000-u1",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse",
+        "--updates",
+        "100",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 100,
+        "variant": "coarse"
+      },
+      "dir": "ticker/bough/coarse/60hz/1000-u100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse",
+        "--updates",
+        "1",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 1,
+        "variant": "coarse"
+      },
+      "dir": "ticker/bough/coarse/144hz/1000-u1",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse",
+        "--updates",
+        "100",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 100,
+        "variant": "coarse"
+      },
+      "dir": "ticker/bough/coarse/144hz/1000-u100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine",
+        "--updates",
+        "1",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 1,
+        "variant": "fine"
+      },
+      "dir": "ticker/bough-x/fine/60hz/1000-u1",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine",
+        "--updates",
+        "100",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 100,
+        "variant": "fine"
+      },
+      "dir": "ticker/bough-x/fine/60hz/1000-u100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine",
+        "--updates",
+        "1",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 1,
+        "variant": "fine"
+      },
+      "dir": "ticker/bough-x/fine/144hz/1000-u1",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "fine",
+        "--updates",
+        "100",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 100,
+        "variant": "fine"
+      },
+      "dir": "ticker/bough-x/fine/144hz/1000-u100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse",
+        "--updates",
+        "1",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 1,
+        "variant": "coarse"
+      },
+      "dir": "ticker/bough-x/coarse/60hz/1000-u1",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse",
+        "--updates",
+        "100",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 60.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 100,
+        "variant": "coarse"
+      },
+      "dir": "ticker/bough-x/coarse/60hz/1000-u100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse",
+        "--updates",
+        "1",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 1,
+        "variant": "coarse"
+      },
+      "dir": "ticker/bough-x/coarse/144hz/1000-u1",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    },
+    {
+      "args": [
+        "--scenario",
+        "ticker",
+        "--rows",
+        "1000",
+        "--variant",
+        "coarse",
+        "--updates",
+        "100",
+        "--interval-ms",
+        "16"
+      ],
+      "cell": {
+        "framework": "bough-x",
+        "hz": 144.0,
+        "rows": 1000,
+        "scenario": "ticker",
+        "updates": 100,
+        "variant": "coarse"
+      },
+      "dir": "ticker/bough-x/coarse/144hz/1000-u100",
+      "done": [
+        "startup",
+        "layout",
+        "idle",
+        "pacing"
+      ],
+      "errors": [],
+      "skipped": []
+    }
+  ],
+  "effort": {
+    "churn_cycles": 40,
+    "hover_repeats": 4,
+    "iterations": 1,
+    "op_repeats": 4
+  },
+  "format": 2,
+  "frameworks": [
+    "bough",
+    "bough-x"
+  ],
+  "header_height": 40,
+  "output": {
+    "height": 800,
+    "width": 1280
+  },
+  "revisions": {
+    "fakeland": null,
+    "gui-bench": null,
+    "zgui": null
+  },
+  "row_height": 32,
+  "scenarios": [
+    "rows",
+    "table",
+    "search",
+    "ticker"
+  ],
+  "scroll": {
+    "seconds": 1.0,
+    "velocity": 800.0
+  },
+  "started_unix": 1795339507,
+  "tick_ms": 16
+}

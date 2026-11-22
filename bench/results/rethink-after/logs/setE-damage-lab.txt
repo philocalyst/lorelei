@@ -1,0 +1,32 @@
+# Set E damage-lab AFTER  4:23  up 5 days,  7:16, 1 user, load averages: 4.26 5.74 5.91
+# lab 788cd1ea4ba6a12c380ff1f80dccbf9b40177a49a87b3af202b6f797d9ca7227  /Users/rmccrar6/work/targets/rethink-bench/release/lab
+# verify  4:23  up 5 days,  7:16, 1 user, load averages: 4.26 5.74 5.91
+traces built in 0.2s
+  heavy-scroll: 2560x1600 px, 3840 slots (2770 live), 120 frames, 8.2 node ev/frame (57 slots), 1080 group slots/frame
+  heavy-both: 2560x1600 px, 3840 slots (2762 live), 120 frames, 811.3 node ev/frame (1809 slots), 1081 group slots/frame
+  lab-scroll: 1920x1440 px, 1536 slots (483 live), 120 frames, 2.0 node ev/frame (35 slots), 465 group slots/frame
+  vlist-scroll: 1440x1600 px, 26368 slots (1666 live), 120 frames, 1.2 node ev/frame (294 slots), 1600 group slots/frame
+  complex-app: 2560x1600 px, 896 slots (505 live), 120 frames, 44.9 node ev/frame (174 slots), 344 group slots/frame
+verify: 0 failures, 3.6s -> /Users/rmccrar6/work/lorelei-wt/rethink-bench/crates/bough-damage-lab/results/verify.csv
+verify_rc=0
+# bench  4:23  up 5 days,  7:16, 1 user, load averages: 4.40 5.75 5.92
+traces built in 0.1s
+  heavy-scroll: 2560x1600 px, 3840 slots (2770 live), 120 frames, 8.2 node ev/frame (57 slots), 1080 group slots/frame
+  heavy-both: 2560x1600 px, 3840 slots (2762 live), 120 frames, 811.3 node ev/frame (1809 slots), 1081 group slots/frame
+  lab-scroll: 1920x1440 px, 1536 slots (483 live), 120 frames, 2.0 node ev/frame (35 slots), 465 group slots/frame
+  vlist-scroll: 1440x1600 px, 26368 slots (1666 live), 120 frames, 1.2 node ev/frame (294 slots), 1600 group slots/frame
+  complex-app: 2560x1600 px, 896 slots (505 live), 120 frames, 44.9 node ev/frame (174 slots), 344 group slots/frame
+counter overhead: 7567 instructions
+bench heavy-scroll ring 1 done
+bench heavy-scroll ring 3 done
+bench heavy-both ring 1 done
+bench heavy-both ring 3 done
+bench lab-scroll ring 1 done
+bench lab-scroll ring 3 done
+bench vlist-scroll ring 1 done
+bench vlist-scroll ring 3 done
+bench complex-app ring 1 done
+bench complex-app ring 3 done
+bench -> /Users/rmccrar6/work/lorelei-wt/rethink-bench/crates/bough-damage-lab/results/bench.csv
+bench_rc=0
+# end  4:23  up 5 days,  7:16, 1 user, load averages: 4.40 5.75 5.92

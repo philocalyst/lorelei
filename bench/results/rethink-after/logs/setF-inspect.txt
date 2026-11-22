@@ -1,0 +1,19 @@
+# Set F inspector zero-cost tests  4:20  up 5 days,  7:13, 1 user, load averages: 8.41 6.31 6.09
+    Blocking waiting for file lock on build directory
+    Finished `release` profile [optimized + debuginfo] target(s) in 45.53s
+     Running tests/alloc_zero.rs (/Users/rmccrar6/work/targets/rethink-bench/release/build/bough-inspect-app/e3b64ec5044ae12a/out/alloc_zero-e3b64ec5044ae12a)
+
+running 2 tests
+test the_background_png_worker_is_lazy ... ok
+test idle_refresh_allocates_nothing ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/hot_path.rs (/Users/rmccrar6/work/targets/rethink-bench/release/build/bough-inspect-app/5005e9810bfd30b3/out/hot_path-5005e9810bfd30b3)
+
+running 1 test
+test a_hover_costs_what_the_core_says ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+# end  4:21  up 5 days,  7:14, 1 user, load averages: 7.80 6.44 6.14

@@ -1,0 +1,40 @@
+# instruction runs AFTER  4:20  up 5 days,  7:13, 1 user, load averages: 7.68 6.10 6.01
+# card3_cost 2ef67a1c4c74f3151bd7aac1bd8bfe7f7dbf6ff2b72dfabfd31531fd2a071e90  /Users/rmccrar6/work/targets/rethink-bench/release/examples/card3_cost
+# flat_cost 3f27cfb8a02390722af6c3887f2c9a4af43f38bc9bbe158b1b48c1780aeedce8  /Users/rmccrar6/work/targets/rethink-bench/release/examples/flat_cost
+## card3_cost tsv
+cell	legacy_turn	lowered_turn	typed_turn	typed_over_legacy	legacy_turn_frame	lowered_turn_frame	typed_turn_frame	typed_over_legacy_frame
+mount, 1,000 rows	26191074	6388635	6082853	0.232	36557019	17265349	16983419	0.465
+mount, 100,000 rows	26384745	7965475	6081642	0.230	36686553	18832682	16982148	0.463
+hover, one row to the next	415	4991	3145	7.578	2224	871699	875458	393.641
+one signal (the title)	8048	195820	23050	2.864	64438	293198	150298	2.332
+insert at 0 (click)	121072	616295	53544	0.442	5395179	7714605	7221947	1.339
+scroll by one row	89683	451929	19188	0.214	2333710	7483964	7075068	3.032
+theme (opaque state)	7244	197434	5853	0.808	8120854	11377481	11214270	1.381
+resize by 40 pt	3402397	1806039	1592650	0.468	14795674	13089006	12903868	0.872
+still frame	0	0	0	NaN	1784	1610	1610	0.902
+# typed: the author's view() alone 501
+units x1000 (context read, spec convert+pack): (8041, 108017)
+# typed, thread instructions: view + conversion of the fixed part 6898; a re-description of an unchanged view 4728
+# lowered title edit, thread instructions per turn: view+lower 120177 / layout+emit 65983 / world compare 9217 (96 records)
+# load average: { 8.19 6.23 6.06 }; legacy repair: Kernel
+## flat_cost tsv
+cell	lowered_turn	typed_turn	flat_turn	flat-ui_turn	lowered_turn_frame	typed_turn_frame	flat_turn_frame	flat-ui_turn_frame
+mount, 1,000 rows	6462384	6083244	5937622	19411928	17332261	16996703	13296871	23059122
+mount, 100,000 rows	8594137	6095288	8126253	1962384415	19463864	17003625	15485477	2040472563
+hover, one row to the next	4893	3170	3999	2998	872961	877692	838907	311045
+one signal (the title)	201728	23066	206405	1294	299199	150973	304157	44369
+insert at 0 (click)	627967	53472	746050	-	7729891	7235366	6629256	-
+scroll by one row	457986	19215	446885	11353	7494977	7086895	2918684	1799300
+theme	203287	5863	207330	2462	11391279	11227339	1532318	2633143
+resize by 40 pt	1813580	1592660	1229039	-	13104916	12917615	8994311	-
+still frame	11	11	12	214	1627	1627	2008	2124
+# flat (prelude slice), last frame of each kind: hover 200 tiles 16.7% Cpu; scroll by a row 324 tiles 27.0% blits 1 Gpu; theme 102 tiles 8.5% Cpu
+# the deep view is not admitted to the typed path: ["the view's element type has no typed conversion"]
+# deep view, instructions:
+cell (turn / turn+frame)	                 lowered	                    flat	                 flat-ui
+  count += 1 (5 readers)	        976693 / 8717561	        992072 / 5121057	          5453 / 4472537
+        fade (4 readers)	        950210 / 3310512	        965473 / 2398328	          2903 / 1781145
+      shift (12 readers)	        951156 / 8410900	        970790 / 4600891	          7621 / 2795050
+   hover, level to level	      961421 / 214155302	      971986 / 107456312	         6013 / 17236128
+# load average: { 8.19 6.23 6.06 }
+## end  4:20  up 5 days,  7:13, 1 user, load averages: 8.19 6.23 6.06
