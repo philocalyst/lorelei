@@ -15,6 +15,9 @@ bough-face = { path = "../bough-face" }
 bough-mem = { path = "../bough-mem" }
 
 [features]
+# Compiles the negative-control switches of the flat core and the damage engine (`damage_engine::mutant`):
+# tests/flat_mutants.rs turns each on and requires its oracle to fail.
+flat_mutants = []
 # phase marks for splitting a pass's cost (`probe.rs`); off: a mark is nothing
 phase_probe = []
 inspect-metadata = ["bough-lay/inspect-metadata"]
