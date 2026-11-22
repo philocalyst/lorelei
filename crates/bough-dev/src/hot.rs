@@ -437,3 +437,42 @@ pub fn write_state(path: &Path, st: &[(String, J)]) -> Result<(), String> {
     std::fs::write(path, json::to_string(&J::Arr(arr)))
         .map_err(|e| format!("{}: {e}", path.display()))
 }
+
+/// What dispatching one classified change did.
+#[derive(Clone, Debug)]
+pub enum Dispatched {
+    /// A docs/test/target/swap edit: nothing happened.
+    Ignored,
+    /// A style/fx or asset change took the fast in-process reload (no rebuild, no restart).
+    Reloaded(J),
+    /// A structural change rebuilt the binary and restarted with typed state preserved.
+    Restarted(RestartReport),
+}
+
+/// Route one classified change through the inspector IPC. Style/fx and asset changes are a fast in-process
+/// reload (a theme, token, shader or asset cache invalidation — no rebuild, no restart); a layout/tree change
+/// rebuilds and restarts with state preserved. `Ignore` is a no-op.
+pub fn dispatch(
+    kind: crate::watch::Kind,
+    running: &mut Running,
+    spec: &AppSpec,
+    rebuild: &Rebuild,
+    timeout: Duration,
+) -> Result<Dispatched, String> {
+    match kind {
+        crate::watch::Kind::Ignore => Ok(Dispatched::Ignored),
+        crate::watch::Kind::AssetReload | crate::watch::Kind::StyleOrFxPatch => {
+            let c = running.client()?;
+            let v = c
+                .request("reload", &J::obj())
+                .map_err(|e| e.to_string())?
+                .map_err(|e| e.message)?;
+            Ok(Dispatched::Reloaded(v))
+        }
+        crate::watch::Kind::LayoutOrTreeRebuild => {
+            rebuild.run()?;
+            let report = restart_preserving_state(spec, running, timeout)?;
+            Ok(Dispatched::Restarted(report))
+        }
+    }
+}

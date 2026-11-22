@@ -78,6 +78,46 @@ impl Client {
     pub fn handshaken(&self) -> bool {
         self.handshaken
     }
+    /// The live damage map; with `include_heatmap`, the colour-coded overlay is encoded off the UI thread.
+    pub fn damage_map(&mut self, include_heatmap: bool) -> io::Result<Result<J, RpcError>> {
+        self.request(
+            "damage_map",
+            &J::obj().set("include_heatmap_png", include_heatmap),
+        )
+    }
+    /// The active effects for a selected node (`None`: the whole scene).
+    pub fn effects_inspect(&mut self, node: Option<usize>) -> io::Result<Result<J, RpcError>> {
+        let mut p = J::obj();
+        if let Some(n) = node {
+            p.put("node", n);
+        }
+        self.request("effects_inspect", &p)
+    }
+    /// All live animations and page transitions.
+    pub fn animations(&mut self) -> io::Result<Result<J, RpcError>> {
+        self.request("animations", &J::obj())
+    }
+    /// Deterministically scrub an animation or page transition.
+    pub fn scrub_animation(&mut self, params: &J) -> io::Result<Result<J, RpcError>> {
+        self.request("scrub_animation", params)
+    }
+    /// A structured per-phase frame profile.
+    pub fn profile_frame(&mut self) -> io::Result<Result<J, RpcError>> {
+        self.request("profile_frame", &J::obj())
+    }
+    /// An ergonomic selector assertion; returns a pass/fail with structured diagnostics.
+    pub fn assert_selector(&mut self, sel: &J) -> io::Result<Result<J, RpcError>> {
+        self.request("assert_selector", sel)
+    }
+    /// A sequence of RPC commands in one round-trip.
+    pub fn batch(&mut self, steps: &J, stop_on_error: bool) -> io::Result<Result<J, RpcError>> {
+        self.request(
+            "batch",
+            &J::obj()
+                .set("steps", steps.clone())
+                .set("stop_on_error", stop_on_error),
+        )
+    }
     /// A socket path short enough for a Unix address (the kernel admits about 104 bytes).
     pub fn short_path(dir: impl AsRef<Path>, tag: &str) -> PathBuf {
         let p = dir

@@ -194,6 +194,24 @@ fn tool_args(
                 m.insert("log".into(), l.clone());
             }
         }
+        "damage_map" => {
+            m.insert("include_heatmap_png".into(), json!(true));
+        }
+        "effects_inspect" => {
+            m.insert("node".into(), json!(0));
+        }
+        "scrub_animation" => {
+            m.insert("op".into(), json!("resume"));
+        }
+        "assert_selector" => {
+            m.insert("kind".into(), json!("text"));
+        }
+        "batch" => {
+            m.insert(
+                "steps".into(),
+                json!([{"method": "counters", "params": {}}]),
+            );
+        }
         _ => {}
     }
     m
@@ -441,7 +459,7 @@ fn the_http_transport_accepts_the_same_client() {
             .list_all_resources()
             .await
             .expect("HTTP resources/list");
-        assert_eq!(resources.len(), 3);
+        assert!(resources.len() >= 9, "{} resources", resources.len());
         for resource in resources {
             let read = client
                 .read_resource(rmcp::model::ReadResourceRequestParams::new(resource.uri))

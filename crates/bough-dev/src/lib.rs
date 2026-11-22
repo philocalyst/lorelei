@@ -14,7 +14,7 @@ use std::net::TcpListener;
 use std::path::Path;
 use std::sync::Arc;
 
-pub use hot::{AppSpec, Rebuild, RestartReport, Running};
+pub use hot::{dispatch, AppSpec, Dispatched, Rebuild, RestartReport, Running};
 pub use watch::{Change, Kind, Watcher};
 
 /// Serve the MCP endpoint at `addr` from this process, over the application's socket. Returns the bound address

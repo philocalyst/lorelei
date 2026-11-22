@@ -5,7 +5,9 @@
 //! the stores and must not move across threads, so the socket is pumped from the application's loop rather than
 //! serving from another thread (see [`crate::socket`]).
 use crate::damage::capture;
+use crate::encoder::{self, PngWorker};
 use crate::frame::Frame;
+use crate::protocol::{Animation, DamageMap, EffectsInspect, FrameProfile, ScrubCommand, ScrubResult};
 use crate::record::Command;
 use crate::schema::Damage as DamageSnapshot;
 use crate::schema::*;
@@ -240,6 +242,33 @@ pub trait Program {
     {
         None
     }
+
+    // ---- telemetry hooks (defaults live in [`crate::hooks`]) -----------------------------------------------
+
+    /// The damage the last committed turn produced. A live `DamageEngine` overrides this with occlusion and
+    /// backdrop-blur dilation counts; the default derives from the snapshot's tile bitmap.
+    fn damage_map(&self, snap: &Snapshot) -> DamageMap {
+        crate::hooks::default_damage_map(snap)
+    }
+    /// Active effects for a node or the whole scene. Only a paint scene knows its own shadows, blurs, gradients
+    /// and opacity groups; the default is empty.
+    fn effects_inspect(&self, _snap: &Snapshot, node: Option<usize>) -> EffectsInspect {
+        crate::hooks::default_effects_inspect(node)
+    }
+    /// All live animations and page transitions. Only an animation bank knows its own; the default is empty.
+    fn animations(&self, snap: &Snapshot) -> Vec<Animation> {
+        crate::hooks::default_animations(snap)
+    }
+    /// Deterministically scrub an animation or page transition. Without an animation bank there is nothing to
+    /// scrub; the default reports that rather than pretending.
+    fn scrub_animation(&mut self, _snap: &Snapshot, _cmd: &ScrubCommand) -> ScrubResult {
+        crate::hooks::default_scrub_animation()
+    }
+    /// A structured per-phase frame profile. The default reports the retained bytes, the last settle and paint
+    /// timings and the moving nodes; a live executor adds the input/eval/layout/submit phases.
+    fn profile_frame(&self, snap: &Snapshot) -> FrameProfile {
+        crate::hooks::default_profile_frame(snap)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -274,6 +303,8 @@ pub struct Session<P: Program> {
     /// The world the reflection and the accessibility projection were learned from. A host that replaces its
     /// world (a resize in the benchmark adapter) starts both again.
     world: Option<bough_x::world::WorldId>,
+    /// The off-thread PNG encoder, created lazily on the first screenshot or heatmap (zero cost until then).
+    encoder: Option<PngWorker>,
 }
 
 impl<P: Program> Session<P> {
@@ -300,6 +331,7 @@ impl<P: Program> Session<P> {
             last_shown,
             last_change: 0,
             world,
+            encoder: None,
         }
     }
     pub fn app(&self) -> &P {
@@ -369,6 +401,29 @@ impl<P: Program> Session<P> {
         self.key = None;
         f
     }
+    /// Whether the background PNG worker has been started. It is created lazily, so a session that never asks
+    /// for a screenshot or a heatmap starts no thread and allocates nothing for it.
+    pub fn png_worker_started(&self) -> bool {
+        self.encoder.is_some()
+    }
+    /// The dedicated off-thread PNG encoder, created on first use (zero cost until a screenshot or a heatmap
+    /// is actually asked for).
+    pub fn png_worker(&mut self) -> &PngWorker {
+        if self.encoder.is_none() {
+            self.encoder = Some(PngWorker::new());
+        }
+        self.encoder.as_ref().expect("the worker was just created")
+    }
+    /// The `capture_frame_async` pipeline: move a painted frame's pixels into an `Arc` (no word copy) and hand
+    /// them to the background encoder. Returns at once; PNG and base64 encoding complete off the UI thread.
+    pub fn capture_frame_async(
+        &mut self,
+        frame: Frame,
+        raw: bool,
+    ) -> Result<std::sync::mpsc::Receiver<encoder::Encoded>, encoder::ShutDown> {
+        self.png_worker().capture_frame_async(frame, raw)
+    }
+
     /// The damage of the last commit, before the last paint consumed it.
     pub fn damage(&self) -> &DamageSnapshot {
         &self.last_damage

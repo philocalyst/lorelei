@@ -5,14 +5,16 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Kind {
-    /// Rust source: a patch needs a compile and a restart with state.
-    Source,
-    /// Manifest, lockfile, build script, shader or a local dependency: a full rebuild.
-    Config,
-    /// An asset (theme, JSON, image): the running application can re-read it without a rebuild.
-    Asset,
+    /// Docs, tests, target directories and swap files: nothing to do.
+    Ignore,
+    /// A font, image or SVG: invalidate the running application's asset cache (no rebuild, no restart).
+    AssetReload,
+    /// Colours, shadows, gradients, tokens, theme or shaders: a fast in-process hot patch.
+    StyleOrFxPatch,
+    /// Structural Rust view/component changes: an incremental rebuild and a state-preserving restart.
+    LayoutOrTreeRebuild,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,31 +78,64 @@ impl Watcher {
         out.sort_by(|a, b| a.path.cmp(&b.path));
         out
     }
-    /// The worst change in a batch: a config change rebuilds, a source change compiles, an asset only reloads.
+    /// The most expensive change in a batch (highest priority), ignoring nothing-to-do edits.
     pub fn worst(changes: &[Change]) -> Option<Kind> {
-        let mut w = None;
-        for c in changes {
-            w = Some(match (w, c.kind) {
-                (None, k) => k,
-                (Some(Kind::Config), _) | (_, Kind::Config) => Kind::Config,
-                (Some(Kind::Source), _) | (_, Kind::Source) => Kind::Source,
-                _ => Kind::Asset,
-            });
-        }
-        w
+        changes
+            .iter()
+            .map(|c| c.kind)
+            .filter(|k| *k != Kind::Ignore)
+            .max()
     }
 }
 
+/// Classify one changed path into a hot-patch action. The decision is by extension and, for style/token
+/// files, by the file's name; directories named `tests` or `docs` are never a rebuild.
 pub fn classify(p: &Path) -> Kind {
+    if p.components().any(|c| {
+        matches!(
+            c.as_os_str().to_str(),
+            Some("tests" | "test" | "docs" | "doc" | "target" | "fixtures")
+        )
+    }) {
+        return Kind::Ignore;
+    }
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if name.ends_with('~')
+        || name.ends_with(".swp")
+        || name.ends_with(".swo")
+        || (name.starts_with('#') && name.ends_with('#'))
+        || name.starts_with('.')
+    {
+        return Kind::Ignore;
+    }
     let ext = p
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
     match ext.as_str() {
-        "rs" => Kind::Source,
-        "toml" | "lock" | "wgsl" | "metal" | "glsl" | "spv" => Kind::Config,
-        _ => Kind::Asset,
+        "md" | "rst" | "txt" | "adoc" | "markdown" => Kind::Ignore,
+        "swp" | "swo" | "tmp" | "bak" | "orig" | "rej" | "log" => Kind::Ignore,
+        "rs" => Kind::LayoutOrTreeRebuild,
+        "toml" | "lock" => Kind::LayoutOrTreeRebuild,
+        "wgsl" | "metal" | "glsl" | "spv" | "vert" | "frag" | "comp" => Kind::StyleOrFxPatch,
+        "css" | "scss" | "less" | "sass" => Kind::StyleOrFxPatch,
+        "json" | "yaml" | "yml" => {
+            let lower = name.to_ascii_lowercase();
+            if lower.contains("theme")
+                || lower.contains("token")
+                || lower.contains("palette")
+                || lower.contains("color")
+                || lower.contains("style")
+            {
+                Kind::StyleOrFxPatch
+            } else {
+                Kind::AssetReload
+            }
+        }
+        "ttf" | "otf" | "woff" | "woff2" | "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico"
+        | "svg" => Kind::AssetReload,
+        _ => Kind::AssetReload,
     }
 }
 

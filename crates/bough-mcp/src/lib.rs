@@ -142,6 +142,42 @@ impl Mcp {
                         "The current frame (PNG)",
                         "image/png",
                     ),
+                    resource(
+                        "bough://tree",
+                        "tree",
+                        "The live element tree (JSON)",
+                        "application/json",
+                    ),
+                    resource(
+                        "bough://damage",
+                        "damage",
+                        "The latest damage map and tile stats (JSON)",
+                        "application/json",
+                    ),
+                    resource(
+                        "bough://effects",
+                        "effects",
+                        "The active effects inventory (JSON)",
+                        "application/json",
+                    ),
+                    resource(
+                        "bough://animations",
+                        "animations",
+                        "Active animations and transitions (JSON)",
+                        "application/json",
+                    ),
+                    resource(
+                        "bough://profile",
+                        "profile",
+                        "The latest frame profile (JSON)",
+                        "application/json",
+                    ),
+                    resource(
+                        "bough://screenshot.png",
+                        "screenshot",
+                        "The current frame (PNG)",
+                        "image/png",
+                    ),
                 ],
             )),
             "resources/read" => self.resources_read(&params),
@@ -328,6 +364,42 @@ impl Mcp {
                 Ok((j(self.call("replay", &p)?), None))
             }
             "wait_for_idle" => Ok((j(self.call("wait_for_idle", &J::obj())?), None)),
+            "damage_map" => {
+                let mut p = J::obj();
+                if let Some(v) = a.get("include_heatmap_png") {
+                    p.put("include_heatmap_png", v.clone());
+                }
+                Ok((j(self.call("damage_map", &p)?), None))
+            }
+            "effects_inspect" => {
+                let mut p = J::obj();
+                for k in ["node", "node_id", "selector"] {
+                    if let Some(v) = a.get(k) {
+                        p.put(k, v.clone());
+                    }
+                }
+                Ok((j(self.call("effects_inspect", &p)?), None))
+            }
+            "animations" => Ok((j(self.call("animations", &J::obj())?), None)),
+            "scrub_animation" => {
+                let mut p = J::obj();
+                for k in ["op", "action", "ms", "time_ms", "id"] {
+                    if let Some(v) = a.get(k) {
+                        p.put(k, v.clone());
+                    }
+                }
+                Ok((j(self.call("scrub_animation", &p)?), None))
+            }
+            "profile_frame" => Ok((j(self.call("profile_frame", &J::obj())?), None)),
+            "assert_selector" => Ok((j(self.call("assert_selector", a)?), None)),
+            "batch" => {
+                let mut p = J::obj();
+                p.put("steps", a.get("steps").cloned().ok_or("-32602: steps")?);
+                if let Some(v) = a.get("stop_on_error") {
+                    p.put("stop_on_error", v.clone());
+                }
+                Ok((j(self.call("batch", &p)?), None))
+            }
             "quit" => {
                 self.client = None;
                 self.closed = true;
@@ -352,6 +424,43 @@ impl Mcp {
                 "application/json",
             ),
             "lorelei://screenshot" => {
+                let v = self.call("shot", &J::obj())?;
+                let png = v.get("png").and_then(J::as_str).unwrap_or("").to_owned();
+                (J::obj().set("blob", png), "image/png")
+            }
+            "bough://tree" => (
+                J::obj().set("text", self.call("tree", &J::obj())?.pipe(json::to_string)),
+                "application/json",
+            ),
+            "bough://damage" => (
+                J::obj().set(
+                    "text",
+                    self.call("damage_map", &J::obj())?.pipe(json::to_string),
+                ),
+                "application/json",
+            ),
+            "bough://effects" => (
+                J::obj().set(
+                    "text",
+                    self.call("effects_inspect", &J::obj())?.pipe(json::to_string),
+                ),
+                "application/json",
+            ),
+            "bough://animations" => (
+                J::obj().set(
+                    "text",
+                    self.call("animations", &J::obj())?.pipe(json::to_string),
+                ),
+                "application/json",
+            ),
+            "bough://profile" => (
+                J::obj().set(
+                    "text",
+                    self.call("profile_frame", &J::obj())?.pipe(json::to_string),
+                ),
+                "application/json",
+            ),
+            "bough://screenshot.png" => {
                 let v = self.call("shot", &J::obj())?;
                 let png = v.get("png").and_then(J::as_str).unwrap_or("").to_owned();
                 (J::obj().set("blob", png), "image/png")
@@ -582,6 +691,42 @@ fn replay_log_schema() -> J {
         &["schema", "app", "size", "steps"],
     )
     .set("additionalProperties", false)
+}
+
+fn batch_schema() -> J {
+    let step = schema_raw(
+        vec![
+            (
+                "method",
+                J::obj()
+                    .set("type", "string")
+                    .set("description", "The RPC method name."),
+            ),
+            (
+                "params",
+                J::obj().set("description", "The method's parameters (any JSON object)."),
+            ),
+        ],
+        &["method"],
+    );
+    schema_raw(
+        vec![
+            (
+                "steps",
+                J::obj()
+                    .set("type", "array")
+                    .set("maxItems", 256)
+                    .set("items", step),
+            ),
+            (
+                "stop_on_error",
+                J::obj()
+                    .set("type", "boolean")
+                    .set("description", "Stop after the first failing step."),
+            ),
+        ],
+        &["steps"],
+    )
 }
 
 fn tool(name: &str, description: &str, input: J) -> J {
@@ -859,6 +1004,86 @@ pub fn tools() -> Vec<J> {
             "wait_for_idle",
             "Finish a headless frame at the current clock. Reports its revision, pixel digest and whether motion needs another tick.",
             no(),
+        ),
+        tool(
+            "damage_map",
+            "The live damage map: damaged rects, tile bitmap, repair percentage, per-tile heat, scroll blit, occlusion and backdrop-blur counts; with include_heatmap_png, a colour-coded overlay (encoded off-thread).",
+            schema(
+                &[(
+                    "include_heatmap_png",
+                    "boolean",
+                    "Also return the colour-coded heatmap PNG (base64).",
+                )],
+                &[],
+            ),
+        ),
+        tool(
+            "effects_inspect",
+            "Active effects for a node or the whole scene: shadows, blurs, gradients and isolated opacity groups.",
+            schema(
+                &[
+                    ("node", "integer", "Node index; omit for the whole scene."),
+                    ("node_id", "integer", "Node index (alias)."),
+                    ("selector", "string", "Selector (reserved)."),
+                ],
+                &[],
+            ),
+        ),
+        tool(
+            "animations",
+            "All live animations and page transitions (id, node, property, kind, elapsed/duration, value, velocity, settled, phase).",
+            no(),
+        ),
+        tool(
+            "scrub_animation",
+            "Deterministically scrub an animation or page transition (set_time_ms, advance_ms, pause, resume, seek_id).",
+            schema(
+                &[
+                    ("op", "string", "set_time_ms | advance_ms | pause | resume | seek_id."),
+                    ("ms", "number", "Milliseconds for set_time_ms/advance_ms."),
+                    ("id", "string", "Animation id for seek_id."),
+                ],
+                &[],
+            ),
+        ),
+        tool(
+            "profile_frame",
+            "A structured per-phase frame profile: input/eval/layout/damage/paint/submit timings, warm allocation, dirty nodes and tiles, executor.",
+            no(),
+        ),
+        tool(
+            "assert_selector",
+            "Assert a selector's match count, text, bounding box, visibility or style; returns pass/fail and structured diagnostics.",
+            schema(
+                &[
+                    ("kind", "string", "Paint kind."),
+                    ("text", "string", "Substring of content text."),
+                    ("ty", "string", "Substring of the record's Rust type."),
+                    ("within", "integer", "Store subtree."),
+                    ("visible", "boolean", "On screen."),
+                    ("min_count", "integer", "At least this many matches."),
+                    ("max_count", "integer", "At most this many matches."),
+                    ("exact_count", "integer", "Exactly this many matches."),
+                    ("text_contains", "string", "The first match's text contains this."),
+                    ("text_equals", "string", "The first match's text equals this."),
+                    ("x_min", "integer", "Bounds x minimum."),
+                    ("x_max", "integer", "Bounds x maximum."),
+                    ("y_min", "integer", "Bounds y minimum."),
+                    ("y_max", "integer", "Bounds y maximum."),
+                    ("w_min", "integer", "Bounds width minimum."),
+                    ("w_max", "integer", "Bounds width maximum."),
+                    ("h_min", "integer", "Bounds height minimum."),
+                    ("h_max", "integer", "Bounds height maximum."),
+                    ("style", "string", "Operand name to check."),
+                    ("style_equals", "string", "Expected operand value text."),
+                ],
+                &[],
+            ),
+        ),
+        tool(
+            "batch",
+            "Run a sequence of RPC commands in one round-trip, with per-step results and stop_on_error.",
+            batch_schema(),
         ),
     ]
 }

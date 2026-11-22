@@ -343,6 +343,10 @@ impl<V: Fields> Program for WithOverlay<V> {
     fn fresh(&self) -> Option<Self> {
         <Lab<V> as Program>::fresh(&self.lab).map(|lab| WithOverlay::new(lab, false))
     }
+    /// The overlay presents the same live animations as the app underneath it.
+    fn animations(&self, snap: &bough_inspect::Snapshot) -> Vec<bough_inspect::protocol::Animation> {
+        <Lab<V> as Program>::animations(&self.lab, snap)
+    }
     fn overlay(&self) -> bool {
         #[cfg(feature = "mutant_overlay_paint")]
         {

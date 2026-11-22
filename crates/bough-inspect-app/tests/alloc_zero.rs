@@ -56,3 +56,18 @@ fn idle_refresh_allocates_nothing() {
         "a changed world rebuilds the description"
     );
 }
+
+#[test]
+fn the_background_png_worker_is_lazy() {
+    // A fresh session paints frames without starting the encoder: no thread, no queue, no blocking overhead
+    // until a screenshot or a heatmap is actually asked for.
+    let mut s = Session::new(Lab::new(Rows::new(500), 800, 600, 1));
+    let _ = s.snapshot();
+    let _ = s.shot();
+    assert!(
+        !s.png_worker_started(),
+        "a session that never encodes starts no worker"
+    );
+    let _ = s.png_worker();
+    assert!(s.png_worker_started(), "the worker starts on first use");
+}
