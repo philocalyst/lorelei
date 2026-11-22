@@ -77,3 +77,84 @@ impl<V: View> App<V> {
         vec![all; (self.rt.win_h as usize).div_ceil(32)]
     }
 }
+
+/// Live damage summary for the last drawn frame, computed on demand when the inspector queries it
+/// (zero hot-path overhead when inspection is off).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DamageSummary {
+    pub viewport_w: i32,
+    pub viewport_h: i32,
+    pub full_repaint: bool,
+    pub dirty_tiles: u32,
+    pub total_tiles: u32,
+    pub repair_pct: f64,
+}
+
+/// Live per-frame execution profile read from the runtime & kernel backend on demand.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FrameProfileView {
+    pub frames: u64,
+    pub records: usize,
+    pub dirty_tiles: u32,
+    pub staged_cmds: u64,
+    pub bin_entries: u64,
+    pub est_cpu_ns: u64,
+    pub executor: &'static str,
+}
+
+impl<V: View> App<V> {
+    /// Summarize the last frame's 32x32 tile repair region (dirty tiles, total tiles, repair %).
+    pub fn last_damage_summary(&self) -> DamageSummary {
+        let tx = (self.rt.win_w as u32).div_ceil(32);
+        let ty = (self.rt.win_h as u32).div_ceil(32);
+        let total_tiles = tx.saturating_mul(ty);
+        let (rows, full) = self.repaired_rows();
+        let dirty_tiles = if full {
+            total_tiles
+        } else {
+            let mask = if tx >= 128 { u128::MAX } else { (1u128 << tx) - 1 };
+            rows.iter()
+                .take(ty as usize)
+                .map(|r| (r & mask).count_ones())
+                .sum()
+        };
+        let repair_pct = if total_tiles == 0 {
+            0.0
+        } else {
+            (dirty_tiles as f64 / total_tiles as f64) * 100.0
+        };
+        DamageSummary {
+            viewport_w: self.rt.win_w,
+            viewport_h: self.rt.win_h,
+            full_repaint: full,
+            dirty_tiles,
+            total_tiles,
+            repair_pct,
+        }
+    }
+
+    /// Snapshot the last frame's execution profile (zero-allocation, read on demand).
+    pub fn last_frame_profile(&self) -> FrameProfileView {
+        let dmg = self.last_damage_summary();
+        let (staged_cmds, bin_entries, est_cpu_ns, executor) = match &self.kernel {
+            Some(k) => {
+                let exec = match k.last_frame.exec_kind {
+                    0 => "cpu1",
+                    1 => "cpun",
+                    _ => "metal",
+                };
+                (k.last_frame.staged, k.last_frame.entries, k.last_frame.est_cpu_ns, exec)
+            }
+            None => (0, 0, 0, "presenter"),
+        };
+        FrameProfileView {
+            frames: self.frames,
+            records: self.rt.bough.len(),
+            dirty_tiles: dmg.dirty_tiles,
+            staged_cmds,
+            bin_entries,
+            est_cpu_ns,
+            executor,
+        }
+    }
+}

@@ -81,6 +81,12 @@ impl Table {
     }
     fn note(&mut self, e: Edit) {
         if !self.opaque {
+            if let Edit::Update(i) = e {
+                let (lo, hi) = self.rows.journal.window();
+                if lo < hi && (i < lo || i >= hi) {
+                    return;
+                }
+            }
             self.rows.journal.push(e);
         }
     }
