@@ -17,6 +17,13 @@ pub fn make(name: &str) -> Box<dyn Form> {
         "tile2L" => Box::new(tiles::Tiles2::new(false)),
         "exact2L" => Box::new(tiles::Tiles2::new(true)),
         "hw32" => Box::new(hw::HwForm::new()),
+        "unified16" => Box::new(unified::Unified::new(4)),
+        "unified32" => Box::new(unified::Unified::new(5)),
+        "unified32c" => {
+            let mut u = unified::Unified::new(5);
+            u.runs = true;
+            Box::new(u)
+        },
         "hw32c" => {
             let mut f = hw::HwForm::new();
             f.runs = true;

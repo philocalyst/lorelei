@@ -824,3 +824,27 @@ impl Gpu {
         self.read_texture(&tex)
     }
 }
+
+#[cfg(test)]
+mod shader_compile_tests {
+    use super::*;
+    use objc2_metal::MTLCreateSystemDefaultDevice;
+
+    #[test]
+    fn metal_shaders_compile_with_conic_and_inset_shadow() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else {
+            return; // headless host without Metal
+        };
+        // Compiles shader.metal from source on the live Apple GPU driver (panics on compile error).
+        let lib = load_library(&device);
+        let fn_name = NSString::from_str("fs_tile");
+        assert!(lib.newFunctionWithName(&fn_name).is_some(), "fs_tile kernel missing");
+
+        // Also compile oracle.metal in lockstep.
+        let oracle_src = NSString::from_str(include_str!("oracle.metal"));
+        let oracle_lib = device
+            .newLibraryWithSource_options_error(&oracle_src, None)
+            .expect("oracle.metal failed to compile on Metal driver");
+        assert!(oracle_lib.newFunctionWithName(&fn_name).is_some(), "oracle fs_tile kernel missing");
+    }
+}

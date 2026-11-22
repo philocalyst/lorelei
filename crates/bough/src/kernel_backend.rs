@@ -19,6 +19,18 @@ const PAY_RUN: u32 = 0x8000_0000;
 const PAY_IRUN: u32 = 0x4000_0000;
 
 /// Counters.
+/// Per-frame kernel telemetry snapshot (zero-allocation, read by `bough-inspect` `profile_frame`).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct KFrameTelemetry {
+    pub staged: u64,
+    pub tiles: u64,
+    pub entries: u64,
+    pub est_cpu_ns: u64,
+    pub wall_ns: u64,
+    /// 0 = Cpu1, 1 = CpuN, 2 = Gpu.
+    pub exec_kind: u8,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct KStats {
     pub frames: u64,
@@ -66,7 +78,7 @@ impl GpuWant {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 enum KGpu {
     #[cfg(target_os = "macos")]
-    Metal(bough_kernel::metal::Gpu),
+    Metal(bough_kernel::metal::Gpu, cpu::Costs),
     Vk(bough_kernel::vulkan::Gpu),
 }
 
@@ -81,33 +93,32 @@ enum KTarget {
 impl KGpu {
     fn metal() -> Option<KGpu> {
         #[cfg(target_os = "macos")]
-        return bough_kernel::metal::Gpu::new(bough_kernel::KERNEL_MSL).map(KGpu::Metal);
+        return bough_kernel::metal::Gpu::new(bough_kernel::KERNEL_MSL).map(|g| KGpu::Metal(g, cpu::COSTS));
         #[cfg(not(target_os = "macos"))]
         None
     }
     fn info(&self) -> String {
         match self {
             #[cfg(target_os = "macos")]
-            KGpu::Metal(_) => "metal".into(),
+            KGpu::Metal(_, c) => format!("metal; {c:?}"),
             KGpu::Vk(g) => format!("vulkan: {}; {:?}", g.info, g.costs()),
         }
     }
     fn costs(&self) -> cpu::Costs {
         match self {
             #[cfg(target_os = "macos")]
-            KGpu::Metal(_) => cpu::COSTS,
+            KGpu::Metal(_, c) => *c,
             KGpu::Vk(g) => *g.costs(),
         }
     }
     /// A frame of `tiles` tiles and `entries` entries took `wall`: move the Vulkan device's costs a quarter of the
     /// way toward explaining it (the round trip and the per-tile terms scaled together; within 1/4x..4x per frame).
     fn observe(&mut self, tiles: u64, entries: u64, warm: bool, wall: f64) {
-        let g = match self {
-            KGpu::Vk(g) => g,
+        let c = match self {
+            KGpu::Vk(g) => g.costs_mut(),
             #[cfg(target_os = "macos")]
-            KGpu::Metal(_) => return,
+            KGpu::Metal(_, c) => c,
         };
-        let c = g.costs_mut();
         let fixed = if warm { c.gpu_fixed_warm } else { c.gpu_fixed_cold };
         let pred = (fixed + c.gpu_tile * tiles + c.gpu_entry * entries).max(1) as f64;
         let r = ((wall * 1e9) / pred).clamp(0.25, 4.0);
@@ -128,7 +139,7 @@ impl KGpu {
         unsafe {
             match self {
                 #[cfg(target_os = "macos")]
-                KGpu::Metal(g) => g.wrap(p, len).map(KTarget::Metal),
+                KGpu::Metal(g, _) => g.wrap(p, len).map(KTarget::Metal),
                 KGpu::Vk(g) => g.wrap(p, len).map(KTarget::Vk),
             }
         }
@@ -136,21 +147,21 @@ impl KGpu {
     fn upload_atlas(&mut self, px: &[u8]) {
         match self {
             #[cfg(target_os = "macos")]
-            KGpu::Metal(g) => g.upload_atlas(px),
+            KGpu::Metal(g, _) => g.upload_atlas(px),
             KGpu::Vk(g) => g.upload_atlas(px),
         }
     }
     fn upload_images(&mut self, px: &[u8]) {
         match self {
             #[cfg(target_os = "macos")]
-            KGpu::Metal(g) => g.upload_images(px),
+            KGpu::Metal(g, _) => g.upload_images(px),
             KGpu::Vk(g) => g.upload_images(px),
         }
     }
     fn upload_frame(&mut self, scene: &stage::Scene, prog: &Prog) {
         match self {
             #[cfg(target_os = "macos")]
-            KGpu::Metal(g) => g.upload_frame(scene, prog),
+            KGpu::Metal(g, _) => g.upload_frame(scene, prog),
             KGpu::Vk(g) => g.upload_frame(scene, prog),
         }
     }
@@ -158,7 +169,7 @@ impl KGpu {
     fn render_to(&mut self, tiles: usize, t: &KTarget) -> f64 {
         match (self, t) {
             #[cfg(target_os = "macos")]
-            (KGpu::Metal(g), KTarget::Metal(t)) => g.render_to(tiles, t).wall,
+            (KGpu::Metal(g, _), KTarget::Metal(t)) => g.render_to(tiles, t).wall,
             (KGpu::Vk(g), KTarget::Vk(t)) => g.render_to(tiles, t).wall,
             #[cfg(target_os = "macos")]
             _ => unreachable!("a target of another executor"),
@@ -167,7 +178,7 @@ impl KGpu {
     fn forget_targets(&mut self) {
         match self {
             #[cfg(target_os = "macos")]
-            KGpu::Metal(_) => {}
+            KGpu::Metal(_, _) => {}
             KGpu::Vk(g) => g.forget_targets(),
         }
     }
@@ -200,6 +211,8 @@ pub struct KernelBackend {
     /// When the GPU executor last ran (its fixed cost depends on whether it has clocked down).
     last_gpu: Option<std::time::Instant>,
     pub stats: KStats,
+    /// Last frame's per-phase telemetry snapshot.
+    pub last_frame: KFrameTelemetry,
     /// The executor of the last frame.
     pub last: Option<Exec>,
 }
@@ -241,6 +254,7 @@ impl KernelBackend {
             uploaded: None,
             last_gpu: None,
             stats: KStats::default(),
+            last_frame: KFrameTelemetry::default(),
             last: None,
         }
     }
@@ -510,6 +524,18 @@ impl KernelBackend {
         self.stats.frames += 1;
         self.stats.tiles += tiles;
         self.stats.entries += entries;
+        self.last_frame = KFrameTelemetry {
+            staged: self.scene.len() as u64,
+            tiles,
+            entries,
+            est_cpu_ns: self.bin.est_cpu_ns,
+            wall_ns: 0,
+            exec_kind: match exec {
+                Exec::Cpu1 => 0,
+                Exec::CpuN(_) => 1,
+                Exec::Gpu => 2,
+            },
+        };
         self.last = Some(exec);
         tiles as u32
     }

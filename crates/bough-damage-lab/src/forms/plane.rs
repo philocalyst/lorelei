@@ -157,6 +157,91 @@ impl Plane {
             }
         }
     }
+    /// Copy contents of `o` into `self` without allocating (same dimensions).
+    #[inline]
+    pub fn copy_from(&mut self, o: &Plane) {
+        self.clear();
+        if o.bb.is_empty() {
+            return;
+        }
+        let st = self.stride;
+        let (a, b) = (o.bb.y0 as usize * st, o.bb.y1 as usize * st);
+        self.bits[a..b].copy_from_slice(&o.bits[a..b]);
+        self.bb = o.bb;
+    }
+    /// Clear tile bits in `[tx0, tx1) x [ty0, ty1)`.
+    #[inline(always)]
+    pub fn clear_tiles(&mut self, tx0: i32, ty0: i32, tx1: i32, ty1: i32) {
+        if self.bb.is_empty() {
+            return;
+        }
+        let tx0 = tx0.max(self.bb.x0);
+        let ty0 = ty0.max(self.bb.y0);
+        let tx1 = tx1.min(self.bb.x1);
+        let ty1 = ty1.min(self.bb.y1);
+        if tx0 >= tx1 || ty0 >= ty1 {
+            return;
+        }
+        let (w0, w1) = ((tx0 >> 6) as usize, ((tx1 - 1) >> 6) as usize);
+        let lo = !0u64 << (tx0 & 63);
+        let hi = !0u64 >> (63 - ((tx1 - 1) & 63));
+        let st = self.stride;
+        if w0 == w1 {
+            let m = !(lo & hi);
+            for y in ty0 as usize..ty1 as usize {
+                self.bits[y * st + w0] &= m;
+            }
+        } else {
+            let nlo = !lo;
+            let nhi = !hi;
+            for y in ty0 as usize..ty1 as usize {
+                let row = &mut self.bits[y * st..y * st + st];
+                row[w0] &= nlo;
+                for w in w0 + 1..w1 {
+                    row[w] = 0;
+                }
+                row[w1] &= nhi;
+            }
+        }
+    }
+    /// Tighten `bb` by scanning set words inside the current `bb`; returns true if empty.
+    #[inline]
+    pub fn recompute_bb(&mut self) -> bool {
+        if self.bb.is_empty() {
+            return true;
+        }
+        let st = self.stride;
+        let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, 0i32, 0i32);
+        for y in self.bb.y0 as usize..self.bb.y1 as usize {
+            let row = &self.bits[y * st..y * st + st];
+            let mut row_any = false;
+            for (w, &bits) in row.iter().enumerate() {
+                if bits != 0 {
+                    row_any = true;
+                    let a = (w as i32) * 64 + bits.trailing_zeros() as i32;
+                    let b = (w as i32) * 64 + 64 - bits.leading_zeros() as i32;
+                    x0 = x0.min(a);
+                    x1 = x1.max(b);
+                }
+            }
+            if row_any {
+                y0 = y0.min(y as i32);
+                y1 = y as i32 + 1;
+            }
+        }
+        if x0 < x1 && y0 < y1 {
+            self.bb = R::new(x0, y0, x1, y1);
+            false
+        } else {
+            self.bb = R::E;
+            true
+        }
+    }
+    /// Fast check whether all bits inside `bb` have been extinguished (also tightens `bb`).
+    #[inline]
+    pub fn is_empty_scan(&mut self) -> bool {
+        self.recompute_bb()
+    }
     pub fn count(&self) -> u64 {
         self.bits.iter().map(|w| w.count_ones() as u64).sum()
     }

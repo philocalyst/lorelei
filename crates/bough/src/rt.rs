@@ -61,18 +61,29 @@ pub fn edge_band(kind: u8, radius: f32, bw: f32) -> i16 {
 /// invariant anywhere (-1: their whole visible ink).
 #[inline]
 fn scroll_band(inst: &Col<Instance>, kind: u8, payload: u32) -> i16 {
-    // the kind's low bits (the high ones are interaction flags, `KF_MASK`: a hoverable or scrolling box is still a box)
-    // Not masked with `KF_MASK` on main: masking it copies interactive boxes by scroll, which fails two bough-zgui
-    // pixel gates (input: laid-out gallery; transforms: turned and translated subtrees). See docs/TALLY.md.
-    if kind != REC_QUAD || payload & (bough_frame::PAY_RUN | bough_frame::PAY_IRUN) != 0 {
+    // Interactive flags (`KF_MASK`, e.g. a ScrollBox port carrying `KF_INTERACT`) route input without
+    // changing how a uniform solid box shades. Non-solid interactive quads (rounded/bordered/translucent
+    // widgets) stay conservative (`-1`) so interactive galleries and transformed subtrees never copy stale
+    // edge/blended pixels.
+    let base_kind = kind & !bough_core::KF_MASK;
+    if base_kind != REC_QUAD || payload & (bough_frame::PAY_RUN | bough_frame::PAY_IRUN) != 0 {
         return -1;
     }
     if payload as usize >= inst.len() {
         return -1;
     }
     let q = &inst[payload as usize];
+    let has_flags = kind != REC_QUAD;
     match q.kind {
-        KIND_SOLID | KIND_RRECT | KIND_BORDER => edge_band(q.kind, q.radius, q.bw),
+        KIND_SOLID => {
+            let a = q.color >> 24;
+            if has_flags && a != 255 && a != 0 {
+                -1
+            } else {
+                edge_band(q.kind, q.radius, q.bw)
+            }
+        }
+        KIND_RRECT | KIND_BORDER if !has_flags => edge_band(q.kind, q.radius, q.bw),
         _ => -1,
     }
 }

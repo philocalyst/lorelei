@@ -16,6 +16,7 @@ pub mod registry;
 pub mod sig;
 pub mod stamps;
 pub mod tiles;
+pub mod unified;
 
 pub use plane::Plane;
 

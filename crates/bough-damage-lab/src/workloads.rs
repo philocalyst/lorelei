@@ -545,6 +545,115 @@ pub fn vlist_trace(mode: VMode, frames: u64) -> Trace {
     })
 }
 
+
+/// Complex layered application trace: 1280x800 dashboard combining:
+/// - Full-screen background + sidebar + header
+/// - Large scrolling virtual feed (smooth scroll + recycled rows + periodic jump)
+/// - 8 live-updating metric cards with sparklines & rounded status pills
+/// - Periodic opaque floating modal & hovering tooltip overlapping the scrolling feed
+///   (stress-tests both rigid-scroll overlay hazard handling and front-to-back opaque cover culling).
+pub fn complex_app_trace(frames: u64) -> Trace {
+    const W: f32 = 1280.0;
+    const H: f32 = 800.0;
+    const LIST_X: f32 = 220.0;
+    const LIST_Y: f32 = 200.0;
+    const LIST_W: f32 = 660.0;
+    const LIST_H: f32 = 580.0;
+    const ROW_H: f32 = 36.0;
+    const VISIBLE_SLOTS: usize = 20;
+    const TOTAL_ROWS: usize = 5000;
+
+    let mut scroll_offs = vec![0.0f32; frames as usize + 1];
+    for t in 1..=frames as usize {
+        let prev = scroll_offs[t - 1];
+        scroll_offs[t] = if t % 90 == 0 {
+            ((t * 17) % 1000) as f32 * ROW_H
+        } else {
+            (prev + 11.0).min((TOTAL_ROWS as f32 * ROW_H) - LIST_H)
+        };
+    }
+
+    make_trace("complex-app", W, H, 0..frames + 1, |sb, t| {
+        let vp = sb.viewport;
+        let rr = |x: f32, y: f32, w: f32, h: f32| R::new(px(x), px(y), px(x + w), px(y + h));
+        let mut i = 0usize;
+
+        // 1. Background + Sidebar + Top Header (opaque SOLID)
+        sb.rect(&mut i, Some(vp), vp, SOLID, 0x0f141c, 0);
+        sb.rect(&mut i, Some(rr(0., 0., 204., H)), vp, SOLID, 0x151c27, 0);
+        sb.rect(&mut i, Some(rr(204., 0., W - 204., 52.)), vp, SOLID, 0x182130, 0);
+        sb.text(&mut i, 24, 224., 16., 15., 20., Some(&["Lorelei Ops Dashboard"]), 0xe5edf7, vp);
+
+        // 2. Top live metric cards (4 cards across above the list)
+        for c in 0..4usize {
+            let cx = 220. + c as f32 * 260.;
+            let cy = 68.;
+            sb.rect(&mut i, Some(rr(cx, cy, 244., 116.)), vp, ROUND, 0x1b2434, 8);
+            let active = (t as usize / 6 + c) % 4 == 0;
+            let pill_col = if active { 0x1d6b4a } else { 0x2b3a52 };
+            sb.rect(&mut i, Some(rr(cx + 160., cy + 12., 70., 20.)), vp, ROUND, pill_col, 10);
+            let val = format!("{:.1} ms", 8.0 + ((t as usize + c * 13) % 40) as f32 * 0.7);
+            sb.text(&mut i, 12, cx + 14., cy + 14., 14., 18., Some(&[val.as_str()]), 0x5eb1ff, vp);
+            // Sparkline bars
+            for b in 0..8usize {
+                let bh = 10. + (((t as usize + c * 7 + b * 5) % 42) as f32);
+                sb.rect(&mut i, Some(rr(cx + 14. + b as f32 * 26., cy + 100. - bh, 18., bh)), vp, SOLID, 0x3b82f6, 0);
+            }
+        }
+
+        // 3. Right detail inspector panel (opaque layered cards)
+        sb.rect(&mut i, Some(rr(896., 200., 368., 580.)), vp, SOLID, 0x161f2e, 0);
+        for k in 0..5usize {
+            let ky = 216. + k as f32 * 108.;
+            let tint = if (t as usize / 10 + k) % 5 == 0 { 0x24344d } else { 0x1d283b };
+            sb.rect(&mut i, Some(rr(912., ky, 336., 92.)), vp, ROUND, tint, 6);
+            let line = format!("Shard #{k:02} load={}%%", 20 + ((t as usize * 3 + k * 19) % 75));
+            sb.text(&mut i, 24, 926., ky + 14., 13., 18., Some(&[line.as_str()]), 0xdbe7f5, vp);
+        }
+
+        // 4. Scrolling virtual feed inside `list_clip`
+        let list_clip = rr(LIST_X, LIST_Y, LIST_W, LIST_H);
+        sb.rect(&mut i, Some(list_clip), vp, SOLID, 0x121923, 0);
+        let off = scroll_offs[t as usize];
+        sb.begin_group(0, list_clip, (0, -px(off)));
+        let first = (off / ROW_H) as usize;
+        let last = ((off + LIST_H) / ROW_H).ceil() as usize;
+        let vis_end = last.min(TOTAL_ROWS);
+        for slot in 0..VISIBLE_SLOTS {
+            let row = (first..vis_end).find(|&r| r % VISIBLE_SLOTS == slot);
+            match row {
+                Some(r) => {
+                    let y = LIST_Y + (px(r as f32 * ROW_H) - px(off)) as f32 / SCALE;
+                    let bg = if r % 2 == 0 { 0x17202e } else { 0x1b2636 };
+                    sb.rect(&mut i, Some(rr(LIST_X, y, LIST_W, ROW_H)), list_clip, SOLID, bg, 0);
+                    let badge_col = [0x1d6b4a, 0x8a5a12, 0x2d5fa8][r % 3];
+                    sb.rect(&mut i, Some(rr(LIST_X + 540., y + 8., 96., 20.)), list_clip, ROUND, badge_col, 8);
+                    let title = format!("event-{r:05} shard-{}", r % 16);
+                    sb.text(&mut i, 28, LIST_X + 14., y + 9., 13., 18., Some(&[title.as_str()]), 0xe5edf7, list_clip);
+                }
+                None => {
+                    sb.rect(&mut i, None, list_clip, SOLID, 0, 0);
+                    sb.rect(&mut i, None, list_clip, ROUND, 0, 8);
+                    sb.text(&mut i, 28, 0., 0., 13., 18., None, 0, list_clip);
+                }
+            }
+        }
+        sb.end_group(0);
+
+        // 5. Periodic opaque floating modal & translucent glass toast OVER the scrolling feed!
+        let modal_open = (t % 40) >= 12 && (t % 40) < 28;
+        let modal_r = modal_open.then(|| rr(420., 280., 460., 300.));
+        sb.rect(&mut i, modal_r, vp, SOLID, 0x222d40, 0);
+        let modal_txt = modal_open.then_some(["Inspecting active node state"]);
+        sb.text(&mut i, 32, 444., 304., 15., 20., modal_txt.as_ref().map(|a| &a[..]), 0xffffff, vp);
+
+        // Moving translucent hover tooltip overlapping the list
+        let tx = 260. + ((t as usize % 25) as f32) * 18.;
+        let ty = 240. + (((t as usize / 5) % 8) as f32) * 32.;
+        sb.rect(&mut i, Some(rr(tx, ty, 140., 34.)), vp, TINT, 0x802a4060, 0);
+    })
+}
+
 pub fn all(frames: u64) -> Vec<Trace> {
     vec![
         heavy_trace(Mode::Stream, frames),
@@ -557,5 +666,6 @@ pub fn all(frames: u64) -> Vec<Trace> {
         vlist_trace(VMode::Scroll, frames),
         vlist_trace(VMode::Fling, frames),
         vlist_trace(VMode::Jump, frames),
+        complex_app_trace(frames),
     ]
 }

@@ -1476,9 +1476,15 @@ static half4 f_shade_x(threadgroup const FRec& r, float2 c, texture2d<float> atl
             float2 dir = float2(sin(r.bw), -cos(r.bw));
             float len = abs(2.0 * hs.x * dir.x) + abs(2.0 * hs.y * dir.y);
             t = dot(p, dir) / max(len, 1e-6) + 0.5;
-        } else {
+        } else if (r.pad == 1u) {
             float2 g = (r.gc - 0.5) * 2.0 * hs;
             t = length(p - g) / max(length(abs(g) + hs), 1e-6);
+        } else {
+            // Conic gradient: CSS clockwise from 12 o'clock + start angle `r.bw`, centre `r.gc`.
+            float2 g = (r.gc - 0.5) * 2.0 * hs;
+            float2 d = p - g;
+            float ang = atan2(d.x, -d.y) - r.bw;
+            t = fract(ang * (0.15915494309189535));
         }
         float x = clamp(t, 0.0, 1.0) * 255.0;
         float i = min(floor(x), 254.0), f = x - i;
@@ -1486,8 +1492,14 @@ static half4 f_shade_x(threadgroup const FRec& r, float2 c, texture2d<float> atl
         float4 c0 = img.read(uint2(a0)), c1 = img.read(uint2(a1));
         float cov = clamp(0.5 - f_sd(c, r.b, r.radius) * (r.xs != 0.0 ? r.xs : 1.0), 0.0, 1.0);
         return half4(mix(c0, c1, f) * cov); }
-    default:
-        return r.pm * half(clamp(f_shadow(p, hs, max(r.bw, 1e-3), r.radius), 0.0, 1.0));
+    default: {
+        float sh = clamp(f_shadow(p, hs, max(r.bw, 1e-3), r.radius), 0.0, 1.0);
+        if (r.pad == 1u) {
+            // Inset box shadow: inverted Gaussian shadow clipped strictly inside the rounded box SDF.
+            float cov = clamp(0.5 - f_sd(c, r.b, r.radius) * (r.xs != 0.0 ? r.xs : 1.0), 0.0, 1.0);
+            return r.pm * half((1.0 - sh) * cov);
+        }
+        return r.pm * half(sh); }
     }
 }
 
