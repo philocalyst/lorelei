@@ -230,6 +230,12 @@ impl Journal {
     }
     #[inline(always)]
     pub fn push(&mut self, e: Edit) {
+        if let Edit::Update(at) = e {
+            let (lo, hi) = self.window();
+            if lo < hi && (at < lo || at >= hi) {
+                return;
+            }
+        }
         self.log[self.ver as usize & 7] = e;
         self.ver = self.ver.wrapping_add(1);
         if let Some(watch) = self.watch.get() {

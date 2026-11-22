@@ -16,6 +16,7 @@
 //! and transitions exist in `ui` and in the core; the prelude's elements do not describe them yet, so
 //! [`FlatApp`] never sees one.
 pub mod app;
+pub mod bridge;
 pub mod ui;
 
 pub use app::FlatApp;
