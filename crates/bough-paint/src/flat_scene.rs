@@ -1132,6 +1132,10 @@ impl FlatScene {
     }
 }
 
+/// The bank under the names it was asked for.
+pub type FlatPaintScene = FlatScene;
+pub type PaintBank = FlatScene;
+
 /// A gradient's geometry in a `w` x `h` px box as the words of `ops::mk_ramp`.
 fn ramp_geo(geo: RampGeo, w: f32, h: f32, s: f32) -> (u32, [i32; 4], [i32; 4]) {
     const LIM: f64 = 8_388_607.0;

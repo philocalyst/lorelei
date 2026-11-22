@@ -220,7 +220,8 @@ impl<'a> Tile<'a> {
         self.st.tiles += 1;
         self.st.prefix += 1;
         self.st.prefix_same += same as u64;
-        (!same).then_some([self.ox + bb[0], self.oy + bb[1], self.ox + bb[2], self.oy + bb[3]])
+        // (not `then_some`: its argument is evaluated either way, and an empty box's sentinels overflow)
+        if same { None } else { Some([self.ox + bb[0], self.oy + bb[1], self.ox + bb[2], self.oy + bb[3]]) }
     }
     /// Write the tile: shaded rows from the accumulator, flat rows from the row above.
     ///
