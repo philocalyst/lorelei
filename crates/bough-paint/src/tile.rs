@@ -588,6 +588,17 @@ impl Sink for Shade<'_, '_, '_> {
         let (ox, oy) = (t.ox, t.oy);
         // a linear ramp with no horizontal component is one colour per row
         let row_const = c.par.w == x::RAMP_LINEAR && c.xi.z == 0;
+        let (mut w0, mut w1, mut ws) = ([0u32; 32], [0u32; 32], [0u16; 32]);
+        // a linear ramp's parameter is `ops::gl_t`'s two products and a sum: the row's product is made
+        // once, the column's is one 64-bit product (`km::mulq16` is the floor of the magnitudes' product,
+        // which its 16-bit limbs spell out for the shading languages)
+        let linear = c.par.w == x::RAMP_LINEAR;
+        let mq = |a: i32, m: i32| {
+            let r = ((a.unsigned_abs() as u64 * m.unsigned_abs() as u64) >> 16) as i32;
+            if (a < 0) != (m < 0) { -r } else { r }
+        };
+        let (mx, my) = (c.xi.z.clamp(-8_388_607, 8_388_607), c.xi.w.clamp(-8_388_607, 8_388_607));
+        let (mid_x, mid_y) = (((c.b.x + c.b.z) >> 1) + c.xi.x, ((c.b.y + c.b.w) >> 1) + c.xi.y);
         let stop = |at: u32| if cfg!(feature = "mutant_ramp_stop") { (at >> 16) as usize ^ 1 } else { (at >> 16) as usize };
         while m != 0 {
             let y = m.trailing_zeros() as i32;
@@ -614,12 +625,22 @@ impl Sink for Shade<'_, '_, '_> {
                         let i = stop(at);
                         over(&mut row[a as usize..b as usize], x::gl_color(c, lut[i], lut[i + 1], at & 0xFFFF));
                     } else {
-                        for xx in a..b {
-                            let at = x::gl_at(c, ox + xx, gy);
+                        // the parameter pixel by pixel (its rounding is the leaf's), then the two table
+                        // words and the mix sixteen lanes at a time
+                        let n = (b - a) as usize;
+                        let row_t = mq((gy * 256 + 128 - mid_y).clamp(-4_194_303, 4_194_303), my) + 16384;
+                        for (j, xx) in (a..b).enumerate() {
+                            let at = if linear {
+                                let px = ((ox + xx) * 256 + 128 - mid_x).clamp(-4_194_303, 4_194_303);
+                                x::gl_slot((mq(px, mx) + row_t).clamp(0, 32768) as u32)
+                            } else {
+                                x::gl_at(c, ox + xx, gy)
+                            };
+                            debug_assert_eq!(at, x::gl_at(c, ox + xx, gy));
                             let i = stop(at);
-                            let p = &mut row[xx as usize];
-                            *p = st(k::blend(ld(p), x::gl_color(c, lut[i], lut[i + 1], at & 0xFFFF)));
+                            (w0[j], w1[j], ws[j]) = (lut[i], lut[i + 1], (at & 0xFFFF).min(k::ONE) as u16);
                         }
+                        simd::blend_ramp(&mut row[a as usize..b as usize], &w0[..n], &w1[..n], &ws[..n], c.rad.y as u16);
                     }
                 }
             }

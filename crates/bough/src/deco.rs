@@ -490,3 +490,31 @@ pub fn ink_of(rt: &Rt, node: u32) -> NRect {
     let p = rt.inst[rt.inst_of(node) as usize];
     rt.ink_rect(p.space, p.pos[0], p.pos[1], p.size[0], p.size[1], rt.margin_of(node, &p)).to_nrect()
 }
+
+// ================================================================================== the non-generic style surface
+//
+// The decorations above are tables of `'static` data a template indexes. The same looks as run-time values
+// (`fx_api`: any number of stops and shadows, changed and animated after mount) are these conversions.
+
+impl From<&Grad> for crate::fx_api::Gradient {
+    fn from(g: &Grad) -> Self {
+        let base = if g.radial { crate::fx_api::Gradient::radial().at(g.at[0], g.at[1]) } else { crate::fx_api::Gradient::linear(g.angle_deg) };
+        g.stops.iter().fold(base, |acc, &(t, c)| acc.stop(t, crate::color::Color(c)))
+    }
+}
+impl From<Shadow> for crate::fx_api::ShadowSpec {
+    fn from(s: Shadow) -> Self {
+        crate::fx_api::ShadowSpec::drop(s.dx, s.dy, s.blur, crate::color::Color(s.color)).spread(s.spread)
+    }
+}
+impl Deco {
+    /// This decoration as a style value for a box of corner radius `radius` (its gradient and shadows; an
+    /// SVG and a transform have no part in a box's style).
+    pub fn style(&self, radius: f32) -> crate::fx_api::BoxStyle {
+        let mut s = crate::fx_api::BoxStyle::new().rounded(radius);
+        if let Some(g) = &self.grad {
+            s = s.gradient(g.into());
+        }
+        self.shadows.iter().fold(s, |s, &sh| s.shadow(sh.into()))
+    }
+}

@@ -632,6 +632,10 @@ pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by: 
 /// One isolated layer with a child scene in its own coordinate space. Children blend into transparent
 /// before the image paint applies the group's opacity. The caller supplies the parent's media arena
 /// and updates the parent image record only after a new handle is published.
+///
+/// This is the publishing form (slice 17): a changed child is copied whole into a fresh slot and the
+/// parent's record is rewritten, which damages its whole window. [`Surface`] is the retained form: the
+/// child is repainted in place at the grain of its own damage and the parent is damaged where it changed.
 pub struct Isolated {
     child: crate::scene::Scene,
     pixels: Vec<u32>,

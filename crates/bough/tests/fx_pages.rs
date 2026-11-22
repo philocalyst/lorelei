@@ -459,3 +459,33 @@ fn the_oracle_catches_a_broken_transition() {
         assert!(r.gbad > 0, "{name} was not caught");
     }
 }
+
+/// The façade's older vocabulary (a template's decoration tables, a transition's curve) as values of the
+/// non-generic surface.
+#[test]
+fn decorations_and_curves_convert() {
+    use bough::deco::{Deco, Grad, Shadow};
+    use bough::transition::{Curve, Ease as OldEase};
+    static STOPS: [(f32, u32); 3] = [(0.0, 0xff00_00ff), (0.5, 0xff00_ff00), (1.0, 0xffff_0000)];
+    static SHADOWS: [Shadow; 2] = [Shadow { dx: 0.0, dy: 2.0, blur: 4.0, spread: 0.0, color: 0x4000_0000 }, Shadow { dx: 1.0, dy: 8.0, blur: 24.0, spread: -2.0, color: 0x3000_0000 }];
+    let d = Deco { grad: Some(Grad { radial: true, angle_deg: 0.0, at: [0.3, 0.3], stops: &STOPS }), shadows: &SHADOWS, svg: "", xform: None };
+    let s = d.style(9.0);
+    assert_eq!(s.radius, 9.0);
+    assert_eq!(s.shadows, [ShadowSpec::drop(0.0, 2.0, 4.0, Color(0x4000_0000)), ShadowSpec::drop(1.0, 8.0, 24.0, Color(0x3000_0000)).spread(-2.0)]);
+    let Fill::Gradient(g) = &s.fill else { panic!() };
+    assert_eq!((g.kind, g.stops.len()), (GradientKind::Radial { center: [0.3, 0.3], radius: None, focal: [0.0, 0.0] }, 3));
+    // it mounts, as five records: two shadows (the second given deepest) and a fill
+    let mut flat = FlatScene::new(64, 64, FlatConfig::default());
+    let b = flat.add_box([8.0, 8.0, 56.0, 56.0], &s).unwrap();
+    assert_eq!(b.nodes.iter().map(|n| n.0).collect::<Vec<_>>(), [Part::Shadow, Part::Shadow, Part::Fill]);
+    // the cubic easings are their Béziers exactly
+    for i in 0..=200 {
+        let t = i as f32 / 200.0;
+        for e in [OldEase::Linear, OldEase::InCubic, OldEase::OutCubic, OldEase::Smooth] {
+            assert!((e.bezier().at(t) - e.at(t)).abs() < 2e-6, "{e:?} at {t}: {} vs {}", e.bezier().at(t), e.at(t));
+        }
+        assert!((OldEase::InOutCubic.bezier().at(t) - OldEase::InOutCubic.at(t)).abs() < 0.03);
+    }
+    assert_eq!(AnimSpec::from(Curve::out(0.24)), AnimSpec::ease(240, Ease::Bezier(OldEase::OutCubic.bezier())));
+    assert!(matches!(AnimSpec::from(Curve::smooth(0.3)), AnimSpec::Spring(s) if (s.omega_zeta().1 - 1.0).abs() < 1e-3));
+}

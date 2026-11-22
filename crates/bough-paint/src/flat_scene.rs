@@ -445,6 +445,12 @@ pub struct FlatScene {
     rebuild_due: bool,
     /// Something was written since the last `prepare` (or is still owed): an idle scene is not asked.
     pending: bool,
+    /// Tables handed out since the last `prepare` (they may not be on a node yet), and the count of tables
+    /// at which the unused ones are next collected.
+    lut_new: Vec<u32>,
+    lut_gc_at: usize,
+    /// The coverage store's resets this bank has answered.
+    seen_resets: u32,
     /// Bumped when records were mounted or the scene was rebuilt: an executor bound to the scene re-syncs.
     pub mount_epoch: u64,
 }
@@ -480,6 +486,8 @@ impl FlatScene {
         }
         let mut scene = Scene::new(fw, fh, words.max(64));
         scene.media = crate::media::Pool::new(cfg.media_words);
+        // shadows that settle at ever new shapes may reuse the coverage store: `flush` answers a reset
+        scene.patch_recycle = true;
         let fix = FixCols::new(&mut scene, &cfg.caps[0]);
         let pan = PanCols::new(&mut scene, &cfg.caps[1]);
         if cfg.caps[1].iter().any(|&c| c > 0) {
@@ -514,6 +522,9 @@ impl FlatScene {
             serial: 0,
             rebuild_due: false,
             pending: true,
+            lut_new: Vec::new(),
+            lut_gc_at: 64,
+            seen_resets: 0,
             mount_epoch: 0,
         }
     }
@@ -548,9 +559,29 @@ impl FlatScene {
         (self.caps[space as usize][kind as usize], col.map_or(0, |c| self.scene.cols()[c].len))
     }
     /// The table for a gradient's stops (position 0..1, straight RGBA8): one per distinct ramp, shared.
+    /// A table is kept while some node shows it; one that is on no node by the end of the next `prepare`
+    /// may be given to another gradient (ask again: the same stops are the same table while it lives).
     pub fn lut(&mut self, stops: &[(f32, u32)]) -> Result<Lut, FlatError> {
-        let (handle, opaque) = self.scene.lut(stops).ok_or(FlatError::NoRoom)?;
-        Ok(Lut { handle, opaque })
+        let made = match self.scene.lut(stops) {
+            Some(m) => m,
+            None => {
+                self.collect_luts();
+                self.scene.lut(stops).ok_or(FlatError::NoRoom)?
+            }
+        };
+        self.lut_new.push(made.0);
+        Ok(Lut { handle: made.0, opaque: made.1 })
+    }
+    /// Give back the tables no node shows (and none was handed out for since the last `prepare`).
+    pub fn collect_luts(&mut self) {
+        let mut used: Vec<u32> = self.cmd.iter().zip(&self.live).filter_map(|(c, &live)| match c {
+            DrawCmd::Ramp { lut, .. } if live => Some(lut.handle),
+            _ => None,
+        }).collect();
+        used.extend_from_slice(&self.lut_new);
+        used.sort_unstable();
+        self.scene.lut_retain(|h| used.binary_search(&h).is_ok());
+        self.lut_gc_at = (2 * self.scene.luts()).max(64);
     }
     /// Scroll the panned nodes to (x, y) pixels.
     pub fn set_pan(&mut self, px: f32, py: f32) {
@@ -978,6 +1009,24 @@ impl FlatScene {
             });
             self.unsettled = un;
         }
+        if self.scene.patch_resets != self.seen_resets {
+            // the coverage store was started over under this flush: some shadows name patches that are
+            // gone. Start it over once more, clean, and write every shadow shown again; they take fresh
+            // patches while there is room (and none after that: no further reset under this pass)
+            self.scene.patch_recycle = false;
+            self.scene.patch_clear();
+            for k in 0..self.order.len() {
+                let id = self.order[k];
+                let i = id as usize;
+                if self.live[i] && self.visible[i] && self.slot[i] != NO && self.cmd[i].kind() == EffectKind::Shadow {
+                    self.last[i] = None;
+                    let settled = !self.unsettled.contains(&id);
+                    n += self.lower(id, settled) as u32;
+                }
+            }
+            self.scene.patch_recycle = true;
+            self.seen_resets = self.scene.patch_resets;
+        }
         n
     }
     fn rebuild(&mut self) {
@@ -1062,6 +1111,11 @@ impl FlatScene {
             }
         }
         st.lowered += self.flush();
+        // an animated gradient leaves a table behind per frame: collect them when they have doubled
+        self.lut_new.clear();
+        if self.scene.luts() >= self.lut_gc_at {
+            self.collect_luts();
+        }
         self.pending = !self.unsettled.is_empty() || self.groups.iter().flatten().any(|g| g.flat.pending);
         st
     }

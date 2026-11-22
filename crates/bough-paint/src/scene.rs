@@ -938,6 +938,11 @@ pub struct Scene {
     lut_map: std::collections::HashMap<u64, Vec<u32>>,
     lut_free: Vec<u32>,
     luts: usize,
+    /// When the shadow coverage store is full, start it over rather than leave later shadows without a
+    /// patch (off by default: the owner must then rewrite the shadows it shows, `patch_clear`).
+    pub patch_recycle: bool,
+    /// Times the shadow coverage store was started over.
+    pub patch_resets: u32,
     /// Pixel rects of records whose content changed without a record write (`Scene::damage_part`).
     part: Vec<([i32; 4], u32)>,
 }
@@ -1039,6 +1044,8 @@ impl Scene {
             lut_map: Default::default(),
             lut_free: Vec::new(),
             luts: 0,
+            patch_recycle: false,
+            patch_resets: 0,
             part: Vec::new(),
             used: 0,
             cols: Vec::new(),
@@ -1330,8 +1337,14 @@ impl Scene {
         let (width, height) = (s.x + 2 * s.w + 1, s.y + 2 * s.w + 1);
         let samples = width as usize * height as usize;
         let needed = 4 + samples.div_ceil(2);
-        if self.patch_used + needed > PATCH_WORDS {
+        if needed > PATCH_WORDS {
             return None;
+        }
+        if self.patch_used + needed > PATCH_WORDS {
+            if !self.patch_recycle {
+                return None;
+            }
+            self.patch_clear();
         }
         self.patch_used += needed;
         let base = TAB_WORDS - self.patch_used;
@@ -1405,6 +1418,21 @@ impl Scene {
             self.luts -= 1;
         }
     }
+    /// Give back every table `keep` does not want (no record may name one of them any more).
+    pub fn lut_retain(&mut self, mut keep: impl FnMut(u32) -> bool) {
+        let (free, luts) = (&mut self.lut_free, &mut self.luts);
+        self.lut_map.retain(|_, list| {
+            list.retain(|&h| {
+                let k = keep(h);
+                if !k {
+                    free.push(h);
+                    *luts -= 1;
+                }
+                k
+            });
+            !list.is_empty()
+        });
+    }
     /// Distinct colour tables the scene holds.
     pub fn luts(&self) -> usize {
         self.luts
@@ -1451,6 +1479,21 @@ impl Scene {
         self.bins = Bins::default();
         self.bins_epoch += 1;
         self.first = true;
+    }
+    /// Start the shadow coverage store over. Every patch's header is unwritten first, so a record that
+    /// still names one finds no key there and takes the analytic profile, exactly. The owner of the
+    /// records should rewrite the shadows it still shows (they take fresh patches): a stale handle is
+    /// harmless only while no later patch's samples happen to read as its key.
+    pub fn patch_clear(&mut self) {
+        let tb = self.tab_base;
+        let words = self.arena.words_mut();
+        for &handle in self.patch_map.values() {
+            let at = tb + (handle & crate::ops::ops::PATCH_MASK) as usize;
+            words[at..at + 4].fill(u32::MAX);
+        }
+        self.patch_map.clear();
+        self.patch_used = 0;
+        self.patch_resets += 1;
     }
     /// Bytes of retained Q15 shadow coverage in this scene.
     pub fn shadow_coverage_bytes(&self) -> usize {

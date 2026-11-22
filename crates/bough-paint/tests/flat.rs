@@ -868,3 +868,42 @@ fn structure_and_nesting_rebuild_and_stay_exact() {
     assert!(rebuilt >= 8 && nested == 4);
     assert_eq!(bad, 0);
 }
+
+/// What an animation leaves behind is bounded: a gradient whose stops change every frame reuses its
+/// tables, and a shadow that settles at ever new sizes starts the coverage store over when it is full.
+/// Pixels stay exact through both.
+#[test]
+fn animated_gradients_and_shadows_do_not_fill_the_tables() {
+    let pool = Pool::new(1);
+    let mut s = FlatScene::new(256, 256, FlatConfig::default());
+    s.push(Node::new([0.0, 0.0, 256.0, 256.0], DrawCmd::Solid { color: 0xfff0_f0f0 })).unwrap();
+    let l = s.lut(&[(0.0, 0xff00_0000), (1.0, 0xffff_ffff)]).unwrap();
+    let ramp = s.push(Node::new([20.0, 20.0, 120.0, 90.0], DrawCmd::Ramp { radius: 8.0, geo: RampGeo::Linear { angle_deg: 90.0 }, lut: l })).unwrap();
+    let keep = s.push(Node::new([140.0, 20.0, 236.0, 90.0], DrawCmd::Ramp { radius: 8.0, geo: RampGeo::Conic { center: [0.5, 0.5], start_deg: 0.0 }, lut: l })).unwrap();
+    let shadow = s.push(Node::new([60.0, 130.0, 190.0, 220.0], DrawCmd::Shadow { radius: 20.0, spread: 0.0, dx: 0.0, dy: 6.0, blur: 30.0, color: 0x9000_0000 })).unwrap();
+    s.push(Node::new([60.0, 130.0, 190.0, 220.0], DrawCmd::RRect { radius: 20.0, color: 0xffff_ffff })).unwrap();
+    let (mut out, mut spec) = (vec![0u32; 256 * 256], vec![0u32; 256 * 256]);
+    let (mut most, mut bad) = (0, 0);
+    for k in 0..900u32 {
+        // new stops every frame
+        let l2 = s.lut(&[(0.0, 0xff00_0000 | k * 0x010203), (0.5, 0x80ff_ffff - k * 0x010000), (1.0, 0xffff_ffff)]).unwrap();
+        s.set(ramp, DrawCmd::Ramp { radius: 8.0, geo: RampGeo::Linear { angle_deg: k as f32 }, lut: l2 });
+        // a new size, held for a frame: it settles, and takes a coverage patch
+        if k % 2 == 0 {
+            s.set_prop(shadow, Prop::Blur, 30.0 + (k % 97) as f32 * 0.7);
+            s.set_prop(shadow, Prop::Radius, 20.0 + (k % 31) as f32);
+        }
+        s.frame(&mut out, 256, &pool, 0);
+        most = most.max(s.scene().luts());
+        if k % 37 == 0 {
+            s.spec(&mut spec, 256);
+            bad += (diff(&out, &spec) != 0) as usize;
+        }
+    }
+    // the other ramp still shows the first table
+    assert_eq!(s.node(keep).cmd, DrawCmd::Ramp { radius: 8.0, geo: RampGeo::Conic { center: [0.5, 0.5], start_deg: 0.0 }, lut: l });
+    eprintln!("flat tables: 900 frames of new stops kept at most {most} tables; the coverage store was started over {} times; {bad} failing", s.scene().patch_resets);
+    assert!(most <= 130, "{most} tables for two gradients");
+    assert!(s.scene().patch_resets >= 1, "the coverage store never filled: the test does not reach its bound");
+    assert_eq!(bad, 0);
+}

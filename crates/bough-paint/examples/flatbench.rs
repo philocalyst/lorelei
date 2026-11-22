@@ -90,6 +90,7 @@ fn pages(n: usize) -> Pages {
 enum Cell {
     Idle,
     Hover,
+    HoverGlass,
     Spring,
     Scroll,
     Glass,
@@ -104,6 +105,7 @@ impl Cell {
         match self {
             Cell::Idle => "idle",
             Cell::Hover => "restyle one card",
+            Cell::HoverGlass => "restyle a card beneath the pane",
             Cell::Spring => "one card on a spring",
             Cell::Scroll => "scroll 11 px",
             Cell::Glass => "pane moves 1 px",
@@ -133,8 +135,8 @@ impl World {
 /// Frame `f` of a cell's script.
 fn turn(w: &mut World, cell: Cell, f: usize) {
     match (w, cell) {
-        (World::Cards(c, ..), Cell::Hover) => {
-            let id = c.cards[8][2];
+        (World::Cards(c, ..), Cell::Hover | Cell::HoverGlass) => {
+            let id = c.cards[if cell == Cell::Hover { 0 } else { 8 }][2];
             let DrawCmd::Ramp { radius, geo, .. } = c.flat.node(id).cmd else { unreachable!() };
             c.flat.set(id, DrawCmd::Ramp { radius, geo, lut: c.luts[f % 4] });
         }
@@ -203,7 +205,7 @@ fn make(cell: Cell, n: usize) -> World {
     } else {
         let c = cards(n, true, FW, FH, 0);
         let mut bank = AnimBank::new();
-        let tracks = c.cards[9].iter().map(|&id| bank.track(Prop::Dy.tag(id), 0.0)).collect();
+        let tracks = c.cards[1].iter().map(|&id| bank.track(Prop::Dy.tag(id), 0.0)).collect();
         World::Cards(c, bank, tracks)
     }
 }
@@ -267,7 +269,7 @@ fn main() {
     println!("# archetypes a flat scene can instantiate: {} (fixed and panned), whatever is drawn", 2 * KINDS);
     println!("scene\tcell\texec\tms/frame (median)\tms (min)\tk instr/frame\ttiles/frame\trecords/frame\tgroup tiles/frame\tgroup blocks/frame\tmismatches");
     let mut total_bad = 0;
-    for cell in [Cell::Idle, Cell::Hover, Cell::Spring, Cell::Scroll, Cell::Glass, Cell::PageIdle, Cell::CrossFade, Cell::Slide, Cell::BlurReveal, Cell::PageEdit] {
+    for cell in [Cell::Idle, Cell::Hover, Cell::HoverGlass, Cell::Spring, Cell::Scroll, Cell::Glass, Cell::PageIdle, Cell::CrossFade, Cell::Slide, Cell::BlurReveal, Cell::PageEdit] {
         if only.as_ref().is_some_and(|o| !cell.name().contains(o.as_str())) {
             continue;
         }
@@ -299,6 +301,14 @@ fn main() {
                 row.group_blocks as f64 / f,
                 bad
             );
+        }
+    }
+    if std::env::var("BOUGH_PAINT_PROF").is_ok() {
+        // nanoseconds and tile entries per column of the last scenes (a measurement switch)
+        let p = bough_paint::scene::PROF.lock().unwrap();
+        let names = archetypes();
+        for (i, (ns, n)) in p.iter().enumerate().filter(|(_, v)| v.1 > 0) {
+            println!("# column {i}: {:.1} ms, {n} entries, {:.0} ns/entry ({})", *ns as f64 / 1e6, *ns as f64 / *n as f64, names.iter().flatten().map(|d| d.name).nth(i).unwrap_or("?").len());
         }
     }
     println!("# mismatching words in total: {total_bad}");

@@ -130,6 +130,14 @@ fn surface_loops_equal_the_scalar_kernel() {
         let bil = |a: u32, b: u32, c: u32, d: u32| (a * w0 + b * w1 + c * w2 + d * w3) >> 16;
         let want = [bil(p.x, q.x, d.x, e.x), bil(p.y, q.y, d.y, e.y), bil(p.z, q.z, d.z, e.z), bil(p.w, q.w, d.w, e.w)];
         assert_eq!(simd::bil_bgra(t, fx, fy), want, "bil_bgra, round {round}");
+        // a ramp's row: two table words and a weight per pixel
+        let rgba = |w: u32| -> wgsl_rs::std::Vec4u { Vec4 { x: k::q15(w & 255), y: k::q15((w >> 8) & 255), z: k::q15((w >> 16) & 255), w: k::q15(w >> 24) } };
+        let (ta, tb): (Vec<u32>, Vec<u32>) = (0..n).map(|_| (stored(&mut r), stored(&mut r))).unzip();
+        let wt: Vec<u16> = (0..n).map(|_| match r.u(4) { 0 => 0, 1 => k::ONE as u16, _ => r.u(k::ONE + 1) as u16 }).collect();
+        let mut got = row.clone();
+        simd::blend_ramp(&mut got, &ta, &tb, &wt, op as u16);
+        let want: Vec<[u16; 4]> = (0..n).map(|i| a(k::blend(v(row[i]), k::scale(k::mix4u(rgba(ta[i]), rgba(tb[i]), wt[i] as u32), op)))).collect();
+        assert_eq!(got, want, "blend_ramp, round {round}");
         let (m0, m1) = (v(px(&mut r)), v(px(&mut r)));
         let m = k::mix4u(m0, m1, op);
         assert_eq!(simd::mix15([m0.x, m0.y, m0.z, m0.w], [m1.x, m1.y, m1.z, m1.w], op), [m.x, m.y, m.z, m.w], "mix15, round {round}");

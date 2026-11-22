@@ -206,3 +206,36 @@ pub fn mix15(a: [u32; 4], b: [u32; 4], t: u32) -> [u32; 4] {
     let h = Q::splat(k::HALF);
     (((Q::from_array(a) * Q::splat(k::ONE - t) + h) >> Q::splat(15)) + ((Q::from_array(b) * Q::splat(t) + h) >> Q::splat(15))).to_array()
 }
+
+/// Four premultiplied RGBA8 words (red in the low byte: a colour table's entries) as Q15 lanes.
+#[inline(always)]
+fn rgba4(w: &[u32; 4]) -> V {
+    let mut b = [0u8; 16];
+    for (d, w) in b.as_chunks_mut::<4>().0.iter_mut().zip(w) {
+        *d = w.to_le_bytes();
+    }
+    let t = Simd::<u8, 16>::from_array(b).cast::<u16>();
+    (t << 7) + (t >> 1) + (t >> 7)
+}
+#[inline(always)]
+fn rgba1(w: u32) -> wgsl_rs::std::Vec4u {
+    wgsl_rs::std::Vec4 { x: k::q15(w & 255), y: k::q15((w >> 8) & 255), z: k::q15((w >> 16) & 255), w: k::q15(w >> 24) }
+}
+/// `acc = blend(acc, scale(mix4u(rgba15(w0[x]), rgba15(w1[x]), t[x]), op))` over a span: a table
+/// gradient's row from the two table words and the weight (Q15) each pixel reads (`ops::gl_color`).
+#[inline(always)]
+pub fn blend_ramp(row: &mut [[u16; 4]], w0: &[u32], w1: &[u32], t: &[u16], op: u16) {
+    debug_assert!(row.len() == w0.len() && row.len() == w1.len() && row.len() == t.len());
+    let (quads, rest) = row.as_chunks_mut::<4>();
+    let ((aq, ar), (bq, br), (tq, tr)) = (w0.as_chunks::<4>(), w1.as_chunks::<4>(), t.as_chunks::<4>());
+    let (o, one) = (V::splat(op), V::splat(k::ONE as u16));
+    for (((q, a), b), t) in quads.iter_mut().zip(aq).zip(bq).zip(tq) {
+        let tt = per_px(*t);
+        let v = mul15(rgba4(a), one - tt) + mul15(rgba4(b), tt);
+        let acc = V::from_array(*q.as_flattened().first_chunk().unwrap());
+        q.as_flattened_mut().copy_from_slice(&over4(acc, mul15(v, o)).to_array());
+    }
+    for (((px, &a), &b), &t) in rest.iter_mut().zip(ar).zip(br).zip(tr) {
+        *px = st1(k::blend(ld1(px), k::scale(k::mix4u(rgba1(a), rgba1(b), t as u32), op as u32)));
+    }
+}
