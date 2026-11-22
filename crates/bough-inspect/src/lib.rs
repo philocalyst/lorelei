@@ -26,6 +26,7 @@ pub mod damage;
 pub mod encoder;
 pub mod frame;
 pub mod hooks;
+pub use hooks::{damage_map_from_report, frame_profile_from_report};
 pub mod json;
 pub mod png;
 pub mod protocol;

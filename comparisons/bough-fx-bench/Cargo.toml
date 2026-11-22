@@ -21,6 +21,11 @@ name = "typed-core"
 path = "src/bin/typed-core.rs"
 required-features = ["typed-core"]
 
+[[bin]]
+name = "rethink-core"
+path = "src/bin/rethink-core.rs"
+required-features = ["typed-core"]
+
 [patch.crates-io]
 wgpu-hal = { path = "../../vendor/wgpu-hal" }
 wgpu-types = { path = "../../vendor/wgpu-types" }
