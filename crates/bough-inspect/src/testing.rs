@@ -13,7 +13,7 @@ use crate::frame::Frame;
 use crate::record::Command;
 use crate::schema::{Key, Node, Snapshot};
 use crate::session::{Program, Session};
-use bough_x::event::{Key as K, Mods};
+use bough_dataflow::event::{Key as K, Mods};
 
 pub struct Find<'a> {
     snap: &'a Snapshot,

@@ -1,8 +1,8 @@
 //! The three-line form an application's author gets: a typed selector over the inspector's tree, a drive, an
 //! assertion. Nothing here knows about sockets, commands or the descriptor's internals.
-use bough_guibench_x::rows::Rows;
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect::testing::TestApp;
-use bough_x::event::Key;
+use bough_dataflow::event::Key;
 
 #[test]
 fn three_line_typed_selectors() {

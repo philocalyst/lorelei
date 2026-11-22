@@ -3,15 +3,15 @@ name = "bough-span"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true
-description = "Round 8, e2e lane: the CPU span raster for bough-x. Opaque boxes as spans and glyphs from a prepared image, written straight into the surface the compositor reads, restricted to the damaged tiles"
+description = "Round 8, e2e lane: the CPU span raster for bough-dataflow. Opaque boxes as spans and glyphs from a prepared image, written straight into the surface the compositor reads, restricted to the damaged tiles"
 
 [dependencies]
-bough-x = { path = "../bough-x" }
+bough-dataflow = { path = "../bough-dataflow" }
 bough-expr = { path = "../bough-expr" }
 bough-glyph = { path = "../bough-glyph" }
 
 [features]
-inspect-metadata = ["bough-x/inspect-metadata"]
+inspect-metadata = ["bough-dataflow/inspect-metadata"]
 # Mutants the pixel gates must fail with:
 # a glyph that straddles a damaged and an undamaged tile is blended into both
 mutant_straddle = []

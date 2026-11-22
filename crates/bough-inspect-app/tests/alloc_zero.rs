@@ -1,6 +1,6 @@
 //! G7, the idle-refresh half: an inspector refresh that finds nothing moved allocates nothing, with and without
 //! a selection in the overlay. This is a test binary of its own so no other test's allocations are counted.
-use bough_guibench_x::rows::Rows;
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect::session::Session;
 use bough_inspect::ui::Inspector;
 use bough_inspect_app::Lab;

@@ -1,6 +1,6 @@
 //! The inspector over the real comparison apps: smoke tests first, then the gates. Every test mounts a
-//! `bough-guibench-x` scenario through `bough-inspect-app`'s host; nothing here writes a second scene.
-use bough_guibench_x::rows::Rows;
+//! `bough-guibench-dataflow` scenario through `bough-inspect-app`'s host; nothing here writes a second scene.
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect::session::Session;
 use bough_inspect_app::Lab;
 
@@ -112,7 +112,7 @@ fn a_typed_field_write_damages_exactly_its_readers() {
 
 #[test]
 fn rows_source_points_at_the_real_description_call_site() {
-    const SOURCE: &str = include_str!("../../../comparisons/bough-guibench-x/src/rows.rs");
+    const SOURCE: &str = include_str!("../../../comparisons/bough-guibench-dataflow/src/rows.rs");
     let mut session = rows(100);
     let snapshot = session.snapshot();
     let label = snapshot
@@ -124,7 +124,7 @@ fn rows_source_points_at_the_real_description_call_site() {
         label
             .loc
             .file
-            .ends_with("comparisons/bough-guibench-x/src/rows.rs")
+            .ends_with("comparisons/bough-guibench-dataflow/src/rows.rs")
     );
     let source = SOURCE.lines().nth(label.loc.line as usize - 1).unwrap();
     assert!(

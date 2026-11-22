@@ -34,9 +34,9 @@ and for rustup, and the reference checkouts under `$HOME/work/reactivity/ref` pl
 
 ```sh
 bench/vm/up.sh
-FRAMEWORKS=bough,bough-x,zgui bench/vm/build.sh
+FRAMEWORKS=bough,bough-dataflow,zgui bench/vm/build.sh
 for scenario in rows table search spinner ticker typing virtual resize; do
-    FRAMEWORKS=bough,bough-x,zgui SCENARIOS="$scenario" bench/vm/run.sh || exit "$?"
+    FRAMEWORKS=bough,bough-dataflow,zgui SCENARIOS="$scenario" bench/vm/run.sh || exit "$?"
 done
 ```
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Audit a bench/vm result directory. Exit status is the verdict run.sh returns.
 
-  python3 bench/vm/check.py RESULT_DIR --frameworks bough,bough-x,zgui --scenarios rows,table [--strict-validity]
+  python3 bench/vm/check.py RESULT_DIR --frameworks bough,bough-dataflow,zgui --scenarios rows,table [--strict-validity]
 
 Exit 0  every requested scenario x framework has a cell, no cell has errors, nothing skipped,
         run.json present, and (with --strict-validity) every report is valid.

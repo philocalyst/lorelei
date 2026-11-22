@@ -1,6 +1,6 @@
 //! The flat core: a UI as plain data.
 //!
-//! The typed-dataflow core (`bough-x`) makes every binding a Rust type: an expression is a
+//! The typed-dataflow core (`bough-dataflow`) makes every binding a Rust type: an expression is a
 //! type, a row is a tuple of them, a column is one monomorphisation per call site. It is fast where it is
 //! admitted and it is paid for in compile time, in specialisation, in raw field offsets and in everything a
 //! type cannot say (a flag that turns on at run time, a child that appears). This crate is the same idea with

@@ -1,20 +1,20 @@
 # Relations, operators and bounded deltas in the new core (how to use them, how the façade lowers onto them)
 
 Card: `cards/2026-11-21-incremental-operators.md`. Report: `cards/2026-11-21-incremental-operators-REPORT.md`.
-Everything here is `bough-x` (body B). Nothing in `bough::prelude` changed.
+Everything here is `bough-dataflow` (body B). Nothing in `bough::prelude` changed.
 
 ## What exists
 
 | piece | where | one line |
 |---|---|---|
-| `Lane<T>` | `bough-x/src/rel/lane.rs` | a sequence in blocks of 128 under a Fenwick tree: insert and remove move one block; a read after the last read is one compare |
-| `Seq<T>` | `bough-x/src/rel/mod.rs` | `Rel` on a lane: `len`, `get`, `edit`, `insert`, `remove`, `push`, and the same `journal` a `List` reads |
-| `Table<T>`, `Log`, `Change` | `bough-x/src/rel/mod.rs` | rows under stable ids (slots, reused) with a bounded log of inserts, removes and updates |
-| `Filter`, `Sort<K>`, `Group<G, A>`, `Total<A>`, `Join<K>` | `bough-x/src/ops.rs` | each reads a log from its own cursor and keeps an output (ids, pairs or groups in a lane) plus a positional `journal` |
-| `Trigrams`, `Substring` | `bough-x/src/index.rs` | a trigram posting index (superset, verified) and the search operator on it |
+| `Lane<T>` | `bough-dataflow/src/rel/lane.rs` | a sequence in blocks of 128 under a Fenwick tree: insert and remove move one block; a read after the last read is one compare |
+| `Seq<T>` | `bough-dataflow/src/rel/mod.rs` | `Rel` on a lane: `len`, `get`, `edit`, `insert`, `remove`, `push`, and the same `journal` a `List` reads |
+| `Table<T>`, `Log`, `Change` | `bough-dataflow/src/rel/mod.rs` | rows under stable ids (slots, reused) with a bounded log of inserts, removes and updates |
+| `Filter`, `Sort<K>`, `Group<G, A>`, `Total<A>`, `Join<K>` | `bough-dataflow/src/ops.rs` | each reads a log from its own cursor and keeps an output (ids, pairs or groups in a lane) plus a positional `journal` |
+| `Trigrams`, `Substring` | `bough-dataflow/src/index.rs` | a trigram posting index (superset, verified) and the search operator on it |
 | `sel`, `near` | `bough-expr/src/lib.rs` | expressions that declare what bounds their change: a key, a reach |
-| key index, page boxes | `bough-x/src/store/fast.rs`, `World::delta_fast` | the deltas those declarations admit; built lazily, dropped by any description pass |
-| `Tiles::sweep_rects` | `bough-x/src/store.rs` | motion handed to a raster as rects instead of tile bits |
+| key index, page boxes | `bough-dataflow/src/store/fast.rs`, `World::delta_fast` | the deltas those declarations admit; built lazily, dropped by any description pass |
+| `Tiles::sweep_rects` | `bough-dataflow/src/store.rs` | motion handed to a raster as rects instead of tile bits |
 
 ## Rules that hold everywhere
 

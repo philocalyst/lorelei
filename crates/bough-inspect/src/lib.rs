@@ -1,4 +1,4 @@
-//! The inspector over the typed core: a versioned, serialisable description of a running `bough-x` world, a
+//! The inspector over the typed core: a versioned, serialisable description of a running `bough-dataflow` world, a
 //! validated mutation path, a local agent/test socket, record and replay, pixel diff, typed selectors for tests,
 //! and an overlay written with the core's element layer.
 //!
@@ -15,10 +15,10 @@
 //! * [`png`] / [`frame`]: screenshots and goldens without a dependency.
 //! * [`testing`]: typed selectors and a session wrapper, for three-line tests.
 //! * [`ui`]: the in-application overlay (tree, selection, source location, properties, dependencies, damage,
-//!   timings), written with `bough_x::el` — the typed core's element layer, the façade's own idiom.
+//!   timings), written with `bough_dataflow::el` — the typed core's element layer, the façade's own idiom.
 //!
 //! Cost when unused: a binary that does not link this crate contains none of it (the crate is a separate
-//! artifact and `bough-x` is unchanged).
+//! artifact and `bough-dataflow` is unchanged).
 #![feature(peer_credentials_unix_socket)]
 
 pub mod client;

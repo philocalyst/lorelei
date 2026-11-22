@@ -2,12 +2,12 @@
 //!
 //! One line per column: store path, column, paint kind, stage, the 64-bit mask of state-block words it
 //! reads, its operand names, and its record type. `bench/asm/asm.py graph expr` turns the lines into
-//! Graphviz. Uses only the public reflection API (`bough_x::reflect::Reflect`).
+//! Graphviz. Uses only the public reflection API (`bough_dataflow::reflect::Reflect`).
 
-use bough_guibench_x::rows::Rows;
-use bough_guibench_x::scene::Scene;
+use bough_guibench_dataflow::rows::Rows;
+use bough_guibench_dataflow::scene::Scene;
 use bough_host::App;
-use bough_x::reflect::{Kind, Reflect, StoreInfo};
+use bough_dataflow::reflect::{Kind, Reflect, StoreInfo};
 
 fn walk(info: &StoreInfo, path: &str) {
     for (i, col) in info.cols.iter().enumerate() {

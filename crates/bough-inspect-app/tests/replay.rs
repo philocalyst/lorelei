@@ -1,10 +1,10 @@
 //! G4: a recorded script replays on a fresh application of the same kind, pixel-exact and node-exact, for two
 //! real apps. The script mixes every command kind the socket serves.
-use bough_guibench_x::{rows::Rows, table::Table};
+use bough_guibench_dataflow::{rows::Rows, table::Table};
 use bough_inspect::record::{self, Command};
 use bough_inspect::session::Session;
 use bough_inspect_app::Lab;
-use bough_x::event::Key;
+use bough_dataflow::event::Key;
 
 fn rows_script() -> Vec<Command> {
     vec![

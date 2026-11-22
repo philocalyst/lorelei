@@ -11,6 +11,11 @@ DEFAULT_LIMITS = {"instructions": 1.02, "wall": 1.10, "rss": 1.05}
 PRIMARY = ("instr_p50", "dispatch_instr", "step_instr", "instructions", "dispatch_allocs")
 
 
+def build_args(args):
+    # The typed core's package was `bough-x` in receipts taken before its rename; the build is the same.
+    return ["bough-dataflow" if arg == "bough-x" else arg for arg in args]
+
+
 def numeric(value):
     return type(value) in (int, float) and math.isfinite(value)
 
@@ -156,7 +161,7 @@ def main():
                 raise ValueError(f"workload parameters changed for {name}")
             bin_name = a["binary"]
             base_bin, head_bin = (run["binaries"][bin_name] for run in (base, head))
-            if base_bin["cargo_args"] != head_bin["cargo_args"]:
+            if build_args(base_bin["cargo_args"]) != build_args(head_bin["cargo_args"]):
                 raise ValueError(f"binary build options changed for {name}")
             base_digest = base_bin.get("sha256")
             same_binary = bool(base_digest and base_digest == head_bin.get("sha256"))

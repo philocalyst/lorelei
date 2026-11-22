@@ -1,16 +1,16 @@
 //! G7: the in-application overlay, and the behaviours ported from the clean-room GPUI inspector's tests
 //! (`reactivity/crates/gpui/tests/inspector.rs`) in the typed core's terms. Style editors are not ported: the
 //! owner decided against them, and a record's operand is a staged expression of state.
-use bough_guibench_x::{rows::Rows, table::Table};
+use bough_guibench_dataflow::{rows::Rows, table::Table};
 use bough_inspect::record::Command;
 use bough_inspect::schema::{Key, Snapshot};
 use bough_inspect::session::Session;
 use bough_inspect::ui::Inspector;
 use bough_inspect::{PropValue, Refusal};
 use bough_inspect_app::Lab;
-use bough_x::el::App;
-use bough_x::event::Key as K;
-use bough_x::soft::Soft;
+use bough_dataflow::el::App;
+use bough_dataflow::event::Key as K;
+use bough_dataflow::soft::Soft;
 fn rows(n: usize) -> Session<Lab<Rows>> {
     Session::new(Lab::new(Rows::new(n), 800, 600, 1))
 }
@@ -318,7 +318,7 @@ fn the_overlay_paints_selects_and_offers_a_jump() {
     assert!(soft.px.iter().any(|&p| p != 0));
     // click the first tree line: select node 0 (the root fill)
     let (node, rect) = {
-        let r = bough_x::reflect::Reflect::learn(&app.world, &app.v);
+        let r = bough_dataflow::reflect::Reflect::learn(&app.world, &app.v);
         let items = r.items(app.world.root(), &app.world.shown);
         if std::env::var("DUMP").is_ok() {
             for i in &items {

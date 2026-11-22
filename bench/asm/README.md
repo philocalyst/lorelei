@@ -63,7 +63,7 @@ bounds-check/`brk` sites. `diff` sums an entry's symbols and fails above `--thre
 instructions. It exits 2 (not comparable) unless both directories'
 `MANIFEST.txt` agree on rustc, profile, codegen, rustflags, host, features and mutant, and unless both
 contain every manifest entry; missing, empty or malformed `stats.tsv`, a zero-instruction base entry and
-a negative threshold also fail. Exit codes: 0 pass, 1 regressed, 2 invalid comparison/input. `graph expr` uses only the public reflection API (`bough_x::reflect`): it prints one
+a negative threshold also fail. Exit codes: 0 pass, 1 regressed, 2 invalid comparison/input. `graph expr` uses only the public reflection API (`bough_dataflow::reflect`): it prints one
 line per learned column (store, column, kind, stage, the 64-bit word mask it reads, operands, record
 type) and renders word → column edges; that is the staged-expression dependency graph and the reader
 lists, as the core itself knows them.

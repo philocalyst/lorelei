@@ -8,12 +8,12 @@ copies self-describing results back. Verified on macOS 26.7.3, Apple M3 Ultra, l
 
 ```sh
 bench/vm/up.sh                                   # idempotent: lima + Ubuntu guest + rustup toolchains
-FRAMEWORKS=bough,bough-x,zgui bench/vm/build.sh   # sync, register, build, stage, print sha256
-FRAMEWORKS=bough,bough-x,zgui SCENARIOS=rows,table,search bench/vm/run.sh
+FRAMEWORKS=bough,bough-dataflow,zgui bench/vm/build.sh   # sync, register, build, stage, print sha256
+FRAMEWORKS=bough,bough-dataflow,zgui SCENARIOS=rows,table,search bench/vm/run.sh
 ```
 
 `run.sh` passes everything it is given to the runner (defaults: `--quick` over rows, spinner, search
-and table for `bough,bough-x,zgui`), writes `CONTRACT.txt` beside the cells, and unpacks the result
+and table for `bough,bough-dataflow,zgui`), writes `CONTRACT.txt` beside the cells, and unpacks the result
 tree into `bench/results/vm/<stamp>/`. It takes the batch lock. See `../RUNBOOK.md` for how to read
 a cell and the validity rules.
 
@@ -38,13 +38,13 @@ starts a private bus), DejaVu fonts. Rust: `nightly-2026-10-17` (lorelei) and `n
 * `gui-bench/apps/zgui` depends on a sibling checkout `zgui-fakeland-marks` on branch
   `feat/fakeland-marks`; the ref `zgui` has only `main`. Clone it into
   `$BENCH_EXTRA/zgui-fakeland-marks` (`git clone -b feat/fakeland-marks https://github.com/zortax/zgui
-  zgui-fakeland-marks`). Without it, build `FRAMEWORKS=bough,bough-x` and the zgui cells are absent.
+  zgui-fakeland-marks`). Without it, build `FRAMEWORKS=bough,bough-dataflow` and the zgui cells are absent.
 
 ## Patches (applied to the VM's copies of gui-bench only, never to the repository)
 
 | patch | why |
 |---|---|
-| `patches/gui-bench-bough.patch` | registers `bough` and `bough-x` in `runner/src/frameworks.rs` and the runner's default list. Both crates build a binary named `bough-bench`, so the registration overrides `Framework::binary` for those two names. |
+| `patches/gui-bench-bough.patch` | registers `bough` and `bough-dataflow` in `runner/src/frameworks.rs` and the runner's default list. Both crates build a binary named `bough-bench`, so the registration overrides `Framework::binary` for those two names. |
 | `patches/gui-bench-timing.patch` | `GB_TIMING=fixed` (default, the previous behaviour) `\| unthrottled \| vrr` (48-144 Hz) selects fakeland's display timing for every cell; any other value panics, never falls back to fixed. |
 
 The VM builds lorelei's source directly. Vulkan extension and layer names use the target's `core::ffi::c_char` type.
@@ -94,5 +94,5 @@ See the [fixed-rate reports](../results/vm/round3-fixed.json) and the
 
 `~/src/{lorelei,gui-bench,fakeland,zgui-fakeland-marks}`, built into `~/targets/lorelei-release`
 (lorelei) and each app's own `target`; lorelei's binaries are staged under
-`~/src/gui-bench/apps/{bough,bough-x}/target/release/bough-bench`. Source arrives over lima's
+`~/src/gui-bench/apps/{bough,bough-dataflow}/target/release/bough-bench`. Source arrives over lima's
 read-only home mount by `rsync`; results return by a `tar` stream.

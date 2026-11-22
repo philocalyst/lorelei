@@ -14,7 +14,7 @@ if [ -d "$REFS/gui-bench/runner" ]; then
   T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
   mkdir -p "$T/runner" && cp -R "$REFS/gui-bench/runner/src" "$T/runner/src"
   (cd "$T" && patch -p1 --silent < "$HERE/patches/gui-bench-bough.patch" && patch -p1 --silent < "$HERE/patches/gui-bench-timing.patch")
-  grep -q 'GB_TIMING' "$T/runner/src/cell.rs" && grep -q '"bough-x"' "$T/runner/src/frameworks.rs"
+  grep -q 'GB_TIMING' "$T/runner/src/cell.rs" && grep -q '"bough-dataflow"' "$T/runner/src/frameworks.rs"
   echo "patches: apply in order, GB_TIMING and bough registered"
 else
   echo "patches: skipped (no gui-bench at $REFS)"

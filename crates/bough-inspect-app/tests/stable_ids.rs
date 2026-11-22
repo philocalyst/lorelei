@@ -3,12 +3,12 @@
 //! The id is derived from the leaf's call site, the store path, the row/pos slots and the host's remount epoch.
 //! Two descriptions of the same view agree; a scroll that recycles materialisation slots does not
 //! change it; two nodes do not share one.
-use bough_guibench_x::rows::Rows;
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect::schema::{Key, PropValue, stable_id};
 use bough_inspect::session::Program;
 use bough_inspect::session::Session;
 use bough_inspect_app::Lab;
-use bough_x::reflect::Reflect;
+use bough_dataflow::reflect::Reflect;
 use std::collections::HashSet;
 
 fn rows(n: usize) -> Session<Lab<Rows>> {

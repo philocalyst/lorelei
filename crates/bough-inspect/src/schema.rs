@@ -5,7 +5,7 @@
 //! compare bytes.
 use crate::json::{self, Value as J};
 use bough_expr::{Rect as ERect, StageId};
-use bough_x::reflect::Val;
+use bough_dataflow::reflect::Val;
 
 /// The schema this build writes. Bump on any change that is not purely additive.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -137,7 +137,7 @@ pub fn operand_id(node: u64, name: &str) -> u64 {
     h
 }
 
-/// A record's identity in the stores, stable across scrolling and re-description ([`bough_x::reflect::Ent`]).
+/// A record's identity in the stores, stable across scrolling and re-description ([`bough_dataflow::reflect::Ent`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Key {
     pub path: [u16; 6],
@@ -149,7 +149,7 @@ pub struct Key {
     pub rec: u32,
 }
 impl Key {
-    pub fn of(e: bough_x::reflect::Ent, col: u32, rec: u32) -> Key {
+    pub fn of(e: bough_dataflow::reflect::Ent, col: u32, rec: u32) -> Key {
         Key {
             path: e.path.at,
             depth: e.path.n,

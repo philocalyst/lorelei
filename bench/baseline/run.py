@@ -59,11 +59,12 @@ def cells(worktree):
             args += ("--blocks", "15" if op == "filter-nochange" else "3")
         matrix.append(Cell(f"guibench/{label}-{rows}-{op}", "headless", args, {}, "guibench"))
     unavailable = {}
-    if 'var("BROAD")' in (worktree / "crates/bough-x/examples/sheet_x.rs").read_text():
+    core = worktree / "crates" / core_package(worktree)
+    if 'var("BROAD")' in (core / "examples/sheet_x.rs").read_text():
         matrix.append(example("sheet_x/rows10000/broad", "sheet", ROWS="10000", REPS="32", BROAD="1"))
     else:
         unavailable["sheet_x/rows10000/broad"] = "this checkout lacks the BROAD sheet fixture"
-    if (worktree / "crates/bough-x/examples/ops_x.rs").is_file():
+    if (core / "examples/ops_x.rs").is_file():
         for part in ("select", "lane", "ops", "search", "corpus"):
             matrix.append(example(f"ops_x/{part}", "ops", PART=part, REPS="64", ROWS="100000"))
         for mode, env in (("near", {"NEAR": "1"}), ("swept", {"SWEPT": "1"}),
@@ -106,7 +107,12 @@ def cells(worktree):
     return matrix, unavailable
 
 
-def binary_spec(name):
+def core_package(worktree):
+    # The typed core was `bough-x` before the rename; a baseline may be built from such a checkout.
+    return "bough-dataflow" if (worktree / "crates/bough-dataflow").is_dir() else "bough-x"
+
+
+def binary_spec(name, worktree):
     if name == "headless":
         return "release/headless", ["--release", "--manifest-path", "comparisons/bough-guibench/Cargo.toml",
                                     "--bin", "headless"]
@@ -114,7 +120,7 @@ def binary_spec(name):
         return f"release/{name}", ["--locked", "--release", "--manifest-path",
                                    "comparisons/bough-fx-bench/Cargo.toml",
                                    "--features", "full-effects,typed-core", "--bin", name]
-    package = "bough-paint" if name in ("pbench", "fxbench") else "bough-x"
+    package = "bough-paint" if name in ("pbench", "fxbench") else core_package(worktree)
     return f"dist/examples/{name}", ["--locked", "--profile", "dist", "-p", package, "--example", name]
 
 
@@ -171,7 +177,7 @@ def build(worktree, target, binaries, toolchain, log, reuse):
         cache.unlink(missing_ok=True)
     manifest = {}
     for name in binaries:
-        relative, args = binary_spec(name)
+        relative, args = binary_spec(name, worktree)
         if not reuse:
             command = ["nice", "-n", "15", "cargo", "build", "-j", "3", *args]
             print(f"build {name}", flush=True)

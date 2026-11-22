@@ -13,10 +13,10 @@ use bough_inspect::session::Session;
 use bough_inspect::session::{FieldDef, Input, Program};
 use bough_inspect::socket::Server;
 use bough_inspect::{FieldKind, Frame, PropValue};
-use bough_x::el::App;
-use bough_x::el::prelude::*;
-use bough_x::soft::Soft;
-use bough_x::world::World;
+use bough_dataflow::el::App;
+use bough_dataflow::el::prelude::*;
+use bough_dataflow::soft::Soft;
+use bough_dataflow::world::World;
 
 include!("../../fixtures/demo_state.rs");
 demo_state!(i32);

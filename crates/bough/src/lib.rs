@@ -6,10 +6,16 @@
 //! cephal (layout) and bough-metal's fused presenter. One region holds everything the GPU reads
 //! (`rt.rs`); a frame's CPU work ends at the tile list (`app.rs`).
 //!
-//! Beside the typed path there is a path with no type-level dataflow: [`flat`] (a prelude view, or a small
-//! builder, on the flat core `bough-flat` and the damage engine `bough-damage`), and the author's side of the
-//! paint lane's flat bank: [`style`] (boxes, gradients, shadows, blurs as values), [`motion`] (springs, curves,
-//! keyframes) and [`pages`] (retained pages and the transitions between them).
+//! There is one author surface: [`prelude`] (`designs/reactivity/final`). [`raw`] is the scene-level surface the
+//! existing benchmark ports are written in. Everything else that is `pub` is machinery, exposed for the
+//! harnesses and tests that hold it to its oracles, and is not an API to write applications against:
+//!
+//! * [`flat::FlatApp`] drives any prelude view on the flat core (`bough-flat`) and the damage engine
+//!   (`bough-damage`), with no type-level dataflow.
+//! * `flat::ui`, `style`, `motion` and `pages` are engines (a builder on the flat core's bindings; boxes,
+//!   gradients, shadows and blurs as values on the paint lane's flat bank; springs, curves and keyframes;
+//!   retained pages and the transitions between them). They are hidden from the documentation: what an
+//!   author writes is a prelude port, and a port is lowered onto these.
 pub mod app;
 pub mod backend;
 pub mod boxops;
@@ -32,7 +38,9 @@ pub mod lower;
 pub mod listview;
 pub mod ltemplate;
 pub mod mlist;
+#[doc(hidden)]
 pub mod motion;
+#[doc(hidden)]
 pub mod pages;
 pub mod reader;
 pub mod reflect;
@@ -41,6 +49,7 @@ pub mod seal;
 pub mod select;
 pub mod signal;
 pub mod store;
+#[doc(hidden)]
 pub mod style;
 pub mod template;
 pub mod text;

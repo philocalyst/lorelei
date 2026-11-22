@@ -1,4 +1,4 @@
-//! G6 against a real app: the MCP handler drives `bough-guibench-x`'s Rows over the socket, and every answer is
+//! G6 against a real app: the MCP handler drives `bough-guibench-dataflow`'s Rows over the socket, and every answer is
 //! the live application's. The transport is tested in `bough-mcp`; this file holds the application still.
 use bough_inspect::client::Client;
 use bough_inspect::json::{self, Value as J};

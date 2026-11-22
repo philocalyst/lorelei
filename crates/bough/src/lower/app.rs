@@ -6,11 +6,11 @@ use super::{Core, Doc, Hnd, Kind, Lower, NO, Owner, Scene};
 use crate::app::{Config, View};
 use crate::elem::Element;
 use crate::input::{Button, Ev, Key, Mods};
-use bough_x::expr::U;
-use bough_x::prim::Prim;
-use bough_x::sink::Sink;
-use bough_x::store::{Rect, Space, Tiles};
-use bough_x::world::World;
+use bough_dataflow::expr::U;
+use bough_dataflow::prim::Prim;
+use bough_dataflow::sink::Sink;
+use bough_dataflow::store::{Rect, Space, Tiles};
+use bough_dataflow::world::World;
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -33,10 +33,10 @@ const NOWHERE: Space = Space {
         y1: 0,
     },
     base: (0, 0),
-    scroll: bough_x::store::NO_WORD,
+    scroll: bough_dataflow::store::NO_WORD,
 };
 
-impl<V: View> bough_x::sink::View for Lowered<V> {
+impl<V: View> bough_dataflow::sink::View for Lowered<V> {
     fn block(&self) -> &U {
         &NO_BLOCK
     }

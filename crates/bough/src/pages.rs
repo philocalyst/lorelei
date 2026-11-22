@@ -1,5 +1,7 @@
 //! Pages and the transitions between them.
 //!
+//! Not an author API: applications are written against `bough::prelude`, whose ports are lowered onto this.
+//!
 //! A page is a flat scene ([`crate::style`]) described once. The router keeps each page as a **retained group**
 //! of one stage scene: the page is painted into its own surface when its content changes, at the grain of
 //! that change, and otherwise not at all. A transition never asks a page anything. It moves, scales,

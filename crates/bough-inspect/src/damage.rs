@@ -1,7 +1,7 @@
 //! The damage of one commit, captured before a painter consumes it.
 use crate::schema::{Damage, R, Sweep};
-use bough_x::expr::U;
-use bough_x::store::Tiles;
+use bough_dataflow::expr::U;
+use bough_dataflow::store::Tiles;
 
 /// Copy the marked tiles and sweeps. The bit rows are copied only for the rows that may hold a mark (`lo..hi`),
 /// which is what a painter reads; a full-window mount is one row per tile row.

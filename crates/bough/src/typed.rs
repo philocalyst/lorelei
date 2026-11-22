@@ -1,6 +1,6 @@
 //! The prelude on the typed element layer (Integration Card 4).
 //!
-//! A façade element value converts ([`Typed`]) to a value of `bough-x`'s element layer (`el.rs`): its type is its
+//! A façade element value converts ([`Typed`]) to a value of `bough-dataflow`'s element layer (`el.rs`): its type is its
 //! records and its layout words, its operands are expressions stored in record words, and `World<V, B>` mounts it
 //! once, settles it by differentiating the columns that read a changed block word, and re-describes it by a
 //! typed compare. Nothing here is a node tree: there is no per-element allocation and no erased handler.
@@ -29,15 +29,15 @@ use crate::lower::text::TextSys;
 use crate::signal::{Signal, WMap, Wired};
 use crate::template::ScrollBox;
 use bough_lay::{Rec1, Shape};
-use bough_x::draw::{Draws, Prims};
-use bough_x::el::{Boxy, Flow, Hd, Paints, Part, Scroll, Seg};
-use bough_x::event::{Event, Handler, kind};
-use bough_x::expr::{APP_WORDS, Code, Color as XColor, Cx as ECx, Expr, StageId, Turn, U};
-use bough_x::prim::{P_BOX, P_TEXT, Prim};
-use bough_x::probe::{mark, ph};
-use bough_x::sink::{Cx, Edit, Geo, Journal, Leaf, Mk, Row, Sink};
-use bough_x::store::{Arch, Backend, ColRef, NO_WORD, Rect, Site, Tiles};
-use bough_x::world::World;
+use bough_dataflow::draw::{Draws, Prims};
+use bough_dataflow::el::{Boxy, Flow, Hd, Paints, Part, Scroll, Seg};
+use bough_dataflow::event::{Event, Handler, kind};
+use bough_dataflow::expr::{APP_WORDS, Code, Color as XColor, Cx as ECx, Expr, StageId, Turn, U};
+use bough_dataflow::prim::{P_BOX, P_TEXT, Prim};
+use bough_dataflow::probe::{mark, ph};
+use bough_dataflow::sink::{Cx, Edit, Geo, Journal, Leaf, Mk, Row, Sink};
+use bough_dataflow::store::{Arch, Backend, ColRef, NO_WORD, Rect, Site, Tiles};
+use bough_dataflow::world::World;
 use std::any::TypeId;
 use std::cell::{Cell, RefCell};
 use std::marker::PhantomData;
@@ -349,7 +349,7 @@ pub struct HSel<C> {
 }
 // SAFETY: `repr(C)`: two `u32`s, then a `Words` operand (whole words at alignment 4, or zero-sized at
 // alignment at most 4): no padding, every bit pattern a valid value.
-unsafe impl<C: bough_x::expr::Words> bough_x::expr::Words for HSel<C> {}
+unsafe impl<C: bough_dataflow::expr::Words> bough_dataflow::expr::Words for HSel<C> {}
 /// Where a colour expression keeps a selection key, if it is a selection by a constant key: the block word
 /// and the key's index among the expression's words.
 pub trait Keyed {
@@ -358,7 +358,7 @@ pub trait Keyed {
 impl<C> Keyed for C {
     default const KEY: Option<(usize, usize)> = None;
 }
-impl<C: Expr<Out = XColor> + bough_x::expr::Words> Keyed for HSel<C> {
+impl<C: Expr<Out = XColor> + bough_dataflow::expr::Words> Keyed for HSel<C> {
     // certain only when the base does not itself read the hover word (it reads no block word that the
     // hover word's change could be confused with: the fast path is taken for a change of that word alone)
     const KEY: Option<(usize, usize)> = if C::READS >> HOVER & 1 == 0 {
@@ -458,7 +458,7 @@ pub struct PBox<C> {
     alpha: u32,
 }
 // SAFETY: `repr(C)`: a `Words` operand first, then four `u32`s: no padding, every bit pattern valid.
-unsafe impl<C: bough_x::expr::Words> bough_x::expr::Words for PBox<C> {}
+unsafe impl<C: bough_dataflow::expr::Words> bough_dataflow::expr::Words for PBox<C> {}
 /// A box's paint as the element layer takes it.
 #[derive(Clone, Copy)]
 pub struct BoxP<C>(PBox<C>);
@@ -720,11 +720,11 @@ impl<V: View> Ty<V> {
         }
     }
 }
-impl<V: View> bough_x::sink::View for Ty<V> {
+impl<V: View> bough_dataflow::sink::View for Ty<V> {
     fn block(&self) -> &U {
         &NO_BLOCK
     }
-    fn gathered<'a>(&'a self, _: &[bough_x::expr::Slot], out: &'a mut U) -> &'a U {
+    fn gathered<'a>(&'a self, _: &[bough_dataflow::expr::Slot], out: &'a mut U) -> &'a U {
         self.fill(out);
         out
     }
@@ -780,8 +780,8 @@ impl<V: View, T: 'static> Reach<V> for InList<T> {
     }
 }
 
-fn fev<V>(t: &Ty<V>, e: &bough_x::event::Ev) -> Ev {
-    use bough_x::event::{Button as B, Key as K};
+fn fev<V>(t: &Ty<V>, e: &bough_dataflow::event::Ev) -> Ev {
+    use bough_dataflow::event::{Button as B, Key as K};
     let s = t.sh.scale.get();
     let key = e.key.map(|k| match k {
         K::Char(c) => Key::Char(c),
@@ -1449,11 +1449,11 @@ on_ev!(Drag, kind::DRAG);
 impl<V: View, R: Reach<V>, E: Typed<V, R>> Typed<V, R> for On<E, Focusable>
 where
     E::El: Boxy<Ty<V>>,
-    Hd<E::El, bough_x::event::Focusable>: Part<Ty<V>> + Shape,
+    Hd<E::El, bough_dataflow::event::Focusable>: Part<Ty<V>> + Shape,
 {
-    type El = Hd<E::El, bough_x::event::Focusable>;
+    type El = Hd<E::El, bough_dataflow::event::Focusable>;
     fn typed(self) -> Self::El {
-        Hd(self.0.typed(), bough_x::event::Focusable)
+        Hd(self.0.typed(), bough_dataflow::event::Focusable)
     }
     const BY_REF: bool = E::BY_REF;
     #[inline(always)]
@@ -1619,7 +1619,7 @@ impl<'a, V: View, T: View> Seg<Ty<V>> for TRows<'a, V, T> {
             return;
         };
         // A row is its item's view, and its handlers reach the item by its slot: nothing in it is the index.
-        let how = bough_x::sink::RowsHow {
+        let how = bough_dataflow::sink::RowsHow {
             all: self.all,
             by_item: true,
         };
@@ -1730,7 +1730,7 @@ fn list_el<'a, V: View, R: Reach<V>, T: View>(
                     sh.li.set(k + 1);
                     let site = (k + 1).try_into().expect("too many list sites");
                     if sh.plain.get() {
-                        return (&raw const bough_x::sink::FIXED, true, site);
+                        return (&raw const bough_dataflow::sink::FIXED, true, site);
                     }
                     let mut lists = sh.lists.borrow_mut();
                     assert!(
@@ -1993,7 +1993,7 @@ fn drive<W, E: Part<W> + Shape, S: Sink<W>>(mut e: E, s: &mut S) {
     let env = s.env();
     let memo = fixed_rects(&e, env.scale, env.u, env.size);
     mark(ph::LAYOUT);
-    s.row(|| (&memo.rects[..], bough_x::el::ByRef(&e)));
+    s.row(|| (&memo.rects[..], bough_dataflow::el::ByRef(&e)));
     mark(ph::ROW);
     e.holes(Some(&memo.rects[..]), &mut 0, s);
     with(|sh| {
@@ -2322,7 +2322,7 @@ impl<V: View> App<V> {
         self.after(self.ty.ran.get());
     }
     pub fn key_down(&mut self, key: Key, mods: Mods) {
-        use bough_x::event::Key as K;
+        use bough_dataflow::event::Key as K;
         let k = match key {
             Key::Char(c) => K::Char(c),
             Key::Tab => K::Tab,
@@ -2339,7 +2339,7 @@ impl<V: View> App<V> {
             Key::PageUp => K::PageUp,
             Key::PageDown => K::PageDown,
         };
-        let m = bough_x::event::Mods {
+        let m = bough_dataflow::event::Mods {
             shift: mods.shift,
             ctrl: mods.ctrl,
             alt: mods.alt,
@@ -2424,7 +2424,7 @@ impl<V: View> App<V> {
         let t2 = bough_sys::perf::thread_instructions();
         ((t1 - t0).saturating_sub(ot), (t2 - t1).saturating_sub(ot))
     }
-    /// Thread instructions of one re-description of the view as it is, by phase (`bough_x::probe::ph`), each
+    /// Thread instructions of one re-description of the view as it is, by phase (`bough_dataflow::probe::ph`), each
     /// net of the counter's own cost. Feature `phase_probe`; the marks cost nothing without it.
     #[cfg(feature = "phase_probe")]
     pub fn phases(&mut self) -> [u64; ph::N] {
@@ -2434,11 +2434,11 @@ impl<V: View> App<V> {
     #[cfg(feature = "phase_probe")]
     pub fn phases_pointer(&mut self, x: f32, y: f32) -> [u64; ph::N] {
         let over = bough_sys::perf::tinstr_overhead();
-        bough_x::probe::HOOK.with(|h| h.set(Some(phase_hook)));
+        bough_dataflow::probe::HOOK.with(|h| h.set(Some(phase_hook)));
         PHASES.with(|c| c.set(([0; ph::N], bough_sys::perf::thread_instructions(), over)));
         self.pointer_move(x, y);
         mark(ph::SETTLE);
-        bough_x::probe::HOOK.with(|h| h.set(None));
+        bough_dataflow::probe::HOOK.with(|h| h.set(None));
         PHASES.with(|c| c.get().0)
     }
     /// As [`App::phases`], after `f` changed the state.
@@ -2447,17 +2447,17 @@ impl<V: View> App<V> {
         f(&mut self.ty.v);
         self.lists_sync();
         let over = bough_sys::perf::tinstr_overhead();
-        bough_x::probe::HOOK.with(|h| h.set(Some(phase_hook)));
+        bough_dataflow::probe::HOOK.with(|h| h.set(Some(phase_hook)));
         PHASES.with(|c| c.set(([0; ph::N], bough_sys::perf::thread_instructions(), over)));
         self.update_description();
-        bough_x::probe::HOOK.with(|h| h.set(None));
+        bough_dataflow::probe::HOOK.with(|h| h.set(None));
         PHASES.with(|c| c.get().0)
     }
     pub fn lifecycle(&self) -> (u32, u32) {
         self.world.lifecycle()
     }
     /// What the world's bounded deltas did so far, and what its last delta visited (count bands).
-    pub fn delta_stats(&self) -> (bough_x::world::FastStats, bough_x::world::DeltaStats) {
+    pub fn delta_stats(&self) -> (bough_dataflow::world::FastStats, bough_dataflow::world::DeltaStats) {
         (self.world.fast_stats, self.world.delta_stats)
     }
     pub fn world_stats(&self) -> (usize, usize, usize) {
@@ -2510,9 +2510,9 @@ impl<V: View> App<V> {
         // (an oracle's pass is not the description the count bands are about)
         let stats = self.ty.sh.pass.get();
         self.ty.sh.plain.set(true);
-        bough_x::sink::View::view(
+        bough_dataflow::sink::View::view(
             &self.ty,
-            &mut bough_x::soft::Immediate::on(&mut c, &self.world.shown, w, h),
+            &mut bough_dataflow::soft::Immediate::on(&mut c, &self.world.shown, w, h),
         );
         self.ty.sh.plain.set(false);
         self.ty.sh.pass.set(stats);
@@ -2571,11 +2571,11 @@ impl<V: View> App<V> {
         crate::lower::app::png(&self.presented_pixels(), w, h, path)
     }
 }
-fn xbutton(b: crate::input::Button) -> bough_x::event::Button {
+fn xbutton(b: crate::input::Button) -> bough_dataflow::event::Button {
     match b {
-        crate::input::Button::Primary => bough_x::event::Button::Primary,
-        crate::input::Button::Secondary => bough_x::event::Button::Secondary,
-        crate::input::Button::Middle => bough_x::event::Button::Middle,
+        crate::input::Button::Primary => bough_dataflow::event::Button::Primary,
+        crate::input::Button::Secondary => bough_dataflow::event::Button::Secondary,
+        crate::input::Button::Middle => bough_dataflow::event::Button::Middle,
     }
 }
 

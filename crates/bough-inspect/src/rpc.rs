@@ -5,7 +5,7 @@ use crate::png;
 use crate::record::{self, Command, Log};
 use crate::schema::{Key, PropValue, SCHEMA_VERSION, Snapshot};
 use crate::session::{Program, Refusal, Session};
-use bough_x::event::{Button, Mods};
+use bough_dataflow::event::{Button, Mods};
 
 pub const PARSE_ERROR: i32 = -32700;
 pub const INVALID_REQUEST: i32 = -32600;

@@ -10,7 +10,7 @@ and the design's whole surface.
 
 **Status (2026-11-14):** the façade runs on macOS (Metal, AppKit) and Linux (Wayland; the mixed model: one core, the pool or a
 hardware Vulkan device, built lazily and chosen per frame by measured costs; the fused presenter on Vulkan or OpenGL opt-in by `BOUGH_GPU`); a second,
-typed-dataflow core (`bough-x` and its sibling crates) holds the order-of-magnitude numbers and is not yet what the
+typed-dataflow core (`bough-dataflow` and its sibling crates) holds the order-of-magnitude numbers and is not yet what the
 façade runs on. What stands, what was refuted and every open avenue are in `docs/r8/final/REPORT.md`; the roadmap is
 in `AGENTS.md`. It is not yet a complete GUI framework: text editing and IME, accessibility, Windows and X11,
 clipboard, drag and drop, several windows, grid layout, a styling layer and the visual effects (backdrop blur, inset
@@ -34,8 +34,8 @@ that killed it), and what is still open, ordered by expected size. It is updated
 round's design is `docs/r8/ROUND8.md`: one abstraction (typed expressions whose stage the compiler infers,
 columns per view call site, damage as evaluate-and-compare over exposed pages) under an unchanged author API.
 The public scoreboard is zortax's gui-bench under fakeland. As of 2026-11-13 the benchmarked façade binary is the
-round-7 runtime (`r7/platform` `74e665786c`, now on main); the round-8 core is on main too (`crates/bough-x` with its
-element layer, and gui-bench's app on it, `comparisons/bough-guibench-x`, which passes the runner's layout and
+round-7 runtime (`r7/platform` `74e665786c`, now on main); the round-8 core is on main too (`crates/bough-dataflow` with its
+element layer, and gui-bench's app on it, `comparisons/bough-guibench-dataflow`, which passes the runner's layout and
 behaviour checks in all eight scenarios). Round 8's closing report is
 [`docs/r8/final/REPORT.md`](docs/r8/final/REPORT.md), with each lane's final report beside it.
 

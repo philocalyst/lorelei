@@ -1,12 +1,12 @@
 //! The inspector's view of the lab: the typed state fields each scenario exposes, and the `Program` adapter.
 use crate::lab::{Event, Lab, Scenario};
-use bough_guibench_x::{rows, search, spinner, table};
+use bough_guibench_dataflow::{rows, search, spinner, table};
 use bough_inspect::Frame;
 use bough_inspect::protocol::Animation;
 use bough_inspect::schema::PropValue;
 use bough_inspect::session::{FieldDef, FieldKind, Input, Program, Refusal};
 use bough_span::Spans;
-use bough_x::prelude::*;
+use bough_dataflow::prelude::*;
 
 /// A scenario's registered typed state: the fields an inspector may read and write. The setter is the
 /// scenario's own lens, so a write is exactly what a handler would do to the block.

@@ -12,12 +12,12 @@ use crate::record::Command;
 use crate::schema::Damage as DamageSnapshot;
 use crate::schema::*;
 use bough_ax::{Ax as AxProjection, Role};
-use bough_x::event::{Button, Key as EKey, Mods};
-use bough_x::expr::{APP_WORDS, U, U_ENV, U_FOCUS, U_PICK, U_PRESS, U_PRESS_AT, U_SCALE, U_TIME};
-use bough_x::reflect::{ColInfo, Kind as SKind, Reflect};
-use bough_x::sink::View;
-use bough_x::store::{Backend, NO_WORD, POINTS, Path, Rect, Store as StoreRef};
-use bough_x::world::World;
+use bough_dataflow::event::{Button, Key as EKey, Mods};
+use bough_dataflow::expr::{APP_WORDS, U, U_ENV, U_FOCUS, U_PICK, U_PRESS, U_PRESS_AT, U_SCALE, U_TIME};
+use bough_dataflow::reflect::{ColInfo, Kind as SKind, Reflect};
+use bough_dataflow::sink::View;
+use bough_dataflow::store::{Backend, NO_WORD, POINTS, Path, Rect, Store as StoreRef};
+use bough_dataflow::world::World;
 use std::time::Instant;
 
 /// An input event an agent or a test can inject. The application translates it through its own input path
@@ -302,7 +302,7 @@ pub struct Session<P: Program> {
     last_change: u64,
     /// The world the reflection and the accessibility projection were learned from. A host that replaces its
     /// world (a resize in the benchmark adapter) starts both again.
-    world: Option<bough_x::world::WorldId>,
+    world: Option<bough_dataflow::world::WorldId>,
     /// The off-thread PNG encoder, created lazily on the first screenshot or heatmap (zero cost until then).
     encoder: Option<PngWorker>,
 }
@@ -805,7 +805,7 @@ fn place_key(
     nodes: &[Node],
     place: u32,
 ) -> Option<Key> {
-    if place == bough_x::event::NONE {
+    if place == bough_dataflow::event::NONE {
         return None;
     }
     let (st, col, rec) = world.at_place(place)?;
@@ -857,7 +857,7 @@ fn snap_lists(
 /// Walk the store tree in pre-order, keeping the reflection's description of each store.
 fn walk_store(
     st: &StoreRef,
-    info: &bough_x::reflect::StoreInfo,
+    info: &bough_dataflow::reflect::StoreInfo,
     path: &mut Path,
     out: &mut Vec<Store>,
     index: &mut Vec<(*const StoreRef, usize)>,
@@ -897,10 +897,10 @@ fn walk_store(
             .moved
             .iter()
             .map(|e| match *e {
-                bough_x::sink::Edit::Insert(at) => ("insert", at),
-                bough_x::sink::Edit::Remove(at) => ("remove", at),
-                bough_x::sink::Edit::Update(at) => ("update", at),
-                bough_x::sink::Edit::Shift(at) => ("shift", at),
+                bough_dataflow::sink::Edit::Insert(at) => ("insert", at),
+                bough_dataflow::sink::Edit::Remove(at) => ("remove", at),
+                bough_dataflow::sink::Edit::Update(at) => ("update", at),
+                bough_dataflow::sink::Edit::Shift(at) => ("shift", at),
             })
             .collect(),
         moved_ok: st.moved_ok,
@@ -929,7 +929,7 @@ fn walk_store(
 fn own_stats(st: &StoreRef) -> (usize, usize, usize) {
     let mut t = (0, 0, 0);
     for c in &st.cols {
-        let live = bough_x::store::Live {
+        let live = bough_dataflow::store::Live {
             cap: st.cap,
             rows: &st.row_live,
             nrec: c.nrec,
@@ -945,7 +945,7 @@ fn own_stats(st: &StoreRef) -> (usize, usize, usize) {
 
 fn col_of(st: &StoreRef, j: u32, c: &ColInfo) -> Col {
     let raw = &st.cols[j as usize];
-    let live = bough_x::store::Live {
+    let live = bough_dataflow::store::Live {
         cap: st.cap,
         rows: &st.row_live,
         nrec: raw.nrec,
@@ -1000,15 +1000,15 @@ fn nodes_of(
         let handlers: Vec<&'static str> = it.info.on.map_or_else(Vec::new, |o| {
             let mut v = Vec::new();
             for (bit, name) in [
-                (bough_x::event::kind::HOVER, "hover"),
-                (bough_x::event::kind::CLICK, "click"),
-                (bough_x::event::kind::PRESS, "press"),
-                (bough_x::event::kind::DRAG, "drag"),
-                (bough_x::event::kind::WHEEL, "wheel"),
-                (bough_x::event::kind::KEY, "key"),
-                (bough_x::event::kind::TEXT, "text"),
-                (bough_x::event::kind::FOCUS, "focus"),
-                (bough_x::event::kind::FOCUSABLE, "focusable"),
+                (bough_dataflow::event::kind::HOVER, "hover"),
+                (bough_dataflow::event::kind::CLICK, "click"),
+                (bough_dataflow::event::kind::PRESS, "press"),
+                (bough_dataflow::event::kind::DRAG, "drag"),
+                (bough_dataflow::event::kind::WHEEL, "wheel"),
+                (bough_dataflow::event::kind::KEY, "key"),
+                (bough_dataflow::event::kind::TEXT, "text"),
+                (bough_dataflow::event::kind::FOCUS, "focus"),
+                (bough_dataflow::event::kind::FOCUSABLE, "focusable"),
             ] {
                 if o.kinds & bit != 0 {
                     v.push(name);

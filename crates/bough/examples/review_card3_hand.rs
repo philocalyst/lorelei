@@ -1,7 +1,7 @@
 //! Hand-placed typed sink for the round 2 opaque rectangle comparison.
 #[path = "review_card3/common.rs"]
 mod common;
-use bough_x::{
+use bough_dataflow::{
     expr::{Color, Lens, U, U_SCALE, rec, sel, un},
     kinds::Fill,
     rel::Seq,

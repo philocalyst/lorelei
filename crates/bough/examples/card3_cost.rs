@@ -315,16 +315,16 @@ fn main() {
     #[cfg(feature = "phase_probe")]
     if let Ok(mut t) = bough::typed::App::new(Slice::new(1000), cfg()) {
         t.frame();
-        let mut v: Vec<[u64; bough_x::probe::ph::N]> = (0..41).map(|_| t.phases()).collect();
+        let mut v: Vec<[u64; bough_dataflow::probe::ph::N]> = (0..41).map(|_| t.phases()).collect();
         let mut line =
             String::from("typed re-description of an unchanged view by phase (medians):");
-        for (k, name) in bough_x::probe::ph::NAMES.iter().enumerate() {
+        for (k, name) in bough_dataflow::probe::ph::NAMES.iter().enumerate() {
             v.sort_by_key(|a| a[k]);
             line += &format!(" {name} {};", v[20][k]);
         }
         println!("{}{line}", if tsv { "# " } else { "" });
         let mut k = 0;
-        let mut v: Vec<[u64; bough_x::probe::ph::N]> = (0..41)
+        let mut v: Vec<[u64; bough_dataflow::probe::ph::N]> = (0..41)
             .map(|_| {
                 k += 1;
                 t.phases_of(|s| {
@@ -333,7 +333,7 @@ fn main() {
             })
             .collect();
         let mut k = 0;
-        let mut h: Vec<[u64; bough_x::probe::ph::N]> = (0..41)
+        let mut h: Vec<[u64; bough_dataflow::probe::ph::N]> = (0..41)
             .map(|_| {
                 k += 1;
                 t.phases_pointer(320.0, 200.0 + (k % 2) as f32 * ROW_H)
@@ -341,7 +341,7 @@ fn main() {
             .collect();
         println!("after 41 hovers: {:?}", t.delta_stats());
         let mut line = String::from("typed hover, one row to the next, by phase (medians):");
-        for (k, name) in bough_x::probe::ph::NAMES.iter().enumerate() {
+        for (k, name) in bough_dataflow::probe::ph::NAMES.iter().enumerate() {
             h.sort_by_key(|a| a[k]);
             if h[20][k] != 0 {
                 line += &format!(" {name} {};", h[20][k]);
@@ -349,7 +349,7 @@ fn main() {
         }
         println!("{}{line}", if tsv { "# " } else { "" });
         let mut line = String::from("typed re-description after a title write by phase (medians):");
-        for (k, name) in bough_x::probe::ph::NAMES.iter().enumerate() {
+        for (k, name) in bough_dataflow::probe::ph::NAMES.iter().enumerate() {
             v.sort_by_key(|a| a[k]);
             line += &format!(" {name} {};", v[20][k]);
         }

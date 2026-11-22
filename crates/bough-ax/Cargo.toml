@@ -6,7 +6,7 @@ license.workspace = true
 description = "Round 8: accessibility as one more projection of the stores and the view. Pull only (nothing exists until an assistive technology asks), deltas by comparison, rows nobody materialised described on demand, settled geometry in motion. A portable model first; platform adapters later"
 
 [dependencies]
-bough-x = { path = "../bough-x" }
+bough-dataflow = { path = "../bough-dataflow" }
 
 [features]
 # Mutants the gate (tests/ax.rs, deltas_equal_a_fresh_projection) must fail with:

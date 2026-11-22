@@ -10,7 +10,7 @@ description = "The lorelei developer loop: watch, rebuild, reload or restart wit
 bough-inspect = { path = "../bough-inspect" }
 bough-mcp = { path = "../bough-mcp" }
 # The hot-patch demo is a real element-layer view (the binary below); the loop itself does not need it.
-bough-x = { path = "../bough-x" }
+bough-dataflow = { path = "../bough-dataflow" }
 libc = { version = "0.2", optional = true }
 
 [features]

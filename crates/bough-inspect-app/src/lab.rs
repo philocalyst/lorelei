@@ -1,9 +1,9 @@
 //! The real comparison apps on a headless host: no inspector dependency, so a build with the `inspect` feature
 //! off is the zero-cost control.
-use bough_guibench_x::scene::{Model, Scene};
-use bough_guibench_x::{rows, search, spinner, table};
+use bough_guibench_dataflow::scene::{Model, Scene};
+use bough_guibench_dataflow::{rows, search, spinner, table};
 use bough_host::App;
-use bough_x::event::{Button, Key, Mods};
+use bough_dataflow::event::{Button, Key, Mods};
 
 /// A painted frame, in the host's own terms (the inspector wraps it as its `Frame`).
 #[derive(Clone, Debug, PartialEq)]

@@ -1,5 +1,7 @@
 //! Motion without type parameters.
 //!
+//! Not an author API: applications are written against `bough::prelude`, whose ports are lowered onto this.
+//!
 //! A motion is a value ([`AnimSpec`]: a spring, an eased curve, keyframes) sent to one scalar property of a
 //! node of a flat scene; [`Motion`] is the animation bank (`bough_paint::motion`) with a track made on demand
 //! for every (node, property) that was ever animated. Time is monotone ([`ClockNs`]); a spring that is

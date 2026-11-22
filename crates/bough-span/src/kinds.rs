@@ -1,11 +1,11 @@
-//! Kinds that draw themselves (`bough_x::draw`): text held in the record, text held in a [`Line`], a bar inside
+//! Kinds that draw themselves (`bough_dataflow::draw`): text held in the record, text held in a [`Line`], a bar inside
 //! a box (a caret, a selection), a turning rounded box.
 use crate::line::LineRef;
 use bough_expr::{Code, Color, Cx, Expr, StageId, U, U_TIME, Words, later};
-use bough_x::draw::{Align, Draws, Prims};
+use bough_dataflow::draw::{Align, Draws, Prims};
 #[cfg(feature = "inspect-metadata")]
-use bough_x::{kinds::Txt, reflect::Val};
-use bough_x::store::{Arch, Backend, ColRef, Rect};
+use bough_dataflow::{kinds::Txt, reflect::Val};
+use bough_dataflow::store::{Arch, Backend, ColRef, Rect};
 
 const fn align(a: u8) -> Align {
     match a {
@@ -107,8 +107,8 @@ impl<const AL: u8, E: Expr<Out: Bytes>, C: Expr<Out = Color>> Arch for Text<AL, 
     // What an inspector, a test and an accessibility tree read: the text (up to twelve bytes, what reflection
     // holds) and the colour. The kinds that draw themselves have no other way to be read.
     #[cfg(feature = "inspect-metadata")]
-    const OPS: &'static [bough_x::store::Op] = &[
-        bough_x::store::Op {
+    const OPS: &'static [bough_dataflow::store::Op] = &[
+        bough_dataflow::store::Op {
             name: "text",
             code: E::CODE,
             ty: core::any::type_name::<E>,
@@ -117,7 +117,7 @@ impl<const AL: u8, E: Expr<Out: Bytes>, C: Expr<Out = Color>> Arch for Text<AL, 
             word: 0,
             words: (core::mem::size_of::<E>() / 4) as u16,
         },
-        bough_x::store::Op {
+        bough_dataflow::store::Op {
             name: "color",
             code: C::CODE,
             ty: core::any::type_name::<C>,

@@ -1,8 +1,8 @@
 //! Paint-stage diagnostic using the typed core's opaque rects and arithmetic placement.
 use bough_sys::perf;
-use bough_x::prelude::*;
-use bough_x::soft::Soft;
-use bough_x::store::Tiles;
+use bough_dataflow::prelude::*;
+use bough_dataflow::soft::Soft;
+use bough_dataflow::store::Tiles;
 use std::time::Instant;
 
 const W: i32 = 640;

@@ -7,7 +7,7 @@ use crate::frame::Frame;
 use crate::json::{self, Value as J};
 use crate::schema::PropValue;
 use crate::session::{Input, Outcome, Program, Refusal, Session};
-use bough_x::event::{Button, Key, Mods};
+use bough_dataflow::event::{Button, Key, Mods};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {

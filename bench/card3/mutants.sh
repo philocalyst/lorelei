@@ -8,7 +8,7 @@ ok=0
 LOGS=$(mktemp -d "${TMPDIR:-/tmp}/card3-mutants.XXXXXX") || exit 2
 echo "logs: $LOGS"
 # the typed path: which tests each mutant is expected to fail (any one failing test kills it)
-for m in bough-x/mutant_delta bough-x/mutant_journal bough-x/mutant_keyed mutant_rigid mutant_typed_tape mutant_typed_log mutant_typed_skip; do
+for m in bough-dataflow/mutant_delta bough-dataflow/mutant_journal bough-dataflow/mutant_keyed mutant_rigid mutant_typed_tape mutant_typed_log mutant_typed_skip; do
   log="$LOGS/typed-$(echo "$m" | tr / _).log"
   if nice -n 15 cargo test --release -p bough --features "$m" --no-fail-fast --test typed_slice --test typed_words --test typed_list --test typed_review --test typed_twin -j 8 >"$log" 2>&1; then
     echo "MUTANT SURVIVED: $m (the typed gates passed with it)"; ok=1

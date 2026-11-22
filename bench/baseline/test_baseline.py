@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from operations import PBENCH_EXECUTORS, REQUIRED, guibench, pbench, table
-from run import summary, summarize
+from run import core_package, summary, summarize
 
 
 class OperationsTests(unittest.TestCase):
@@ -128,6 +128,26 @@ class CompareTests(unittest.TestCase):
         head = copy.deepcopy(self.doc)
         head["cells"][self.cid]["env"]["ROWS"] = "1000"
         self.assertEqual(self.compare(self.doc, head).returncode, 1)
+
+    def test_renamed_core_package_is_the_same_build(self):
+        base, head = copy.deepcopy(self.doc), copy.deepcopy(self.doc)
+        base["binaries"]["sheet_x"]["cargo_args"] = ["--profile", "dist", "-p", "bough-x", "--example", "sheet_x"]
+        head["binaries"]["sheet_x"]["cargo_args"] = ["--profile", "dist", "-p", "bough-dataflow", "--example", "sheet_x"]
+        same = self.compare(base, head)
+        self.assertEqual(same.returncode, 0, same.stderr)
+        # the negative controls: every other build option still has to match
+        head["binaries"]["sheet_x"]["cargo_args"][1] = "release"
+        self.assertEqual(self.compare(base, head).returncode, 1)
+        head["binaries"]["sheet_x"]["cargo_args"][1] = "dist"
+        head["binaries"]["sheet_x"]["cargo_args"][3] = "bough"
+        self.assertEqual(self.compare(base, head).returncode, 1)
+
+    def test_core_package_follows_the_checkout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            tree = Path(folder)
+            self.assertEqual(core_package(tree), "bough-x")
+            (tree / "crates/bough-dataflow").mkdir(parents=True)
+            self.assertEqual(core_package(tree), "bough-dataflow")
 
 
 if __name__ == "__main__":

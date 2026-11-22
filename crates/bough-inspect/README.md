@@ -1,7 +1,7 @@
 # bough-inspect
 
-The inspector, agent/test socket and schema over the typed core (`bough-x`) reflection. It is a separate artefact:
-a binary that does not link it contains none of it, and `bough-x` has no conditional compilation on its behalf.
+The inspector, agent/test socket and schema over the typed core (`bough-dataflow`) reflection. It is a separate artefact:
+a binary that does not link it contains none of it, and `bough-dataflow` has no conditional compilation on its behalf.
 
 ## Schema (version 1)
 
@@ -87,7 +87,7 @@ words are `0xAARRGGBB`.
 
 ## Overlay
 
-`ui::Inspector` is a `bough_x::el` view: the tree (with a damage marker and a selection highlight), details
+`ui::Inspector` is a `bough_dataflow::el` view: the tree (with a damage marker and a selection highlight), details
 (source location, rects in both spaces, text, handlers, operands with stage/expression/reads, the store chain),
 counters and timings. A click selects; a source location is left in `jump` for the host's editor integration.
 No style editors (the owner's decision).

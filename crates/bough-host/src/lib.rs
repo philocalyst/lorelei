@@ -16,7 +16,7 @@ pub mod run;
 pub mod wl;
 
 /// A set of 32-pixel tiles, one bit each, `stride` words per tile row; `lo..hi` are the rows that may hold a
-/// bit. The geometry `bough-x` uses for damage, as borrowed plain data so this crate depends on nothing.
+/// bit. The geometry `bough-dataflow` uses for damage, as borrowed plain data so this crate depends on nothing.
 #[derive(Clone, Copy)]
 pub struct TilesRef<'a> {
     pub bits: &'a [u64],

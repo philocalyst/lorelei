@@ -113,6 +113,7 @@ version = "0.0.0"
 dependencies = [
  "block2",
  "bough-core",
+ "bough-dataflow",
  "bough-flat",
  "bough-frame",
  "bough-fused",
@@ -125,7 +126,6 @@ dependencies = [
  "bough-sys",
  "bough-text",
  "bough-wayland",
- "bough-x",
  "cephal",
  "dispatch2",
  "libc",
@@ -180,7 +180,7 @@ dependencies = [
 name = "bough-ax"
 version = "0.0.0"
 dependencies = [
- "bough-x",
+ "bough-dataflow",
 ]
 
 [[package]]
@@ -200,12 +200,22 @@ name = "bough-damage-lab"
 version = "0.0.0"
 
 [[package]]
+name = "bough-dataflow"
+version = "0.0.0"
+dependencies = [
+ "bough-expr",
+ "bough-face",
+ "bough-lay",
+ "bough-mem",
+]
+
+[[package]]
 name = "bough-dev"
 version = "0.1.0"
 dependencies = [
+ "bough-dataflow",
  "bough-inspect",
  "bough-mcp",
- "bough-x",
  "libc",
 ]
 
@@ -267,14 +277,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "bough-guibench-x"
+name = "bough-guibench-dataflow"
 version = "0.1.0"
 dependencies = [
+ "bough-dataflow",
  "bough-expr",
  "bough-glyph",
  "bough-host",
  "bough-span",
- "bough-x",
 ]
 
 [[package]]
@@ -300,8 +310,8 @@ version = "0.1.0"
 dependencies = [
  "bough-ax",
  "bough-damage",
+ "bough-dataflow",
  "bough-expr",
- "bough-x",
  "libc",
 ]
 
@@ -309,14 +319,14 @@ dependencies = [
 name = "bough-inspect-app"
 version = "0.1.0"
 dependencies = [
+ "bough-dataflow",
  "bough-dev",
- "bough-guibench-x",
+ "bough-guibench-dataflow",
  "bough-host",
  "bough-inspect",
  "bough-mcp",
  "bough-mem",
  "bough-span",
- "bough-x",
 ]
 
 [[package]]
@@ -401,9 +411,9 @@ dependencies = [
 name = "bough-span"
 version = "0.0.0"
 dependencies = [
+ "bough-dataflow",
  "bough-expr",
  "bough-glyph",
- "bough-x",
 ]
 
 [[package]]
@@ -500,16 +510,6 @@ dependencies = [
  "bough-metal",
  "bough-text",
  "zgx-workload",
-]
-
-[[package]]
-name = "bough-x"
-version = "0.0.0"
-dependencies = [
- "bough-expr",
- "bough-face",
- "bough-lay",
- "bough-mem",
 ]
 
 [[package]]

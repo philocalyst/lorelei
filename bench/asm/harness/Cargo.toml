@@ -13,8 +13,8 @@ description = "Instantiates the hot monomorphisations of the new core so cargo a
 asm_mutant = []
 
 [dependencies]
-bough-guibench-x = { path = "../../../comparisons/bough-guibench-x" }
-bough-x = { path = "../../../crates/bough-x" }
+bough-guibench-dataflow = { path = "../../../comparisons/bough-guibench-dataflow" }
+bough-dataflow = { path = "../../../crates/bough-dataflow" }
 bough-expr = { path = "../../../crates/bough-expr" }
 bough-span = { path = "../../../crates/bough-span" }
 bough-paint = { path = "../../../crates/bough-paint" }

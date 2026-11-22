@@ -15,7 +15,7 @@ bough-sys = { path = "../bough-sys" }
 # The one integer raster kernel (compute lane): the CPU executors and the GPU kernel source.
 bough-kernel = { path = "../bough-kernel" }
 # The typed dataflow core the façade lowers onto (Integration Card 3): the world, layout as data.
-bough-x = { path = "../bough-x" }
+bough-dataflow = { path = "../bough-dataflow" }
 bough-lay = { path = "../bough-lay" }
 # The flat core (`flat`): state words, bindings, records, the damage engine underneath.
 bough-flat = { path = "../bough-flat" }
@@ -55,11 +55,11 @@ dispatch2 = "0.3"
 
 [features]
 # phase marks inside a typed description (`typed::App::phases`); off: nothing
-phase_probe = ["bough-x/phase_probe"]
+phase_probe = ["bough-dataflow/phase_probe"]
 # Gate mutants of the lowered runtime (tests/lowered_*.rs must fail with each):
 # a free row that enters, or leaves, is not damaged
-mutant_free_enter = ["bough-x/mutant_free_enter"]
-mutant_free_leave = ["bough-x/mutant_free_leave"]
+mutant_free_enter = ["bough-dataflow/mutant_free_enter"]
+mutant_free_leave = ["bough-dataflow/mutant_free_leave"]
 # translucent paints are composited as if opaque
 mutant_lower_alpha = []
 # a hover paint is stored without damage
@@ -76,8 +76,8 @@ mutant_typed_run_lease = []
 mutant_typed_log = []
 # a turn that changed a bound word is not described (the skip ruling D3 removed; tests/typed_twin.rs must fail)
 mutant_typed_skip = []
-# (bough-x/mutant_rigid: rows kept across an insert or a remove keep their old rects)
-mutant_rigid = ["bough-x/mutant_rigid"]
+# (bough-dataflow/mutant_rigid: rows kept across an insert or a remove keep their old rects)
+mutant_rigid = ["bough-dataflow/mutant_rigid"]
 # The presenter on the vendored wgpu-hal with wgsl-rs kernels (crates/bough-gpu) instead of direct Metal.
 wgpu = ["dep:bough-gpu"]
 # Gate sabotage (RESULTS §15): the scroll copy reads one pixel off; every scroll pixel gate must fail with it.

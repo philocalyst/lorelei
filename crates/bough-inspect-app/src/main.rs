@@ -1,4 +1,4 @@
-//! `bough-inspect-app`: a real comparison app (bough-guibench-x) on a headless host, with the agent/test socket.
+//! `bough-inspect-app`: a real comparison app (bough-guibench-dataflow) on a headless host, with the agent/test socket.
 //!
 //! ```text
 //! bough-inspect-app --scenario rows --rows 10000 --socket /tmp/bl.sock
@@ -7,7 +7,7 @@
 //! With `--socket`, the process mounts the scenario, binds the socket, prints `ready <path>` on stdout and serves
 //! until a `shutdown` request or the client leaves. Without it, it paints one frame and prints its digest (the
 //! zero-cost build's self-check).
-use bough_guibench_x::{rows, search, spinner, table};
+use bough_guibench_dataflow::{rows, search, spinner, table};
 use bough_inspect_app::Lab;
 #[cfg(not(feature = "inspect"))]
 use bough_inspect_app::Scenario;

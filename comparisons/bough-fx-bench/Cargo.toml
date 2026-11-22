@@ -10,12 +10,12 @@ default-run = "bough-fx-bench"
 [dependencies]
 bough = { path = "../../crates/bough" }
 bough-sys = { path = "../../crates/bough-sys" }
-bough-x = { path = "../../crates/bough-x", optional = true }
+bough-dataflow = { path = "../../crates/bough-dataflow", optional = true }
 bough-flat = { path = "../../crates/bough-flat" }
 
 [features]
 full-effects = []
-typed-core = ["dep:bough-x"]
+typed-core = ["dep:bough-dataflow"]
 
 [[bin]]
 name = "typed-core"

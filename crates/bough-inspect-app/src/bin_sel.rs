@@ -1,4 +1,4 @@
-use bough_guibench_x::rows::Rows;
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect::session::Session;
 use bough_inspect_app::Lab;
 fn main() {

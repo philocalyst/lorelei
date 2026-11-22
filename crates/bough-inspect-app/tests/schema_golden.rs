@@ -1,7 +1,7 @@
 //! G1: the schema's round trip and byte stability. One small real app, one canonical description: the file in
 //! `tests/golden/rows.json` changes only when the schema or the app's description changes, and a reader turns
 //! the bytes back into a `Snapshot` that writes the same bytes.
-use bough_guibench_x::rows::Rows;
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect::json;
 use bough_inspect::record::{Command, LOG_SCHEMA_VERSION, Log, Replay, record_step, replay};
 use bough_inspect::schema::PropValue;

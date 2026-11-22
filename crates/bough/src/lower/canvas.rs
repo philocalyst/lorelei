@@ -6,11 +6,11 @@
 //! Every operation is a pure function of the record, its rect and the clip, so a tile repainted alone equals
 //! the same tile of a full repaint: that is what the retained == full redraw gate rests on.
 use super::text::TextSys;
-use bough_x::draw::{Draws, Prims};
-use bough_x::expr::U;
-use bough_x::kinds::{FillArch, LabelArch, NumArch, OutlineArch};
-use bough_x::prim::{P_BOX, P_IMAGE, P_TEXT, Prim};
-use bough_x::store::{Backend, ColRef, Rect, Tiles};
+use bough_dataflow::draw::{Draws, Prims};
+use bough_dataflow::expr::U;
+use bough_dataflow::kinds::{FillArch, LabelArch, NumArch, OutlineArch};
+use bough_dataflow::prim::{P_BOX, P_IMAGE, P_TEXT, Prim};
+use bough_dataflow::store::{Backend, ColRef, Rect, Tiles};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -348,7 +348,7 @@ impl Prims for CanvasPrims<'_> {
             },
         )
     }
-    fn text(&mut self, _: Rect, _: Rect, _: &[u8], _: bough_x::draw::Align, _: u32) {
+    fn text(&mut self, _: Rect, _: Rect, _: &[u8], _: bough_dataflow::draw::Align, _: u32) {
         panic!("the lowered backend draws text as shaped runs (a generic record), not as bytes")
     }
     fn rbox(&mut self, r: Rect, cut: Rect, radius: i32, turn: u32, c: u32) {

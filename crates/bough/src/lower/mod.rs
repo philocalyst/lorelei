@@ -3,8 +3,8 @@
 //! An element value has two protocols. `Element::mount` / `update` drive the legacy runtime (`rt.rs`), which
 //! `bough::raw::App` still is. [`Element::lower`](crate::elem::Element::lower) describes the same element as
 //! data: a node in a tree with layout words (`bough-lay`'s heap tree), a generic paint record
-//! ([`bough_x::prim::Prim`]), erased handlers and a parent column. [`App`] lays the tree out with `bough-lay`'s
-//! one flex function, emits the records as free rows into a [`bough_x::world::World`], and paints through
+//! ([`bough_dataflow::prim::Prim`]), erased handlers and a parent column. [`App`] lays the tree out with `bough-lay`'s
+//! one flex function, emits the records as free rows into a [`bough_dataflow::world::World`], and paints through
 //! [`canvas::Canvas`]. No `Rt` is constructed on this path ([`provenance`] counts it).
 //!
 //! A turn is: run the handlers, describe the view again, compare against the columns (the world's
@@ -23,8 +23,8 @@ pub use app::App;
 use crate::input::Ev;
 use crate::layout::Spec;
 use bough_lay::heap::Tree;
-use bough_x::prim::{P_BOX, P_IMAGE, P_TEXT, Prim};
-use bough_x::store::{Rect, Space};
+use bough_dataflow::prim::{P_BOX, P_IMAGE, P_TEXT, Prim};
+use bough_dataflow::store::{Rect, Space};
 use std::any::Any;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -533,7 +533,7 @@ impl Emit<'_> {
                 let inner = Space {
                     clip: port,
                     base: (r.x0 + org.0, r.y0 + org.1 - off),
-                    scroll: bough_x::store::NO_WORD,
+                    scroll: bough_dataflow::store::NO_WORD,
                 };
                 self.doc(sc.doc as usize, inner, at);
             }
@@ -584,7 +584,7 @@ pub(crate) struct LayMemo {
 
 /// Lay every document out and emit the scene for a window of `w` x `h` device pixels.
 pub(crate) fn finish(core: &Core<'_>, w: i32, h: i32, memo: &mut LayMemo) -> Scene {
-    let u = bough_x::expr::U::default();
+    let u = bough_dataflow::expr::U::default();
     let mut scene = Scene {
         rects: vec![Vec::new(); core.docs.len()],
         heights: vec![0; core.docs.len()],

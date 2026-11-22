@@ -1,5 +1,5 @@
 //! The in-application overlay: the tree, the selection, source locations, properties, dependencies, damage
-//! flashes and timings, written with the typed core's element layer (`bough_x::el`) — the façade's own idiom.
+//! flashes and timings, written with the typed core's element layer (`bough_dataflow::el`) — the façade's own idiom.
 //!
 //! The overlay is a plain view over one [`Snapshot`] (the inspector's, not a second description): a host that has a
 //! snapshot calls [`Inspector::set_snapshot`], then describes it. It never writes the inspected world; a source
@@ -8,8 +8,8 @@
 //! What an owner decided is not here: no style editors, no property contribution model (a record's operand is a
 //! staged expression of state; the overlay shows it and does not pretend to write it).
 use crate::schema::{Key, Loc, Node, PropValue, Snapshot};
-use bough_x::el::prelude::*;
-use bough_x::el::{Signal, View as ElView};
+use bough_dataflow::el::prelude::*;
+use bough_dataflow::el::{Signal, View as ElView};
 
 const ROW: f32 = 16.0;
 const TREE_W: f32 = 720.0;

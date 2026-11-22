@@ -56,7 +56,7 @@ The new core's binary, by hand under the same compositor (not yet through the ru
   occlusion cut (298 -> 18 entries per tile on layered scenes) and a palette table; bough on Linux/Wayland with
   pure-Rust text; async API as fourteen programs with holds as a plane over cells; lazy GPU device (first frame
   64-89 ms -> 10-15 ms, footprint roughly halved); five heavy scenes and a counters recipe.
-- **Round 8, the new core** (`crates/bough-expr`, `crates/bough-x`, `crates/bough-paint`; design in
+- **Round 8, the new core** (`crates/bough-expr`, `crates/bough-dataflow`, `crates/bough-paint`; design in
   `docs/r8/`): values are typed expressions whose stage (compile time, mount, turn, or while shading) is
   inferred; paint-only state is a 64-word block compared once per turn, no write barrier; damage is
   eval(old) != eval(new) over exposed pages, exact for opaque closures and vectorised by the compiler; one

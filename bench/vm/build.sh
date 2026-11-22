@@ -1,11 +1,11 @@
 #!/bin/sh
 # Build the apps the matrix launches, inside the VM, and stage them where the runner looks.
-#   FRAMEWORKS=bough,bough-x,zgui bench/vm/build.sh
+#   FRAMEWORKS=bough,bough-dataflow,zgui bench/vm/build.sh
 # Every build is release, with the toolchain each tree pins, niced, and into a guest-local target
 # directory. Exit status is the first failing build's.
 set -eu
 . "$(dirname "$0")/lib.sh"
-FRAMEWORKS=${FRAMEWORKS:-bough,bough-x,zgui}
+FRAMEWORKS=${FRAMEWORKS:-bough,bough-dataflow,zgui}
 JOBS=${JOBS:-3}
 
 case ",$FRAMEWORKS," in *,zgui,*)
@@ -19,10 +19,10 @@ esac
 # lorelei's new-core app (its own crate in the workspace).
 # Both crates build a binary named `bough-bench`; stage each one before the next build replaces it
 # in the shared target directory.
-case ",$FRAMEWORKS," in *,bough-x,*)
-  echo "build: bough-guibench-x"
-  guest "cd $LOR && export CARGO_TARGET_DIR=$TARGET && nice -n 15 cargo build --release -j $JOBS -p bough-guibench-x"
-  guest "mkdir -p $GUI/apps/bough-x/target/release && cp $TARGET/release/bough-bench $GUI/apps/bough-x/target/release/bough-bench" ;;
+case ",$FRAMEWORKS," in *,bough-dataflow,*)
+  echo "build: bough-guibench-dataflow"
+  guest "cd $LOR && export CARGO_TARGET_DIR=$TARGET && nice -n 15 cargo build --release -j $JOBS -p bough-guibench-dataflow"
+  guest "mkdir -p $GUI/apps/bough-dataflow/target/release && cp $TARGET/release/bough-bench $GUI/apps/bough-dataflow/target/release/bough-bench" ;;
 esac
 
 # lorelei's façade app (its own workspace, its own lock file).
@@ -43,5 +43,5 @@ case ",$FRAMEWORKS," in *,zgui,*)
 esac
 
 echo "build: manifest"
-guest "cd $GUI && for f in apps/bough/target/release/bough-bench apps/bough-x/target/release/bough-bench apps/zgui/target/release/zgui-bench target/release/gui-bench; do [ -x \$f ] && printf '%-45s %s %s\n' \$f \$(sha256sum \$f | cut -d' ' -f1) \$(stat -c%s \$f); done"
+guest "cd $GUI && for f in apps/bough/target/release/bough-bench apps/bough-dataflow/target/release/bough-bench apps/zgui/target/release/zgui-bench target/release/gui-bench; do [ -x \$f ] && printf '%-45s %s %s\n' \$f \$(sha256sum \$f | cut -d' ' -f1) \$(stat -c%s \$f); done"
 echo "build: done"

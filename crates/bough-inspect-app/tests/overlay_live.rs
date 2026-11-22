@@ -4,12 +4,12 @@
 //! a pointer click on a drawn tree line selects that node through the overlay's own handler, Up/Down move the
 //! selection, Enter leaves the selected node's `file:line:col` for the host to open, and the frame carries the
 //! selection outline and the last turn's damage flash.
-use bough_guibench_x::{rows::Rows, table::Table};
+use bough_guibench_dataflow::{rows::Rows, table::Table};
 use bough_inspect::PropValue;
 use bough_inspect::record::Command;
 use bough_inspect::session::Session;
 use bough_inspect_app::{Lab, WithOverlay};
-use bough_x::event::Key as K;
+use bough_dataflow::event::Key as K;
 
 fn key(k: K) -> Command {
     Command::Key {
@@ -30,7 +30,7 @@ fn open() -> Session<WithOverlay<Rows>> {
 /// The first tree line's rect in panel coordinates, from the overlay's own description.
 fn first_line(s: &Session<WithOverlay<Rows>>) -> (i32, i32, i32) {
     let ov = s.app().ov.as_ref().expect("the panel is mounted");
-    let r = bough_x::reflect::Reflect::learn(&ov.app.world, &ov.app.v);
+    let r = bough_dataflow::reflect::Reflect::learn(&ov.app.world, &ov.app.v);
     let items = r.items(ov.app.world.root(), &ov.app.world.shown);
     let line = items
         .iter()

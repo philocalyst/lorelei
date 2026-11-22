@@ -9,7 +9,7 @@ See `NOTICE` for the upstream repository and commit.
 ## What is real
 
 - **Watch.** A content scan of the given roots (defaults: `crates/bough-inspect-app/src`,
-  `comparisons/bough-guibench-x/src`, `crates/bough-inspect/src`), every 250 ms. Changes are classified: Rust
+  `comparisons/bough-guibench-dataflow/src`, `crates/bough-inspect/src`), every 250 ms. Changes are classified: Rust
   source, configuration (manifest/lock/build/shader), asset.
 - **Reload (the hot path).** An asset change is sent to the running application as `reload`: the app re-reads its
   own inputs and re-describes; **state is not touched and nothing is rebuilt**. The lab apps have no files of

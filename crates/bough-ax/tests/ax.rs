@@ -1,13 +1,13 @@
 //! The accessibility projection, held to itself and to the world: roles, names and states read off what the
 //! view already says; 100,000 rows that are not materialised; deltas that, applied, equal a fresh projection
 //! after every step of a random script; nothing done for a theme, a hover or a motion; settled targets.
-#[path = "../../bough-x/scenes/sheet.rs"]
+#[path = "../../bough-dataflow/scenes/sheet.rs"]
 mod sheet;
 use bough_ax::{Ax, Live, Node, NodeId, Role, Tag, Tree};
-use bough_x::event::{Interact, NONE};
-use bough_x::expr::{Code, Cx as XCx, Expr, Frame, Lens, Rec, U_FOCUS};
-use bough_x::prelude::*;
-use bough_x::soft::Soft;
+use bough_dataflow::event::{Interact, NONE};
+use bough_dataflow::expr::{Code, Cx as XCx, Expr, Frame, Lens, Rec, U_FOCUS};
+use bough_dataflow::prelude::*;
+use bough_dataflow::soft::Soft;
 use core::marker::PhantomData;
 use sheet::*;
 
@@ -21,7 +21,7 @@ fn cents(v: f32) -> i32 {
     (v as f64 * 100.0).round() as i32
 }
 fn num(v: f32) -> String {
-    bough_x::reflect::Val::Num(cents(v), 2).text()
+    bough_dataflow::reflect::Val::Num(cents(v), 2).text()
 }
 
 #[test]
@@ -254,7 +254,7 @@ impl<L> Clone for Is<L> {
 }
 impl<L> Copy for Is<L> {}
 // SAFETY: one word.
-unsafe impl<L: 'static> bough_x::expr::Words for Is<L> {}
+unsafe impl<L: 'static> bough_dataflow::expr::Words for Is<L> {}
 impl<L: Lens<T = u32>> Expr for Is<L> {
     type Out = bool;
     type Stage = Frame;
@@ -269,7 +269,7 @@ impl<L: Lens<T = u32>> Expr for Is<L> {
 #[derive(Clone, Copy)]
 struct Choose<C, const A: u32, const B: u32>(C);
 // SAFETY: transparent over a `Words` operand.
-unsafe impl<C: bough_x::expr::Words, const A: u32, const B: u32> bough_x::expr::Words
+unsafe impl<C: bough_dataflow::expr::Words, const A: u32, const B: u32> bough_dataflow::expr::Words
     for Choose<C, A, B>
 {
 }
@@ -586,14 +586,14 @@ fn opaque_state_redescribed_reaches_the_tree() {
 #[derive(Clone, Copy)]
 struct PickIs(Rec<u32>);
 // SAFETY: one word.
-unsafe impl bough_x::expr::Words for PickIs {}
+unsafe impl bough_dataflow::expr::Words for PickIs {}
 impl Expr for PickIs {
     type Out = bool;
     type Stage = Frame;
-    const READS: u64 = 1 << bough_x::expr::U_PICK;
-    const CODE: &'static Code = &Code::Call("x_eq", &[&Code::U(bough_x::expr::U_PICK), &Code::Rec]);
+    const READS: u64 = 1 << bough_dataflow::expr::U_PICK;
+    const CODE: &'static Code = &Code::Call("x_eq", &[&Code::U(bough_dataflow::expr::U_PICK), &Code::Rec]);
     fn eval(&self, cx: &XCx) -> bool {
-        cx.u.w[bough_x::expr::U_PICK] == self.0.0
+        cx.u.w[bough_dataflow::expr::U_PICK] == self.0.0
     }
 }
 struct Hovering {

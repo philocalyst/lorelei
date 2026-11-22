@@ -1,8 +1,8 @@
 //! The CPU span raster (round 8, e2e lane).
 //!
 //! ROUND8 section 6 calls the cheapest cost class "CPU spans": opaque boxes and glyph rows, where a core
-//! writing words beats any round trip. This is that executor for `bough-x`'s columns, as a
-//! [`Backend`](bough_x::store::Backend): a column is painted in one pass, each record straight into the surface
+//! writing words beats any round trip. This is that executor for `bough-dataflow`'s columns, as a
+//! [`Backend`](bough_dataflow::store::Backend): a column is painted in one pass, each record straight into the surface
 //! the compositor reads (a `wl_shm` buffer, an offscreen buffer in tests), with no intermediate accumulator and
 //! no per-tile entry lists. A repair is the same pass restricted to a set of 32-pixel tiles: every primitive is
 //! cut to the damaged tiles it touches ([`Spans::cells`]), so an undamaged pixel is never read or written and a
@@ -23,14 +23,14 @@ pub mod line;
 
 use bough_expr::U;
 use bough_glyph::Image;
-use bough_x::draw::{Align, Draws, Prims};
-use bough_x::kinds::{FillArch, LabelArch, NumArch, OutlineArch};
-use bough_x::soft::format_num;
-use bough_x::store::{Backend, ColRef, Rect, Tiles};
+use bough_dataflow::draw::{Align, Draws, Prims};
+use bough_dataflow::kinds::{FillArch, LabelArch, NumArch, OutlineArch};
+use bough_dataflow::soft::format_num;
+use bough_dataflow::store::{Backend, ColRef, Rect, Tiles};
 
 pub const TILE_SHIFT: u32 = 5;
 
-/// A set of 32-pixel tiles: one bit each, `stride` words per tile row. The same geometry as `bough-x`'s damage.
+/// A set of 32-pixel tiles: one bit each, `stride` words per tile row. The same geometry as `bough-dataflow`'s damage.
 #[derive(Clone)]
 pub struct TileSet {
     pub stride: usize,

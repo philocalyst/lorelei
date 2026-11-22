@@ -21,14 +21,14 @@ dependencies = [
 name = "asm-harness"
 version = "0.1.0"
 dependencies = [
+ "bough-dataflow",
  "bough-expr",
- "bough-guibench-x",
+ "bough-guibench-dataflow",
  "bough-host",
  "bough-kernel",
  "bough-lay",
  "bough-paint",
  "bough-span",
- "bough-x",
 ]
 
 [[package]]
@@ -68,6 +68,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bough-dataflow"
+version = "0.0.0"
+dependencies = [
+ "bough-expr",
+ "bough-face",
+ "bough-lay",
+]
+
+[[package]]
 name = "bough-expr"
 version = "0.0.0"
 
@@ -80,14 +89,14 @@ name = "bough-glyph"
 version = "0.0.0"
 
 [[package]]
-name = "bough-guibench-x"
+name = "bough-guibench-dataflow"
 version = "0.1.0"
 dependencies = [
+ "bough-dataflow",
  "bough-expr",
  "bough-glyph",
  "bough-host",
  "bough-span",
- "bough-x",
 ]
 
 [[package]]
@@ -133,9 +142,9 @@ dependencies = [
 name = "bough-span"
 version = "0.0.0"
 dependencies = [
+ "bough-dataflow",
  "bough-expr",
  "bough-glyph",
- "bough-x",
 ]
 
 [[package]]
@@ -144,15 +153,6 @@ version = "0.0.0"
 dependencies = [
  "ash",
  "libc",
-]
-
-[[package]]
-name = "bough-x"
-version = "0.0.0"
-dependencies = [
- "bough-expr",
- "bough-face",
- "bough-lay",
 ]
 
 [[package]]

@@ -17,9 +17,9 @@ use bough_inspect::schema::{Loc, Snapshot};
 use bough_inspect::session::{FieldDef, Input, Program};
 use bough_inspect::ui::Inspector;
 use bough_span::Spans;
-use bough_x::el::App;
-use bough_x::event::Key as EKey;
-use bough_x::soft::Soft;
+use bough_dataflow::el::App;
+use bough_dataflow::event::Key as EKey;
+use bough_dataflow::soft::Soft;
 
 /// Width of the side panel, in device pixels.
 pub const PANEL_W: i32 = 620;
@@ -69,7 +69,7 @@ impl Overlay {
         });
     }
     /// One key. Returns whether the panel consumed it.
-    pub fn key(&mut self, key: EKey, _mods: bough_x::event::Mods) -> bool {
+    pub fn key(&mut self, key: EKey, _mods: bough_dataflow::event::Mods) -> bool {
         match key {
             EKey::Char('`') => {
                 self.open = !self.open;
@@ -267,10 +267,10 @@ impl<V: Fields> Program for WithOverlay<V> {
     fn view_mut(&mut self) -> &mut V {
         &mut self.lab.scene.v
     }
-    fn world(&self) -> &bough_x::world::World<V, Spans<'static>> {
+    fn world(&self) -> &bough_dataflow::world::World<V, Spans<'static>> {
         &self.lab.scene.world
     }
-    fn world_mut(&mut self) -> &mut bough_x::world::World<V, Spans<'static>> {
+    fn world_mut(&mut self) -> &mut bough_dataflow::world::World<V, Spans<'static>> {
         &mut self.lab.scene.world
     }
     fn settle(&mut self) {

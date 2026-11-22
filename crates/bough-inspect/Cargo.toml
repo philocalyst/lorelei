@@ -4,11 +4,11 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "The inspector, agent/test socket and schema over the typed core (bough-x) reflection: a versioned serialisable tree with source locations, typed operands and their staged expressions, layout, damage, focus/hover/press, accessibility, counters; validated mutation; record and replay; pixel diff; typed selectors for tests; an element-layer overlay"
+description = "The inspector, agent/test socket and schema over the typed core (bough-dataflow) reflection: a versioned serialisable tree with source locations, typed operands and their staged expressions, layout, damage, focus/hover/press, accessibility, counters; validated mutation; record and replay; pixel diff; typed selectors for tests; an element-layer overlay"
 
 [dependencies]
 libc = "0.2"
-bough-x = { path = "../bough-x", features = ["inspect-metadata"] }
+bough-dataflow = { path = "../bough-dataflow", features = ["inspect-metadata"] }
 bough-expr = { path = "../bough-expr" }
 # The damage engine's report, projected onto the protocol's damage map and frame profile (`hooks`).
 bough-damage = { path = "../bough-damage" }

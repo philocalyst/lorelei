@@ -1,7 +1,7 @@
 //! Accessibility as one more projection of the stores and the view.
 //!
 //! Nothing here exists until an assistive technology asks: [`Ax`] is created by whoever serves one, and every
-//! update is pulled ([`Ax::update`]) after a turn. The tree is computed from reflection (`bough_x::reflect`): the
+//! update is pulled ([`Ax::update`]) after a turn. The tree is computed from reflection (`bough_dataflow::reflect`): the
 //! records the stores hold for fixed shapes, and, for lists, rows described from the view's own row function, so
 //! a list of 100,000 rows publishes its exposed window plus a page on each side and says it has 100,000 rows;
 //! any other row is described on demand ([`Ax::rows`]) with nothing materialised and nothing scrolled.
@@ -25,12 +25,12 @@
 //! reads, the scroll words, `Focus`) and the relation epoch with what it last saw; if none moved (a theme, a hover,
 //! a motion) it does nothing. Otherwise it projects the published set again and compares node by node. The gate
 //! (`tests/ax.rs`) holds the tree kept by applying deltas equal to a fresh projection after every step.
-use bough_x::event::{NONE, REDUCED_MOTION_AHEAD, U_FOCUS, kind};
-use bough_x::expr::{APP_WORDS, Code, HOT, U, U_TIME};
-use bough_x::reflect::{Kind as SKind, Part, Reflect, Snap, StoreInfo, Val};
-use bough_x::sink::View;
-use bough_x::store::{Backend, NO_WORD, Path, Rect, Store};
-use bough_x::world::World;
+use bough_dataflow::event::{NONE, REDUCED_MOTION_AHEAD, U_FOCUS, kind};
+use bough_dataflow::expr::{APP_WORDS, Code, HOT, U, U_TIME};
+use bough_dataflow::reflect::{Kind as SKind, Part, Reflect, Snap, StoreInfo, Val};
+use bough_dataflow::sink::View;
+use bough_dataflow::store::{Backend, NO_WORD, Path, Rect, Store};
+use bough_dataflow::world::World;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -513,11 +513,11 @@ impl<'a, V: View, B: Backend> Project<'a, V, B> {
         fn table(st: &Store, p: &mut Path, i: &mut u32, out: &mut BTreeMap<(Path2, u32), u32>) {
             for e in &st.order {
                 match *e {
-                    bough_x::store::Pass::Col(j) => {
+                    bough_dataflow::store::Pass::Col(j) => {
                         out.insert((p2(p), j), *i);
                         *i += 1;
                     }
-                    bough_x::store::Pass::Sub(q) => {
+                    bough_dataflow::store::Pass::Sub(q) => {
                         p.at[p.n as usize] = q as u16;
                         p.n += 1;
                         table(&st.subs[q as usize], p, i, out);
@@ -855,7 +855,7 @@ impl<'a, V: View, B: Backend> Project<'a, V, B> {
             return None;
         };
         let c = *self.places.get(&(p2(path), site.col))?;
-        Some(c << bough_x::event::PLACE_REC_BITS | (site.base + slot))
+        Some(c << bough_dataflow::event::PLACE_REC_BITS | (site.base + slot))
     }
 
     /// Texts outside a grid that line up with its columns are its column headers.

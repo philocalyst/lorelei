@@ -9,8 +9,8 @@
 use std::hint::black_box;
 
 use bough_expr::U;
-use bough_guibench_x::rows::Rows;
-use bough_guibench_x::scene::Scene as AppScene;
+use bough_guibench_dataflow::rows::Rows;
+use bough_guibench_dataflow::scene::Scene as AppScene;
 use bough_host::App;
 use bough_kernel::cpu::Pool;
 use bough_paint::scenes;

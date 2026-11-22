@@ -7,16 +7,16 @@ use crate::lower::text::TextSys;
 use crate::lower::{Core, Doc, Hnd, Kind, LayMemo, Lower, NO, Owner, Scene};
 use bough_flat::store::ROOT;
 use bough_flat::{self as flat, ExtPaint, FlatWorld, FrameInfo, Prop, RecId, RecordDesc, Slot, SpaceId, Surface, TextSrc, Val};
-use bough_x::prim::{P_BOX, P_IMAGE, P_TEXT, Prim};
+use bough_dataflow::prim::{P_BOX, P_IMAGE, P_TEXT, Prim};
 use std::any::Any;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-fn fr(r: bough_x::store::Rect) -> flat::Rect {
+fn fr(r: bough_dataflow::store::Rect) -> flat::Rect {
     flat::Rect::new(r.x0, r.y0, r.x1, r.y1)
 }
-fn xr(r: flat::Rect) -> bough_x::store::Rect {
-    bough_x::store::Rect { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 }
+fn xr(r: flat::Rect) -> bough_dataflow::store::Rect {
+    bough_dataflow::store::Rect { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 }
 }
 fn words(p: &Prim) -> [u32; 4] {
     [p.kind, p.a, p.b, (p.ox as i16 as u16 as u32) << 16 | p.oy as i16 as u16 as u32]
@@ -47,7 +47,7 @@ struct SegMap {
     sy: Slot<i32>,
     recs: Vec<RecId>,
     /// What each record was last described as.
-    last: Vec<(bough_x::store::Rect, Prim)>,
+    last: Vec<(bough_dataflow::store::Rect, Prim)>,
 }
 
 /// How far ahead the description-to-world step looks for a record that moved up or down a run (rows leaving
@@ -112,7 +112,7 @@ impl Host {
             let (old_ids, old) = (std::mem::take(&mut m.recs), std::mem::take(&mut m.last));
             m.recs.reserve(g.prims.len());
             let (mut i, mut j) = (0, 0);
-            let patch = |w: &mut FlatWorld, id: RecId, r: &bough_x::store::Rect, p: &Prim| -> u64 {
+            let patch = |w: &mut FlatWorld, id: RecId, r: &bough_dataflow::store::Rect, p: &Prim| -> u64 {
                 let mut n = w.patch_rect(id, fr(*r)) as u64 + w.patch(id, Prop::Fill, p.color) as u64 + w.patch(id, Prop::Opacity, p.alpha) as u64;
                 if p.kind == P_BOX {
                     n += w.patch(id, Prop::Radius, p.radius) as u64 + w.patch(id, Prop::BorderW, p.border) as u64 + w.patch(id, Prop::Border, p.border_color) as u64;
@@ -411,7 +411,7 @@ impl<V: View> FlatApp<V> {
 
     fn chain(&self, x: f32, y: f32) -> Vec<(u32, u32)> {
         let (px, py) = ((x * self.scale) as i32, (y * self.scale) as i32);
-        let inside = |r: bough_x::store::Rect| px >= r.x0 && px < r.x1 && py >= r.y0 && py < r.y1;
+        let inside = |r: bough_dataflow::store::Rect| px >= r.x0 && px < r.x1 && py >= r.y0 && py < r.y1;
         let top = self.scene.hits.iter().rposition(|h| inside(h.rect) && inside(h.clip) && self.docs[h.doc as usize].nodes[h.node as usize].solid);
         let mut out = Vec::new();
         let mut at = top.map_or(NO, |t| t as u32);

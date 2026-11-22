@@ -1,6 +1,6 @@
 //! The two GPUI-rework inspector tests with no direct port, in lorelei's terms. The mapping is named in each
 //! test's doc comment; what does not translate is stated, not faked.
-use bough_guibench_x::rows::Rows;
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect::PropValue;
 use bough_inspect::record::Command;
 use bough_inspect::schema::Snapshot;

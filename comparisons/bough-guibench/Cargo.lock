@@ -83,6 +83,7 @@ version = "0.0.0"
 dependencies = [
  "block2",
  "bough-core",
+ "bough-dataflow",
  "bough-flat",
  "bough-frame",
  "bough-fused",
@@ -94,7 +95,6 @@ dependencies = [
  "bough-sys",
  "bough-text",
  "bough-wayland",
- "bough-x",
  "cephal",
  "dispatch2",
  "libc",
@@ -121,6 +121,15 @@ dependencies = [
 [[package]]
 name = "bough-damage"
 version = "0.0.0"
+
+[[package]]
+name = "bough-dataflow"
+version = "0.0.0"
+dependencies = [
+ "bough-expr",
+ "bough-face",
+ "bough-lay",
+]
 
 [[package]]
 name = "bough-expr"
@@ -247,15 +256,6 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "xkbcommon-dl",
-]
-
-[[package]]
-name = "bough-x"
-version = "0.0.0"
-dependencies = [
- "bough-expr",
- "bough-face",
- "bough-lay",
 ]
 
 [[package]]

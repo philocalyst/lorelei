@@ -5,7 +5,7 @@
 clean-room GPUI rework, with its own workspace and the workflow in the last section of this file. The design both
 answer to is `designs/reactivity/` (start with `final/00-model.md`); the audit list is `research/AUDIT.md`.
 
-> **Naming.** The project is lorelei. Crate names (`bough`, `bough-x`, `bough-expr`, ...), the `bough::prelude`
+> **Naming.** The project is lorelei. Crate names (`bough`, `bough-dataflow`, `bough-expr`, ...), the `bough::prelude`
 > path, the repository URL, environment variables (`BOUGH_*`) and most of the older documents still say bough.
 > Treat the two names as one project. Do not rename identifiers piecemeal: a rename is one reviewed change, made
 > by the owner, across manifests, paths, scripts and docs together.
@@ -29,13 +29,13 @@ They are not yet one executable. Say which one every claim belongs to.
 | | what it is | where |
 |---|---|---|
 | **A. the façade** | what an author writes today: `View`, elements, `sig!`, handlers, on the round-6/7 runtime (write log, gapped directory, exposure-driven mounting, record-space damage, integer raster kernel, Wayland host, lazy GPU device). The scoreboard's `bough` row is this. | `crates/bough*`, `main` |
-| **B. the new core** | UI as typed dataflow: staged expressions, one state block compared once per turn, one column per view call site, nothing unexposed exists. Crates: `bough-expr` (expressions), `bough-x` (the core, events, reflection, the **element layer** `el.rs`), `bough-paint` (per-archetype kernels), `bough-lay` (layout as data, extents), `bough-face` (staged text), `bough-ax` (accessibility projection), `bough-host` (Wayland host, no `dlopen`), `bough-span` (CPU span executor), `bough-glyph`, `bough-guibench-x` (the new-core benchmark app, registered in the runner as **`bough-x`**). | `main` (partly), `r8/*` |
+| **B. the new core** | UI as typed dataflow: staged expressions, one state block compared once per turn, one column per view call site, nothing unexposed exists. Crates: `bough-expr` (expressions), `bough-dataflow` (the core, events, reflection, the **element layer** `el.rs`), `bough-paint` (per-archetype kernels), `bough-lay` (layout as data, extents), `bough-face` (staged text), `bough-ax` (accessibility projection), `bough-host` (Wayland host, no `dlopen`), `bough-span` (CPU span executor), `bough-glyph`, `bough-guibench-dataflow` (the new-core benchmark app, registered in the runner as **`bough-dataflow`**). | `main` (partly), `r8/*` |
 | **C. lane experiments** | arena and scene image (`r8/threads`, not merged), GPU-resident raster, the text API proposal and stand-in shaper, the round-7 async engine (`r7/*`, not merged). | branches |
 
-**`bough-x` is the new core's benchmark binary and its admitted contract is narrow**: one prepared Latin-1 face
+**`bough-dataflow` is the new core's benchmark binary and its admitted contract is narrow**: one prepared Latin-1 face
 (DejaVu Sans 14/28 px), opaque colours, rows placed by arithmetic, remount on resize, group-1 keymap, CPU spans. Its
 numbers (start-up 4.3 ms, hover 0.08 ms) show what the representation costs, not what an author's program costs.
-State this contract wherever `bough-x` appears in a chart or a claim. The work that makes B the framework is the
+State this contract wherever `bough-dataflow` appears in a chart or a claim. The work that makes B the framework is the
 **element layer** (façade elements driving the new core through `Element::drive<S: Sink<V>>`); until the façade's
 scenes run on it, B is a prototype.
 
@@ -62,7 +62,7 @@ independent replay, a tool, or a documented boundary (something that provably do
 - A closed review finding lands with its probe as a test.
 
 **Code**
-- Application code and new benchmarks use `bough::prelude` only; `bough::raw` serves the existing scene ports.
+- Application code and new benchmarks use `bough::prelude` only; `bough::raw` serves the existing scene ports. `bough::flat::ui`, `bough::style`, `bough::motion` and `bough::pages` are engines behind prelude ports (hidden from the docs, public for their tests): do not write an app or a benchmark against them.
   The author's API must not change for performance reasons: the work happens below it.
 - Every `unsafe` carries a `// SAFETY:` argument and its own test; an invariant held only by a comment is a defect.
   Safe interfaces must be sound: wrong-view, wrong-backend and substituted-row misuse is a compile error or a checked
@@ -118,7 +118,7 @@ measurement under control; (5) every "flat" claim tested past its limit with a f
    - Re-measure the exposed-edit regression (1,433 to 2,612) on a quiet host (S).
    - A machine-generated feature x commit x gate matrix (S); merge the round-7 async engine (M); one prepared-face
      format for `bough-glyph` and `bough-face`, one paint contract for the three rasters (M); the heavy scenes and
-     all runner scenarios on the new core (M); finish the **`bough-x`** runner registration with its contract stated
+     all runner scenarios on the new core (M); finish the **`bough-dataflow`** runner registration with its contract stated
      on every chart.
 2. **Typed core and incremental computation.** `World<V, B>` with a validated erased schema (M); partial evaluation
    by dependency (M); pointer influence box (S); sweeps as rects (S); live-record scan under endless motion (S);
@@ -130,7 +130,7 @@ measurement under control; (5) every "flat" claim tested past its limit with a f
    hover, press, accessibility and reflection (M; decision owed); immutable frame versions with reclamation (M-L);
    a frame generation binding sample, pick and projection (S); lexical ancestry as a parent column, key-up, repeat
    and function keys, Tab that can be declined (M).
-4. **Layout.** Wire the kept form (layout as flat words, one function, a memo, `Extent`) into `bough-x` and the
+4. **Layout.** Wire the kept form (layout as flat words, one function, a memo, `Extent`) into `bough-dataflow` and the
    benchmarked binary (L); parametric answers (M); hierarchical extents with sparse exceptions, 100 M rows (M); a
    sound shape check without hashing each row (S); straight-line solver for fixed and flex rows (M); `guess(w)` and a
    (row, offset) anchor (M); coverage of percentages, min/max-content, baseline, absolute children, DPI, a real
@@ -182,7 +182,7 @@ measurement under control; (5) every "flat" claim tested past its limit with a f
     per-element locations and a stable schema (S-M); validated mutation (M); the agent/test socket: query the tree,
     inject turns, record and replay, diff pixels (M); three-line typed-selector tests (M); hot reload (L).
 15. **Platforms.** Fractional scale as a rational (M); keyboard groups, AltGr, compose, repeat (M); IME (M); resize
-    without remounting (S-M); translucent surfaces (S); Windows, X11, web (L each); an AppKit host over `bough-x` (M).
+    without remounting (S-M); translucent surfaces (S); Windows, X11, web (L each); an AppKit host over `bough-dataflow` (M).
 16. **Animation.** An animation benchmark at Freya's level: many springs, interruption, staggered lists,
     layout-affecting motion (M); springs as expressions of `Time` with `until` (M); layout-affecting motion without
     re-solving (M).
@@ -209,7 +209,7 @@ measurement under control; (5) every "flat" claim tested past its limit with a f
       is damaged, tiled and cached first; expect a per-frame cost the idle path must not pay.
     - **Shadows** (M): inset shadows; shadows that follow a rounded or clipped shape and a transformed box; text
       shadow and the shadow of a glyph run; drop-shadow of an image's alpha; multiple shadows with spread on every
-      path including `bough-x`; shadow cost under motion (a cached blurred tile, not a re-blur per frame).
+      path including `bough-dataflow`; shadow cost under motion (a cached blurred tile, not a re-blur per frame).
     - **Borders** (M): styles (dashed, dotted, double, groove, ridge, inset, outset), per-side width and colour with
       mitred joins, per-corner radii and elliptical corners, outlines with offset, border images, and borders that
       stay crisp at fractional scale.
@@ -257,9 +257,9 @@ wgpu for Windows is open); typed modifiers only or a stylesheet layer, and wheth
 how offscreen layers for backdrop blur and filters are damaged and cached (area 20); and the rename from bough to lorelei across identifiers.
 
 **Latest measurements.** The full zortax gui-bench matrix was re-run on 2026-11-13 from `cc65ee215f`: 658 cells in each
-of fixed 60 Hz and unthrottled timing, all frameworks plus `bough` (façade) and `bough-x` (new core). `bough` had
+of fixed 60 Hz and unthrottled timing, all frameworks plus `bough` (façade) and `bough-dataflow` (new core; its rows are named `bough-x` in results stored before the crate was renamed). `bough` had
 cell errors at 10,000 rows (search at 60 Hz in both runs; rows at 144 Hz in the fixed run; coarse table at 60 Hz);
-`bough-x` had none; floem fails the layout check in 54 of 56 cells, vizia in 8. The heavy scenes were not re-run.
+`bough-dataflow` had none; floem fails the layout check in 54 of 56 cells, vizia in 8. The heavy scenes were not re-run.
 
 ---
 

@@ -1,9 +1,9 @@
 //! G8, the hot-path half: the inspector is not on it. One hover on the benchmark app, measured by the thread's
 //! instruction counter, in a test binary that does not use `bough-inspect` at all — the same test compiles with
 //! the `inspect` feature off and on, and the two medians are compared by the runner. The exact zero-delta
-//! argument is structural (the off binary links no inspector symbol; `bough-x` is one compiled crate either way);
+//! argument is structural (the off binary links no inspector symbol; `bough-dataflow` is one compiled crate either way);
 //! this test prints the numbers that show it.
-use bough_guibench_x::rows::Rows;
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect_app::Lab;
 use bough_inspect_app::lab::Event;
 

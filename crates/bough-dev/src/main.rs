@@ -291,7 +291,7 @@ fn dev(o: &Opts) -> Result<(), String> {
     let roots = if o.roots.is_empty() {
         vec![
             PathBuf::from("crates/bough-inspect-app/src"),
-            PathBuf::from("comparisons/bough-guibench-x/src"),
+            PathBuf::from("comparisons/bough-guibench-dataflow/src"),
             PathBuf::from("crates/bough-inspect/src"),
         ]
     } else {

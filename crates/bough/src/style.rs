@@ -1,6 +1,8 @@
 //! Styles without type parameters.
 //!
-//! This is the author's side of the paint lane's flat bank (`bough_paint::flat_scene`): a box's look is a
+//! Not an author API: applications are written against `bough::prelude`, whose ports are lowered onto this.
+//!
+//! This is the façade's side of the paint lane's flat bank (`bough_paint::flat_scene`): a box's look is a
 //! value ([`BoxStyle`]: a fill or a [`Gradient`], corner radius, a border, any number of drop and inset
 //! shadows ([`ShadowSpec`]), a backdrop blur ([`BlurSpec`]), opacity), built with ordinary methods and
 //! changed at run time (and set in motion by [`crate::motion`]). Nothing

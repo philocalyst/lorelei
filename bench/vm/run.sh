@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run the gui-bench matrix in the VM and copy the result directory back.
 #   bench/vm/run.sh [runner arguments...]
-# Defaults: --quick, rows/spinner/search/table at their smallest sizes, frameworks bough,bough-x,zgui.
+# Defaults: --quick, rows/spinner/search/table at their smallest sizes, frameworks bough,bough-dataflow,zgui.
 # Every argument after the script name goes to the runner unchanged.
 # Output: $BENCH_RESULTS/<stamp>/ (default bench/results/vm/; run.json, per-cell JSON, screenshots,
 # CONTRACT.txt, VALIDITY.txt/json).
@@ -14,7 +14,7 @@ set -eu
 . "$(dirname "$0")/lib.sh"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 OUT=results/vm-$STAMP
-FRAMEWORKS=${FRAMEWORKS:-bough,bough-x,zgui}
+FRAMEWORKS=${FRAMEWORKS:-bough,bough-dataflow,zgui}
 SCENARIOS=${SCENARIOS:-rows,spinner,search,table}
 GB_TIMING=${GB_TIMING:-fixed}
 GB_PIN=${GB_PIN:-0-5}
@@ -55,7 +55,7 @@ mkdir -p "$CONTRACT"
   printf 'icd %s\n' "$(guest 'ls /usr/share/vulkan/icd.d/ | tr "\n" " "')"
   printf 'runner-sha256 %s\n' "$(guest "sha256sum $GUI/target/release/gui-bench | cut -d' ' -f1")"
   printf 'app-bough-sha256 %s\n' "$(guest "sha256sum $GUI/apps/bough/target/release/bough-bench 2>/dev/null | cut -d' ' -f1")"
-  printf 'app-bough-x-sha256 %s\n' "$(guest "sha256sum $GUI/apps/bough-x/target/release/bough-bench 2>/dev/null | cut -d' ' -f1")"
+  printf 'app-bough-dataflow-sha256 %s\n' "$(guest "sha256sum $GUI/apps/bough-dataflow/target/release/bough-bench 2>/dev/null | cut -d' ' -f1")"
   printf 'app-zgui-sha256 %s\n' "$(guest "sha256sum $GUI/apps/zgui/target/release/zgui-bench 2>/dev/null | cut -d' ' -f1")"
 } > "$CONTRACT/CONTRACT.txt"
 

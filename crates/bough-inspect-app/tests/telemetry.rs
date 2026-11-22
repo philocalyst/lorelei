@@ -1,7 +1,7 @@
 //! The rich telemetry endpoints, driven through the same `rpc::handle` admission the socket and the MCP server
 //! use: the damage map (with an off-thread heatmap PNG), effects, animations, scrubbing, the frame profile,
 //! selector assertions and the batch envelope.
-use bough_guibench_x::rows::Rows;
+use bough_guibench_dataflow::rows::Rows;
 use bough_inspect::json::{self, Value as J};
 use bough_inspect::rpc;
 use bough_inspect::session::Session;

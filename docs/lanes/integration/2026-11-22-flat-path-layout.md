@@ -27,3 +27,28 @@ Taken out rather than moved:
   `clear_opaque_rect` (`bough-core` `damage.rs`): no caller. `bough-damage` does this work.
 * `bough::rethink::bridge::sync_flat_scene_to_damage_engine`: it read a scene's untransformed, unclipped
   rects as covers, and nothing but its own test called it.
+
+## The typed core's name
+
+After the move above, the typed core itself was renamed. Dated reports, lane journals, cards, `docs/r8` and
+everything under `bench/results` and `bench/baselines` keep the names they were written or measured with.
+
+| Then | Now |
+| --- | --- |
+| crate `bough-x` (`crates/bough-x`, `bough_x::`) | crate `bough-dataflow` (`crates/bough-dataflow`, `bough_dataflow::`) |
+| `comparisons/bough-guibench-x` (`bough_guibench_x::`) | `comparisons/bough-guibench-dataflow` (`bough_guibench_dataflow::`) |
+| gui-bench runner framework `bough-x` (`bench/vm`, the registration patch) | `bough-dataflow`; rows named `bough-x` in stored results are the same app |
+| features `bough-x/phase_probe`, `bough-x/mutant_*` | `bough-dataflow/phase_probe`, `bough-dataflow/mutant_*` |
+
+The examples keep their names (`sheet_x`, `ops_x`, `anim_x`, `text_x`, `events_x`): they are the cell names of
+the native baseline (`bench/baselines/native/reference.json`), and a changed set of names fails its gate.
+`bench/baseline/compare.py` reads `-p bough-x` in a stored receipt as `-p bough-dataflow`, and
+`bench/baseline/run.py` builds whichever of the two a checkout has, so a baseline taken before the rename
+still compares.
+
+## What is an author surface
+
+`bough::prelude` is the only one (`bough::raw` serves the existing scene ports). `bough::flat::ui`,
+`bough::style`, `bough::motion` and `bough::pages` are engines: public so their tests and harnesses can hold
+them to their oracles, hidden from the documentation, and not to be written against by an application. The
+design's style and motion ports (`designs/reactivity/final`) are lowered onto them.

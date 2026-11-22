@@ -12,7 +12,8 @@ import json, os, sys, re
 
 FRAMEWORK_SCOPE = {
     "bough": "facade crate; CPU executor into wl_shm",
-    "bough-x": "new core; CPU executor into wl_shm",
+    "bough-dataflow": "new core; CPU executor into wl_shm",
+    "bough-x": "new core; CPU executor into wl_shm (the name of bough-dataflow in runs before its rename)",
     "zgui": "wgpu on lavapipe (software Vulkan)",
 }
 STARTUP_KEYS = ["connected_ms", "first_surface_ms", "toplevel_ms", "first_buffer_ms",

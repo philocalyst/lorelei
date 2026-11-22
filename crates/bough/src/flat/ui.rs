@@ -313,7 +313,7 @@ impl FlatUi {
                 }
                 t.close(i, kids.len() as u32);
                 let mut sub = Lay { out: vec![[0; 4]; t.els.len()], tree: t, at: 1 };
-                sub.tree.place_row(0, self.scale, &bough_x::expr::U::default(), (rect.x1 - rect.x0) as f32, &mut sub.out[..]);
+                sub.tree.place_row(0, self.scale, &bough_dataflow::expr::U::default(), (rect.x1 - rect.x0) as f32, &mut sub.out[..]);
                 for k in kids {
                     self.emit(k, &mut sub, inner, (0, 0), depth);
                 }
@@ -338,7 +338,7 @@ impl FlatUi {
         let (w, h) = self.world.size();
         let mut lay = Lay { out: vec![[0; 4]; t.els.len()], tree: t, at: 0 };
         let t1 = now();
-        lay.tree.place_root(0, self.scale, &bough_x::expr::U::default(), [w as f32, h as f32], &mut lay.out[..]);
+        lay.tree.place_root(0, self.scale, &bough_dataflow::expr::U::default(), [w as f32, h as f32], &mut lay.out[..]);
         let t2 = now();
         self.emit(root, &mut lay, ROOT, (0, 0), 0);
         let t3 = now();
