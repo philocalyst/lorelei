@@ -28,6 +28,7 @@ pub mod ltemplate;
 pub mod mlist;
 pub mod reader;
 pub mod reflect;
+pub mod rethink;
 pub mod rt;
 pub mod seal;
 pub mod select;
