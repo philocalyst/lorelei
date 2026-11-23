@@ -1,0 +1,89 @@
+ 6:46  up 4 days,  9:38, 1 user, load averages: 60.31 57.01 53.06
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 3, vector_passes: 0, damage_px: 256000, bytes_uploaded: 92500, memory: MemoryReport { fixed: 0, targets: 1572864, scratch: 0, atlases: 0, buffers: 367960 } })
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 30, vector_passes: 0, damage_px: 239136, bytes_uploaded: 69948, memory: MemoryReport { fixed: 0, targets: 1572864, scratch: 0, atlases: 4194304, buffers: 699440 } })
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 30, vector_passes: 0, damage_px: 239136, bytes_uploaded: 59332, memory: MemoryReport { fixed: 0, targets: 1572864, scratch: 0, atlases: 4194304, buffers: 715568 } })
+zgui_sample,200,many,0,21641458,3
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 239136, bytes_uploaded: 121384, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 813616 } })
+zgui_sample,200,many,1,154683250,4
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 813616 } })
+zgui_sample,200,many,2,36814125,5
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 813616 } })
+zgui_sample,200,many,3,42897250,6
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 813616 } })
+zgui_sample,200,many,4,41252458,7
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 813616 } })
+zgui_sample,200,many,5,40241958,8
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 239512, bytes_uploaded: 112820, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 813616 } })
+zgui_sample,200,many,6,49992750,9
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 813616 } })
+zgui_sample,200,many,7,49994667,10
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 125236, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,8,46931375,11
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 125236, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,9,33016833,12
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241770, bytes_uploaded: 99956, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,10,35957750,13
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 112820, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,11,40792125,14
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241352, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,12,44832792,15
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241352, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,13,36223709,16
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241352, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,14,35261292,17
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 112820, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,15,43286667,18
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241770, bytes_uploaded: 125300, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,16,38824167,19
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241732, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,17,43665917,20
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 242188, bytes_uploaded: 112820, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,18,46275500,21
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241770, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,19,41544333,22
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 425, vector_passes: 0, damage_px: 241770, bytes_uploaded: 99892, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,20,79748292,23
+solfx_draw_outcome,Presented(FrameStats { draw_calls: 30, vector_passes: 0, damage_px: 239208, bytes_uploaded: 46404, memory: MemoryReport { fixed: 0, targets: 1835008, scratch: 0, atlases: 4194304, buffers: 846384 } })
+zgui_sample,200,many,21,15193291,24
+zgui_sample,200,many,22,875,24
+zgui_sample,200,many,23,334,24
+zgui_sample,200,many,24,291,24
+zgui_sample,200,many,25,291,24
+zgui_sample,200,many,26,292,24
+zgui_sample,200,many,27,292,24
+zgui_sample,200,many,28,250,24
+zgui_sample,200,many,29,292,24
+zgui_sample,200,many,30,292,24
+zgui_sample,200,many,31,333,24
+zgui_sample,200,many,32,3833,24
+zgui_sample,200,many,33,3417,24
+zgui_sample,200,many,34,416,24
+zgui_sample,200,many,35,333,24
+zgui_sample,200,many,36,292,24
+zgui_sample,200,many,37,292,24
+zgui_sample,200,many,38,292,24
+zgui_sample,200,many,39,250,24
+zgui_pixel,200,0,cc1e44cbf76f0530
+zgui_pixel,200,1,e4891d18ec43e9bc
+zgui_pixel,200,2,a96bfab27960a9f2
+zgui_pixel,200,3,e545e298211ca103
+zgui_pixel,200,4,4623f28859bfd067
+zgui_pixel,200,5,732c489508c1bca4
+zgui_pixel,200,6,c50a36db5b320efc
+zgui_pixel,200,7,8ade325bd9d12e14
+zgui_pixel,200,8,d3c4459beed89943
+zgui_pixel,200,9,09e0a677d40d3f6c
+zgui_pixel,200,10,d47b5b059cceaa41
+zgui_pixel,200,11,3f19d1b9e95c4b58
+zgui_pixel,200,12,683a546b0e1cb59c
+zgui_pixel,200,13,706b9379cf1e15ff
+zgui_pixel,200,14,e742a098560d487d
+zgui_pixel,200,15,5075ddb4072f9281
+zgui_pixel,200,16,b3e377f01e253f7c
+zgui_pixel,200,17,2dcb1aec9ace95d9
+zgui_pixel,200,18,5bf1827067729fe2
+zgui_pixel,200,19,a727f7b468a65065
+zgui_pixel,200,20,2cb6f9fb32548d07
+zgui_pixel,200,21,cc1e44cbf76f0530
+check_exit=0
+ 6:46  up 4 days,  9:38, 1 user, load averages: 61.16 57.24 53.17

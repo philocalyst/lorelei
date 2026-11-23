@@ -1,0 +1,25 @@
+zgui_sample,5000,many,0,250738209,3
+
+thread 'main' (9484003) panicked at cargo-registry/wgpu-29.0.4/src/backend/wgpu_core.rs:2231:22:
+wgpu error: Validation Error
+
+Caused by:
+  In Buffer::map_async
+    Buffer with 'zgui.readback' label is invalid
+
+
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: wgpu::backend::wgpu_core::default_error_handler
+   3: <wgpu::backend::wgpu_core::ContextWgpuCore>::handle_error_inner
+   4: <wgpu::backend::wgpu_core::CoreBuffer as wgpu::dispatch::BufferInterface>::map_async
+   5: zgui_render_wgpu::renderer::readback::read
+   6: <zgui_render_wgpu::renderer::WgpuRenderer>::read_composed
+   7: <solfx::PixelGate as zgui_render::renderer::Renderer>::draw
+   8: <zgui_runtime::window::Window>::run_frame
+   9: <zgui_runtime::window::Window>::frame
+  10: <zgui_runtime::app::Runtime as zgui_platform::app::AppHandler>::surface_event
+  11: <zgui_platform_headless::harness::Harness<zgui_runtime::app::Runtime>>::pump
+  12: solfx::main
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.

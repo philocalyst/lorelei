@@ -1,0 +1,34 @@
+--- a/crates/bough-paint/examples/fxbench.rs
++++ b/crates/bough-paint/examples/fxbench.rs
+@@ -245,7 +245,7 @@
+ /// Frame `f` of `cell`: the untimed part (a decoder's work). Returns the slots to publish.
+ fn decode(cell: Cell, f: usize, w: &mut World) -> Vec<(usize, u32)> {
+     let which: Vec<usize> = match cell {
+-        Cell::OneVideo => vec![4],
++        Cell::OneVideo if !w.src.is_empty() => vec![0],
+         Cell::VideoUnderGlass => vec![1],
+         Cell::AllVideos | Cell::GlassOverVideo if f % 4 == 0 => (0..w.src.len()).collect(),
+         _ => vec![],
+@@ -438,3 +438,22 @@
+         std::process::exit(1);
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn one_video_four_sources_updates_an_uncovered_tile() {
++        let mut w = media(4);
++        let u = U::default();
++        w.s.update(&u);
++        w.s.damage.clear();
++        let slots = decode(Cell::OneVideo, 1, &mut w);
++        assert_eq!(slots.len(), 1, "one-video trace did not publish an existing source");
++        turn(Cell::OneVideo, 1, &mut U::default(), &mut w, &slots);
++        let stats = w.s.update(&u);
++        assert!(w.s.damage.count() > 0);
++        assert_eq!(stats.prefix_tiles, 0, "the source must remain outside glass reach");
++    }
++}

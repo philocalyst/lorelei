@@ -1,0 +1,8 @@
+Wave3 7991e7bd4ef96437df1f81dad202a23bb96bf024
+Apple M3 Ultra, 32 physical and 32 logical CPUs, macOS 26.7.3 (25G342)
+rustc 1.101.0-nightly (5d8fec066 2026-10-16)
+27 tracked files in the archived bough-paint package match the pin byte for byte.
+The archived bench/fx/run.sh takes its configured lock during the dist build as well as during each scene.
+The batched retry holds the shared benchmark lock around the runner. The nested runner uses a private lock.
+The scene commands and repetitions match the original runner.
+Compiled diagnostic fxprof SHA-256 0889ad85afa8c303c2b90a43999ca9c05a41f55b4388d197917f5f30fe8ec967

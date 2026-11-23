@@ -1,0 +1,17 @@
+# wave3 7991e7bd4e, focus: free-range reuse across a size change
+running 1 test
+
+thread 'a_resolution_change_does_not_strand_a_pool_of_free_slots' (10586724) panicked at crates/bough-paint/tests/solfx_motion_media.rs:452:5:
+no room for a 96 x 54 frame in a 8192-word pool holding one shown 64 x 48 frame and 6 free slots (7 slots, 8120 words used)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_resolution_change_does_not_strand_a_pool_of_free_slots ... FAILED
+
+failures:
+
+failures:
+    a_resolution_change_does_not_strand_a_pool_of_free_slots
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p bough-paint --test solfx_motion_media`
+exit 101

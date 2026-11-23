@@ -1,0 +1,57 @@
+--- a/crates/bough-paint/src/driver.rs
++++ b/crates/bough-paint/src/driver.rs
+@@ -7,8 +7,11 @@
+ //! Both executors write the same words into the same memory (the GPU's output buffer is the surface), so a
+ //! switch needs no repaint. Each keeps its own window lane and bins; the one that sat out is brought to the
+ //! block the surface shows before it draws again (`Scene::update` with the damage dropped, `Gpu::catch_up`).
++//! A layered scene schedules on the CPU for either executor. Its chosen executor keeps the layer store
++//! current over successive frames.
+ use crate::expr::{U, U_PICK};
+ use crate::metal::Gpu;
++use crate::paint::NO_HIT;
+ use crate::plan::Whole;
+ use crate::scene::Scene;
+ use bough_kernel::cpu::Pool;
+@@ -99,8 +102,10 @@
+     /// Rewrite a record (`Scene::set`) on both executors' books.
+     pub fn set<P: crate::paint::Paint>(&mut self, col: crate::scene::ColId<P>, i: usize, rect: [i32; 4], p: P) {
+         let z = self.scene.set(col, i, rect, p);
+-        if let Some(g) = self.gpu.as_mut() {
+-            g.touch(z);
++        if !self.scene.layers.any() {
++            if let Some(g) = self.gpu.as_mut() {
++                g.touch(z);
++            }
+         }
+         self.pending = true;
+     }
+@@ -118,6 +123,29 @@
+         let words = stride * self.scene.fh as usize;
+         let started = self.cpu_current || self.gpu_current;
+         u.w[U_PICK] = self.shown.w[U_PICK];
++        if self.scene.layers.any() {
++            if let Some((x, y)) = pointer {
++                u.w[U_PICK] = if started { self.scene.pick(&self.shown, x, y) } else { NO_HIT };
++            }
++            self.scene.update(u);
++            self.scene.damage.tiles(&mut self.tiles);
++            self.scene.damage.clear();
++            let ran = if let Some(g) = self.gpu.as_mut() {
++                if !self.tiles.is_empty() || !self.scene.plan.work.is_empty() {
++                    g.staged(&self.scene, u, &self.tiles, stride);
++                }
++                Ran::Gpu
++            } else {
++                self.scene.prepare(u);
++                let extra = if self.tiles.len() > 64 { self.pool.workers() } else { 0 };
++                self.scene.shade(u, &self.tiles, &mut self.own[..], stride, &self.pool, extra);
++                Ran::Cpu
++            };
++            self.shown = *u;
++            self.cpu_current = true;
++            self.pending = false;
++            return ran;
++        }
+         let mut mask = if started { self.shown.diff(u, 64) } else { u64::MAX };
+         if pointer.is_some() {
+             mask |= 1 << U_PICK;

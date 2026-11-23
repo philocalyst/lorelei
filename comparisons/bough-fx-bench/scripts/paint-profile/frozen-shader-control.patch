@@ -1,0 +1,49 @@
+--- a/crates/bough-paint/examples/fxprof.rs
++++ b/crates/bough-paint/examples/fxprof.rs
+@@ -37,5 +37,5 @@
+ type AGrad = Over<Shadow<Off<Pan, Ki<0>, Ki<1024>>, Ki<2560>, Ki<4096>, Any, Tab>, Grad<Pan, Ki<2560>, I<Rec>, I<Rec>, MixV<Pmo<Rec>, Pmo<Rec>, Uw<3>>, Pmo<Rec>>>;
+ type AGlass = Over<Backdrop<Sprung, Ki<3072>, I<Rec>, Filt<K<256>, K<360>, K<256>>>, Border<Sprung, Ki<3072>, Ki<256>, Any, Any>>;
+-type AShader = Shader<Pan, Ki<2048>, Rec, Uw<63>, Any, Any>;
++type AShader = Shader<Pan, Ki<2048>, Rec, Uw<62>, Any, Any>;
+ type ADot = RRect<Sprung, Ki<1536>, Any>;
+ type AVideo = Video<Pan, Ki<2048>, Rec, Rec, Rec>;
+@@ -132,5 +132,5 @@
+             );
+         }
+-        if i % 16 == 9 && !lean && std::env::var("NOSHADER").is_err() {
++        if i % 16 == 9 && !lean {
+             w.s.push(shaders, [q(x + 8.0), q(y + 44.0), q(x + 88.0), q(y + 76.0)], Shader { b: pan(), r: Ki, id: Rec((i / 16 % 2) as u32), now: Uw, c: pm(g.color(true)), c2: pm(g.color(false)) });
+         }
+@@ -326,5 +326,5 @@
+ /// Run `cell` for `reps` measured frames after `warm` on a fresh world (CPU, cached layers, one core).
+ /// `profile`: bracket each frame with the phase stack (the instructions then include the counter reads).
+-fn run(make: &dyn Fn() -> World, cell: Cell, reps: usize, warm: usize, profile: bool, check: bool, pool: &Pool) -> Res {
++fn run(make: &dyn Fn() -> World, cell: Cell, reps: usize, warm: usize, profile: bool, check: bool, pool: &Pool, freeze_shader: bool) -> Res {
+     let mut w = make();
+     let words = (FW * FH) as usize;
+@@ -345,4 +345,6 @@
+             let _g = prof::scope(prof::H_TURN);
+             turn(cell, f, &mut u, &mut w, &slots);
++            // Word 63 still drives springs. Hold only the separate shader input in the control.
++            u.w[62] = if freeze_shader { 0 } else { u.w[U_TIME] };
+         }
+         let fs: FrameStats = w.s.update(&u);
+@@ -430,8 +432,8 @@
+     println!("# fxprof {scene} {n}{}; {FW}x{FH}; reps {reps} warm {warm}; counter-read cost o = {o} instructions/interval; load at start: {}", if dense { " dense" } else { "" }, load());
+     let mut first = true;
+-    for cell in cells {
++    for (freeze_shader, cell) in [false, true].into_iter().flat_map(|freeze| cells.iter().map(move |&cell| (freeze, cell))) {
+         let t_start = Instant::now();
+-        let off = run(&*make, cell, reps, warm, false, false, &pool);
+-        let on = run(&*make, cell, reps, warm, true, check, &pool);
++        let off = run(&*make, cell, reps, warm, false, false, &pool, freeze_shader);
++        let on = run(&*make, cell, reps, warm, true, check, &pool, freeze_shader);
+         let f = on.frames.max(1) as f64;
+         let mut sum = prof::Report::zero();
+@@ -447,5 +449,5 @@
+             on.tiles as f64 / f, on.recs as f64 / f, on.prefix as f64 / f, on.blocks as f64 / f,
+             raw_total / 1e3, ints, corr_total / 1e3, (corr_total / med(&off.instr).unwrap_or(1) as f64 - 1.0) * 100.0, med(&on.wall).unwrap_or(0.0) * 1e6, on.mismatch);
+-let tag = format!("{scene}\t{n}\t{}\t{}\t{}", if dense { "dense" } else { "sparse" }, if std::env::var("NOSHADER").is_ok() { "noshader" } else { "published" }, cell.name());
++let tag = format!("{scene}\t{n}\t{}\t{}\t{}", if dense { "dense" } else { "sparse" }, if freeze_shader { "frozen" } else { "clock" }, cell.name());
+         println!("SUMMARY\t{tag}\t{}\t{}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.0}\t{:.0}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{}", on.records, on.layers, on.active, med(&off.instr).unwrap_or(0), off.instr.iter().min().copied().unwrap_or(0), raw_total, ints, corr_total, on.tiles as f64 / f, on.recs as f64 / f, on.prefix as f64 / f, on.blocks as f64 / f, o);
+         for i in 0..prof::N {

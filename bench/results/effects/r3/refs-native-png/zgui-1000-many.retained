@@ -1,0 +1,11 @@
+zgui_sample,1000,many,0,43510541,3
+
+thread 'main' (8361642) panicked at cargo-registry/wgpu-29.0.4/src/backend/wgpu_core.rs:2231:22:
+wgpu error: Validation Error
+
+Caused by:
+  In Buffer::map_async
+    Buffer with 'zgui.readback' label is invalid
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -1,0 +1,10 @@
+# wave3 7991e7bd4e plus spring-launch-momentum.patch
+same-tick retarget (170, 26) at peak tick 77: first-retarget velocity 359.50, then single 346.00 vs double 346.00 Q8/ms (peak 1.44)
+same-tick retarget (120, 8) at peak tick 117: first-retarget velocity 518.50, then single 507.50 vs double 507.50 Q8/ms (peak 2.05)
+same-tick retarget (300, 40) at peak tick 55: first-retarget velocity 428.00, then single 404.50 vs double 404.50 Q8/ms (peak 1.73)
+same-tick retarget (90, 30) at peak tick 89: first-retarget velocity 188.50, then single 181.50 vs double 181.50 Q8/ms (peak 0.75)
+same-tick retarget (170, 26.0768) at peak tick 77: first-retarget velocity 359.50, then single 346.00 vs double 346.00 Q8/ms (peak 1.44)
+same-tick retarget (1500, 60) at peak tick 28: first-retarget velocity 1204.50, then single 1090.50 vs double 1090.50 Q8/ms (peak 5.02)
+same-tick retarget (20000, 200) at peak tick 8: first-retarget velocity 3771.50, then single 2429.50 vs double 2429.50 Q8/ms (peak 19.34)
+test a_second_retarget_in_the_same_tick_keeps_the_momentum ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.01s

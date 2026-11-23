@@ -1,0 +1,73 @@
+# Independent debug replay at wave3 7991e7bd4e. The two stock Driver probes fail.
+
+running 13 tests
+probe driver cpu-only: frame 0: driver surface differs from fresh in 10382 words; first at (113,14) tile (3,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 1: driver surface differs from fresh in 9905 words; first at (84,5) tile (2,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 2: driver surface differs from fresh in 9264 words; first at (51,9) tile (1,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 3: driver surface differs from fresh in 9652 words; first at (72,0) tile (2,0): 00000000 vs fresh 01010001
+probe driver cpu-only: frame 4: driver surface differs from fresh in 9210 words; first at (81,7) tile (2,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 5: driver surface differs from fresh in 10627 words; first at (68,7) tile (2,0): 40222711 vs fresh 40232711
+probe driver cpu-only: frame 6: driver surface differs from fresh in 10455 words; first at (66,0) tile (2,0): 00000000 vs fresh 05030102
+probe driver cpu-only: frame 7: driver surface differs from fresh in 19711 words; first at (45,0) tile (1,0): 40222711 vs fresh 40232711
+probe driver cpu-only: frame 8: driver surface differs from fresh in 19685 words; first at (48,0) tile (1,0): 40222711 vs fresh 40232711
+probe driver cpu-only: frame 9: driver surface differs from fresh in 7106 words; first at (70,7) tile (2,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 10: driver surface differs from fresh in 7729 words; first at (112,24) tile (3,0): cf86494e vs fresh d086494e
+probe driver cpu-only: frame 11: driver surface differs from fresh in 9007 words; first at (68,0) tile (2,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 12: driver surface differs from fresh in 9178 words; first at (66,0) tile (2,0): 40222711 vs fresh 41232711
+probe driver cpu-only: frame 13: driver surface differs from fresh in 9130 words; first at (66,0) tile (2,0): 40222711 vs fresh 41232711
+
+thread 'gpu::probe_driver_cpu_path_on_layers' (11312767) panicked at crates/bough-paint/tests/solfx_layers.rs:696:9:
+assertion `left == right` failed: probe driver cpu-only: the driver's frames differ from fresh
+  left: 14
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test gpu::probe_driver_cpu_path_on_layers ... FAILED
+
+thread 'gpu::probe_driver_gpu_path_on_layers' (11313718) panicked at crates/bough-paint/src/metal.rs:829:9:
+a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+
+thread 'gpu::probe_driver_gpu_path_on_layers' (11313718) panicked at crates/bough-paint/tests/solfx_layers.rs:694:13:
+probe driver gpu-resident: Driver::frame panicked: a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+test gpu::probe_driver_gpu_path_on_layers ... FAILED
+
+thread 'gpu::probe_layered_gpu_frame' (11313885) panicked at crates/bough-paint/src/metal.rs:829:9:
+a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+probe: Gpu::frame on a layered scene panics: a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+
+thread 'gpu::probe_layered_gpu_frame' (11313885) panicked at crates/bough-paint/src/metal.rs:829:9:
+a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+probe: Gpu::catch_up on a layered scene panics
+test gpu::probe_layered_gpu_frame ... ok
+solfx gpu staged: 180 steps, 0 failing
+test gpu::gpu_staged_equals_cpu_and_fresh ... ok
+solfx frame sizes: 540 steps (38 idle, 180 against the specification); layer work 4329 prefix tiles, 24496 pyramid blocks; output 4451 of 9309 tiles; 0 failing steps
+test frame_sizes_equal_fresh ... ok
+solfx walk 300x230: 180 steps (10 idle, 60 against the specification); layer work 2478 prefix tiles, 9719 pyramid blocks; output 2622 of 14160 tiles; 0 failing steps
+test retained_walk_equals_fresh ... ok
+sweep diagonal 31: 180 frames, 2578 prefix tiles, 13007 blocks, output 3284 of 10080 tiles, 0 failing
+test sweep_move_diagonal_by_tile_less_one ... ok
+test sweep_content_beneath_over_every_edge_pixel has been running for over 60 seconds
+test sweep_enter_and_leave_every_side has been running for over 60 seconds
+test sweep_move_x_across_every_edge has been running for over 60 seconds
+sweep move x: 1332 frames, 15480 prefix tiles, 126566 blocks, output 24158 of 74592 tiles, 0 failing
+test sweep_move_x_across_every_edge ... ok
+sweep move y: 1212 frames, 14449 prefix tiles, 111997 blocks, output 22460 of 67872 tiles, 0 failing
+test sweep_move_y_across_every_edge ... ok
+sweep spot beneath: 2412 frames, 79380 prefix tiles, 355863 blocks, output 66672 of 135072 tiles, 0 failing
+test sweep_content_beneath_over_every_edge_pixel ... ok
+test sweep_resize_left_and_top has been running for over 60 seconds
+sweep resize from the origin side: 1212 frames, 26808 prefix tiles, 150326 blocks, output 25987 of 67872 tiles, 0 failing
+test sweep_resize_left_and_top ... ok
+test sweep_resize_right_and_bottom has been running for over 60 seconds
+sweep enter/leave: 4812 frames, 55302 prefix tiles, 361994 blocks, output 77932 of 269472 tiles, 0 failing
+test sweep_enter_and_leave_every_side ... ok
+sweep resize: 1572 frames, 29855 prefix tiles, 191674 blocks, output 39668 of 88032 tiles, 0 failing
+test sweep_resize_right_and_bottom ... ok
+
+failures:
+
+failures:
+    gpu::probe_driver_cpu_path_on_layers
+    gpu::probe_driver_gpu_path_on_layers
+
+test result: FAILED. 11 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 311.43s

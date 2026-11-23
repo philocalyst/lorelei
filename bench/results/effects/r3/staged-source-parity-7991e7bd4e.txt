@@ -1,0 +1,15 @@
+# Generated NV12 versus predecoded lease copy. Exact CPU1 output and counts.
+# wave3 7991e7bd4e with the source-parity adapter from 24cbbb1d13.
+# Adapter sha256 13755b65f8ae464d5bd6d76786c6ebaef5c7e9e18d25cdc1a7238904c5c9ab51
+# Unit test executable sha256 61dd773c4e308d2a04de85764debaff8e233c8e47decf02ceb3d6dd34a109c2b
+
+     Running unittests examples/fx_bench.rs ($HOME/work/targets/solfx/round3-staged-source-parity/release/build/bough-paint/2f3888b3fc35c5fb/out/fx_bench-2f3888b3fc35c5fb)
+
+running 1 test
+glass source parity: 200 cards, 241 submitted frames, identical bytes and tile counts
+glass source parity: 1000 cards, 241 submitted frames, identical bytes and tile counts
+test predecoded_glass_matches_generated_frames has been running for over 60 seconds
+glass source parity: 5000 cards, 241 submitted frames, identical bytes and tile counts
+test predecoded_glass_matches_generated_frames ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 196.50s

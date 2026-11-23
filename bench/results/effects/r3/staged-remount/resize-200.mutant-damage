@@ -1,0 +1,9 @@
+fx_refused,resize,200,png_tile,no image paint in the seam: shared PNG tile not drawn
+fx_refused,resize,200,group_filter,no subtree group: blur/saturate/brightness/drop-shadow group not composited
+fx_refused,resize,200,path_mask,no path or alpha-mask primitive; clip is rectangular only
+fx_refused,resize,200,shader_exact,plasma, SDF and sine-ramp shaders absent; built-in stripes/ripple substituted
+fx_refused,resize,200,resize_retained,fixed-size Scene: resize remounts, retained resize unsupported
+
+thread 'main' (13209694) panicked at crates/bough-paint/examples/fx_bench_resize.rs:1180:17:
+retained differs from full redraw: age 1, frame 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -1,0 +1,84 @@
+file	kind	scene	n	shape	script	cell	fields
+#fields	SUMMARY						records layers active uninstr_median uninstr_min bracket_raw intervals corrected_total tiles recs_visited prefix_tiles blocks read_cost
+#fields	PHASE						phase_id phase corrected_per_frame raw_per_frame intervals_per_frame
+#fields	COUNT						counter per_frame
+#fields	LEDGER						store bytes
+#fields	COLUMN						index description
+test-pane300.txt	SUMMARY	pane	300	sparse	published	one spring	379	1	1	2001679	2000813	2114748	73	1999554	4.0	1.0	0.0	0.0	1578
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	0	harness_other	158	9626	6.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	1	update_glue	794	16574	10.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	3	update_block_diff	256	1834	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	5	update_layer_regeo_repack	28	1606	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	6	bins_clear_resize	831	2409	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	7	bins_count_pass	123441	125019	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	8	bins_offsets	19364	20942	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	9	bins_fill_pass	141841	143419	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	10	layer_schedule_dependency	673	2251	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	11	layer_damage_add_vis_events	15	1593	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	12	prepare_glue	10	1588	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	17	shade_admission_checks	340	1918	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	18	out_tile_setup(begin,cover,load)	11549	17861	4.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	19	out_tile_store	31684	37996	4.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	21	shade_glue	3806	40100	23.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	22	harness_damage_tiles_clear	179	1757	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	23	turn_script_set_retarget	34	1612	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	37	window_pass[c5]	1282	2860	1.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	96	out_shade[c0]	6712	11446	3.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	97	out_shade[c1]	1228774	1235086	4.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	98	out_shade[c2]	403794	406950	2.0
+test-pane300.txt	PHASE	pane	300	sparse	published	one spring	101	out_shade[c5]	23989	30301	4.0
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	bin_calls	1.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	bin_records_walked	379.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	bin_records_live	379.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	bin_cells_count_pass	4326.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	bin_cells_fill_pass	4326.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	bin_list_entries	4127.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	bin_tiles	1000.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	window_records	1.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	window_columns	1.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	rewin_records	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	prefix_tiles	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	prefix_entries	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	out_tiles	4.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	out_entries	13.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	tent_blocks	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	tent_px	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	sched_calls	1.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	sched_events_seen	2.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	damage_adds	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	frames	1.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	prefix_from_stored	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	out_from_stored	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	backdrop_runs	0.00
+test-pane300.txt	COUNT	pane	300	sparse	published	one spring	sched_layers_with_work	0.00
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	arena bytes (columns, lanes, records, tabs)	17039360
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	arena column words used (bytes)	55040
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layer pool (Vec len, bytes)	248208
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layer pool (Vec capacity, bytes)	248208
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layer pool words in use by allocator (bytes)	248208
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layer pool live words (bytes)	248208
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layer level capacity px*4 (sum cw*ch)	248208
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layer level window px*4 (sum of level windows)	185100
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layers (count)	1
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layer struct bytes (list)	1408
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	layers.of (by key)	36
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	bins.list	33000
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	bins.off	4004
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	bins.count	4000
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	bins.floor	4000
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	bins.mark	1000
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	win lane	4096
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	cover lane	4096
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	halo lane	4096
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	order	2048
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	events/regeo/act scratch	1296
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	damage bitset (struct, approx)	1064
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	atlas	0
+test-pane300.txt	LEDGER	pane	300	sparse	published	one spring	tab region (bytes touched, upper bound used)	21768
+test-pane300.txt	COLUMN	pane	300	sparse	published	one spring	0	c0: records 1 (cap 64), words/record 2, layer false, Uw<3>>>
+test-pane300.txt	COLUMN	pane	300	sparse	published	one spring	1	c1: records 202 (cap 384), words/record 7, layer false, Uw<3>>>>>
+test-pane300.txt	COLUMN	pane	300	sparse	published	one spring	2	c2: records 100 (cap 320), words/record 7, layer false, Rec>>>
+test-pane300.txt	COLUMN	pane	300	sparse	published	one spring	3	c3: records 1 (cap 64), words/record 23, layer true, Rec>>>
+test-pane300.txt	COLUMN	pane	300	sparse	published	one spring	4	c4: records 0 (cap 64), words/record 3, layer false, Rec>>
+test-pane300.txt	COLUMN	pane	300	sparse	published	one spring	5	c5: records 75 (cap 128), words/record 11, layer false, Rec>>
+test-pane300.txt	COLUMN	pane	300	sparse	published	one spring	6	c6: records 0 (cap 64), words/record 3, layer false, Rec>

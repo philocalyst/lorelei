@@ -1,0 +1,14 @@
+ 6:51  up 4 days,  9:43, 1 user, load averages: 59.41 59.88 55.76
+fx_refused,resize,200,png_tile,no image paint in the seam: shared PNG tile not drawn
+fx_refused,resize,200,group_filter,no subtree group: blur/saturate/brightness/drop-shadow group not composited
+fx_refused,resize,200,path_mask,no path or alpha-mask primitive; clip is rectangular only
+fx_refused,resize,200,shader_exact,plasma, SDF and sine-ramp shaders absent; built-in stripes/ripple substituted
+fx_refused,resize,200,resize_retained,fixed-size Scene: resize remounts, retained resize unsupported
+
+thread 'main' panicked at crates/bough-paint/examples/fx_bench.rs:1196:9:
+assertion `left != right` failed: frame checksum never changed
+  left: 2989031900515195604
+ right: 2989031900515195604
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+check_exit=101
+mutation_check_exit=0

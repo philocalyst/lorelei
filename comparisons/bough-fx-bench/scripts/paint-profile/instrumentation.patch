@@ -1,0 +1,1075 @@
+diff --git a/crates/bough-paint/Cargo.toml b/crates/bough-paint/Cargo.toml
+index 8d133cc4e5..512780ad3c 100644
+--- a/crates/bough-paint/Cargo.toml
++++ b/crates/bough-paint/Cargo.toml
+@@ -8,6 +8,7 @@ description = "Round 8 raster lane: paints as types, one monomorphised CPU kerne
+ [dependencies]
+ bough-kernel = { path = "../bough-kernel" }
+ bough-expr = { path = "../bough-expr" }
++bough-sys = { path = "../bough-sys" }
+ wgsl-rs = { git = "https://github.com/schell/wgsl-rs", rev = "b2de16a1b81e67d76bc265c296184f882864badb", default-features = false }
+ 
+ [target.'cfg(target_os = "macos")'.dependencies]
+diff --git a/crates/bough-paint/src/lib.rs b/crates/bough-paint/src/lib.rs
+index 127573535c..c94e1e8796 100644
+--- a/crates/bough-paint/src/lib.rs
++++ b/crates/bough-paint/src/lib.rs
+@@ -20,6 +20,7 @@ pub mod metal;
+ pub mod ops;
+ pub mod paint;
+ pub mod plan;
++pub mod prof;
+ pub mod probe;
+ pub mod scene;
+ pub mod scenes;
+diff --git a/crates/bough-paint/src/scene.rs b/crates/bough-paint/src/scene.rs
+index ad42401932..ac1c1b77f0 100644
+--- a/crates/bough-paint/src/scene.rs
++++ b/crates/bough-paint/src/scene.rs
+@@ -9,6 +9,7 @@
+ //! restaged or looked up per record.
+ use crate::expr::{Cx, U, U_TIME};
+ use crate::layer::{self, Layers};
++use crate::prof;
+ use crate::paint::{Cost, EMPTY, LaySink, NO_CLIP, NO_HIT, PCode, Paint, SpecSink, StageSink, WinSink};
+ use crate::tile::{Flat, Fx, Shade, Stats, Tile};
+ use bough_expr::ahead;
+@@ -444,6 +445,10 @@ impl Bins {
+     /// layer's record is listed over its halo too.
+     pub fn build(&mut self, win: &[[i16; 4]], cover: &[[i16; 4]], halo: &[[i16; 4]], lay: &[u32], tx: usize, ty: usize, cut: bool) {
+         let nt = tx * ty;
++        let g_clear = prof::scope(prof::B_CLEAR);
++        prof::count(prof::C_BIN_CALLS, 1);
++        prof::count(prof::C_BIN_RECS, win.len() as u64);
++        prof::count(prof::C_BIN_TILES, nt as u64);
+         self.mark.clear();
+         self.mark.resize(nt, false);
+         let is_lay = |z: usize| lay.get(z).is_some_and(|&l| l != layer::NONE);
+@@ -462,12 +467,18 @@ impl Bins {
+         self.floor.clear();
+         self.floor.resize(nt, 0);
+         let span = |w: &[i16; 4]| ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(tx), ((w[3].max(0) as usize + 31) >> 5).min(ty));
++        drop(g_clear);
++        let g_count = prof::scope(prof::B_COUNT);
++        let mut live = 0u64;
++        let mut cells = 0u64;
+         for z in 0..win.len() {
+             let b = bin(z);
+             if b[0] >= b[2] {
+                 continue;
+             }
++            live += 1;
+             let (x0, y0, x1, y1) = span(&b);
++            cells += (x1.saturating_sub(x0) * y1.saturating_sub(y0)) as u64;
+             let c = cover[z];
+             let covers = cut && c[0] < c[2];
+             let lz = is_lay(z);
+@@ -485,6 +496,10 @@ impl Bins {
+                 }
+             }
+         }
++        drop(g_count);
++        prof::count(prof::C_BIN_RECS_LIVE, live);
++        prof::count(prof::C_BIN_CELLS_COUNT, cells);
++        let g_off = prof::scope(prof::B_OFFSETS);
+         self.off.clear();
+         self.off.reserve(nt + 1);
+         let mut at = 0u32;
+@@ -496,12 +511,17 @@ impl Bins {
+         self.off.push(at);
+         self.list.clear();
+         self.list.resize(at as usize, 0);
++        prof::count(prof::C_BIN_LIST, at as u64);
++        drop(g_off);
++        let _g_fill = prof::scope(prof::B_FILL);
++        let mut fcells = 0u64;
+         for z in 0..win.len() {
+             let b = bin(z);
+             if b[0] >= b[2] {
+                 continue;
+             }
+             let (x0, y0, x1, y1) = span(&b);
++            fcells += (x1.saturating_sub(x0) * y1.saturating_sub(y0)) as u64;
+             for y in y0..y1 {
+                 for x in x0..x1 {
+                     let t = y * tx + x;
+@@ -513,6 +533,7 @@ impl Bins {
+                 }
+             }
+         }
++        prof::count(prof::C_BIN_CELLS_FILL, fcells);
+     }
+ }
+ 
+@@ -802,15 +823,57 @@ impl Scene {
+         self.used
+     }
+ 
++    /// ROUND 3 DIAGNOSTIC: bytes held by each store of the scene (capacity-based where a Vec grows).
++    pub fn ledger(&self) -> Vec<(String, u64)> {
++        let v = |n: &str, b: usize| (n.to_string(), b as u64);
++        let l = &self.layers;
++        let lv_px: usize = l.list.iter().map(|l| l.lv.iter().map(|v| (v.cw * v.ch) as usize).sum::<usize>()).sum();
++        let lv_px_used: usize = l.list.iter().map(|l| l.lv.iter().map(|v| ((v.r[2] - v.r[0]).max(0) * (v.r[3] - v.r[1]).max(0)) as usize).sum::<usize>()).sum();
++        vec![
++            v("arena bytes (columns, lanes, records, tabs)", self.arena.bytes()),
++            v("arena column words used (bytes)", self.used * 4),
++            v("layer pool (Vec len, bytes)", l.pool.len() * 4),
++            v("layer pool (Vec capacity, bytes)", l.pool.capacity() * 4),
++            v("layer pool words in use by allocator (bytes)", l.used * 4),
++            v("layer pool live words (bytes)", l.live * 4),
++            v("layer level capacity px*4 (sum cw*ch)", lv_px * 4),
++            v("layer level window px*4 (sum of level windows)", lv_px_used * 4),
++            v("layers (count)", l.list.len()),
++            v("layer struct bytes (list)", l.list.capacity() * std::mem::size_of::<layer::Layer>()),
++            v("layers.of (by key)", l.of.capacity() * 4),
++            v("bins.list", self.bins.list.capacity() * 4),
++            v("bins.off", self.bins.off.capacity() * 4),
++            v("bins.count", self.bins.count.capacity() * 4),
++            v("bins.floor", self.bins.floor.capacity() * 4),
++            v("bins.mark", self.bins.mark.capacity()),
++            v("win lane", self.win.capacity() * 8),
++            v("cover lane", self.cover.capacity() * 8),
++            v("halo lane", self.halo.capacity() * 8),
++            v("order", self.order.capacity() * 4),
++            v("events/regeo/act scratch", self.events.capacity() * 20 + self.regeo.capacity() * 4 + self.act.capacity() * 4),
++            v("damage bitset (struct, approx)", 8 * self.tx * self.ty / 8 + 64),
++            v("atlas", self.atlas.capacity()),
++            v("tab region (bytes touched, upper bound used)", self.tab_used * 4),
++        ]
++    }
++
+     /// Steps 1 to 3 of a frame: the mask, the window passes, the bins; then the layers' schedule (their
+     /// stages are in `self.plan`: `prepare` runs them). Leaves the output damage in `self.damage`.
+     pub fn update(&mut self, u: &U) -> FrameStats {
+         let mut fs = FrameStats::default();
++        let _glue = prof::scope(prof::U_GLUE);
++        prof::count(prof::C_FRAMES, 1);
+         if !self.tab_jobs.is_empty() {
++            let _g = prof::scope(prof::U_TABS);
+             self.fill_tabs();
+         }
+         let first = self.first;
+-        let mask = if first { u64::MAX } else { self.prev.diff(u, 64) };
++        let mask = if first {
++            u64::MAX
++        } else {
++            let _g = prof::scope(prof::U_DIFF);
++            self.prev.diff(u, 64)
++        };
+         fs.mask = mask;
+         if first {
+             self.damage.all();
+@@ -830,6 +893,8 @@ impl Scene {
+         }
+         if !first {
+             for &z in &touched {
++                let _g = prof::scope(prof::U_REWIN);
++                prof::count(prof::C_REWIN, 1);
+                 let o = self.order[z as usize];
+                 let ci = (o >> IDX_BITS) as usize;
+                 let v = view_of(&self.arena, &self.cols[ci]);
+@@ -858,12 +923,18 @@ impl Scene {
+             fs.recs_visited += only.as_ref().map_or(self.cols[ci].len, Vec::len) as u32;
+             let v = view_of(&self.arena, &self.cols[ci]);
+             act.clear();
+-            moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
++            {
++                let _g = prof::scope(prof::WIN_COL + ci as u16);
++                prof::count(prof::C_WIN_COLS, 1);
++                prof::count(prof::C_WIN_RECS, only.as_ref().map_or(self.cols[ci].len, Vec::len) as u64);
++                moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
++            }
+             std::mem::swap(&mut self.cols[ci].active, &mut act);
+         }
+         // the layers follow their records
+         let lay_on = self.layers.any();
+         let mut relaid = false;
++        let regeo_g = prof::scope(prof::U_REGEO);
+         if lay_on {
+             if self.fx_nocache {
+                 self.layers.list.iter_mut().for_each(|l| l.fresh = true);
+@@ -881,6 +952,7 @@ impl Scene {
+                 self.layers.pool.resize(self.layers.used, 0);
+             }
+         }
++        drop(regeo_g);
+         if moved {
+             self.bins.build(&self.win, &self.cover, &self.halo, &self.layers.of, self.tx, self.ty, self.cut);
+             self.bins_epoch += 1;
+@@ -893,9 +965,17 @@ impl Scene {
+             let mut outs: Vec<[i32; 4]> = Vec::new();
+             for lid in 0..self.layers.list.len() as u32 {
+                 outs.clear();
++                let g = prof::scope(prof::L_SCHED);
++                prof::count(prof::C_SCHED, 1);
++                prof::count(prof::C_EVENTS, events.len() as u64);
++                let w0 = self.plan.work.len();
+                 self.layers.schedule(lid, &events, self.tx, &mut self.plan, |r| outs.push(r));
++                prof::count(prof::C_SCHED_LAYERS_WITH_WORK, (self.plan.work.len() - w0) as u64);
++                drop(g);
++                let _g = prof::scope(prof::L_DAMAGE);
+                 let z = self.layers.list[lid as usize].z;
+                 for r in &outs {
++                    prof::count(prof::C_DAMAGE_ADDS, 1);
+                     self.damage.add_vis([r[0] as i16, r[1] as i16, r[2] as i16, r[3] as i16], z, &self.bins.floor);
+                     events.push((*r, z));
+                 }
+@@ -957,8 +1037,15 @@ impl Scene {
+     fn run_tile(&self, u: &U, ti: u32, t: &mut Tile, pool: &[u32], upto: u32) {
+         let (ox, oy) = ((ti as usize % self.tx) as i32 * 32, (ti as usize / self.tx) as i32 * 32);
+         let (cols, nrows) = ((self.fw as usize - ox as usize).min(32), (self.fh as usize - oy as usize).min(32));
++        let pre = upto != layer::NONE;
++        let setup = prof::scope(if pre { prof::P_SETUP } else { prof::S_SETUP });
+         let (from, to, init, marked) = self.seg(ti, upto);
+         let list = &self.bins.tile(ti as usize)[from..to];
++        prof::count(if pre { prof::C_PRE_TILES } else { prof::C_OUT_TILES }, 1);
++        prof::count(if pre { prof::C_PRE_ENTRIES } else { prof::C_OUT_ENTRIES }, list.len() as u64);
++        if init != layer::NONE {
++            prof::count(if pre { prof::C_PRE_FROM_STORED } else { prof::C_OUT_FROM_STORED }, 1);
++        }
+         let flat = self.flat && !marked && upto == layer::NONE;
+         t.begin(ox, oy, cols, nrows, flat);
+         if flat {
+@@ -970,6 +1057,7 @@ impl Scene {
+             t.load(pool, &self.layers.list[init as usize].lv[0]);
+         }
+         let fx = self.fx(pool);
++        drop(setup);
+         let prof = *PROF_ON.get_or_init(|| std::env::var("BOUGH_PAINT_PROF").is_ok());
+         if prof {
+             self.runs(list, |c, first, zs| {
+@@ -980,7 +1068,10 @@ impl Scene {
+                 p[c].1 += zs.len() as u64;
+             });
+         } else {
+-            self.runs(list, |c, first, zs| (self.cols[c].desc.shade)(self.view(c), zs, first, &self.order, u, t, &fx));
++            self.runs(list, |c, first, zs| {
++                let _g = prof::scope(if pre { prof::PRE_COL } else { prof::OUT_COL } + c as u16);
++                (self.cols[c].desc.shade)(self.view(c), zs, first, &self.order, u, t, &fx)
++            });
+         }
+         t.st.entries += list.len() as u64;
+     }
+@@ -988,6 +1079,7 @@ impl Scene {
+     /// prefix tiles, then its pyramid's dirty blocks level by level. Nothing to do (and nothing done) when
+     /// no layer was reached by a change. Call between `update` and `shade`.
+     pub fn prepare(&mut self, u: &U) -> Stats {
++        let _glue = prof::scope(prof::P_GLUE);
+         if self.plan.work.is_empty() {
+             return Stats::default();
+         }
+@@ -999,10 +1091,13 @@ impl Scene {
+                 let l = &s.layers.list[w.lid as usize];
+                 for &ti in &w.prefix {
+                     s.run_tile(u, ti, &mut t, &pool, w.lid);
++                    let _g = prof::scope(prof::P_STORE);
+                     t.store_layer(&mut pool, &l.lv[0]);
+                 }
+                 for (k, blocks) in &w.blocks {
+                     for &(bx, by) in blocks {
++                        let _g = prof::scope(prof::P_TENT);
++                        prof::count(prof::C_BLOCKS, 1);
+                         layer::down(&mut pool, l, *k, s.fw, s.fh, bx, by);
+                     }
+                 }
+@@ -1031,6 +1126,7 @@ impl Scene {
+     pub unsafe fn shade_into(&self, u: &U, tiles: &[u32], out: *mut u32, stride: usize, t: &mut Tile) {
+         for &ti in tiles {
+             self.run_tile(u, ti, t, &self.layers.pool, layer::NONE);
++            let _g = prof::scope(prof::S_STORE);
+             let (ox, oy) = ((ti as usize % self.tx) * 32, (ti as usize / self.tx) * 32);
+             let at = oy * stride + ox;
+             // SAFETY: the tile's rows [oy, oy + nrows) x columns [ox, ox + cols) lie inside `out` (the
+@@ -1042,6 +1138,8 @@ impl Scene {
+     pub fn shade(&self, u: &U, tiles: &[u32], out: &mut [u32], stride: usize, pool: &Pool, extra: usize) -> Stats {
+         // admission, once per call: rows do not overlap, the surface holds the frame, and the tiles are a
+         // set (bounded, no duplicates), which is the whole proof that workers write disjoint pixels
++        let _glue = prof::scope(prof::S_GLUE);
++        let adm = prof::scope(prof::S_ADMIT);
+         assert!(stride >= self.fw as usize, "stride {stride} is less than the frame's width");
+         assert!(out.len() >= (self.fh as usize - 1) * stride + self.fw as usize);
+         let nt = self.tx * self.ty;
+@@ -1052,6 +1150,7 @@ impl Scene {
+             assert!(seen[t / 64] >> (t % 64) & 1 == 0, "tile {t} is listed twice");
+             seen[t / 64] |= 1 << (t % 64);
+         }
++        drop(adm);
+         let optr = OutPtr(out.as_mut_ptr());
+         let next = AtomicUsize::new(0);
+         const CHUNK: usize = 8;
+diff --git a/crates/bough-paint/src/tile.rs b/crates/bough-paint/src/tile.rs
+index c6322f8fd7..b27b8075a7 100644
+--- a/crates/bough-paint/src/tile.rs
++++ b/crates/bough-paint/src/tile.rs
+@@ -411,6 +411,8 @@ impl Sink for Shade<'_, '_, '_> {
+     fn backdrop(&mut self, c: Cmd) {
+         let (t, fx) = (&mut *self.0, self.1);
+         let Some(lay) = fx.layers.get(self.2 as usize) else { return };
++        let _g = crate::prof::scope(if crate::prof::cur() >= crate::prof::PRE_COL && crate::prof::cur() < crate::prof::OUT_COL { crate::prof::P_BACKDROP } else { crate::prof::S_BACKDROP });
++        crate::prof::count(crate::prof::C_BACKDROP_RUNS, 1);
+         // inside its window: the accumulator flattened (what the layer's level 0 holds there), then the
+         // blurred prefix through the filter under the box's coverage
+         let (x0, x1, mut m) = t.span(&c);
+diff --git a/crates/bough-paint/src/layer.rs b/crates/bough-paint/src/layer.rs
+index aec874acba..035b0201c6 100644
+--- a/crates/bough-paint/src/layer.rs
++++ b/crates/bough-paint/src/layer.rs
+@@ -427,6 +427,7 @@ pub fn down(pool: &mut [u32], l: &Layer, k: u32, fw: u32, fh: u32, bx: i32, by:
+     let (sw, sh) = (x::bd_dim(fw, k - 1), x::bd_dim(fh, k - 1));
+     let bs = bshift(k);
+     let r = cut([bx << bs, by << bs, (bx + 1) << bs, (by + 1) << bs], dst.r);
++    crate::prof::count(crate::prof::C_DOWN_PX, ((r[2] - r[0]).max(0) * (r[3] - r[1]).max(0)) as u64);
+     for y in r[1]..r[3] {
+         for xx in r[0]..r[2] {
+             let mut rows = [Vec4 { x: 0, y: 0, z: 0, w: 0 }; 4];
+diff --git a/crates/bough-paint/src/prof.rs b/crates/bough-paint/src/prof.rs
+new file mode 100644
+index 0000000000..975166c0fd
+--- /dev/null
++++ b/crates/bough-paint/src/prof.rs
+@@ -0,0 +1,247 @@
++//! ROUND 3 DIAGNOSTIC, never production: exact, disjoint instruction attribution of one frame thread.
++//!
++//! A phase stack over `bough_sys::perf::tinstr` (the calling thread's retired instructions). Entering a scope
++//! credits the instructions since the last read to the phase being left; leaving credits them to the scope's
++//! phase and restores the outer one. Every instruction between `begin` and `end` therefore lands in exactly
++//! one phase and the phases sum to the bracket. One counter read costs about 1.4 K instructions on macOS
++//! (`thread_selfcounts`); `calibrate` measures it and `Report::corrected` removes one per interval.
++//! Phases below 32 are named; 32 + c, 64 + c, 96 + c are per-column phases (window pass, prefix shade, output
++//! shade of column c).
++use std::cell::Cell;
++
++pub const N: usize = 160;
++pub const NCNT: usize = 48;
++
++pub const HARNESS: u16 = 0;
++pub const U_GLUE: u16 = 1;
++pub const U_TABS: u16 = 2;
++pub const U_DIFF: u16 = 3;
++pub const U_REWIN: u16 = 4;
++pub const U_REGEO: u16 = 5;
++pub const B_CLEAR: u16 = 6;
++pub const B_COUNT: u16 = 7;
++pub const B_OFFSETS: u16 = 8;
++pub const B_FILL: u16 = 9;
++pub const L_SCHED: u16 = 10;
++pub const L_DAMAGE: u16 = 11;
++pub const P_GLUE: u16 = 12;
++pub const P_SETUP: u16 = 13;
++pub const P_STORE: u16 = 14;
++pub const P_TENT: u16 = 15;
++pub const P_BACKDROP: u16 = 16;
++pub const S_ADMIT: u16 = 17;
++pub const S_SETUP: u16 = 18;
++pub const S_STORE: u16 = 19;
++pub const S_BACKDROP: u16 = 20;
++pub const S_GLUE: u16 = 21;
++pub const H_DAMAGE: u16 = 22;
++pub const H_TURN: u16 = 23;
++pub const CAL: u16 = 31;
++pub const WIN_COL: u16 = 32;
++pub const PRE_COL: u16 = 64;
++pub const OUT_COL: u16 = 96;
++/// 128 + c: shade work of the prefix jobs' own tile-program entries is counted under PRE_COL; 128.. spare.
++
++pub const NAMES: [&str; 32] = [
++    "harness_other",
++    "update_glue",
++    "update_tabs",
++    "update_block_diff",
++    "update_rewin_touched",
++    "update_layer_regeo_repack",
++    "bins_clear_resize",
++    "bins_count_pass",
++    "bins_offsets",
++    "bins_fill_pass",
++    "layer_schedule_dependency",
++    "layer_damage_add_vis_events",
++    "prepare_glue",
++    "prefix_tile_setup(begin,cover,load)",
++    "prefix_store_layer",
++    "tent_pyramid_down",
++    "prefix_backdrop_flatten_sample",
++    "shade_admission_checks",
++    "out_tile_setup(begin,cover,load)",
++    "out_tile_store",
++    "out_backdrop_flatten_sample",
++    "shade_glue",
++    "harness_damage_tiles_clear",
++    "turn_script_set_retarget",
++    "", "", "", "", "", "", "", "calibration",
++];
++
++// Counters (not instructions): exact event counts.
++pub const C_BIN_RECS: usize = 0; // records walked by Bins::build (win.len())
++pub const C_BIN_RECS_LIVE: usize = 1; // records with a non-empty bin window
++pub const C_BIN_CELLS_COUNT: usize = 2; // tile cells touched by the count pass
++pub const C_BIN_CELLS_FILL: usize = 3; // tile cells touched by the fill pass
++pub const C_BIN_LIST: usize = 4; // list length (entries)
++pub const C_BIN_TILES: usize = 5; // tiles
++pub const C_BIN_CALLS: usize = 6;
++pub const C_WIN_RECS: usize = 7; // records visited by window passes
++pub const C_WIN_COLS: usize = 8;
++pub const C_REWIN: usize = 9;
++pub const C_PRE_TILES: usize = 10; // prefix tile programs run
++pub const C_PRE_ENTRIES: usize = 11; // list entries shaded by prefix programs
++pub const C_OUT_TILES: usize = 12;
++pub const C_OUT_ENTRIES: usize = 13;
++pub const C_BLOCKS: usize = 14; // layer::down calls
++pub const C_DOWN_PX: usize = 15; // pixels downsampled
++pub const C_SCHED: usize = 16; // schedule calls
++pub const C_EVENTS: usize = 17; // events seen by schedule loops (sum over layers of events.len())
++pub const C_DAMAGE_ADDS: usize = 18;
++pub const C_FRAMES: usize = 19;
++pub const C_PRE_FROM_STORED: usize = 20; // prefix programs that started from a stored prefix
++pub const C_OUT_FROM_STORED: usize = 21;
++pub const C_BACKDROP_RUNS: usize = 22; // backdrop scopes entered
++pub const C_BACKDROP_PX: usize = 23; // pixels flattened/sampled
++pub const C_PRE_PX: usize = 24; // pixels stored by prefix programs
++pub const C_SCHED_LAYERS_WITH_WORK: usize = 25;
++
++struct St {
++    on: Cell<bool>,
++    last: Cell<u64>,
++    cur: Cell<u16>,
++    acc: [Cell<u64>; N],
++    n: [Cell<u64>; N],
++    cnt: [Cell<u64>; NCNT],
++}
++thread_local! {
++    static S: St = const { St { on: Cell::new(false), last: Cell::new(0), cur: Cell::new(0), acc: [const { Cell::new(0) }; N], n: [const { Cell::new(0) }; N], cnt: [const { Cell::new(0) }; NCNT] } };
++}
++
++#[inline(always)]
++fn rd() -> u64 {
++    bough_sys::perf::tinstr()
++}
++
++pub fn enabled() -> bool {
++    S.with(|s| s.on.get())
++}
++pub fn reset() {
++    S.with(|s| {
++        for i in 0..N {
++            s.acc[i].set(0);
++            s.n[i].set(0);
++        }
++        for i in 0..NCNT {
++            s.cnt[i].set(0);
++        }
++    })
++}
++/// Start bracketing (enables the stack; the current phase is HARNESS).
++pub fn begin() {
++    S.with(|s| {
++        s.on.set(true);
++        s.cur.set(HARNESS);
++        s.last.set(rd());
++    })
++}
++/// Stop bracketing: the last interval goes to the current phase.
++pub fn end() {
++    S.with(|s| {
++        if !s.on.get() {
++            return;
++        }
++        let now = rd();
++        let c = s.cur.get() as usize;
++        s.acc[c].set(s.acc[c].get() + now - s.last.get());
++        s.n[c].set(s.n[c].get() + 1);
++        s.last.set(now);
++        s.on.set(false);
++    })
++}
++#[inline(always)]
++pub fn count(i: usize, v: u64) {
++    S.with(|s| {
++        if s.on.get() {
++            s.cnt[i].set(s.cnt[i].get() + v);
++        }
++    })
++}
++/// The current phase (for scopes whose phase depends on where they are entered).
++#[inline(always)]
++pub fn cur() -> u16 {
++    S.with(|s| s.cur.get())
++}
++
++pub struct Scope(u16);
++/// Enter phase `ph` (to the end of the guard's life). A no-op unless bracketing.
++#[inline(always)]
++pub fn scope(ph: u16) -> Scope {
++    S.with(|s| {
++        if !s.on.get() {
++            return Scope(u16::MAX);
++        }
++        let now = rd();
++        let c = s.cur.get();
++        s.acc[c as usize].set(s.acc[c as usize].get() + now - s.last.get());
++        s.n[c as usize].set(s.n[c as usize].get() + 1);
++        s.last.set(now);
++        s.cur.set(ph);
++        Scope(c)
++    })
++}
++impl Drop for Scope {
++    #[inline(always)]
++    fn drop(&mut self) {
++        if self.0 == u16::MAX {
++            return;
++        }
++        S.with(|s| {
++            let now = rd();
++            let c = s.cur.get() as usize;
++            s.acc[c].set(s.acc[c].get() + now - s.last.get());
++            s.n[c].set(s.n[c].get() + 1);
++            s.last.set(now);
++            s.cur.set(self.0);
++        })
++    }
++}
++
++#[derive(Clone)]
++pub struct Report {
++    pub acc: Vec<u64>,
++    pub n: Vec<u64>,
++    pub cnt: Vec<u64>,
++}
++impl Report {
++    pub fn take() -> Report {
++        S.with(|s| Report { acc: s.acc.iter().map(Cell::get).collect(), n: s.n.iter().map(Cell::get).collect(), cnt: s.cnt.iter().map(Cell::get).collect() })
++    }
++    pub fn add(&mut self, o: &Report) {
++        for i in 0..N {
++            self.acc[i] += o.acc[i];
++            self.n[i] += o.n[i];
++        }
++        for i in 0..NCNT {
++            self.cnt[i] += o.cnt[i];
++        }
++    }
++    pub fn zero() -> Report {
++        Report { acc: vec![0; N], n: vec![0; N], cnt: vec![0; NCNT] }
++    }
++    /// Instructions of phase `i` with `o` removed per interval (the counter's own cost).
++    pub fn corrected(&self, i: usize, o: u64) -> i64 {
++        self.acc[i] as i64 - (o * self.n[i]) as i64
++    }
++    pub fn raw_total(&self) -> u64 {
++        self.acc.iter().sum()
++    }
++    pub fn intervals(&self) -> u64 {
++        self.n.iter().sum()
++    }
++}
++
++/// Instructions one boundary costs, measured with empty scopes (median of intervals).
++pub fn calibrate() -> u64 {
++    reset();
++    begin();
++    for _ in 0..2000 {
++        let _g = scope(CAL);
++    }
++    end();
++    let r = Report::take();
++    reset();
++    r.acc[CAL as usize] / r.n[CAL as usize].max(1)
++}
+diff --git a/crates/bough-paint/examples/fxprof.rs b/crates/bough-paint/examples/fxprof.rs
+new file mode 100644
+index 0000000000..d92d97cad3
+--- /dev/null
++++ b/crates/bough-paint/examples/fxprof.rs
+@@ -0,0 +1,491 @@
++//! The effects and media benchmarks of the style-motion-media lane (card 2026-11-21).
++//!
++//! `fxbench effects [cards]` | `fxbench pane [cards]` (the effects scene with one glass panel and no
++//! endless shader: what one moving thing costs) | `fxbench media [videos]`; `REPS` frames per cell (default 24). One command
++//! runs each cell on the CPU tile kernel (one core) and on Metal (the staged frame), on separate scenes that
++//! receive the same script, and once more on the CPU with `fx_nocache` (every layer redrawn every frame, no
++//! restart from a stored prefix: the compositor that redraws its layers, as the control for what the cache
++//! earns). Instructions are the frame thread's (`bough_mem::pmu`); the frame is `update` + `prepare` +
++//! `shade` (CPU) or `update` + `staged` (Metal). A decoder's work (the synthetic source writing a frame) is
++//! outside the timed region; publishing it (`Scene::set`) is inside. After every cell the retained surface
++//! is compared with a fresh scene's full redraw, and the Metal surface with the CPU's: mismatches are
++//! counted and fail the run.
++//!
++//! The scenes are tall worlds seen through a 1280 x 800 frame (word 1 scrolls): more cards or videos is more
++//! world, as in an application, not more layers on one spot. `effects <n> dense` puts every card in the
++//! frame instead (depth grows with n), reported apart.
++use bough_kernel::cpu::Pool;
++use bough_kernel::scenes::Rng;
++use bough_paint::prof;
++use bough_paint::expr::*;
++use bough_paint::media::Synth;
++use bough_paint::motion::{Response, Spring, SpringX};
++use bough_paint::paint::*;
++use bough_paint::scene::{ColId, FrameStats, Scene};
++use std::time::Instant;
++
++const FW: u32 = 1280;
++const FH: u32 = 800;
++const KS: Response = Response::SNAPPY;
++type Sp = SpringX<852, 21_889>;
++type Pan = Off<Lane, I<Uw<0>>, I<Uw<1>>>;
++type Any = Pm<Rec>;
++/// Hover (word 2 against the record's id) over a theme mix (word 3) of two opaque colours.
++type Themed = SelV<Eq<Uw<2>, Rec>, Pm<K<0xff6b3bff>>, MixV<Pmo<Rec>, Pmo<Rec>, Uw<3>>>;
++type Sprung = Off<Pan, Sp, Sp>;
++type ACard = Over<Over<Shadow<Off<Pan, Ki<0>, Ki<1536>>, Ki<2560>, Ki<6144>, Any, Tab>, Shadow<Off<Pan, Ki<0>, Ki<512>>, Ki<2560>, Ki<1536>, Any, Tab>>, RRect<Pan, Ki<2560>, Themed>>;
++type AGrad = Over<Shadow<Off<Pan, Ki<0>, Ki<1024>>, Ki<2560>, Ki<4096>, Any, Tab>, Grad<Pan, Ki<2560>, I<Rec>, I<Rec>, MixV<Pmo<Rec>, Pmo<Rec>, Uw<3>>, Pmo<Rec>>>;
++type AGlass = Over<Backdrop<Sprung, Ki<3072>, I<Rec>, Filt<K<256>, K<360>, K<256>>>, Border<Sprung, Ki<3072>, Ki<256>, Any, Any>>;
++type AShader = Shader<Pan, Ki<2048>, Rec, Uw<63>, Any, Any>;
++type ADot = RRect<Sprung, Ki<1536>, Any>;
++type AVideo = Video<Pan, Ki<2048>, Rec, Rec, Rec>;
++type ABack = Solid<Lane, MixV<Pmo<Rec>, Pmo<Rec>, Uw<3>>>;
++
++fn q(v: f32) -> i32 {
++    (v * 256.0).round() as i32
++}
++fn ri(v: i32) -> I<Rec> {
++    I { a: Rec(v as u32) }
++}
++fn pm(c: u32) -> Any {
++    Pm { c: Rec(c) }
++}
++fn pan() -> Pan {
++    Off { b: Lane, dx: I { a: Uw }, dy: I { a: Uw } }
++}
++fn sprung(x: &Spring, y: &Spring) -> Sprung {
++    Off { b: pan(), dx: x.operand(), dy: y.operand() }
++}
++fn glass(blur: i32, x: &Spring, y: &Spring) -> AGlass {
++    Over(Backdrop { b: sprung(x, y), r: Ki, blur: ri(blur), f: V3 { a: K, b: K, c: K } }, Border { b: sprung(x, y), r: Ki, w: Ki, c: pm(0x80ff_ffff), fill: pm(0x28ff_ffff) })
++}
++fn dot(c: u32, x: &Spring, y: &Spring) -> ADot {
++    RRect { b: sprung(x, y), r: Ki, c: pm(c) }
++}
++
++/// A scene and what its script moves.
++struct World {
++    s: Scene,
++    glass: ColId<AGlass>,
++    dots: ColId<ADot>,
++    vids: ColId<AVideo>,
++    g_rect: Vec<[i32; 4]>,
++    g_blur: Vec<i32>,
++    g_sx: Vec<Spring>,
++    d_rect: Vec<[i32; 4]>,
++    d_col: Vec<u32>,
++    d_sx: Vec<Spring>,
++    v_rect: Vec<[i32; 4]>,
++    v_dim: Vec<(u32, u32)>,
++    src: Vec<Synth>,
++    /// Ids of a card above every glass panel and of one beneath a glass panel (hover targets).
++    above: u32,
++    beneath: u32,
++}
++
++/// Cards with two shadows or a shadow and a gradient, a glass panel over every twelfth cell, shader
++/// paints, sprung dots. 12 columns; `dense`: every row folded into the frame.
++fn effects(n: usize, dense: bool, lean: bool) -> World {
++    let mut g = Rng(0x5eed_f00d);
++    let mut s = Scene::new(FW, FH, (n * 64).max(1 << 16));
++    let back = s.column::<ABack>(1);
++    let cards = s.column::<ACard>(n + n / 8 + 8);
++    let grads = s.column::<AGrad>(n);
++    let glassc = s.column::<AGlass>(n / 8 + 4);
++    let shaders = s.column::<AShader>(n / 16 + 4);
++    let dots = s.column::<ADot>(n / 4 + 4);
++    let vids = s.column::<AVideo>(1);
++    s.push(back, [0, 0, q(FW as f32), q(FH as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Rec(0xff1a_1410) }, b: Pmo { c: Rec(0xffe8_ecf0) }, t: Uw } });
++    let mut w = World { s, glass: glassc, dots, vids, g_rect: vec![], g_blur: vec![], g_sx: vec![], d_rect: vec![], d_col: vec![], d_sx: vec![], v_rect: vec![], v_dim: vec![], src: vec![], above: 0, beneath: 0 };
++    let rows_in_frame = 8;
++    for i in 0..n {
++        let (cx, row) = (i % 12, i / 12);
++        let row = if dense { row % rows_in_frame } else { row };
++        let (x, y) = (14.0 + cx as f32 * 105.0 + (i % 5) as f32 * 0.25, 14.0 + row as f32 * 98.0);
++        let rect = [q(x), q(y), q(x + 96.0), q(y + 84.0)];
++        let id = i as u32 + 1;
++        if i % 3 == 0 {
++            w.s.push(grads, rect, Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x5000_0000), tab: Tab::NONE }, Grad { b: pan(), r: Ki, dx: ri(400_000), dy: ri(250_000), c: MixV { a: Pmo { c: Rec(g.color(true)) }, b: Pmo { c: Rec(g.color(true)) }, t: Uw }, c2: Pmo { c: Rec(g.color(true)) } }));
++        } else {
++            w.s.push(
++                cards,
++                rect,
++                Over(Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x3800_0000), tab: Tab::NONE }, Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x4000_0000), tab: Tab::NONE }), RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(id) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(g.color(true)) }, b: Pmo { c: Rec(g.color(true)) }, t: Uw } } }),
++            );
++        }
++        if i % 12 == 5 && (!lean || i == 5) {
++            // a glass panel over the two cards to its left and this one (they are beneath it in paint order)
++            let r = [q(x - 150.0), q(y + 20.0), q(x + 60.0), q(y + 70.0)];
++            let (sx, sy) = (Spring::rest(0), Spring::rest(0));
++            let blur = [q(6.0), q(12.0), q(3.0)][w.g_rect.len() % 3];
++            w.s.push(glassc, r, glass(blur, &sx, &sy));
++            (w.g_rect.push(r), w.g_blur.push(blur), w.g_sx.push(sx));
++            // and a chip on top of the panel: something above the glass
++            let chip = 1_000_000 + w.g_rect.len() as u32;
++            w.s.push(
++                cards,
++                [q(x - 110.0), q(y + 30.0), q(x - 50.0), q(y + 60.0)],
++                Over(
++                    Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x3800_0000), tab: Tab::NONE }, Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x4000_0000), tab: Tab::NONE }),
++                    RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(chip) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(g.color(true)) }, b: Pmo { c: Rec(g.color(true)) }, t: Uw } } },
++                ),
++            );
++        }
++        if i % 16 == 9 && !lean && std::env::var("NOSHADER").is_err() {
++            w.s.push(shaders, [q(x + 8.0), q(y + 44.0), q(x + 88.0), q(y + 76.0)], Shader { b: pan(), r: Ki, id: Rec((i / 16 % 2) as u32), now: Uw, c: pm(g.color(true)), c2: pm(g.color(false)) });
++        }
++        if i % 4 == 2 {
++            let r = [q(x + 70.0), q(y + 6.0), q(x + 86.0), q(y + 22.0)];
++            let c = g.color(true);
++            w.s.push(dots, r, dot(c, &Spring::rest(0), &Spring::rest(0)));
++            (w.d_rect.push(r), w.d_col.push(c), w.d_sx.push(Spring::rest(0)));
++        }
++    }
++    // the foreground subject: the last record, a chip on the first glass panel (nothing is above it)
++    w.s.push(
++        cards,
++        [q(430.0), q(40.0), q(490.0), q(70.0)],
++        Over(Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x3800_0000), tab: Tab::NONE }, Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x4000_0000), tab: Tab::NONE }), RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(2_000_000) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(0xff40_80c0) }, b: Pmo { c: Rec(0xffc0_8040) }, t: Uw } } }),
++    );
++    // hover targets: that chip, and the plain card in cell 4 beneath the first panel
++    (w.above, w.beneath) = (2_000_000, 5);
++    w
++}
++
++/// A grid of video tiles (six to a row) over a card backdrop, a glass panel over the second and third
++/// tiles of every other row, and sprung dots.
++fn media(nv: usize) -> World {
++    let mut g = Rng(0x0bad_cafe);
++    let mut s = Scene::new(FW, FH, 1 << 18);
++    s.media = bough_paint::media::Pool::new(nv * 3 * bough_paint::media::frame_words(160, 90) + 4096);
++    let back = s.column::<ABack>(1);
++    let cards = s.column::<ACard>(nv * 2 + 8);
++    let vids = s.column::<AVideo>(nv + 2);
++    let glassc = s.column::<AGlass>(nv / 6 + 4);
++    let dots = s.column::<ADot>(nv + 4);
++    s.push(back, [0, 0, q(FW as f32), q(FH as f32)], Solid { b: Lane, c: MixV { a: Pmo { c: Rec(0xff10_1418) }, b: Pmo { c: Rec(0xffe8_ecf0) }, t: Uw } });
++    let mut w = World { s, glass: glassc, dots, vids, g_rect: vec![], g_blur: vec![], g_sx: vec![], d_rect: vec![], d_col: vec![], d_sx: vec![], v_rect: vec![], v_dim: vec![], src: vec![], above: 0, beneath: 0 };
++    for i in 0..nv {
++        let (cx, row) = (i % 6, i / 6);
++        let (x, y) = (12.0 + cx as f32 * 212.0, 12.0 + row as f32 * 132.0);
++        w.s.push(
++            cards,
++            [q(x - 4.0), q(y - 4.0), q(x + 204.0), q(y + 124.0)],
++            Over(
++                Over(Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x3800_0000), tab: Tab::NONE }, Shadow { b: Off { b: pan(), dx: Ki, dy: Ki }, r: Ki, blur: Ki, c: pm(0x4000_0000), tab: Tab::NONE }),
++                RRect { b: pan(), r: Ki, c: SelV { c: Eq { a: Uw, b: Rec(i as u32 + 1) }, a: Pm { c: K }, b: MixV { a: Pmo { c: Rec(g.color(true)) }, b: Pmo { c: Rec(g.color(true)) }, t: Uw } } },
++            ),
++        );
++        // every third source is a small "animated image" of another size and rate
++        let (vw, vh) = if i % 3 == 2 { (64, 64) } else { (160, 90) };
++        let rect = [q(x), q(y), q(x + 200.0), q(y + 112.5)];
++        let mut src = Synth::new(vw, vh, i as u32);
++        let slot = src.next(&mut w.s.media).expect("media pool");
++        w.s.push(vids, rect, Video { b: pan(), r: Ki, slot: Rec(slot), dims: Rec(vw | vh << 16), op: Rec(if i % 5 == 4 { 26_000 } else { 32_768 }) });
++        (w.v_rect.push(rect), w.v_dim.push((vw, vh)), w.src.push(src));
++        if i % 12 == 2 {
++            let r = [q(x - 120.0), q(y + 30.0), q(x + 110.0), q(y + 96.0)];
++            let (sx, sy) = (Spring::rest(0), Spring::rest(0));
++            w.s.push(glassc, r, glass(q(6.0), &sx, &sy));
++            (w.g_rect.push(r), w.g_blur.push(q(6.0)), w.g_sx.push(sx));
++        }
++        let r = [q(x + 176.0), q(y + 8.0), q(x + 192.0), q(y + 24.0)];
++        let c = g.color(true);
++        w.s.push(dots, r, dot(c, &Spring::rest(0), &Spring::rest(0)));
++        (w.d_rect.push(r), w.d_col.push(c), w.d_sx.push(Spring::rest(0)));
++    }
++    // hover target: the card behind the second video
++    (w.above, w.beneath) = (2, 2);
++    w
++}
++
++/// What one frame of a cell does to the block and the world before it is drawn.
++#[derive(Clone, Copy, PartialEq)]
++enum Cell {
++    Idle,
++    /// One dot's spring retargeted every 40 frames; the clock advances 8 ms a frame.
++    OneSpring,
++    /// Every dot's spring retargeted (staggered) every 40 frames.
++    AllSprings,
++    Scroll,
++    HoverAbove,
++    HoverBeneath,
++    Theme,
++    /// One glass panel's rect moved one pixel a frame over a still scene.
++    GlassMoves,
++    /// One video (not under glass) publishes a frame every frame.
++    OneVideo,
++    /// A video under a glass panel publishes a frame every frame.
++    VideoUnderGlass,
++    /// Every video publishes on every fourth frame (30 fps content at 120 Hz).
++    AllVideos,
++    /// The first glass panel moves a pixel a frame while the videos beneath it play (every fourth frame).
++    GlassOverVideo,
++}
++impl Cell {
++    fn name(self) -> &'static str {
++        match self {
++            Cell::Idle => "idle",
++            Cell::OneSpring => "one spring",
++            Cell::AllSprings => "all springs",
++            Cell::Scroll => "scroll 11 px",
++            Cell::HoverAbove => "hover above glass",
++            Cell::HoverBeneath => "hover beneath glass",
++            Cell::Theme => "theme",
++            Cell::GlassMoves => "glass moves 1 px",
++            Cell::OneVideo => "one video frame",
++            Cell::VideoUnderGlass => "video under glass",
++            Cell::AllVideos => "all videos (every 4th)",
++            Cell::GlassOverVideo => "glass over playing video",
++        }
++    }
++}
++
++/// Frame `f` of `cell`: the untimed part (a decoder's work). Returns the slots to publish.
++fn decode(cell: Cell, f: usize, w: &mut World) -> Vec<(usize, u32)> {
++    let which: Vec<usize> = match cell {
++        Cell::OneVideo => vec![4],
++        Cell::VideoUnderGlass => vec![1],
++        Cell::AllVideos | Cell::GlassOverVideo if f % 4 == 0 => (0..w.src.len()).collect(),
++        _ => vec![],
++    };
++    let mut out = Vec::new();
++    for i in which {
++        if i < w.src.len() {
++            if let Some(slot) = w.src[i].next(&mut w.s.media) {
++                out.push((i, slot));
++            }
++        }
++    }
++    out
++}
++/// Frame `f` of `cell`: the turn (timed).
++fn turn(cell: Cell, f: usize, u: &mut U, w: &mut World, slots: &[(usize, u32)]) {
++    let now = u.w[U_TIME];
++    for &(i, slot) in slots {
++        let (vw, vh) = w.v_dim[i];
++        w.s.set(w.vids, i, w.v_rect[i], Video { b: pan(), r: Ki, slot: Rec(slot), dims: Rec(vw | vh << 16), op: Rec(if i % 5 == 4 { 26_000 } else { 32_768 }) });
++    }
++    match cell {
++        Cell::Idle => {}
++        Cell::OneSpring | Cell::AllSprings => {
++            u.w[U_TIME] = now + 8;
++            if f % 40 == 1 {
++                let n = if cell == Cell::OneSpring { 1 } else { w.d_sx.len() };
++                for i in 0..n.min(w.d_sx.len()) {
++                    let to = if (f / 40 + i) % 2 == 0 { q(-40.0) } else { q(0.0) };
++                    w.d_sx[i].retarget(KS, now + (i as u32 % 16) * 6, to);
++                    w.s.set(w.dots, i, w.d_rect[i], dot(w.d_col[i], &w.d_sx[i], &Spring::rest(0)));
++                }
++            }
++        }
++        Cell::Scroll => u.w[1] = u.w[1].wrapping_sub(11 * 256),
++        Cell::HoverAbove => u.w[2] = if f % 2 == 0 { w.above } else { 0 },
++        Cell::HoverBeneath => u.w[2] = if f % 2 == 0 { w.beneath } else { 0 },
++        Cell::Theme => u.w[3] = if f % 2 == 0 { 32_768 } else { 0 },
++        Cell::GlassMoves | Cell::GlassOverVideo => {
++            if !w.g_rect.is_empty() {
++                let d = if (f / 60) % 2 == 0 { 256 } else { -256 };
++                (w.g_rect[0][0], w.g_rect[0][2]) = (w.g_rect[0][0] + d, w.g_rect[0][2] + d);
++                w.s.set(w.glass, 0, w.g_rect[0], glass(w.g_blur[0], &w.g_sx[0], &Spring::rest(0)));
++            }
++        }
++        Cell::OneVideo | Cell::VideoUnderGlass | Cell::AllVideos => {}
++    }
++}
++
++
++fn med<T: Copy + PartialOrd>(v: &[T]) -> Option<T> {
++    let mut v = v.to_vec();
++    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
++    v.get(v.len() / 2).copied()
++}
++fn load() -> String {
++    let o = std::process::Command::new("uptime").output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
++    o.split("load averages:").nth(1).unwrap_or("?").trim().to_string()
++}
++
++#[derive(Default)]
++struct Res {
++    instr: Vec<u64>,
++    reports: Vec<prof::Report>,
++    tiles: u64,
++    recs: u64,
++    prefix: u64,
++    blocks: u64,
++    frames: u64,
++    ledger: Vec<(String, u64)>,
++    cols: Vec<String>,
++    wall: Vec<f64>,
++    mismatch: usize,
++    active: usize,
++    records: usize,
++    layers: usize,
++}
++
++/// Run `cell` for `reps` measured frames after `warm` on a fresh world (CPU, cached layers, one core).
++/// `profile`: bracket each frame with the phase stack (the instructions then include the counter reads).
++fn run(make: &dyn Fn() -> World, cell: Cell, reps: usize, warm: usize, profile: bool, check: bool, pool: &Pool) -> Res {
++    let mut w = make();
++    let words = (FW * FH) as usize;
++    let mut out = vec![0u32; words];
++    let mut u = U::default();
++    let mut tiles = Vec::new();
++    let mut res = Res::default();
++    for f in 0..warm + reps {
++        let slots = if f == 0 { vec![] } else { decode(cell, f, &mut w) };
++        let measured = f >= warm;
++        let i0 = bough_sys::perf::tinstr();
++        let t0 = Instant::now();
++        if profile && measured {
++            prof::reset();
++            prof::begin();
++        }
++        if f > 0 {
++            let _g = prof::scope(prof::H_TURN);
++            turn(cell, f, &mut u, &mut w, &slots);
++        }
++        let fs: FrameStats = w.s.update(&u);
++        {
++            let _g = prof::scope(prof::H_DAMAGE);
++            w.s.damage.tiles(&mut tiles);
++            w.s.damage.clear();
++        }
++        w.s.prepare(&u);
++        w.s.shade(&u, &tiles, &mut out, FW as usize, pool, 0);
++        if profile && measured {
++            prof::end();
++        }
++        let wall = t0.elapsed().as_secs_f64();
++        let i1 = bough_sys::perf::tinstr();
++        w.s.media.reclaim();
++        if measured {
++            res.instr.push(i1 - i0);
++            res.wall.push(wall);
++            if profile {
++                res.reports.push(prof::Report::take());
++            }
++            res.tiles += tiles.len() as u64;
++            res.recs += fs.recs_visited as u64;
++            res.prefix += fs.prefix_tiles as u64;
++            res.blocks += fs.blocks as u64;
++            res.frames += 1;
++        }
++    }
++    res.active = w.s.active_records();
++    res.records = w.s.records();
++    res.layers = w.s.layers.list.len();
++    res.ledger = w.s.ledger();
++    res.cols = w.s.cols().iter().enumerate().map(|(i, c)| format!("c{i}: records {} (cap {}), words/record {}, layer {}, {}", c.len, c.cap, c.desc.words, c.desc.layer, c.desc.name.rsplit("::").next().unwrap_or("").chars().take(28).collect::<String>())).collect();
++    if check {
++        let mut full = vec![0u32; words];
++        w.s.invalidate();
++        w.s.frame(&u, &mut full, FW as usize, pool, 0);
++        res.mismatch = out.iter().zip(&full).filter(|(a, b)| a != b).count();
++    }
++    res
++}
++
++fn parse_cell(n: &str) -> Cell {
++    match n {
++        "idle" => Cell::Idle,
++        "spring" => Cell::OneSpring,
++        "springs" => Cell::AllSprings,
++        "scroll" => Cell::Scroll,
++        "above" => Cell::HoverAbove,
++        "beneath" => Cell::HoverBeneath,
++        "theme" => Cell::Theme,
++        "glass" => Cell::GlassMoves,
++        _ => panic!("cell {n}"),
++    }
++}
++
++fn phase_name(i: usize, _cols: &[String]) -> String {
++    match i {
++        0..=31 => prof::NAMES[i].to_string(),
++        32..=63 => format!("window_pass[c{}]", i - 32),
++        64..=95 => format!("prefix_shade[c{}]", i - 64),
++        96..=127 => format!("out_shade[c{}]", i - 96),
++        _ => format!("phase{i}"),
++    }
++}
++
++fn main() {
++    let args: Vec<String> = std::env::args().collect();
++    let scene = args.get(1).map(String::as_str).unwrap_or("pane");
++    let n: usize = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(300);
++    let dense = args.get(3).is_some_and(|v| v == "dense");
++    let reps: usize = std::env::var("REPS").ok().and_then(|v| v.parse().ok()).unwrap_or(24);
++    let warm: usize = std::env::var("WARM").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
++    let check = std::env::var("CHECK").is_ok();
++    let cells: Vec<Cell> = std::env::var("CELLS").unwrap_or("idle,spring,above,beneath,glass".into()).split(',').map(parse_cell).collect();
++    let pool = Pool::new(1);
++    let lean = scene == "pane";
++    let make: Box<dyn Fn() -> World> = Box::new(move || effects(n, dense, lean));
++    let o = {
++        let a = prof::calibrate();
++        let b = prof::calibrate();
++        a.min(b)
++    };
++    println!("# fxprof {scene} {n}{}; {FW}x{FH}; reps {reps} warm {warm}; counter-read cost o = {o} instructions/interval; load at start: {}", if dense { " dense" } else { "" }, load());
++    let mut first = true;
++    for cell in cells {
++        let t_start = Instant::now();
++        let off = run(&*make, cell, reps, warm, false, false, &pool);
++        let on = run(&*make, cell, reps, warm, true, check, &pool);
++        let f = on.frames.max(1) as f64;
++        let mut sum = prof::Report::zero();
++        for r in &on.reports {
++            sum.add(r);
++        }
++        let raw_total = sum.raw_total() as f64 / f;
++        let ints = sum.intervals() as f64 / f;
++        let corr_total = raw_total - o as f64 * ints;
++        println!("\n## {scene} {n}{} cell={} | {} records, {} layers, active {} | uninstrumented instr/frame median {:.1}K min {:.1}K mean {:.1}K | tiles {:.1} recs_visited {:.1} prefix {:.1} blocks {:.1} | bracket raw {:.1}K, intervals {:.1}, corrected sum {:.1}K ({:+.2}% vs uninstr median) | wall med {:.0}us | mismatch {}",
++            if dense { " dense" } else { "" }, cell.name(), on.records, on.layers, on.active,
++            med(&off.instr).unwrap_or(0) as f64 / 1e3, off.instr.iter().min().copied().unwrap_or(0) as f64 / 1e3, off.instr.iter().sum::<u64>() as f64 / off.instr.len().max(1) as f64 / 1e3,
++            on.tiles as f64 / f, on.recs as f64 / f, on.prefix as f64 / f, on.blocks as f64 / f,
++            raw_total / 1e3, ints, corr_total / 1e3, (corr_total / med(&off.instr).unwrap_or(1) as f64 - 1.0) * 100.0, med(&on.wall).unwrap_or(0.0) * 1e6, on.mismatch);
++let tag = format!("{scene}\t{n}\t{}\t{}\t{}", if dense { "dense" } else { "sparse" }, if std::env::var("NOSHADER").is_ok() { "noshader" } else { "published" }, cell.name());
++        println!("SUMMARY\t{tag}\t{}\t{}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.0}\t{:.0}\t{:.1}\t{:.1}\t{:.1}\t{:.1}\t{}", on.records, on.layers, on.active, med(&off.instr).unwrap_or(0), off.instr.iter().min().copied().unwrap_or(0), raw_total, ints, corr_total, on.tiles as f64 / f, on.recs as f64 / f, on.prefix as f64 / f, on.blocks as f64 / f, o);
++        for i in 0..prof::N {
++            if sum.n[i] > 0 {
++                println!("PHASE\t{tag}\t{i}\t{}\t{:.0}\t{:.0}\t{:.1}", phase_name(i, &on.cols), sum.corrected(i, o) as f64 / f, sum.acc[i] as f64 / f, sum.n[i] as f64 / f);
++            }
++        }
++                println!("phase\tcorrected_instr_per_frame\t%_of_corrected\traw_instr_per_frame\tintervals_per_frame");
++        let mut rows: Vec<(usize, f64)> = (0..prof::N).filter(|&i| sum.n[i] > 0).map(|i| (i, sum.corrected(i, o) as f64 / f)).collect();
++        rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
++        for (i, c) in rows {
++            println!("{}\t{:.0}\t{:.2}\t{:.0}\t{:.1}", phase_name(i, &on.cols), c, c / corr_total * 100.0, sum.acc[i] as f64 / f, sum.n[i] as f64 / f);
++        }
++        let names = ["bin_calls", "bin_records_walked", "bin_records_live", "bin_cells_count_pass", "bin_cells_fill_pass", "bin_list_entries", "bin_tiles", "window_records", "window_columns", "rewin_records", "prefix_tiles", "prefix_entries", "out_tiles", "out_entries", "tent_blocks", "tent_px", "sched_calls", "sched_events_seen", "damage_adds", "frames", "prefix_from_stored", "out_from_stored", "backdrop_runs", "sched_layers_with_work"];
++        let ix = [prof::C_BIN_CALLS, prof::C_BIN_RECS, prof::C_BIN_RECS_LIVE, prof::C_BIN_CELLS_COUNT, prof::C_BIN_CELLS_FILL, prof::C_BIN_LIST, prof::C_BIN_TILES, prof::C_WIN_RECS, prof::C_WIN_COLS, prof::C_REWIN, prof::C_PRE_TILES, prof::C_PRE_ENTRIES, prof::C_OUT_TILES, prof::C_OUT_ENTRIES, prof::C_BLOCKS, prof::C_DOWN_PX, prof::C_SCHED, prof::C_EVENTS, prof::C_DAMAGE_ADDS, prof::C_FRAMES, prof::C_PRE_FROM_STORED, prof::C_OUT_FROM_STORED, prof::C_BACKDROP_RUNS, prof::C_SCHED_LAYERS_WITH_WORK];
++for (nm, i) in names.iter().zip(ix) {
++            println!("COUNT\t{tag}\t{nm}\t{:.2}", sum.cnt[i] as f64 / f);
++        }
++        print!("counters/frame:");
++        for (nm, i) in names.iter().zip(ix) {
++            print!(" {nm}={:.1}", sum.cnt[i] as f64 / f);
++        }
++        println!();
++        if first {
++            first = false;
++            println!("columns:");
++            for c in &on.cols {
++                println!("  {c}");
++            }
++            for (k, v) in &on.ledger {
++                println!("LEDGER\t{tag}\t{k}\t{v}");
++            }
++            for (i, c) in on.cols.iter().enumerate() {
++                println!("COLUMN\t{tag}\t{i}\t{c}");
++            }
++            println!("ledger (bytes):");
++            for (k, v) in &on.ledger {
++                println!("  {k}\t{v}");
++            }
++        }
++        println!("# cell wall {:.1}s; load {}", t_start.elapsed().as_secs_f64(), load());
++    }
++}

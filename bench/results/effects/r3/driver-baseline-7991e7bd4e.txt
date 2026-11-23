@@ -1,0 +1,40 @@
+# Stock wave3 7991e7bd4e. Both Driver probes fail.
+running 2 tests
+test gpu::probe_driver_cpu_path_on_layers ... probe driver cpu-only: frame 0: driver surface differs from fresh in 10382 words; first at (113,14) tile (3,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 1: driver surface differs from fresh in 9905 words; first at (84,5) tile (2,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 2: driver surface differs from fresh in 9264 words; first at (51,9) tile (1,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 3: driver surface differs from fresh in 9652 words; first at (72,0) tile (2,0): 00000000 vs fresh 01010001
+probe driver cpu-only: frame 4: driver surface differs from fresh in 9210 words; first at (81,7) tile (2,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 5: driver surface differs from fresh in 10627 words; first at (68,7) tile (2,0): 40222711 vs fresh 40232711
+probe driver cpu-only: frame 6: driver surface differs from fresh in 10455 words; first at (66,0) tile (2,0): 00000000 vs fresh 05030102
+probe driver cpu-only: frame 7: driver surface differs from fresh in 19711 words; first at (45,0) tile (1,0): 40222711 vs fresh 40232711
+probe driver cpu-only: frame 8: driver surface differs from fresh in 19685 words; first at (48,0) tile (1,0): 40222711 vs fresh 40232711
+probe driver cpu-only: frame 9: driver surface differs from fresh in 7106 words; first at (70,7) tile (2,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 10: driver surface differs from fresh in 7729 words; first at (112,24) tile (3,0): cf86494e vs fresh d086494e
+probe driver cpu-only: frame 11: driver surface differs from fresh in 9007 words; first at (68,0) tile (2,0): 40222711 vs fresh 41232712
+probe driver cpu-only: frame 12: driver surface differs from fresh in 9178 words; first at (66,0) tile (2,0): 40222711 vs fresh 41232711
+probe driver cpu-only: frame 13: driver surface differs from fresh in 9130 words; first at (66,0) tile (2,0): 40222711 vs fresh 41232711
+
+thread 'gpu::probe_driver_cpu_path_on_layers' (12880141) panicked at crates/bough-paint/tests/solfx_layer_mutants.rs:695:9:
+assertion `left == right` failed: probe driver cpu-only: the driver's frames differ from fresh
+  left: 14
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test gpu::probe_driver_gpu_path_on_layers ...
+thread 'gpu::probe_driver_gpu_path_on_layers' (12880193) panicked at crates/bough-paint/src/metal.rs:829:9:
+a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+
+thread 'gpu::probe_driver_gpu_path_on_layers' (12880193) panicked at crates/bough-paint/tests/solfx_layer_mutants.rs:693:13:
+probe driver gpu-resident: Driver::frame panicked: a scene with layers runs the staged frame (`Gpu::staged`): the resident window pass and bins do not schedule layers
+FAILED
+
+failures:
+
+failures:
+    gpu::probe_driver_cpu_path_on_layers
+    gpu::probe_driver_gpu_path_on_layers
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.33s
+
+driver baseline exit=101

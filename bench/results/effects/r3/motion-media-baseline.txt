@@ -1,0 +1,83 @@
+# wave3 7991e7bd4e, release, CPU
+running 11 tests
+test a_long_critically_damped_move_starts_at_rest_and_follows_the_ode ... critical 100 px: first-ms travel 0.012 px (ODE 0.008), worst error vs ODE 0.03 px, b0 -341600 a0 -25600
+critical 400 px: first-ms travel 0.035 px (ODE 0.034), worst error vs ODE 0.13 px, b0 -1366400 a0 -102400
+critical 700 px: first-ms travel 1.168 px (ODE 0.059), worst error vs ODE 31.50 px, b0 -2097151 a0 -179200
+critical 1500 px: first-ms travel 11.520 px (ODE 0.128), worst error vs ODE 325.59 px, b0 -2097151 a0 -384000
+
+thread 'a_long_critically_damped_move_starts_at_rest_and_follows_the_ode' panicked at crates/bough-paint/tests/solfx_motion_media.rs:265:5:
+[
+    "700 px: first-ms travel 1.17 px (ODE 0.059), worst error 31.50 px, b0 -2097151",
+    "1500 px: first-ms travel 11.52 px (ODE 0.128), worst error 325.59 px, b0 -2097151",
+]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test a_resolution_change_does_not_strand_a_pool_of_free_slots ...
+thread 'a_resolution_change_does_not_strand_a_pool_of_free_slots' panicked at crates/bough-paint/tests/solfx_motion_media.rs:442:5:
+pool too small to be a test (3)
+FAILED
+test a_second_retarget_in_the_same_tick_keeps_the_momentum ... same-tick retarget (170, 26) at peak tick 77: first-retarget velocity 359.50, then single 346.00 vs double -12.50 Q8/ms (peak 1.44)
+
+thread 'a_second_retarget_in_the_same_tick_keeps_the_momentum' panicked at crates/bough-paint/tests/solfx_motion_media.rs:138:9:
+(170, 26): a second retarget at tick 77 lost the momentum: velocity -12.50 instead of 346.00 Q8/tick, value 12 ticks on 19598 vs 23375 (Q8)
+FAILED
+test a_slot_a_record_still_names_is_never_reused_after_a_publish_storm ...
+thread 'a_slot_a_record_still_names_is_never_reused_after_a_publish_storm' panicked at crates/bough-paint/tests/solfx_motion_media.rs:408:5:
+slot 0 (still named by the record) was handed out again (true); 2291 pixels of the video changed without a record write (slots handed out: [0, 1160, 0, 1160])
+FAILED
+test a_staggered_retarget_at_rest_holds_the_old_value_until_it_starts ... ok
+test a_storm_between_draws_holds_a_bounded_number_of_slots ...
+thread 'a_storm_between_draws_holds_a_bounded_number_of_slots' panicked at crates/bough-paint/tests/solfx_motion_media.rs:465:5:
+a 50-frame storm per draw grew the pool to 51 slots (a shown frame, a pending one and one being written need 3)
+FAILED
+test an_abandoned_lease_is_not_lost_for_good ...
+thread 'an_abandoned_lease_is_not_lost_for_good' panicked at crates/bough-paint/tests/solfx_motion_media.rs:427:5:
+assertion `left == right` failed: the pool ran dry after 3 abandoned leases with nothing shown (3 slots, 3480 words used)
+  left: 3
+ right: 1000
+FAILED
+test every_frame_of_a_retargeted_spring_equals_a_fresh_scene_and_settling_stops_the_scene ... case 0 (170, 26): 160 frames, 139 while moving, 18 landed at rest
+case 1 (120, 8): 160 frames, 133 while moving, 24 landed at rest
+case 2 (90, 30): 160 frames, 139 while moving, 18 landed at rest
+ok
+test retarget_at_rest_is_exact_around_the_settle_tick ... ok
+test retarget_follows_the_ode_from_the_true_state_every_tick ...
+thread 'retarget_follows_the_ode_from_the_true_state_every_tick' panicked at crates/bough-paint/tests/solfx_motion_media.rs:184:5:
+5 retargets left the ODE: [
+    "(20000, 200) retarget at 5 ms (speed 17456 px/s): 5.44 px from the ODE",
+    "(20000, 200) retarget at 7 ms (speed 19200 px/s): 3.86 px from the ODE",
+    "(20000, 200) retarget at 9 ms (speed 19111 px/s): 2.52 px from the ODE",
+    "(20000, 200) retarget at 11 ms (speed 17798 px/s): 1.46 px from the ODE",
+    "(20000, 200) retarget at 8 ms (speed 19344 px/s): 3.16 px from the ODE",
+]
+FAILED
+test spring_velocity_is_right_at_every_tick_and_at_the_peak ... velocity (170, 26): dur 790 ms, true peak 1442 px/s at 77 ms, model peak 1438, worst error 49.5 px/s (3.43 % of peak) at 789 ms
+velocity (120, 8): dur 2030 ms, true peak 2055 px/s at 117 ms, model peak 2055, worst error 9.1 px/s (0.44 % of peak) at 1 ms
+velocity (300, 40): dur 849 ms, true peak 1732 px/s at 55 ms, model peak 1733, worst error 42.0 px/s (2.43 % of peak) at 848 ms
+velocity (90, 30): dur 2374 ms, true peak 751 px/s at 89 ms, model peak 753, worst error 54.3 px/s (7.23 % of peak) at 2373 ms
+velocity (170, 26.0768): dur 790 ms, true peak 1439 px/s at 77 ms, model peak 1438, worst error 49.4 px/s (3.43 % of peak) at 789 ms
+velocity (1500, 60): dur 287 ms, true peak 5023 px/s at 28 ms, model peak 5003, worst error 61.2 px/s (1.22 % of peak) at 5 ms
+velocity (20000, 200): dur 85 ms, true peak 19344 px/s at 8 ms, model peak 18321, worst error 1996.7 px/s (10.32 % of peak) at 4 ms
+
+thread 'spring_velocity_is_right_at_every_tick_and_at_the_peak' panicked at crates/bough-paint/tests/solfx_motion_media.rs:106:5:
+velocity wrong: ["(20000, 200): worst 1996.7 px/s of peak 19344 at 4 ms"]
+FAILED
+
+failures:
+
+failures:
+    a_long_critically_damped_move_starts_at_rest_and_follows_the_ode
+    a_resolution_change_does_not_strand_a_pool_of_free_slots
+    a_second_retarget_in_the_same_tick_keeps_the_momentum
+    a_slot_a_record_still_names_is_never_reused_after_a_publish_storm
+    a_storm_between_draws_holds_a_bounded_number_of_slots
+    an_abandoned_lease_is_not_lost_for_good
+    retarget_follows_the_ode_from_the_true_state_every_tick
+    spring_velocity_is_right_at_every_tick_and_at_the_peak
+
+test result: FAILED. 3 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+
+error: test failed, to rerun pass `-p bough-paint --test solfx_motion_media`
+error: 1 target failed:
+    `-p bough-paint --test solfx_motion_media`
+exit 101

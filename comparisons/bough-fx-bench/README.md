@@ -55,3 +55,13 @@ python3 comparisons/bough-fx-bench/scripts/matrix.py BASELINE_DIR WAVE3_DIR runt
 ```
 
 The revision builder copies the same harness to an archive of each production revision and builds into separate subdirectories of `CARGO_TARGET_DIR`. Set it to the revision's artifact subdirectory while running `run.sh` or pass the actual typed-core executable to `run-revision-core.sh`. The reference suite executes 240 active input steps and checks independently rendered full frames. zgui's PNG variant uses the native loader and sets the headless refresh to 120 Hz. The zgx video adapter uses the staged fixture's NV12 input pattern, converted to RGBA before updating its image leaf. Each adapter records submitted or requested frame counts. The rendering paths, cadence, animation semantics and video representations have different measured scopes. See the report's validity column before using any timing comparison.
+
+## Round 3 independent replay
+
+Use the merged `7991e7bd4e` source as the replay pin. The reviewed `bough-paint` workspace comes from a Git archive of that revision. `bench/fx/run.sh` runs the paint lane's stock P1–P8 examples. The replay applies the shared lock to the script's build, and the script itself acquires it around each run. `paint-thresholds.py` reads the stock effects and pbench logs alongside a P7 pbench baseline from `71ee3be0aa`.
+
+The direct Gaussian step and layer-storage fixture lives in `references/fx-gaussian.rs`. Copy it to `crates/bough-paint/tests/solfx_gaussian.rs` inside the pinned archive, then run `cargo test --offline --release -p bough-paint --test solfx_gaussian -- --nocapture`. The reference is an independent discrete Gaussian convolution in byte space. It prints maximum and RMS step-region error and the logical and reserved bytes of four panes.
+
+`run-startup-processes.sh` takes `facade`, `core`, `zgui` or `zgx` plus an output directory. The default is 240 warm-cache invocations per scene size. The façade timer starts at exec. The core and reference timers start inside each new process. `matrix.py` accepts `--core` with the output of `run-revision-core.sh` and `--startup` with those process capture files.
+
+The independent retained-layer and spring/video probes are `references/fx-layers.rs` and `references/fx-motion-media.rs`. Copy them into the pinned archive as `crates/bough-paint/tests/solfx_layers.rs` and `crates/bough-paint/tests/solfx_motion_media.rs`. Run each with `cargo test --offline --release -p bough-paint --test NAME -- --nocapture`. These review probes include defects expected to fail on the baseline. Use their focused test names to verify the candidate patches in a separate archive.

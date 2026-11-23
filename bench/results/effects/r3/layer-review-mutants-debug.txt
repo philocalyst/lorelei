@@ -1,0 +1,28 @@
+# Independent debug replay at wave3 7991e7bd4e with the three layer negative controls.
+
+== mutant_layer_dilate
+test frame_sizes_equal_fresh ... FAILED
+test retained_walk_equals_fresh ... FAILED
+test sweep_content_beneath_over_every_edge_pixel has been running for over 60 seconds
+test sweep_content_beneath_over_every_edge_pixel ... FAILED
+solfx frame sizes: 540 steps (38 idle, 180 against the specification); layer work 4090 prefix tiles, 13876 pyramid blocks; output 2990 of 9309 tiles; 127 failing steps
+solfx walk 300x230: 180 steps (10 idle, 60 against the specification); layer work 2360 prefix tiles, 6959 pyramid blocks; output 2002 of 14160 tiles; 23 failing steps
+sweep spot beneath: 2412 frames, 48665 prefix tiles, 86520 blocks, output 56887 of 135072 tiles, 911 failing
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 10 filtered out; finished in 136.53s
+== mutant_layer_event
+test frame_sizes_equal_fresh ... FAILED
+test retained_walk_equals_fresh ... FAILED
+test sweep_content_beneath_over_every_edge_pixel has been running for over 60 seconds
+test sweep_content_beneath_over_every_edge_pixel ... FAILED
+solfx frame sizes: 540 steps (38 idle, 180 against the specification); layer work 1692 prefix tiles, 6115 pyramid blocks; output 1814 of 9309 tiles; 386 failing steps
+solfx walk 300x230: 180 steps (10 idle, 60 against the specification); layer work 1583 prefix tiles, 5236 pyramid blocks; output 1520 of 14160 tiles; 103 failing steps
+sweep spot beneath: 2412 frames, 1049 prefix tiles, 2367 blocks, output 41400 of 135072 tiles, 2319 failing
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 10 filtered out; finished in 90.70s
+== mutant_layer_weights
+test frame_sizes_equal_fresh ... FAILED
+test retained_walk_equals_fresh ... FAILED
+test sweep_content_beneath_over_every_edge_pixel has been running for over 60 seconds
+test sweep_content_beneath_over_every_edge_pixel ... ok
+solfx frame sizes: 540 steps (38 idle, 180 against the specification); layer work 4329 prefix tiles, 24496 pyramid blocks; output 4451 of 9309 tiles; 154 failing steps
+solfx walk 300x230: 180 steps (10 idle, 60 against the specification); layer work 2478 prefix tiles, 9719 pyramid blocks; output 2622 of 14160 tiles; 58 failing steps
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 10 filtered out; finished in 142.61s
