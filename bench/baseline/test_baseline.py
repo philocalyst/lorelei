@@ -87,6 +87,8 @@ class OperationsTests(unittest.TestCase):
                     good.replace("60/480", "481/480", 1),                       # same above total
                     good.replace("0/420 0/428", "0/420", 1),                    # a level missing
                     good.replace("1/341", "1/x", 1),                            # garbage
+                    good.replace("1/341", "400/341", 1),                        # more rank levels than slots
+                    good.replace("\t57556\t0\t", "\t57556\t0.5\t", 1),            # a fractional record count
                     good.replace("\t392\t", "\t-\t", 1),                        # a metric that is not a number
                     good.replace("\t0\t-\t", "\t3\t-\t", 1),                     # a pixel mismatch
                     good.replace("ranks/slots", "ranks"),                       # a changed header

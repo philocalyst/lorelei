@@ -223,6 +223,8 @@ def staged_paint(stdout, args, env):
             raise ValueError(f"unexpected or duplicate staged-paint operation: {key}")
         if any(not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", row[name]) for name in FX_METRICS):
             raise ValueError(f"invalid staged-paint metric in {key}")
+        # a count of records, not a per-frame mean
+        unsigned(row["active"])
         # The composite diagnostics are checked and left in the raw log, except the chooser's split.
         if (row["turn_med"] == "-") != (executor == "mixed"):
             raise ValueError(f"staged-paint turn counter present or absent unexpectedly in {key}")
@@ -237,7 +239,8 @@ def staged_paint(stdout, args, env):
             raise ValueError(f"staged-paint block levels malformed in {key}")
         for level in levels:
             fraction(level, 2)
-        fraction(row["ranks/slots"], 2, ordered=False)
+        # the resident plan's rank levels and slots: every level holds a slot
+        fraction(row["ranks/slots"], 2)
         instructions = int(1000 * Decimal(row["instr_med_K"]))
         if instructions == 0:
             raise ValueError("staged-paint instruction counter unavailable")
