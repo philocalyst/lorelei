@@ -215,6 +215,10 @@ impl Filter {
     /// The predicate changed. `candidates` is every id that may pass now, ascending (an index's answer, the
     /// current members when the new predicate implies the old, or the whole table). If the table has edits the output has
     /// not taken in (call `sync` first), the candidates are not trusted and the output is recomputed.
+    ///
+    /// Panic safety: the predicate runs while the new members are built in scratch, and the output is committed
+    /// only after it returns, so a predicate that panics leaves the previous result (as `narrow`). A change that
+    /// writes the output before the predicate has finished must first set `seen = u64::MAX`, as `rebuild` does.
     pub fn refilter<T>(
         &mut self,
         t: &Table<T>,
@@ -241,6 +245,8 @@ impl Filter {
     /// Narrow: the new predicate passes nothing the old one refused, so only members are asked. (What
     /// `refilter` with the members as the candidates does, without copying them first: a list of the
     /// members that pass is begun only at the first that fails, and none when all pass.)
+    ///
+    /// Panic safety: as `refilter` (scratch first, committed after the predicate returns).
     pub fn narrow<T>(&mut self, t: &Table<T>, mut pred: impl FnMut(&T) -> bool) {
         if self.seen != t.log.ver() {
             // as `refilter`: the members were chosen without the table's latest edits
