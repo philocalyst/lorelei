@@ -350,9 +350,7 @@ pub(crate) fn recipe_of<F: Copy>(f: F) -> Recipe {
 /// it reaches the record through the wire. Equal identity means the installed wire is the one this
 /// description would install, so the element may be stepped over.
 #[inline(always)]
-pub(crate) fn seal_wire<S: crate::seal::Sealer>(s: &mut S, tag: u32, off: u32, recipe: Option<[u8; 16]>) {
-    // a recipe with padding cannot be compared as bytes: the element is not sealed
-    let Some(recipe) = recipe else { return s.refuse() };
+pub(crate) fn seal_wire<S: crate::seal::Sealer>(s: &mut S, tag: u32, off: u32, recipe: [u8; 16]) {
     s.word(tag);
     s.word(off);
     for w in recipe.chunks_exact(4) {
@@ -370,7 +368,7 @@ impl<'a, T: Clone + 'static, V> IntoProp<T, V> for Wired<'a, T, V> {
     }
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x5749_5245, self.off, Some([0; 16]))
+        seal_wire(s, 0x5749_5245, self.off, [0; 16])
     }
 }
 
@@ -388,7 +386,7 @@ where
     }
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x574d_4150, self.w.off, recipe_of(self.f).bytes::<F>())
+        seal_wire(s, 0x574d_4150, self.w.off, recipe_of(self.f).bytes())
     }
 }
 
@@ -842,7 +840,7 @@ impl<'a, V> TextSrc<V> for Wired<'a, String, V> {
     }
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x5754_5854, self.off, Some([0; 16]))
+        seal_wire(s, 0x5754_5854, self.off, [0; 16])
     }
 }
 impl<'a, T: 'static, V, F: Fn(&T) -> String + Copy + 'static> TextSrc<V> for WMap<'a, T, V, F> {
@@ -856,7 +854,7 @@ impl<'a, T: 'static, V, F: Fn(&T) -> String + Copy + 'static> TextSrc<V> for WMa
     }
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x5754_4d50, self.w.off, recipe_of(self.f).bytes::<F>())
+        seal_wire(s, 0x5754_4d50, self.w.off, recipe_of(self.f).bytes())
     }
 }
 impl<'a, T: 'static, V, F: Fn(&T) -> f32 + Copy + 'static> TextSrc<V> for Num<'a, T, V, F> {
@@ -877,7 +875,7 @@ impl<'a, T: 'static, V, F: Fn(&T) -> f32 + Copy + 'static> TextSrc<V> for Num<'a
         if n == usize::MAX { slow } else { bough_text::numeric::as_str(&buf, n).to_owned() }
     }    #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x574e_554d, self.w.off, recipe_of(self.f).bytes::<F>());
+        seal_wire(s, 0x574e_554d, self.w.off, recipe_of(self.f).bytes());
         s.bytes(&self.fmt.identity());
     }
 }

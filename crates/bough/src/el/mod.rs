@@ -411,9 +411,9 @@ impl<'f> El<'f> {
         if matches!(k, K_GROUP | K_FRAG) {
             wrong_kind("a route", k, K_BOX)
         }
-        let RouteParts { tramp, recipe, exact, recv, recv_name } = r.lower(Seal);
+        let RouteParts { tramp, recipe, recv, recv_name } = r.lower(Seal);
         let x = self.ext();
-        x.acts = arena::put(ActReq { next: x.acts, tramp, recipe, exact, recv, recv_name, key, kind });
+        x.acts = arena::put(ActReq { next: x.acts, tramp, recipe, recv, recv_name, key, kind });
         self
     }
 }
@@ -707,7 +707,6 @@ pub trait Route<M>: Sized {
 pub struct RouteParts {
     tramp: RouteFn,
     recipe: crate::rt::Recipe,
-    exact: bool,
     recv: TypeId,
     recv_name: &'static str,
 }
@@ -715,7 +714,7 @@ pub struct RouteParts {
 #[inline]
 fn parts<R: 'static, F: Copy>(tramp: RouteFn, f: F) -> RouteParts {
     const { assert!(size_of::<F>() <= 16, "a route captures at most 16 bytes: bind a value with `Owner::method.with(value)`, or keep it in the view's state") };
-    RouteParts { tramp, recipe: crate::rt::Recipe::of(f), exact: crate::reflect::padding_free::<F>(), recv: TypeId::of::<R>(), recv_name: std::any::type_name::<R>() }
+    RouteParts { tramp, recipe: crate::rt::Recipe::of(f), recv: TypeId::of::<R>(), recv_name: std::any::type_name::<R>() }
 }
 
 impl<R: 'static, F: Fn(&mut R) + Copy + 'static> Route<fn(&mut R)> for F {
@@ -761,8 +760,8 @@ impl<R: 'static, A: Copy + 'static, F: Fn(&mut R, A) + Copy + 'static> Route<(fn
     #[inline]
     #[allow(private_interfaces)]
     fn lower(self, _: Seal) -> RouteParts {
-        // the recipe is the `Bound` itself (not a closure over it): a method is zero-sized, so it compares as
-        // bytes exactly when the bound value is padding-free
+        // the recipe is the `Bound` itself (not a closure over it): a method is zero-sized, so the bytes are
+        // the bound value's
         parts::<R, Bound<F, A>>(call_bound::<R, F, A>, self)
     }
 }

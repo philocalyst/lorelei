@@ -332,8 +332,9 @@ impl Node {
 pub type PatchFn = unsafe fn(&mut Rt, &Wire, *const u8, *const u8);
 
 /// The bytes a wire or a route carries with its function: a closure's captures (at most 16 bytes), an index.
-/// What was written may have padding, so the bytes are never read as `u8`s, only as the type written
-/// (`read`), or as bytes where the writer's type is known to be padding-free (`bytes`).
+/// What is written may have padding; every write ends with a freeze (`with_at`), so all sixteen bytes are
+/// initialised and may be compared as bytes (`bytes`). Two equal values whose padding differs compare
+/// unequal: a seal then misses and the element is described again, which is only slower.
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct Recipe(std::mem::MaybeUninit<[u8; 16]>);
@@ -352,6 +353,7 @@ impl Recipe {
         assert!(at + size_of::<F>() <= 16, "a recipe holds at most 16 bytes of captures");
         // SAFETY: in bounds (asserted); an unaligned write into the recipe's storage.
         unsafe { std::ptr::write_unaligned((self.0.as_mut_ptr() as *mut u8).add(at) as *mut F, f) };
+        freeze(&mut self.0);
         self
     }
     #[inline(always)]
@@ -367,23 +369,21 @@ impl Recipe {
         // SAFETY: the function contract.
         unsafe { std::ptr::read_unaligned(self.as_ptr().add(at) as *const F) }
     }
-    /// The bytes, without the proof `bytes` makes.
-    ///
-    /// # Safety
-    /// Everything written into the recipe was padding-free (`reflect::padding_free` of each type written).
+    /// The sixteen bytes (initialised: `with_at` freezes what it writes).
     #[inline(always)]
-    pub unsafe fn bytes_unchecked(&self) -> [u8; 16] {
-        // SAFETY: the function contract.
+    pub fn bytes(&self) -> [u8; 16] {
+        // SAFETY: `NONE` is zeros and every write is followed by `freeze`.
         unsafe { self.0.assume_init() }
     }
-    /// The bytes, when everything written into the recipe was padding-free (`reflect::padding_free`), else
-    /// `None`. `F` names what was written at 0 (the rest is zeros or more of the same rule).
-    #[inline(always)]
-    pub fn bytes<F>(&self) -> Option<[u8; 16]> {
-        // SAFETY: the recipe started as zeros and only an `F` was written over them; with no padding in `F`
-        // every byte is initialised.
-        crate::reflect::padding_free::<F>().then(|| unsafe { self.0.assume_init() })
-    }
+}
+
+/// Make every byte of `r` initialised, keeping what memory holds. The asm does nothing, but the compiler must
+/// assume it may have written any bytes through the pointer, so afterwards no byte is uninitialised (the
+/// padding of what was written becomes some fixed bytes): the inline-asm freeze.
+#[inline(always)]
+fn freeze(r: &mut std::mem::MaybeUninit<[u8; 16]>) {
+    // SAFETY: the template is empty: it reads and writes nothing, touches no stack and no flags.
+    unsafe { std::arch::asm!("/* {0} */", in(reg) r.as_mut_ptr(), options(nostack, preserves_flags)) };
 }
 
 #[derive(Clone, Copy)]

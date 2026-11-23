@@ -51,18 +51,13 @@ fn seal_req<S: Sealer>(s: &mut S, w: *const WireReq) {
     }
     // SAFETY: as `wire`.
     let w = unsafe { &*w };
-    if !w.exact {
-        // a closure whose captures may have padding: its bytes cannot be compared, so the element is not sealed
-        return s.refuse();
-    }
     s.word(0x5749_5245);
     let (a, p) = (w.head as usize as u64, w.patch as usize as u64);
     s.word(a as u32);
     s.word((a >> 32) as u32);
     s.word(p as u32);
     s.word((p >> 32) as u32);
-    // SAFETY: `exact`: what was written is padding-free.
-    for c in unsafe { w.recipe.bytes_unchecked() }.chunks_exact(4) {
+    for c in w.recipe.bytes().chunks_exact(4) {
         s.word(u32::from_ne_bytes([c[0], c[1], c[2], c[3]]));
     }
 }
@@ -652,15 +647,11 @@ fn seal_at<S: Sealer, const LEAF: bool>(n: &DNode, s: &mut S) {
             s.paint(x.hover);
         }
         for r in acts(x) {
-            if !r.exact {
-                return s.refuse();
-            }
             s.word(r.kind as u32 | key_code(r.key) << 8);
             let t = r.tramp as usize as u64;
             s.word(t as u32);
             s.word((t >> 32) as u32);
-            // SAFETY: `exact`.
-            for c in unsafe { r.recipe.bytes_unchecked() }.chunks_exact(4) {
+            for c in r.recipe.bytes().chunks_exact(4) {
                 s.word(u32::from_ne_bytes([c[0], c[1], c[2], c[3]]));
             }
         }
@@ -898,12 +889,9 @@ fn check_req(w: *const WireReq, p: At, end: At) -> At {
     if left(p, end) < 36 {
         return ptr::null();
     }
-    // SAFETY: as `wire`; 36 bytes are left (checked); an `exact` recipe is all initialised.
+    // SAFETY: as `wire`; 36 bytes are left (checked); a recipe is all initialised (`Recipe::with_at`).
     unsafe {
         let w = &*w;
-        if !w.exact {
-            return ptr::null();
-        }
         let (a, f) = (w.head as usize as u64, w.patch as usize as u64);
         let words = (rd32(p, 0) ^ 0x5749_5245) | (rd32(p, 4) ^ a as u32) | (rd32(p, 8) ^ (a >> 32) as u32) | (rd32(p, 12) ^ f as u32) | (rd32(p, 16) ^ (f >> 32) as u32);
         let r = w.recipe.as_ptr();
@@ -1072,11 +1060,11 @@ fn check_ext(x: &Ext, p: At, end: At) -> At {
         }
     }
     for r in acts(x) {
-        if !r.exact || left(p, end) < 28 {
+        if left(p, end) < 28 {
             return ptr::null();
         }
         let t = r.tramp as usize as u64;
-        // SAFETY: 28 bytes are left (checked); an `exact` recipe is all initialised.
+        // SAFETY: 28 bytes are left (checked); a recipe is all initialised (`Recipe::with_at`).
         let ok = unsafe { (rd32(p, 0) ^ (r.kind as u32 | key_code(r.key) << 8)) | (rd32(p, 4) ^ t as u32) | (rd32(p, 8) ^ (t >> 32) as u32) == 0 && eq_n(p.add(12), r.recipe.as_ptr(), 16) };
         if !ok {
             return ptr::null();

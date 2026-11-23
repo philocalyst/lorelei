@@ -154,8 +154,6 @@ pub(crate) struct WireReq {
     pub ty: TypeId,
     pub patch: PatchFn,
     pub recipe: crate::rt::Recipe,
-    /// The recipe is padding-free (`reflect::padding_free`): it may be compared as bytes in a seal.
-    pub exact: bool,
 }
 
 /// A route asked for: the trampoline monomorphised where the route was written, the route's bytes, and the
@@ -166,8 +164,6 @@ pub(crate) struct ActReq {
     pub next: *const ActReq,
     pub tramp: RouteFn,
     pub recipe: crate::rt::Recipe,
-    /// As `WireReq::exact`.
-    pub exact: bool,
     pub recv: TypeId,
     pub recv_name: &'static str,
     pub key: Key,
