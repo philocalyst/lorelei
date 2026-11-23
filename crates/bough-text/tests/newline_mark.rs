@@ -95,3 +95,35 @@ fn newline_then_mark() {
     }
 }
 
+
+/// The analysis finds a newline + mark anywhere (its byte search goes 64 / 16 bytes a step, then the text's last 16):
+/// at every offset through and past two blocks, after LF, CR LF, LS and NEL, the newline cluster is glyphless and
+/// the mark starts the next line.
+#[test]
+fn newline_then_mark_at_every_offset() {
+    let mut g = grafted::Eng::new(&dejavu(), true);
+    for brk in ["\n", "\r\n", "\u{2028}", "\u{85}"] {
+        for offset in 0..150 {
+            for tail in ["", "b", "bcdefghijklmnopqrstuvwxyz"] {
+                // Greek, so the analysis is ICU's (not graft 3's) and the font segment goes to harfrust.
+                let text = format!("{}{brk}\u{300}{tail}", "α".repeat(offset / 2) + &"x".repeat(offset % 2));
+                let l = g.layout(&Case::plain(&text, "DejaVu Sans", 14.0, None));
+                let mark = text.find('\u{300}').unwrap();
+                for line in l.lines() {
+                    for run in line.runs() {
+                        for cl in run.clusters() {
+                            if is_newline(cl.source_char()) {
+                                assert!(cl.glyphs().count() == 0 && !cl.is_ligature_start(), "{text:?}: newline cluster holds glyphs");
+                            }
+                            if cl.text_range().start == mark {
+                                assert!(cl.glyphs().count() > 0, "{text:?}: the mark draws nothing");
+                            }
+                        }
+                    }
+                }
+                let lines = if brk == "\u{85}" { 1 } else { brk.chars().count() + 1 };
+                assert_eq!(l.len(), lines, "{text:?}");
+            }
+        }
+    }
+}

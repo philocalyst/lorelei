@@ -344,6 +344,9 @@ pub(crate) fn analyze_text<B: Brush>(
     }
     #[cfg(feature = "std")]
     crate::bough::count_analysis(false);
+    // bough fix (newline + mark): whether a grapheme continuation follows a hard line break (`shape_segment` splits
+    // there). Out of the per-character loop: a vectorized byte search for hard breaks, which are rare.
+    lcx.scx.mark_after_break = mark_after_break(&lcx.analysis_data_sources, text);
 
     // Line boundaries (word break naming refers to the line boundary determination config).
     //
@@ -490,7 +493,6 @@ pub(crate) fn analyze_text<B: Brush>(
     });
 
     let mut needs_bidi_resolution = false;
-    let mut mark_after_break = false;
 
     lcx.info.reserve(text.len());
     boundary_iter
@@ -507,17 +509,9 @@ pub(crate) fn analyze_text<B: Brush>(
             let (info, needs_bidi, next_mandatory_linebreak) =
                 char_info(&lcx.analysis_data_sources, ch, boundary);
             needs_bidi_resolution |= needs_bidi;
-            // bough fix (newline + mark): a continuation harfrust would merge into the line break's cluster.
-            if is_mandatory_linebreak {
-                mark_after_break |= matches!(
-                    info.grapheme_cluster_break,
-                    GraphemeClusterBreak::Extend | GraphemeClusterBreak::SpacingMark | GraphemeClusterBreak::ZWJ
-                );
-            }
             lcx.info.push((info, 0)); // Style index is populated later
             next_mandatory_linebreak
         });
-    lcx.scx.mark_after_break = mark_after_break;
 
     if needs_bidi_resolution {
         lcx.bidi.resolve(
@@ -529,6 +523,89 @@ pub(crate) fn analyze_text<B: Brush>(
             None,
         );
     }
+}
+
+/// bough fix (newline + mark): whether `text` has a hard line break (LF, VT, FF, CR, NEL, LS, PS: UAX #14 BK / CR /
+/// LF / NL) followed by a character harfrust merges into the preceding cluster (a grapheme continuation: Extend,
+/// SpacingMark, ZWJ). Each sixteen bytes are tested for LF..CR and the lead bytes of NEL (C2) and LS / PS (E2)
+/// (`chunk_mask`, vectorized: about half an instruction a byte); only the bytes it marks are looked at.
+#[inline(never)]
+fn mark_after_break(sources: &AnalysisDataSources, text: &str) -> bool {
+    let b = text.as_bytes();
+    if b.len() < 16 {
+        let mut m = 0;
+        for (k, &c) in b.iter().enumerate() {
+            m |= u64::from((c.wrapping_sub(0x0A) < 4) | (c & 0xDF == 0xC2)) * (0xF << (4 * k));
+        }
+        return m != 0 && mark_after_break_at(sources, text, 0, m);
+    }
+    let mut start = 0;
+    // Four chunks a step, one branch for the four.
+    let mut blocks = b.chunks_exact(64);
+    for c in &mut blocks {
+        let m = [0, 16, 32, 48].map(|o| chunk_mask(c[o..o + 16].try_into().unwrap()));
+        if m[0] | m[1] | m[2] | m[3] != 0 {
+            for (j, &m) in m.iter().enumerate() {
+                if m != 0 && mark_after_break_at(sources, text, start + 16 * j, m) {
+                    return true;
+                }
+            }
+        }
+        start += 64;
+    }
+    let mut chunks = blocks.remainder().chunks_exact(16);
+    for c in &mut chunks {
+        let m = chunk_mask(c.try_into().unwrap());
+        if m != 0 && mark_after_break_at(sources, text, start, m) {
+            return true;
+        }
+        start += 16;
+    }
+    // The last (partial) chunk, tested as the text's last sixteen bytes (without the ones already tested).
+    let n = chunks.remainder().len();
+    let last = b.len() - 16;
+    let m = if n == 0 { 0 } else { chunk_mask(b[last..].try_into().unwrap()) >> (4 * (16 - n)) << (4 * (16 - n)) };
+    m != 0 && mark_after_break_at(sources, text, last, m)
+}
+
+/// Four bits per byte of `c`, set where it is 0x0A..=0x0D, 0xC2 or 0xE2.
+#[inline(always)]
+fn chunk_mask(c: &[u8; 16]) -> u64 {
+    #[cfg(all(feature = "std", target_arch = "aarch64"))]
+    return crate::bough::breaks::hard_break_mask(c);
+    #[cfg(not(all(feature = "std", target_arch = "aarch64")))]
+    return c.iter().enumerate().fold(0, |m, (k, &x)| {
+        m | u64::from((x.wrapping_sub(0x0A) < 4) | (x & 0xDF == 0xC2)) * (0xF << (4 * k))
+    });
+}
+
+/// `mark_after_break` for the bytes `base + k` of `text` whose nibble `k` is set in `m`.
+#[cold]
+#[inline(never)]
+fn mark_after_break_at(sources: &AnalysisDataSources, text: &str, base: usize, mut m: u64) -> bool {
+    let b = text.as_bytes();
+    while m != 0 {
+        let tz = m.trailing_zeros();
+        let k = base + (tz / 4) as usize;
+        m &= !(0xF << (tz & !3));
+        let after = match b[k] {
+            0x0A..=0x0D => k + 1,
+            0xC2 if b.get(k + 1) == Some(&0x85) => k + 2,
+            0xE2 if b.get(k + 1) == Some(&0x80) && matches!(b.get(k + 2), Some(0xA8 | 0xA9)) => k + 3,
+            _ => continue,
+        };
+        // A continuation is never ASCII.
+        if b.get(after).is_some_and(|&c| c >= 0x80) {
+            let ch = text[after..].chars().next().unwrap();
+            if matches!(
+                sources.properties(ch).grapheme_cluster_break(),
+                GraphemeClusterBreak::Extend | GraphemeClusterBreak::SpacingMark | GraphemeClusterBreak::ZWJ
+            ) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// One character's analysis: upstream's per-character body (properties, force-normalize, bracket, flags), with its

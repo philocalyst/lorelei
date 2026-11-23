@@ -236,3 +236,23 @@ pub(crate) fn boundaries_cps(cps: &[u8], out: &mut Vec<u8>) {
     m.word.word(cps, |i| out[i] = 1);
     m.line.line(cps, |i| out[i] = 2);
 }
+
+/// bough fix (newline + mark): `analysis::mark_after_break`'s chunk test: four bits per byte of `c`, set (0xF) where
+/// the byte is 0x0A..=0x0D (LF, VT, FF, CR) or a lead byte 0xC2 / 0xE2 (NEL; LS, PS). About eight instructions for
+/// sixteen bytes.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+pub(crate) fn hard_break_mask(c: &[u8; 16]) -> u64 {
+    use core::arch::aarch64::{
+        vandq_u8, vceqq_u8, vcltq_u8, vdupq_n_u8, vget_lane_u64, vld1q_u8, vorrq_u8, vreinterpret_u64_u8,
+        vreinterpretq_u16_u8, vshrn_n_u16, vsubq_u8,
+    };
+    // SAFETY: NEON is part of the aarch64 baseline; `c` is sixteen readable bytes.
+    unsafe {
+        let v = vld1q_u8(c.as_ptr());
+        let control = vcltq_u8(vsubq_u8(v, vdupq_n_u8(0x0A)), vdupq_n_u8(4));
+        let lead = vceqq_u8(vandq_u8(v, vdupq_n_u8(0xDF)), vdupq_n_u8(0xC2));
+        let m = vreinterpretq_u16_u8(vorrq_u8(control, lead));
+        vget_lane_u64::<0>(vreinterpret_u64_u8(vshrn_n_u16::<4>(m)))
+    }
+}
