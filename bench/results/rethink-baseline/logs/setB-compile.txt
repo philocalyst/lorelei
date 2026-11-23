@@ -1,0 +1,13 @@
+# Set B2 compile.sh  2:52  up 5 days,  5:44, 1 user, load averages: 12.39 10.73 7.51
+# command: lockf ... sh bench/card3/compile.sh
+    Finished `release` profile [optimized + debuginfo] target(s) in 13.13s
+clean build of bough + slice + deep view: 13.33 s   load: { 13.99 11.15 7.71 }
+    Finished `release` profile [optimized + debuginfo] target(s) in 4.88s
+incremental leaf edit (deep view example): 5.05 s   load: { 14.64 11.33 7.80 }
+deep_view binary bytes: 1988664
+deep view: 132 records, 1 describes, legacy passes 0
+# deep_view text size:
+Segment __TEXT: 1359872
+-rwxr-xr-x  1 rmccrar6  WIN\Domain Users  1988664 Nov 22 02:52 /Users/rmccrar6/work/targets/rethink-bench/release/examples/deep_view
+# deep_view sha: dd720dd22466fa96277c8c3d5e95dc6b2641b66159e9734359268dbbbbf3334b  /Users/rmccrar6/work/targets/rethink-bench/release/examples/deep_view
+# end  2:52  up 5 days,  5:45, 1 user, load averages: 14.64 11.33 7.80

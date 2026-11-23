@@ -1,0 +1,7 @@
+rows	step	dispatch_allocs	dispatch_instr	step_instr	step_cycles_warm	step_cycles_cold	cold_minus_warm
+10000	pointer_onto_row	0	724	1578	524	2025	1501
+10000	pointer_same_row	0	462	527	0	1022	1022
+10000	click_row	0	2221	3137	531	3054	2523
+10000	key_unfocused	0	115	331	0	1512	1512
+10000	text_focused_field	0	233	1421	140	2492	2352
+# rows=10000: 69 records, 6720 bytes of columns

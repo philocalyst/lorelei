@@ -1,0 +1,78 @@
+# Set A AFTER  4:20  up 5 days,  7:13, 1 user, load averages: 9.40 6.33 6.09
+# fxbench aac0409ce5e3378c6eb7e3a96e16b1b172ec28443725e219fd9e491d96fb9b7e  /Users/rmccrar6/work/targets/rethink-bench/release/examples/fxbench
+# flatbench 56f256ebb1db5ba86ea0735eddb9eff9c00d3ff269e7624507df638bcda90053  /Users/rmccrar6/work/targets/rethink-bench/release/examples/flatbench
+## fxbench effects 1000 start  4:20  up 5 days,  7:13, 1 user, load averages: 9.40 6.33 6.09
+# fxbench effects 1000; 1280x800; reps 24; load at start: 9.40 6.33 6.09
+# scene: 1480 records in 8 columns, 83 layers, 83 glass / 250 dots / 0 videos; media pool 0 slots
+# retained shadow coverage: 530272 bytes
+scene	n	cell	executor	tiles/frame	recs/frame	prefix/frame	blocks/frame	layer_px/frame	layers_px	active	instr_med_K	instr_min_K	instr_mean_K	wall_med_us	gpu_med_us	mismatch	turn_med	ran_idle/cpu/gpu	prefix_same/prefix	blocks_same/blocks by level 1..5	ranks/slots
+effects	1000	idle	cpu1	0.0	0.0	0.0	0.0	0	478634	6	9.3	9.2	9.4	0	0	0	2371	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	metal	0.0	0.0	0.0	0.0	0	478634	6	6.2	6.2	6.3	0	0	0	2371	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	idle	mixed	0.0	0.0	0.0	0.0	0	478634	6	3.1	3.1	3.1	0	0	0	-	24/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 1000 one spring cpu1 instructions [10840476]
+effects	1000	one spring	cpu1	46.7	7.0	6.0	31.9	0	478634	7	10839.6	10677.1	11108.2	501	0	0	13116	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 1000 one spring metal instructions [180901]
+effects	1000	one spring	metal	46.7	7.0	6.0	0.0	0	478634	7	100.2	99.4	100.8	829	355	0	9580	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+# spring launches effects 1000 one spring mixed instructions [180364]
+effects	1000	one spring	mixed	46.7	7.0	0.0	0.0	0	478634	7	99.1	95.8	99.0	572	345	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# spring launches effects 1000 all springs cpu1 instructions [35480519]
+effects	1000	all springs	cpu1	76.5	18.0	6.0	31.9	0	478634	18	14169.7	12598.1	14017.2	663	0	0	38744	0/0/0	72/144	0/144 0/144 43/192 121/202 75/83	0/0
+# spring launches effects 1000 all springs metal instructions [19455539]
+effects	1000	all springs	metal	76.5	18.0	6.0	0.0	0	478634	18	143.4	135.0	142.6	623	362	0	37307	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+# spring launches effects 1000 all springs mixed instructions [19466144]
+effects	1000	all springs	mixed	76.5	18.0	0.0	0.0	0	478634	18	142.0	133.5	140.8	582	358	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	scroll 11 px	cpu1	1000.0	206.8	348.5	1309.4	0	442946	7	217737.4	212577.4	217886.3	9757	0	0	1407523	0/0/0	1050/8365	1298/8285 1060/7987 962/7449 523/5600 21/2104	0/0
+effects	1000	scroll 11 px	metal	1000.0	206.8	348.5	0.0	0	442946	7	2050.9	1778.3	1999.4	1597	1138	0	764389	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	9/4868
+effects	1000	scroll 11 px	mixed	1000.0	206.8	0.0	0.0	0	442946	7	2058.1	1788.1	2009.9	1465	1128	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	cpu1	6.0	1.0	0.0	0.0	0	478634	6	2142.4	2141.9	2142.3	104	0	0	4387	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover above glass	metal	6.0	1.0	0.0	0.0	0	478634	6	75.0	74.8	75.9	283	62	0	4091	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover above glass	mixed	6.0	1.0	0.0	0.0	0	478634	6	72.4	72.3	73.1	255	62	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	hover beneath glass	cpu1	26.0	1.0	26.0	121.0	0	478634	6	15291.4	15290.0	15292.8	712	0	0	9296	0/0/0	0/624	48/672 48/672 96/672 144/648 144/240	0/0
+effects	1000	hover beneath glass	metal	26.0	1.0	26.0	0.0	0	478634	6	91.0	90.9	91.5	813	585	0	4240	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	hover beneath glass	mixed	26.0	1.0	0.0	0.0	0	478634	6	88.5	88.4	89.6	797	577	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	theme	cpu1	1000.0	0.0	367.0	1439.0	0	478634	6	223949.8	223940.5	223950.4	9843	0	0	13955	0/0/0	0/8808	0/8808 0/8808 0/7920 0/6408 0/2592	0/0
+effects	1000	theme	metal	1000.0	0.0	367.0	0.0	0	478634	6	108.9	108.4	109.8	1330	1093	0	2602	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4619
+effects	1000	theme	mixed	1000.0	0.0	0.0	0.0	0	478634	6	119.0	118.5	119.5	1309	1080	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+effects	1000	glass moves 1 px	cpu1	18.5	0.0	9.0	22.7	0	478634	6	8467.9	8128.6	9174.4	424	0	0	18726	0/0/0	136/216	3/92 9/98 13/100 81/152 93/103	0/0
+effects	1000	glass moves 1 px	metal	18.5	0.0	9.0	0.0	0	478634	6	125.6	124.9	127.2	850	645	0	16858	0/0/0	0/0	0/0 0/0 0/0 0/0 0/0	8/4634
+effects	1000	glass moves 1 px	mixed	18.5	0.0	0.0	0.0	0	478634	6	123.1	122.6	125.3	717	488	0	-	0/0/24	0/0	0/0 0/0 0/0 0/0 0/0	0/0
+# mismatching words in total: 0; load at end: 8.81 6.26 6.06
+## flatbench 300 start  4:20  up 5 days,  7:13, 1 user, load averages: 8.81 6.26 6.06
+# flatbench: 300 cards (1503 records) in a scrolled world, and two pages as retained groups, 1280 x 800; 24 frames per cell
+# archetypes a flat scene can instantiate: 20 (fixed and panned), whatever is drawn
+scene	cell	exec	ms/frame (median)	ms (min)	k instr/frame	tiles/frame	records/frame	group tiles/frame	group blocks/frame	mismatches
+cards	idle	Cpu1	0.000	0.000	6.4	0.0	0.0	0.0	0.0	0
+cards	idle	Cpu8	0.000	0.000	6.1	0.0	0.0	0.0	0.0	0
+cards	idle	Metal	0.020	0.015	54.7	0.0	0.0	0.0	0.0	0
+cards	restyle one card	Cpu1	0.292	0.292	6719.9	35.0	1.0	0.0	0.0	0
+cards	restyle one card	Cpu8	0.162	0.147	1961.9	35.0	1.0	0.0	0.0	0
+cards	restyle one card	Metal	0.321	0.257	83.3	35.0	1.0	0.0	0.0	0
+cards	restyle a card beneath the pane	Cpu1	1.938	1.877	39696.8	53.2	1.0	0.0	0.0	0
+cards	restyle a card beneath the pane	Cpu8	1.056	1.045	18103.3	53.2	1.0	0.0	0.0	0
+cards	restyle a card beneath the pane	Metal	0.411	0.350	445.3	143.0	1.0	0.0	0.0	0
+cards	one card on a spring	Cpu1	0.963	0.940	20353.3	56.1	5.0	0.0	0.0	0
+cards	one card on a spring	Cpu8	0.412	0.374	7314.0	56.1	5.0	0.0	0.0	0
+cards	one card on a spring	Metal	0.516	0.416	331.0	105.1	5.0	0.0	0.0	0
+cards	scroll 11 px	Cpu1	14.911	14.768	328139.2	960.0	0.0	0.0	0.0	0
+cards	scroll 11 px	Cpu8	5.986	5.793	127488.8	960.0	0.0	0.0	0.0	0
+cards	scroll 11 px	Metal	1.350	0.945	4326.1	960.0	0.0	0.0	0.0	0
+cards	pane moves 1 px	Cpu1	4.222	4.210	81264.7	172.2	1.0	0.0	0.0	0
+cards	pane moves 1 px	Cpu8	0.723	0.707	10790.2	172.2	1.0	0.0	0.0	0
+cards	pane moves 1 px	Metal	0.364	0.308	283.5	172.2	1.0	0.0	0.0	0
+pages	pages idle	Cpu1	0.000	0.000	5.8	0.0	0.0	0.0	0.0	0
+pages	pages idle	Cpu8	0.000	0.000	5.8	0.0	0.0	0.0	0.0	0
+pages	pages idle	Metal	0.024	0.019	54.2	0.0	0.0	0.0	0.0	0
+pages	page cross-fade	Cpu1	2.467	2.452	54984.7	1000.0	1.0	0.0	0.0	0
+pages	page cross-fade	Cpu8	0.422	0.408	7186.4	1000.0	1.0	0.0	0.0	0
+pages	page cross-fade	Metal	0.499	0.404	204.4	1000.0	1.0	0.0	0.0	0
+pages	page slide	Cpu1	1.834	1.692	39643.7	1000.0	2.0	0.0	0.0	0
+pages	page slide	Cpu8	0.324	0.299	5450.5	1000.0	2.0	0.0	0.0	0
+pages	page slide	Metal	0.474	0.405	430.0	1000.0	2.0	0.0	0.0	0
+pages	page blur-reveal	Cpu1	14.979	14.726	394744.7	1000.0	2.0	0.0	0.0	0
+pages	page blur-reveal	Cpu8	2.121	2.111	50812.6	1000.0	2.0	0.0	0.0	0
+pages	page blur-reveal	Metal	0.575	0.503	491.3	1000.0	2.0	0.0	0.0	0
+pages	one card of a page	Cpu1	0.740	0.737	17568.6	63.0	1.0	35.0	330.2	0
+pages	one card of a page	Cpu8	0.490	0.465	9262.4	63.0	1.0	35.0	330.2	0
+pages	one card of a page	Metal	1.166	0.703	8434.1	63.0	1.0	35.0	330.2	0
+# mismatching words in total: 0
+## end  4:20  up 5 days,  7:13, 1 user, load averages: 8.81 6.26 6.06

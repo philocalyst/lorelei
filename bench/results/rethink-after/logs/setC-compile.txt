@@ -1,0 +1,49 @@
+# Set C sizes+compile AFTER  4:23  up 5 days,  7:16, 1 user, load averages: 3.87 5.59 5.86
+## card3_cost sha=2ef67a1c4c74f3151bd7aac1bd8bfe7f7dbf6ff2b72dfabfd31531fd2a071e90 bytes=6671384
+Segment __TEXT: 4784128
+	Section __text: 3537876
+## deep_view sha=498524f84d337c218c3cc9cfc66c1725aa21cd047b6d16afe0aae887c7c7dff4 bytes=1991352
+Segment __TEXT: 1359872
+	Section __text: 962720
+## slice sha=7eedd9697be544a17b1fa5aeb9765b9ceaa88d49293b3f9a77aa4cf60a286f63 bytes=6027560
+Segment __TEXT: 4325376
+	Section __text: 3118420
+## flat_cost sha=3f27cfb8a02390722af6c3887f2c9a4af43f38bc9bbe158b1b48c1780aeedce8 bytes=4565832
+Segment __TEXT: 3244032
+	Section __text: 2614228
+## flat_slice sha=aa413565fa423afe045ba4a6b6b606034265404bf7c3977df21bc6a0c10cbab9 bytes=819112
+Segment __TEXT: 540672
+	Section __text: 445920
+## flat_deep sha=27d893266a4b8ce74259779cdf9e17d0af1153508951c7d221f8f7c61361154c bytes=845464
+Segment __TEXT: 557056
+	Section __text: 461856
+## typed_slice_min sha=e4877688236203ec56cbb9b072de3d2bf299632391e13f10c9e48d473c215bf2 bytes=3815168
+Segment __TEXT: 2686976
+	Section __text: 2181316
+# compile.sh  4:23  up 5 days,  7:16, 1 user, load averages: 3.87 5.59 5.86
+    Finished `release` profile [optimized + debuginfo] target(s) in 11.95s
+clean build of bough + slice + deep view: 12.08 s   load: { 4.84 5.71 5.89 }
+    Finished `release` profile [optimized + debuginfo] target(s) in 3.73s
+incremental leaf edit (deep view example): 3.86 s   load: { 5.41 5.81 5.93 }
+deep_view binary bytes: 1991352
+deep view: 132 records, 1 describes, legacy passes 0
+# compile_rc=0
+# after compile: 498524f84d337c218c3cc9cfc66c1725aa21cd047b6d16afe0aae887c7c7dff4  /Users/rmccrar6/work/targets/rethink-bench/release/examples/deep_view bytes=1991352
+Segment __TEXT: 1359872
+	Section __text: 962720
+# flat clean build  4:23  up 5 days,  7:16, 1 user, load averages: 5.41 5.81 5.93
+    Finished `release` profile [optimized + debuginfo] target(s) in 15.83s
+clean user-visible flat build: 15.99 s load { 7.12 6.17 6.05 }
+## flat_deep sha=27d893266a4b8ce74259779cdf9e17d0af1153508951c7d221f8f7c61361154c bytes=845464
+Segment __TEXT: 557056
+	Section __text: 461856
+## flat_slice sha=aa413565fa423afe045ba4a6b6b606034265404bf7c3977df21bc6a0c10cbab9 bytes=819112
+Segment __TEXT: 540672
+	Section __text: 445920
+## typed_slice_min sha=e4877688236203ec56cbb9b072de3d2bf299632391e13f10c9e48d473c215bf2 bytes=3815168
+Segment __TEXT: 2686976
+	Section __text: 2181316
+## flat_cost sha=3f27cfb8a02390722af6c3887f2c9a4af43f38bc9bbe158b1b48c1780aeedce8 bytes=4565832
+Segment __TEXT: 3244032
+	Section __text: 2614228
+# end  4:24  up 5 days,  7:16, 1 user, load averages: 7.12 6.17 6.05

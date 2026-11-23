@@ -1,0 +1,42 @@
+# Complex scenes & apps (rerun, correct bin dirs)  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+# ffc719514bf8626bb45fbdede51f04e40555289c3b275d0dc8cd28b6c16c8bbf  /Users/rmccrar6/work/targets/rethink-bench/release/lab_headless
+# 197eadc1bfc8bd23a2e3979883b3276576687da8f247a33eaa0ea6ae58562ddb  /Users/rmccrar6/work/targets/rethink-bench/release/animate_headless
+# 7da534fe8ec4adc34e2b32be8333f33337574ecde6a2cccca89531975c06f6c4  /Users/rmccrar6/work/targets/rethink-bench/release/micro_bench
+# 5912c8b869ea558a7d056678c8eb6e395c709506ef2ccc9fe133f6dd28253712  /Users/rmccrar6/work/targets/rethink-bench/release/kernel_bench
+# f9b7cb1583675964d0e9cf643482c3d708fd0f73fa508fe1b6df164905aea75f  /Users/rmccrar6/work/targets/rethink-bench/release/apps_bench
+# 8e040b5970984cd4c25dba4e9c768a551be502ef95feb10c60722899cc7aa124  /Users/rmccrar6/work/targets/rethink-bench/release/apps_bench_sketch_code
+# mono font: 0f5db4f1749979d961019838b160bec74abdf7f9eca69553fe1aa856bbff49a4  /Users/rmccrar6/work/notes/reviews/card3-round2-evidence/test-fonts/DejaVuSansMono.ttf
+## lab_headless stream TICKS=900 RENDER=1  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+repaired tiles/frame 157.3
+Stream render=true: 0.3295 ms/tick, frames 900/900, ri_instructions total 368159211, instr/tick 253370, footprint 425.8 MB, fallbacks 0, text shaped 899, rows mounted 17
+## lab_headless scroll TICKS=600 RENDER=1  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+repaired tiles/frame 64.2
+Scroll render=true: 0.3178 ms/tick, frames 600/600, ri_instructions total 310133308, instr/tick 304769, footprint 425.8 MB, fallbacks 0, text shaped 0, rows mounted 316
+## animate_headless FRAMES=1200 RENDER=1  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+animate: 124437 instr/frame after 120 warm-up, frames drawn 1080/1080 render=true, ri_instructions total 399285966, footprint 457.4 MB
+## micro_bench state  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+{"framework":"bough","scene":"state","figure":"write","render":true,"clock":"process_cpu","ops":2000,"batch":50,"median_ns":0.0,"p10_ns":0.0,"p90_ns":20.0,"min_ns":0.0,"max_ns":120.0,"batches":40}
+{"framework":"bough","scene":"state","figure":"frame","render":true,"clock":"process_cpu","ops":2000,"batch":10,"median_ns":46100.0,"p10_ns":34700.0,"p90_ns":59100.0,"min_ns":30300.0,"max_ns":81600.0,"batches":200}
+## micro_bench vscroll-fixed  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+{"framework":"bough","scene":"vscroll-fixed","figure":"write","render":true,"clock":"process_cpu","ops":2000,"batch":50,"median_ns":0.0,"p10_ns":0.0,"p90_ns":20.0,"min_ns":0.0,"max_ns":40.0,"batches":40}
+{"framework":"bough","scene":"vscroll-fixed","figure":"frame","render":true,"clock":"process_cpu","ops":2000,"batch":10,"median_ns":56600.0,"p10_ns":43600.0,"p90_ns":83000.0,"min_ns":34600.0,"max_ns":209400.0,"batches":200}
+## kernel_bench stream REPS=100  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+Stream debug 0: repair (499 tiles) 0.0412 ms [0.0410..0.0742]   full redraw 0.0848 ms [0.0847..0.0854]
+copy 1920x1412 px (debug 2: no tile pass): 0.0136 ms [0.0136..0.0136]
+## apps_bench REPS=5 (mail + dashboard ROWS=100000)  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+mail: open a message: 1.01 ms, 2.71 M instructions
+mail: search keystroke: 0.29 ms, 1.12 M instructions
+mail: archive: 0.36 ms, 1.14 M instructions
+dashboard: feed tick, sorted by price: 0.84 ms, 2.57 M instructions
+dashboard: sort: 0.37 ms, 2.31 M instructions
+dashboard: sort, a column not sorted by last: 0.37 ms, 2.02 M instructions
+dashboard: filter keystroke: 0.35 ms, 1.93 M instructions
+## apps_bench_sketch_code REPS=5  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.79 7.51
+sketch: drag a shape: 0.39 ms, 1.94 M instructions
+sketch: pan: 0.38 ms, 1.09 M instructions
+sketch: zoom: 0.38 ms, 1.05 M instructions
+code: keystroke: 0.48 ms, 1.78 M instructions
+code: scroll a page: 0.39 ms, 1.27 M instructions
+code: find-all keystroke: 0.37 ms, 0.82 M instructions
+code: find-all, a new letter: 0.29 ms, 0.83 M instructions
+## end  2:55  up 5 days,  5:48, 1 user, load averages: 4.01 8.71 7.49

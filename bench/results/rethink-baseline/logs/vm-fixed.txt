@@ -1,0 +1,180 @@
+run: results/vm-20261122T080123Z
+[1/26] rows/bough/default/60hz/1000
+    idle
+    hover
+    scroll
+[2/26] rows/bough/default/144hz/1000
+    idle
+    hover
+    scroll
+[3/26] rows/bough-x/default/60hz/1000
+    idle
+    hover
+    scroll
+[4/26] rows/bough-x/default/144hz/1000
+    idle
+    hover
+    scroll
+[5/26] table/bough/fine/60hz/1000
+    idle
+    op-select
+    op-update10
+    op-swap
+    op-remove
+    op-insert
+    op-replace
+    op-append
+    op-clear
+    churn
+[6/26] table/bough/coarse/60hz/1000
+    idle
+    op-select
+    op-update10
+    op-swap
+    op-remove
+    op-insert
+    op-replace
+    op-append
+    op-clear
+    churn
+[7/26] table/bough-x/fine/60hz/1000
+    idle
+    op-select
+    op-update10
+    op-swap
+    op-remove
+    op-insert
+    op-replace
+    op-append
+    op-clear
+    churn
+[8/26] table/bough-x/coarse/60hz/1000
+    idle
+    op-select
+    op-update10
+    op-swap
+    op-remove
+    op-insert
+    op-replace
+    op-append
+    op-clear
+    churn
+[9/26] search/bough/default/60hz/1000
+    idle
+    filter
+    typing
+[10/26] search/bough-x/default/60hz/1000
+    idle
+    filter
+    typing
+[11/26] ticker/bough/fine/60hz/1000-u1
+    idle
+    pacing
+[12/26] ticker/bough/fine/60hz/1000-u100
+    idle
+    pacing
+[13/26] ticker/bough/fine/144hz/1000-u1
+    idle
+    pacing
+[14/26] ticker/bough/fine/144hz/1000-u100
+    idle
+    pacing
+[15/26] ticker/bough/coarse/60hz/1000-u1
+    idle
+    pacing
+[16/26] ticker/bough/coarse/60hz/1000-u100
+    idle
+    pacing
+[17/26] ticker/bough/coarse/144hz/1000-u1
+    idle
+    pacing
+[18/26] ticker/bough/coarse/144hz/1000-u100
+    idle
+    pacing
+[19/26] ticker/bough-x/fine/60hz/1000-u1
+    idle
+    pacing
+[20/26] ticker/bough-x/fine/60hz/1000-u100
+    idle
+    pacing
+[21/26] ticker/bough-x/fine/144hz/1000-u1
+    idle
+    pacing
+[22/26] ticker/bough-x/fine/144hz/1000-u100
+    idle
+    pacing
+[23/26] ticker/bough-x/coarse/60hz/1000-u1
+    idle
+    pacing
+[24/26] ticker/bough-x/coarse/60hz/1000-u100
+    idle
+    pacing
+[25/26] ticker/bough-x/coarse/144hz/1000-u1
+    idle
+    pacing
+[26/26] ticker/bough-x/coarse/144hz/1000-u100
+    idle
+    pacing
+results: results/vm-20261122T080123Z (0 failed measurements)
+run: results copied to /Users/rmccrar6/work/lorelei-wt/rethink-bench/bench/results/vm/20261122T080123Z (runner exit 0)
+check: 26 cells, 86 validity-bearing reports: 26 valid, 60 invalid, 0 unchecked, 0 failures -> exit 0
+INVALID rows/bough/default/60hz/1000/hover.json: wake_lateness
+INVALID rows/bough/default/60hz/1000/scroll.json: wake_lateness
+INVALID rows/bough/default/144hz/1000/hover.json: wake_lateness
+INVALID rows/bough/default/144hz/1000/scroll.json: wake_lateness
+INVALID rows/bough-x/default/60hz/1000/hover.json: wake_lateness
+INVALID rows/bough-x/default/60hz/1000/scroll.json: wake_lateness
+INVALID rows/bough-x/default/144hz/1000/hover.json: wake_lateness
+INVALID rows/bough-x/default/144hz/1000/scroll.json: wake_lateness
+INVALID table/bough/fine/60hz/1000/op-append.json: wake_lateness
+INVALID table/bough/fine/60hz/1000/op-clear.json: wake_lateness
+INVALID table/bough/fine/60hz/1000/op-insert.json: wake_lateness
+INVALID table/bough/fine/60hz/1000/op-remove.json: wake_lateness
+INVALID table/bough/fine/60hz/1000/op-replace.json: wake_lateness
+INVALID table/bough/fine/60hz/1000/op-select.json: wake_lateness
+INVALID table/bough/fine/60hz/1000/op-swap.json: wake_lateness
+INVALID table/bough/fine/60hz/1000/op-update10.json: wake_lateness
+INVALID table/bough/coarse/60hz/1000/op-append.json: wake_lateness
+INVALID table/bough/coarse/60hz/1000/op-clear.json: wake_lateness
+INVALID table/bough/coarse/60hz/1000/op-insert.json: wake_lateness
+INVALID table/bough/coarse/60hz/1000/op-remove.json: wake_lateness
+INVALID table/bough/coarse/60hz/1000/op-replace.json: wake_lateness
+INVALID table/bough/coarse/60hz/1000/op-select.json: wake_lateness
+INVALID table/bough/coarse/60hz/1000/op-swap.json: wake_lateness
+INVALID table/bough/coarse/60hz/1000/op-update10.json: wake_lateness
+INVALID table/bough-x/fine/60hz/1000/op-append.json: wake_lateness
+INVALID table/bough-x/fine/60hz/1000/op-clear.json: wake_lateness
+INVALID table/bough-x/fine/60hz/1000/op-insert.json: wake_lateness
+INVALID table/bough-x/fine/60hz/1000/op-remove.json: wake_lateness
+INVALID table/bough-x/fine/60hz/1000/op-replace.json: wake_lateness
+INVALID table/bough-x/fine/60hz/1000/op-select.json: wake_lateness
+INVALID table/bough-x/fine/60hz/1000/op-swap.json: wake_lateness
+INVALID table/bough-x/fine/60hz/1000/op-update10.json: wake_lateness
+INVALID table/bough-x/coarse/60hz/1000/op-append.json: wake_lateness
+INVALID table/bough-x/coarse/60hz/1000/op-clear.json: wake_lateness
+INVALID table/bough-x/coarse/60hz/1000/op-insert.json: wake_lateness
+INVALID table/bough-x/coarse/60hz/1000/op-remove.json: wake_lateness
+INVALID table/bough-x/coarse/60hz/1000/op-replace.json: wake_lateness
+INVALID table/bough-x/coarse/60hz/1000/op-select.json: wake_lateness
+INVALID table/bough-x/coarse/60hz/1000/op-swap.json: wake_lateness
+INVALID table/bough-x/coarse/60hz/1000/op-update10.json: wake_lateness
+INVALID search/bough/default/60hz/1000/filter.json: wake_lateness
+INVALID search/bough/default/60hz/1000/typing.json: wake_lateness
+INVALID search/bough-x/default/60hz/1000/filter.json: wake_lateness
+INVALID search/bough-x/default/60hz/1000/typing.json: wake_lateness
+INVALID ticker/bough/fine/60hz/1000-u1/pacing.json: wake_lateness
+INVALID ticker/bough/fine/60hz/1000-u100/pacing.json: wake_lateness
+INVALID ticker/bough/fine/144hz/1000-u1/pacing.json: wake_lateness
+INVALID ticker/bough/fine/144hz/1000-u100/pacing.json: wake_lateness
+INVALID ticker/bough/coarse/60hz/1000-u1/pacing.json: wake_lateness
+INVALID ticker/bough/coarse/60hz/1000-u100/pacing.json: wake_lateness
+INVALID ticker/bough/coarse/144hz/1000-u1/pacing.json: wake_lateness
+INVALID ticker/bough/coarse/144hz/1000-u100/pacing.json: wake_lateness
+INVALID ticker/bough-x/fine/60hz/1000-u1/pacing.json: wake_lateness
+INVALID ticker/bough-x/fine/60hz/1000-u100/pacing.json: wake_lateness
+INVALID ticker/bough-x/fine/144hz/1000-u1/pacing.json: wake_lateness
+INVALID ticker/bough-x/fine/144hz/1000-u100/pacing.json: wake_lateness
+INVALID ticker/bough-x/coarse/60hz/1000-u1/pacing.json: wake_lateness
+INVALID ticker/bough-x/coarse/60hz/1000-u100/pacing.json: wake_lateness
+INVALID ticker/bough-x/coarse/144hz/1000-u1/pacing.json: wake_lateness
+INVALID ticker/bough-x/coarse/144hz/1000-u100/pacing.json: wake_lateness

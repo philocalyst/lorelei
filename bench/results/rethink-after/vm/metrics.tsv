@@ -1,0 +1,23 @@
+tag	lat_p50	lat_p95	fps	interval_p99	jank_fraction	cpu_ms_per_frame	damage_fraction	cpu_ms_per_s	rss_max	first_present_ms	toplevel_ms	valid
+bough rows startup										11.42	11.45	
+bough rows scroll			240.4	5.108	0	1.095	1	179.6	3.503e+07			True
+bough rows hover	1.134	1.158				1.17	0.08	10.11	3.503e+07			True
+bough table fine op-update10	0.5199	0.7057				0.5493	0.012	4.432	3.105e+07			True
+bough table fine op-insert	1.225	1.515				4.071	0.881	27.27	3.107e+07			True
+bough table fine op-clear	2.222	2.419				3.667	0.963	29.19	3.129e+07			True
+bough table fine churn												
+bough search filter	7.017	11.13				8.155	0.961	49	4.078e+07			True
+bough search typing						0.9074	0.001	10.02	4.55e+07			True
+bough ticker u1			62.52	21.2	0	0.2269	0.007	14.23	3.098e+07			True
+bough ticker u100			62.59	21	0	0.2721	0.009	17.06	3.076e+07			True
+bough-x rows startup										1.59	1.608	
+bough-x rows scroll			240.2	4.744	0	0.8579	1	144.7	1.084e+07			True
+bough-x rows hover	0.2792	0.3397				0.2037	0.08	1.526	1.084e+07			True
+bough-x table fine op-update10	0.4816	0.4991				0.4682	0.12	3.141	1.097e+07			True
+bough-x table fine op-insert	1.109	1.319				1.083	0.92	7.215	1.101e+07			True
+bough-x table fine op-clear	1.116	1.782				1.232	0.98	9.866	1.112e+07			True
+bough-x table fine churn												
+bough-x search filter	0.969	1.352				0.9943	0.973	8.012	1.103e+07			True
+bough-x search typing						0.3871	0.013	3.587	1.103e+07			True
+bough-x ticker u1			62.44	21.83	0	0.1886	0.08	11.75	1.502e+07			True
+bough-x ticker u100			62.5	21.18	0	0.3602	0.16	22.52	1.094e+07			True

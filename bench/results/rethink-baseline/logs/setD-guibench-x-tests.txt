@@ -1,0 +1,27 @@
+# bough-guibench-x headless gates  2:52  up 5 days,  5:45, 1 user, load averages: 13.47 11.23 7.82
+     Running unittests src/main.rs (/Users/rmccrar6/work/targets/rethink-bench/release/build/bough-guibench-x/ced60a41285a9bef/out/bough_bench-ced60a41285a9bef)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pixels.rs (/Users/rmccrar6/work/targets/rethink-bench/release/build/bough-guibench-x/cc2d7546da91d30a/out/pixels-cc2d7546da91d30a)
+
+running 7 tests
+test keys_do_what_the_probes_expect ... ok
+test filter_equals_the_definition ... ok
+test typing_and_search ... ok
+test spinner_scene ... ok
+test table_fine_and_coarse ... ok
+test ticker ... ok
+test rows_and_virtual ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.34s
+
+   Doc-tests bough_guibench_x
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+# end  2:52  up 5 days,  5:45, 1 user, load averages: 13.35 11.25 7.85

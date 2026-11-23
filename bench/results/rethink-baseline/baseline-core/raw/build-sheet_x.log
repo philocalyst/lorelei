@@ -1,0 +1,2 @@
+$ nice -n 15 cargo build -j 3 --locked --profile dist -p bough-x --example sheet_x
+    Finished `dist` profile [optimized] target(s) in 0.42s

@@ -1,0 +1,7 @@
+# Set D bough-guibench-x  2:52  up 5 days,  5:45, 1 user, load averages: 13.69 11.24 7.80
+# bin: 6906024b6749227dd1f595dcb70a059ac2a6db0457705e1f70d033dd94eff199  /Users/rmccrar6/work/targets/rethink-bench/release/bough-bench
+-rwxr-xr-x  1 rmccrar6  WIN\Domain Users  461480 Nov 22 02:48 /Users/rmccrar6/work/targets/rethink-bench/release/bough-bench
+Segment __TEXT: 278528
+# macOS launcher:
+bough-bench: the window host of this build is Linux/Wayland only; the scenarios and their gates run headless (cargo test -p bough-guibench-x)
+launcher_rc=2

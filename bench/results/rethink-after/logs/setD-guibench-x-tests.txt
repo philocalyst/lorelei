@@ -1,0 +1,15 @@
+# guibench-x gates AFTER  4:22  up 5 days,  7:15, 1 user, load averages: 4.95 5.97 6.00
+test typing_and_search ... ok
+test spinner_scene ... ok
+test table_fine_and_coarse ... ok
+test ticker ... ok
+test rows_and_virtual ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.48s
+
+   Doc-tests bough_guibench_x
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

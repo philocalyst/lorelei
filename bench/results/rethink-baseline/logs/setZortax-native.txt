@@ -1,0 +1,33 @@
+# Zortax gui-bench native headless (bough-guibench headless, release)
+# bin: 3689df70092f8e129bfdb7e5b2ffa315aa69b72c70e2a061f17eab71b00ede34  /Users/rmccrar6/work/targets/rethink-bench/release/headless
+## mount rows-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.48 10.78 7.43
+mount instructions=144261236 ns=490343500 rss=33161216 footprint=443401080 records=5002 rows=1000
+result op=mount repeats=0 render=true gate=false ring=4 instructions=109908 rss=33243136 footprint=443401080 frames=1 surfaces=[1, 0, 0, 0]
+## rows/scroll-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.48 10.78 7.43
+mount instructions=132433637 ns=57589333 rss=32964608 footprint=443253648 records=5002 rows=1000
+perop op=scroll render=true med=6148524 lo=6147668 hi=6190492 records=5002 frames=53
+## table/update10-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.48 10.78 7.43
+mount instructions=99085538 ns=63766417 rss=28475392 footprint=438649768 records=138 rows=1000
+perop op=update10 render=true med=239083 lo=236708 hi=272420 records=138 frames=53
+## search/filter-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.48 10.78 7.43
+mount instructions=140511062 ns=54183833 rss=33882112 footprint=443958184 records=5011 rows=1000
+perop op=filter render=true med=18510683 lo=18498083 hi=19111453 records=5011 frames=53
+## spinner/spinner-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.12 10.75 7.44
+mount instructions=139888522 ns=81140000 rss=35274752 footprint=448725952 records=5009 rows=1000
+perop op=spinner render=true med=1626746 lo=1601529 hi=1828027 records=5009 frames=53
+## ticker/ticker-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.12 10.75 7.44
+mount instructions=97732206 ns=78316000 rss=28246016 footprint=438387576 records=138 rows=1000
+perop op=ticker render=true med=59707 lo=57152 hi=94177 records=138 frames=53
+## typing/typing-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.12 10.75 7.44
+mount instructions=140177784 ns=57392417 rss=34193408 footprint=444269480 records=5011 rows=1000
+perop op=typing render=true med=1604525 lo=1595053 hi=1873405 records=5011 frames=53
+## virtual/jump-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.12 10.75 7.44
+mount instructions=95727715 ns=66024542 rss=28180480 footprint=438436776 records=136 rows=1000
+perop op=jump render=true med=942177 lo=896626 hi=1039838 records=136 frames=53
+## resize/resize-1000  2:51  up 5 days,  5:44, 1 user, load averages: 13.12 10.75 7.44
+mount instructions=130138495 ns=53403125 rss=32604160 footprint=442909608 records=5002 rows=1000
+perop op=resize render=true med=21757654 lo=21741925 hi=21803888 records=5002 frames=53
+## search-1000-filter-nochange  2:51  up 5 days,  5:44, 1 user, load averages: 13.12 10.75 7.44
+mount instructions=137637228 ns=58759875 rss=34029568 footprint=444105640 records=5011 rows=1000
+perop op=filter-nochange render=true med=902749 lo=861359 hi=1131010 records=11 frames=186
+## end  2:51  up 5 days,  5:44, 1 user, load averages: 13.12 10.75 7.44

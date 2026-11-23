@@ -1,0 +1,87 @@
+# Set B part2 AFTER  4:22  up 5 days,  7:15, 1 user, load averages: 5.62 6.16 6.06
+## fx-bench n=1000  4:22  up 5 days,  7:15, 1 user, load averages: 5.62 6.16 6.06
+GATE PASS 1000 startup
+MEASURED 1000 startup rc=0
+GATE PASS 1000 idle
+MEASURED 1000 idle rc=0
+GATE PASS 1000 one
+MEASURED 1000 one rc=0
+GATE PASS 1000 many
+MEASURED 1000 many rc=0
+GATE PASS 1000 hover
+MEASURED 1000 hover rc=0
+GATE PASS 1000 theme
+MEASURED 1000 theme rc=0
+GATE PASS 1000 scroll
+MEASURED 1000 scroll rc=0
+GATE PASS 1000 resize
+MEASURED 1000 resize rc=0
+## rethink-core n=200  4:22  up 5 days,  7:15, 1 user, load averages: 5.39 6.09 6.04
+check 200 startup rethink_startup,200,startup,604583,13163188,3178496,2474296
+check 200 startup rc=0
+rethink_startup,200,startup,607416,13193730,3162112,2457912
+check 200 idle rethink_startup,200,idle,1147666,22136060,3162112,2457912
+check 200 idle rethink_idle,200,1051,3227648,2457912,0
+check 200 idle rc=0
+rethink_startup,200,idle,1143292,22169428,3178496,2474296
+rethink_idle,200,958,3244032,2474296,0
+check 200 one rethink_startup,200,one,1151458,22178631,3178496,2474296
+check 200 one rethink_summary,200,one,20,12591,309155,2.27
+check 200 one rc=0
+rethink_startup,200,one,1144959,22158071,3194880,2490680
+rethink_summary,200,one,20,12316,309146,2.27
+check 200 many rethink_startup,200,many,1183583,22624646,3227648,2523448
+check 200 many rethink_summary,200,many,20,1018087,20810164,100.00
+check 200 many rc=0
+rethink_startup,200,many,1171333,22609641,3227648,2523448
+rethink_summary,200,many,20,1017520,20809744,100.00
+check 200 theme rethink_startup,200,theme,1153625,22244499,3178496,2457888
+check 200 theme rethink_summary,200,theme,20,1038752,20910741,100.00
+check 200 theme rc=0
+rethink_startup,200,theme,1262791,22245587,3178496,2474296
+rethink_summary,200,theme,20,1048035,20910703,100.00
+check 200 scroll rethink_startup,200,scroll,647833,11725400,3162112,2457912
+check 200 scroll rethink_summary,200,scroll,20,46835,678198,7.69
+check 200 scroll rc=0
+rethink_startup,200,scroll,649250,11755856,3162112,2457912
+rethink_summary,200,scroll,20,46191,678187,7.69
+check 200 hover rethink_startup,200,hover,1162834,22496401,3211264,2507064
+check 200 hover rethink_summary,200,hover,20,35912,703840,3.08
+check 200 hover rc=0
+rethink_startup,200,hover,1152208,22495739,3211264,2507064
+rethink_summary,200,hover,20,34729,703655,3.08
+## rethink-core n=1000  4:22  up 5 days,  7:15, 1 user, load averages: 5.39 6.09 6.04
+check 1000 startup rethink_startup,1000,startup,2509000,62297230,3457024,2752824
+check 1000 startup rc=0
+rethink_startup,1000,startup,2516375,62345000,3473408,2769208
+check 1000 idle rethink_startup,1000,idle,5221416,107155097,3457024,2752824
+check 1000 idle rethink_idle,1000,1051,3522560,2752824,0
+check 1000 idle rc=0
+rethink_startup,1000,idle,5217750,107166198,3457024,2752824
+rethink_idle,1000,1051,3522560,2752824,0
+check 1000 one rethink_startup,1000,one,5396333,107163052,3457024,2752824
+check 1000 one rethink_summary,1000,one,20,61631,1563954,2.27
+check 1000 one rc=0
+rethink_startup,1000,one,5221250,107187767,3473408,2769208
+rethink_summary,1000,one,20,60804,1563942,2.27
+check 1000 many rethink_startup,1000,many,5333833,109297297,3637248,2933048
+check 1000 many rethink_summary,1000,many,20,5034218,103308452,100.00
+check 1000 many rc=0
+rethink_startup,1000,many,5372334,109297777,3637248,2933048
+rethink_summary,1000,many,20,4947964,103307879,100.00
+check 1000 theme rethink_startup,1000,theme,5230292,107726487,3457024,2752824
+check 1000 theme rethink_summary,1000,theme,20,5070529,103812311,100.00
+check 1000 theme rc=0
+rethink_startup,1000,theme,5251500,107723598,3457024,2752824
+rethink_summary,1000,theme,20,5010679,103816406,100.00
+check 1000 scroll rethink_startup,1000,scroll,726583,13160946,3342336,2638136
+check 1000 scroll rethink_summary,1000,scroll,20,46945,678199,7.69
+check 1000 scroll rc=0
+rethink_startup,1000,scroll,723250,13140659,3342336,2638136
+rethink_summary,1000,scroll,20,46287,678190,7.69
+check 1000 hover rethink_startup,1000,hover,5290583,108904865,3538944,2834744
+check 1000 hover rethink_summary,1000,hover,20,168229,3458809,3.08
+check 1000 hover rc=0
+rethink_startup,1000,hover,5386125,108918258,3538944,2834744
+rethink_summary,1000,hover,20,183645,3459059,3.08
+## end  4:22  up 5 days,  7:15, 1 user, load averages: 5.39 6.09 6.04
