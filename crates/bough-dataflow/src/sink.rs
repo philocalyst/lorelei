@@ -228,9 +228,15 @@ impl Journal {
         *current = Some(self.watch());
         true
     }
+    /// Note an edit. An update of a row outside the window the reading list exposed at its last pass is not
+    /// noted (that list shows nothing of it, and it would only use up the log). A window is published only by
+    /// a list that follows this journal (`list_plan` and `rows_sync` follow before they store it), so a journal
+    /// nobody follows notes every edit without reading the window: an operator nobody shows pays nothing for
+    /// the filter.
     #[inline(always)]
     pub fn push(&mut self, e: Edit) {
-        if let Edit::Update(at) = e {
+        let watch = self.watch.get();
+        if let (Some(_), Edit::Update(at)) = (watch, e) {
             let (lo, hi) = self.window();
             if lo < hi && (at < lo || at >= hi) {
                 return;
@@ -238,7 +244,7 @@ impl Journal {
         }
         self.log[self.ver as usize & 7] = e;
         self.ver = self.ver.wrapping_add(1);
-        if let Some(watch) = self.watch.get() {
+        if let Some(watch) = watch {
             watch.store(self.ver, Ordering::Relaxed);
         }
     }
