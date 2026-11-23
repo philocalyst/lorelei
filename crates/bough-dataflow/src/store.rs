@@ -122,7 +122,7 @@ impl Tiles {
         }
     }
     /// Mark the tiles a screen rectangle touches.
-    #[inline]
+    #[inline(always)]
     pub fn mark(&mut self, r: Rect) {
         let (x0, y0, x1, y1) = (r.x0.max(0), r.y0.max(0), r.x1.min(self.w), r.y1.min(self.h));
         if (x0 >= x1) | (y0 >= y1) {

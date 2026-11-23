@@ -415,6 +415,23 @@ fn pick_one<P: Paint>(c: ColView, i: u32, u: &U) -> u32 {
     unsafe { c.rec::<P>(i) }.pick_id(&Cx { u, rect: c.rect(i), pal: c.pal() })
 }
 
+/// `p`'s `w` words into `dst`. A word-aligned `P` is copied as words (what the record write compiles to inline); one
+/// aligned to less than a word (a paint of constants only is zero-sized, align 1) as bytes, since a `*const u32`
+/// to it would be misaligned.
+///
+/// # Safety
+/// `P` is `w` whole words with no padding (`Desc::words`); `dst` is valid for `w` words.
+#[inline(always)]
+unsafe fn copy_words<P>(p: &P, dst: *mut u32, w: usize) {
+    if align_of::<P>() >= 4 {
+        // SAFETY: the contract; `p` is word-aligned.
+        unsafe { std::ptr::copy_nonoverlapping(p as *const P as *const u32, dst, w) }
+    } else {
+        // SAFETY: the contract.
+        unsafe { std::ptr::copy_nonoverlapping(p as *const P as *const u8, dst as *mut u8, w * 4) }
+    }
+}
+
 struct D<P>(PhantomData<P>);
 impl<P: Paint> D<P> {
     const DESC: Desc = Desc {
@@ -1247,9 +1264,8 @@ impl Scene {
         }
         words[page + 256 + r] = z;
         let at = page + 64 * LANES + r * w;
-        // SAFETY: `P: Words`: `w` whole words with no padding; the destination is `w` words inside the arena. Copied
-        // as bytes: `P` may be aligned to less than a word (a paint of constants only is zero-sized, align 1).
-        unsafe { std::ptr::copy_nonoverlapping(&p as *const P as *const u8, words[at..at + w].as_mut_ptr() as *mut u8, w * 4) };
+        // SAFETY: `P: Words`: `w` whole words with no padding; the destination is `w` words inside the arena.
+        unsafe { copy_words(&p, words[at..at + w].as_mut_ptr(), w) };
         self.order.push((col.0 as u32) << IDX_BITS | i as u32);
         self.win.push([0; 4]);
         self.cover.push([0; 4]);
@@ -1278,7 +1294,7 @@ impl Scene {
         let z = words[page + 256 + r];
         let at = page + 64 * LANES + r * w;
         // SAFETY: as `push`.
-        unsafe { std::ptr::copy_nonoverlapping(&p as *const P as *const u8, words[at..at + w].as_mut_ptr() as *mut u8, w * 4) };
+        unsafe { copy_words(&p, words[at..at + w].as_mut_ptr(), w) };
         self.touched.push(z);
         z
     }
