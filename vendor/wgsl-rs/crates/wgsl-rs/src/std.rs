@@ -55,6 +55,8 @@ pub use runtime::*;
 pub use synchronization::*;
 pub mod subgroup;
 pub use subgroup::*;
+/// WGSL integer semantics for the CPU expansion (the `#[wgsl]` macro's arithmetic rewrite).
+pub mod wrap;
 pub use texture::*;
 pub use vector::*;
 
