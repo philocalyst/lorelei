@@ -19,13 +19,14 @@ by the mutation check below where a mutant exists.
 | `blur_read` (read footprint, exact) | unit: only "the pixel is inside the read of its write ends" | footprint: exact against the set of pixels whose writes meet the output range, every level and domain; transpose test over ±300 px | yes: M1, M2 |
 | `blur_level` | not tested | bit-length rule, clamp to `MAX_BLUR_LEVEL`, 0 for radius ≤ 0 | yes (by inspection: any change of the rule breaks the bounds) |
 | `BlurLayer::expanded_read_rect`, `output_of` (2-D) | unit: one inequality; raster unit `a_blurred_region…` checks `output_of` ⊇ change for random pixels | footprint: 2-D, levels 0..=3, a 75 x 53 window, six rects (inside, across the left/bottom/right edges, a 1-px column, the whole window): every pixel on the read rect's inner edges is read, none just outside is; `output_of` of random changed rects is exactly the changed outputs; empty rects and level 0 | yes: M1–M3, M15 |
-| Opaque covers: `cover_push` (cut to window), `covers_commit` (whole tiles; window-edge rule), culling `cover.z > z` | unit: four hand cases | `tests/engine.rs` exact mode: random covers and damage, the mask, `occlusion_skips` and `occluded_tiles_skipped` predicted tile for tile from an independent whole-tile rule; flat oracle mutant `OCCLUSION_ANY_Z` | yes: M5, M6, M12 |
+| Opaque covers: `cover_push` (cut to window), `covers_commit` (whole tiles; window-edge rule), culling `cover.z > z` | unit: four hand cases | `tests/engine.rs` exact mode: random covers and damage, the mask, `occlusion_skips` and `occluded_tiles_skipped` predicted tile for tile from an independent whole-tile rule; flat oracle mutant `OCCLUSION_ANY_Z` | yes: M5, M6, M12, O6, O9 |
+| `covers()` order (front to back) and `layers()` order (back to front, ties by id) | not tested | `covers_come_front_to_back_and_layers_back_to_front` (200 random commits, incl. pushes onto committed covers), and every frame of the engine oracle checks `covers()` against the scene's covers | yes: N4, O4 |
 | Damage under a cover still reaches a blur layer between (`CULL_BEFORE_BLUR`) | unit + flat mutant | engine oracle (full mode) | yes: M14 |
-| Blur propagation and cascade through stacked layers | unit: one cascade | engine oracle: random stacked, overlapping layers at levels 0..=4 over a pixel reference that repaints everything; gated and ungated | yes: M7, M15 |
-| Gate (`resolve` with a gate) halting/narrowing | unit: two cases | engine oracle gated runs: the gate is the real backdrop diff, as a retaining executor computes it; the mask must still cover every changed pixel | yes (M7/M15 also fail gated runs) |
-| `damage_move` (hull when touching, two rects apart) | unit: two cases | exact against `tiles(old) ∪ tiles(new)` (∪ the hull when they touch) over 400 random moves; full oracle uses it | yes: M13 |
-| `scroll` (blit, strip, virtual backdrop damage, whole-clip fallback) | unit: one scroll each axis | engine oracle: random scrolls of a clipped group (small, sideways, a jump past the clip), the old frame blitted must equal the new outside marked tiles | yes: M8, M9, M18 |
-| `seam` | unit + flat mutant | engine oracle: every fixed item over the clip | yes: M16 |
+| Blur propagation and cascade through stacked layers | unit: one cascade | engine oracle: random stacked, overlapping layers at levels 0..=4 over a pixel reference that repaints everything; gated and ungated. Tight oracle (below): ungated, the mask equals the documented model tile for tile | yes: M7, M15, N7, O5, O7 |
+| Gate (`resolve` with a gate) halting/narrowing | unit: two cases | engine oracle gated runs: the gate is the real backdrop diff, as a retaining executor computes it; the mask must still cover every changed pixel, and lie within the model with each layer's backdrop change cut to the hull of its real diff | yes: O3 (M7/M15 also fail gated runs) |
+| `damage_move` (hull when touching, two rects apart) | unit: two cases | exact against `tiles(old) ∪ tiles(new)` (∪ the hull when they touch) over 400 random moves; full oracle uses it | yes: M13, O8 |
+| `scroll` (blit, strip, virtual backdrop damage, whole-clip fallback) | unit: one scroll each axis | engine oracle: random scrolls of a clipped group (small, sideways, a jump past the clip), the old frame blitted must equal the new outside marked tiles; the tight oracle computes the strip pixel by pixel (a clip pixel whose source is outside the clip) and requires a blit exactly when some pixel keeps its source | yes: M8, M9, M18, N3, O1 |
+| `seam` | unit + flat mutant | engine oracle: every fixed item over the clip | yes: M16, O2 |
 | `ScrollBlit::kept` | raster unit (blit) | `a_scroll_blit_keeps…`: a kept pixel and its source are both in the clip, and every such pixel is kept | yes: M9 |
 | `damage_mask`, `damage_virtual` | unit (report) | engine oracle (theme op; scroll) | yes (indirect) |
 | `rebase_orders` | unit: one case | engine oracle: inserts and removals renumber mid-frame; exact mode predicts no culling of rebased damage | yes: M17 |
@@ -57,12 +58,44 @@ by the mutation check below where a mutant exists.
 `bough-flat`. Its tests (`fx.rs`, `exact.rs`, `flat.rs`, `scenes.rs`, `review.rs`, `motion.rs`) compare executors and retained
 frames with full redraws. They are outside this map except for the gate cells below.
 
+### The tight oracle (lane `style-motion-media/damage-oracle`)
+
+The full-mode oracle used to check only that the mask covers every changed pixel, plus "under 80% of tiles
+marked". So over-marking, and ordering mutants, could not fail it (N3, N4 and N7 survived). `tests/engine.rs`
+now also computes what must be repainted from what the test told the engine and the scene's own items. It uses
+none of the engine's code: no `blur_write`, `output_of`, `kept` or `covers()`.
+
+* The footprint is taken by brute force. An impulse goes at each pixel of each window dimension through the
+  unrounded pyramid of `tests/common` (the documented pyramid, clamped edges), for levels 0..=4. Each pixel's
+  changed outputs are asserted to be one interval, and neighbours' intervals to meet. The 2-D footprint of a
+  pixel set is the separable product, applied to arbitrary pixel sets by rows.
+* **E** (exact for any content consistent with what the driver knows) runs up the items in paint order with
+  two pixel sets. One holds what the retained frame (blits applied) may get wrong, the other what the layers
+  above read differently. An opaque solid clears both, pixel by pixel (a cover moving with a scrolled group
+  does not clear the second). A blur layer replaces its rect with the footprint of the second set. Each told
+  piece joins at its order. A move is its two windows, a theme its tiles, a scroll strip its pixels.
+* **M** is E widened by exactly the documented slack, each rule quoted in `oracle`'s doc comment:
+  * S1, whole tiles (lib.rs "Tiles are 32 x 32").
+  * S2, culling per cover and per whole tile (lib.rs "not marked on a tile wholly inside a cover with
+    `cover.z > z`").
+  * S3, covers never keep damage from a layer (lib.rs "culled by a cover or not: the layer may sit between").
+  * S4, a move is the hull when the windows are within a tile (`damage_move` "as one rect when they touch").
+  * S5, a theme tells every layer its whole backdrop changed (`damage_mask`).
+* The checks:
+  * Ungated: E ⊆ M and **mask = M tile for tile**.
+  * Gated: mask ⊆ M with each layer's backdrop change cut to the hull of its real diff (the gate may narrow,
+    never widen), plus the pixel reference.
+
+Over the ungated full-mode runs, E holds 12,213 tiles and M (= the mask) adds 201 tiles (1.6%) of documented
+slack. No over-repair beyond the documented slack was found.
+
 ## Mutation check
 
 Each mutant was applied by hand to the source, the tests were run, and the source was restored
 (`git status` clean under `src/` afterwards). "Old" is the in-crate unit tests that existed before
 (`bough-damage --lib`, `bough-flat --lib`). "New" names the new test binaries that fail. In every row at
-least one new test fails.
+least one new test fails. The table was re-run in full in the damage-oracle lane (debug, `--no-fail-fast`,
+`-p bough-damage`, or `-p bough-flat --lib --test blur` for R*). All 33 mutants fail, and `src/` was clean afterwards.
 
 | # | Mutant | Old | New |
 |---|---|---|---|
@@ -87,6 +120,18 @@ least one new test fails.
 | R1 | raster up-sample weights swapped (`3,1` on even texels) | missed | flat `tests/blur.rs` (bit-exact pyramid) |
 | R2 | raster down-sample rounds down (`pack(acc, 0, 6)`) | missed | flat `tests/blur.rs` |
 | R3 | raster level domain's far edge counted from the backdrop's origin instead of the window's | missed | flat `tests/blur.rs` (backdrop cut to the read rect) |
+| N3 | scroll `dy > 0` strip `y1: kept.y0 + 1` (one extra row) | missed | engine tight oracle |
+| N4 | `covers_commit` sorts back to front | missed | `covers_come_front_to_back…`, engine exact mode and tight oracle (`covers()` check) |
+| N7 | layer output `output_of(changed).expand(32)` | missed | engine tight oracle |
+| O1 | scroll `dx > 0` strip `x1: kept.x0 + 1` (one extra column) | missed | engine tight oracle |
+| O2 | seam's carried rect not cut to the clip | caught | engine tight oracle |
+| O3 | layer output from the asked rect `c`, not the gate's answer | caught | engine tight oracle (gated) |
+| O4 | layers sorted front to back | caught | `covers_come_front_to_back…`, engine oracle |
+| O5 | direct damage at a layer's own order feeds the layer (`>` for `>=`) | missed | engine tight oracle |
+| O6 | per-tile cover order is the last cover's, not the highest (`*cz = c.z + 1`) | missed | engine exact mode, tight oracle |
+| O7 | `damage_virtual` damage marked | caught | engine tight oracle |
+| O8 | move hulls windows within two tiles | missed | move test, engine tight oracle |
+| O9 | covers never cull (`any_cover = false`) | caught | engine exact mode, tight oracle, resize test |
 
 The script is in the lane's scratch space and is not committed. Each row is a single text substitution, which
 can be reapplied from this table.
@@ -98,8 +143,11 @@ can be reapplied from this table.
   is not covered.
 - No blur layer moves with scrolled content in the oracle's scenes. `damage_virtual(z_lo - 1, …)` is
   claimed to cover that case and is exercised only for layers above the group.
-- Over-marking is not a failure, apart from exact mode and the overall marked-tile bound (under 80% of
-  tiles). A mutant that only adds tiles where layers or scrolls are involved passes.
+- Over-marking is now a failure everywhere ungated (mask = M). Gated runs bound the mask only from above by a
+  model that narrows per layer, not per piece the engine asks about. An engine that ignored part of the
+  gate's narrowing, but stayed within the per-layer hull, would pass.
+- The driver's knowledge is taken as told. Rebased damage has order 0 and is never culled in E as in M, and
+  a theme's mask has no order.
 
 ## Native gate cells
 
