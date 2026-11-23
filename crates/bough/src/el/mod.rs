@@ -134,7 +134,8 @@ impl<'f> El<'f> {
 
     // ------------------------------------------------------------------- layout (every element)
 
-    /// Width in points: a length, or a `f32` signal / mapped source (the box restyles when it publishes).
+    /// Width in points: a length (any element), or a `f32` signal / mapped source (a box's: the box restyles
+    /// when it publishes; a source on a text panics at the setter, naming it).
     #[track_caller]
     pub fn w<P: IntoProp<'f, f32>>(self, p: P) -> Self {
         let pl = p.plug::<crate::boxops::ApplyBoxW>(Seal);
@@ -214,8 +215,10 @@ impl<'f> El<'f> {
         self.n().spec.margin = [l.pt(), t.pt(), r.pt(), b.pt()];
         self
     }
+    /// Space between the children (a container's).
+    #[track_caller]
     pub fn gap(self, v: impl Len) -> Self {
-        self.n().spec.gap = v.pt();
+        self.kind_is(K_BOX, "a gap").spec.gap = v.pt();
         self
     }
     pub fn grow(self, v: f32) -> Self {
@@ -226,19 +229,24 @@ impl<'f> El<'f> {
         self.n().spec.shrink = v;
         self
     }
+    /// Cross-axis alignment of the children (a container's; `align_self` is the child's own).
+    #[track_caller]
     pub fn items(self, a: Align) -> Self {
-        self.n().spec.items = Some(a);
+        self.kind_is(K_BOX, "children's alignment").spec.items = Some(a);
         self
     }
     pub fn align_self(self, a: Align) -> Self {
         self.n().spec.self_align = Some(a);
         self
     }
+    /// Main-axis distribution of the children (a container's).
+    #[track_caller]
     pub fn justify(self, j: Justify) -> Self {
-        self.n().spec.justify = Some(j);
+        self.kind_is(K_BOX, "children's justification").spec.justify = Some(j);
         self
     }
-    /// Centre the children on both axes.
+    /// Centre the children on both axes (a container's).
+    #[track_caller]
     pub fn center(self) -> Self {
         self.items(Align::Center).justify(Justify::Center)
     }

@@ -1128,6 +1128,57 @@ mod tests {
         }
     }
 
+    /// Map closures whose captures have padding (which `reflect` cannot prove absent for any closure) are
+    /// sealed by their frozen bytes: two different values never seal alike, the fast check agrees with the
+    /// streaming one, and padding-free captures always seal alike. (Equal padded values may differ in their
+    /// padding bytes and then only miss a seal: not asserted.)
+    #[test]
+    fn padded_captures_seal_by_value() {
+        #[derive(Clone, Copy)]
+        struct Pad {
+            a: u8,
+            b: u32,
+        }
+        assert!(!crate::reflect::padding_free::<Pad>(), "the test's capture has padding");
+        let f = crate::signal::Signal::new(0.5f32);
+        let padded = |v: u32| -> super::super::El<'_> {
+            let p = Pad { a: (v % 3) as u8, b: v / 3 };
+            let q = ((v % 2) as u8, 7u32);
+            div().size(4, 4).opacity(f.map(move |x| x * p.b as f32 + p.a as f32 + q.0 as f32 + q.1 as f32))
+        };
+        let plain = |v: u32| -> super::super::El<'_> {
+            let p = (v % 3, v / 3);
+            div().size(4, 4).opacity(f.map(move |x| x * p.1 as f32 + p.0 as f32))
+        };
+        fn sweep<'a>(name: &str, make: impl Fn(u32) -> super::super::El<'a>) -> u32 {
+            let mut descs = crate::layout::SpecTable::default();
+            let mut hits = 0;
+            for a in 0..9 {
+                let mut bytes = Vec::new();
+                let ea = make(a);
+                let mut w = SealWrite { out: &mut bytes, descs: &mut descs, ok: true };
+                seal_node(Item(ea.raw()).n(), &mut w);
+                assert!(w.ok, "{name}: a map over a capturing closure seals (not refused)");
+                for b in 0..9 {
+                    let nb = Item(make(b).raw());
+                    let mut sc = SealCheck::new(&bytes, &descs);
+                    seal_node(nb.n(), &mut sc);
+                    assert_eq!(seal_eq_node(nb.n(), &bytes), sc.equal(), "{name} {a} {b}: fast check = streaming check");
+                    if a != b {
+                        assert!(!sc.equal(), "{name} {a} {b}: different captures seal apart");
+                    } else {
+                        hits += sc.equal() as u32;
+                    }
+                }
+                drop(Walk::enter());
+            }
+            hits
+        }
+        assert_eq!(sweep("plain", plain), 9, "equal padding-free captures seal alike");
+        let hits = sweep("padded", padded);
+        eprintln!("padded: {hits}/9 equal descriptions sealed alike");
+    }
+
     /// The same value written to any two different fields of a node's block (spec, metrics, flags) never
     /// seals alike.
     #[test]

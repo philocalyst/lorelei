@@ -249,3 +249,102 @@ mod r7 {
         }
     }
 }
+
+// ------------------------------------------------------------------------------------------------------------
+// Key dispatch parity: the kernel (`raw::App`) and the lowered runtime (`lower::App`) run the same routes for
+// the same focus and keys. Three nested elements with per-key routes, bound routes and any-key routes; a
+// seeded sequence of clicks (which move focus) and keys; the two logs must be equal.
+mod keys {
+    use bough::prelude::*;
+    #[derive(Default)]
+    pub struct Nest {
+        pub log: Vec<(u8, char)>,
+    }
+    fn name(k: Option<Key>) -> char {
+        match k {
+            Some(Key::Char(c)) => c,
+            Some(Key::Enter) => '\n',
+            Some(Key::Escape) => 'E',
+            Some(Key::Tab) => 'T',
+            Some(_) => '?',
+            None => '0',
+        }
+    }
+    impl Nest {
+        fn outer_enter(&mut self) {
+            self.log.push((0, '\n'));
+        }
+        fn outer_any(&mut self, e: &Ev) {
+            self.log.push((0, name(e.key)));
+        }
+        fn mid(&mut self, c: char) {
+            self.log.push((1, c));
+        }
+        fn mid_escape(&mut self) {
+            self.log.push((1, 'E'));
+        }
+        fn inner_any(&mut self, e: &Ev) {
+            self.log.push((2, name(e.key)));
+        }
+        fn inner_click(&mut self) {
+            self.log.push((2, 'c'));
+        }
+    }
+    impl View for Nest {
+        fn view(&self) -> El<'_> {
+            div()
+                .size(300, 190)
+                .bg(rgb(0xeeeeee))
+                .on_key(Key::Enter, Nest::outer_enter)
+                .on_any_key(Nest::outer_any)
+                .child(
+                    div()
+                        .size(200, 150)
+                        .bg(rgb(0xcccccc))
+                        .focusable()
+                        .on_key(Key::Minus, Nest::mid.with('-'))
+                        .on_key(Key::Space, Nest::mid.with(' '))
+                        .on_key(Key::Escape, Nest::mid_escape)
+                        .child(div().size(80, 60).bg(rgb(0x3355aa)).on_key(Key::Equal, Nest::mid.with('=')).on_any_key(Nest::inner_any).on_click(Nest::inner_click)),
+                )
+        }
+    }
+}
+
+#[test]
+fn key_dispatch_matches_on_both_runtimes() {
+    const KEYS: [Key; 8] = [Key::Enter, Key::Escape, Key::Minus, Key::Space, Key::Equal, Key::Backslash, Key::Char('q'), Key::Tab];
+    const SPOTS: [(f32, f32); 3] = [(20.0, 20.0), (250.0, 170.0), (150.0, 100.0)];
+    let mut kernel = bough::raw::App::new(keys::Nest::default(), cfg(), false);
+    let mut lowered = bough::lower::App::new(keys::Nest::default(), cfg());
+    let mut s = 0x9E37_79B9_7F4A_7C15u64;
+    let mut next = || {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        s
+    };
+    for step in 0..400 {
+        let r = next();
+        if r % 5 == 0 {
+            let (x, y) = SPOTS[(r / 5 % 3) as usize];
+            click(&mut kernel, x, y);
+            lowered.pointer_down(x, y, Button::Primary);
+            lowered.pointer_up(x, y, Button::Primary);
+        } else {
+            let k = KEYS[(r / 5 % KEYS.len() as u64) as usize];
+            kernel.key_down(k, Mods::default());
+            lowered.key_down(k, Mods::default());
+        }
+        assert_eq!(kernel.owner.log, lowered.view().log, "step {step}: the runtimes ran different routes");
+    }
+    assert!(kernel.owner.log.len() > 100, "the sequence exercised the routes ({} runs)", kernel.owner.log.len());
+}
+
+/// A setter that only arranges children is a container's: on a text it panics at the setter (review finding: it
+/// was silently ignored).
+#[test]
+#[should_panic(expected = "a gap is set on")]
+fn a_container_setter_on_a_text_panics() {
+    let _ = bough::el::text("leaf").gap(4);
+}
