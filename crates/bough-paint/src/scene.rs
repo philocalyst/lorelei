@@ -642,6 +642,7 @@ impl Bins {
         }
     }
     /// From nothing: every record, in paint order.
+    #[inline(never)]
     pub fn build(&mut self, l: &Lanes, tx: usize, ty: usize) {
         let nt = tx * ty;
         (self.tx, self.ty) = (tx, ty);
@@ -960,6 +961,12 @@ pub struct Scene {
     world_frame: bool,
     /// Per column: the block word its records are compared with, and its records by key.
     keys: Vec<Option<Keyed>>,
+    /// The columns that read each block word: per 64 columns, a set of them (bit `ci % 64`) by word. A
+    /// frame visits the columns of the words that changed and no other (a drag of one record reads the
+    /// sets of two words, not every column's description).
+    readers: Vec<[u64; 64]>,
+    /// Per 64 columns: those with a scroll or a key index (bit `ci % 64`).
+    indexed: Vec<u64>,
     /// Bumped when the bins were rebuilt (an executor that mirrors them re-reads them).
     pub bins_epoch: u64,
     /// Keys whose window, halo or cover lane changed since `take_lane_dirty` (each once), and "all of
@@ -1007,8 +1014,6 @@ pub struct Scene {
     pal_base: usize,
     /// Derived clock words: (word, start word, duration word). `update` computes `word` from `Time`.
     clocks: Vec<(usize, usize, usize)>,
-    /// The block the last `update` ran under: the host's, with the derived words filled in.
-    block: U,
     tab_used: usize,
     tab_map: std::collections::HashMap<(i32, i32), u32>,
     tab_jobs: Vec<TabJob>,
@@ -1112,7 +1117,6 @@ impl Scene {
             arena: Arena::new(arena_words + PAL_WORDS + TAB_WORDS),
             pal_base: arena_words,
             clocks: Vec::new(),
-            block: U::default(),
             memoise: std::env::var("BOUGH_NO_TABS").is_err(),
             memoise_coverage: true,
             tab_base: arena_words + PAL_WORDS,
@@ -1144,6 +1148,8 @@ impl Scene {
             world_pan: None,
             world_frame: false,
             keys: Vec::new(),
+            readers: Vec::new(),
+            indexed: Vec::new(),
             bins_epoch: 0,
             lane_dirty: Vec::new(),
             lane_mark: Vec::new(),
@@ -1176,6 +1182,16 @@ impl Scene {
         self.cols.push(Col { desc, base: self.used, cap, len: 0, active: Vec::new() });
         self.scrolls.push(None);
         self.keys.push(None);
+        let ci = self.cols.len() - 1;
+        if ci % 64 == 0 {
+            self.readers.push([0; 64]);
+            self.indexed.push(0);
+        }
+        let mut r = desc.reads;
+        while r != 0 {
+            self.readers[ci / 64][r.trailing_zeros() as usize] |= 1 << (ci % 64);
+            r &= r - 1;
+        }
         self.used += words;
         ColId(self.cols.len() - 1, PhantomData)
     }
@@ -1187,6 +1203,7 @@ impl Scene {
     /// to the undeclared one).
     pub fn scroll<P: Paint>(&mut self, col: ColId<P>, wx: usize, wy: usize) {
         assert!(wx < 64 && wy < 64 && wx != wy);
+        self.indexed[col.0 / 64] |= 1 << (col.0 % 64);
         self.scrolls[col.0] = Some(Scroll { wx, wy, rows: Default::default(), at: Vec::new(), unbounded: Default::default() });
         self.first = true;
     }
@@ -1278,6 +1295,7 @@ impl Scene {
     /// value (`set_key`). Trusted, as `scroll`.
     pub fn keyed<P: Paint>(&mut self, col: ColId<P>, word: usize) {
         assert!(word < 64);
+        self.indexed[col.0 / 64] |= 1 << (col.0 % 64);
         self.keys[col.0] = Some(Keyed { word, by_id: Default::default(), id: Vec::new() });
     }
     /// Record `i` of a keyed column has key `id`.
@@ -1645,13 +1663,22 @@ impl Scene {
     /// stages are in `self.plan`: `prepare` runs them). Leaves the output damage in `self.damage`.
     pub fn update(&mut self, u: &U) -> FrameStats {
         // the derived words: a clock's progress is a block word the scene computes, so its readers read an
-        // ordinary (broad) word and none of them reads `Time`
+        // ordinary (broad) word and none of them reads `Time`. A scene without clocks reads the host's block
+        // where it is (the copy is made out of line: a block on the frame's stack costs every frame an
+        // aligned stack, the block being 64-byte aligned)
+        if self.clocks.is_empty() { self.update_under(u) } else { self.update_clocked(u) }
+    }
+    #[inline(never)]
+    fn update_clocked(&mut self, u: &U) -> FrameStats {
         let mut eff = *u;
         for &(w, s, d) in &self.clocks {
             eff.w[w] = clock_at(u.w[U_TIME], u.w[s], u.w[d]);
         }
-        self.block = eff;
-        let u = &eff;
+        self.update_under(&eff)
+    }
+    /// `update` under the block with its derived words.
+    #[inline(never)]
+    fn update_under(&mut self, u: &U) -> FrameStats {
         let mut fs = FrameStats::default();
         if !self.tab_jobs.is_empty() {
             self.fill_tabs();
@@ -1717,110 +1744,95 @@ impl Scene {
         }
         touched.clear();
         self.touched = touched;
-        let mut part = std::mem::take(&mut self.part);
-        if !first {
-            for &(r, z) in &part {
-                let w = self.win[z as usize];
-                let c = [r[0].max(w[0] as i32), r[1].max(w[1] as i32), r[2].min(w[2] as i32), r[3].min(w[3] as i32)];
-                if c[0] < c[2] && c[1] < c[3] {
-                    pass!().mark([c[0] as i16, c[1] as i16, c[2] as i16, c[3] as i16], z);
+        if !self.part.is_empty() {
+            let mut part = std::mem::take(&mut self.part);
+            if !first {
+                for &(r, z) in &part {
+                    let w = self.win[z as usize];
+                    let c = [r[0].max(w[0] as i32), r[1].max(w[1] as i32), r[2].min(w[2] as i32), r[3].min(w[3] as i32)];
+                    if c[0] < c[2] && c[1] < c[3] {
+                        pass!().mark([c[0] as i16, c[1] as i16, c[2] as i16, c[3] as i16], z);
+                    }
                 }
             }
+            part.clear();
+            self.part = part;
         }
-        part.clear();
-        self.part = part;
         // the clock alone never sends a pass over a whole column: its readers said when they stop
         let tbit = 1u64 << U_TIME;
         // a broad word is not differentiated: it damages the frame as one fact (below)
         let bword = if first { 0 } else { mask & self.broad };
         let mut broad_hit = false;
-        for ci in 0..self.cols.len() {
-            let d = self.cols[ci].desc;
-            let mask = if d.geom_reads & bword == 0 {
-                broad_hit |= d.reads & bword != 0;
-                mask & !bword
+        // the columns that read a word that changed, in creation order (every column on a first frame): a
+        // column that reads none of them has nothing to do, and is not looked at
+        for chunk in 0..self.readers.len() {
+            let mut set = if first {
+                u64::MAX >> (64 - (self.cols.len() - chunk * 64).min(64))
             } else {
-                mask
+                let (mut m, mut set) = (mask, 0);
+                while m != 0 {
+                    set |= self.readers[chunk][m.trailing_zeros() as usize];
+                    m &= m - 1;
+                }
+                set
             };
-            // what moved for this column besides the clock; a pan or a key word it declared is answered by
-            // its index (the records that can show a difference), anything else by the whole column
-            let bits = d.reads & mask & !tbit;
-            let timed = mask & d.reads & tbit != 0 && !self.cols[ci].active.is_empty();
-            let mut cand: Option<Vec<u32>> = None;
-            if !first && bits != 0 {
-                let (mut rest, mut c) = (bits, Vec::new());
-                if let Some(sc) = self.scrolls[ci].as_ref() {
-                    if rest & (1 << sc.wx | 1 << sc.wy) != 0 {
-                        c.extend(sc.unbounded.iter().copied());
-                        // the rows of the scrolled space the frame showed and shows
-                        for (k, b) in [&self.prev, u].into_iter().enumerate() {
-                            if k == 0 && cfg!(feature = "mutant_scroll_band") {
-                                continue;
-                            }
-                            let py = (b.w[sc.wy] as i32) >> 8;
-                            for row in (-py) >> 8..=(self.fh as i32 - py) >> 8 {
-                                if let Some(v) = sc.rows.get(&row) {
-                                    c.extend_from_slice(v);
-                                }
-                            }
+            let ixed = self.indexed[chunk];
+            while set != 0 {
+                let b = set.trailing_zeros();
+                set &= set - 1;
+                let ci = chunk * 64 + b as usize;
+                let ix = ixed >> b & 1 != 0;
+                let d = self.cols[ci].desc;
+                debug_assert!(first || d.reads & mask != 0);
+                let mask = if d.geom_reads & bword == 0 {
+                    broad_hit |= d.reads & bword != 0;
+                    mask & !bword
+                } else {
+                    mask
+                };
+                // what moved for this column besides the clock; a pan or a key word it declared is answered by
+                // its index (the records that can show a difference), anything else by the whole column
+                let bits = d.reads & mask & !tbit;
+                let timed = mask & d.reads & tbit != 0 && !self.cols[ci].active.is_empty();
+                // (a column without an index, most of them, pays nothing for the indices)
+                let cand = if ix && !first && bits != 0 {
+                    Self::candidates(self.scrolls[ci].as_ref(), self.keys[ci].as_ref(), &self.prev, u, self.fh, bits, timed.then_some(&self.cols[ci].active[..]))
+                } else {
+                    None
+                };
+                let indexed = cand.is_some();
+                let full = first || (bits != 0 && !indexed);
+                if !full && !indexed && !timed {
+                    continue;
+                }
+                // The index already includes future motion. Refresh it only for changes that can move that
+                // sweep within the scrolled space, rather than when the record moves inside its sweep.
+                let reindex = ix && self.scrolls[ci].as_ref().is_some_and(|sc| first || bits & d.geom_reads & !(1 << sc.wx | 1 << sc.wy) != 0);
+                let keep_active = indexed && !timed;
+                let only = if full { None } else if indexed { cand } else { Some(std::mem::take(&mut self.cols[ci].active)) };
+                fs.cols_visited += 1;
+                fs.recs_visited += only.as_ref().map_or(self.cols[ci].len, Vec::len) as u32;
+                let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
+                act.clear();
+                moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
+                if keep_active {
+                    // Reconsider what was visited and preserve the unvisited indices.
+                    let active = &mut self.cols[ci].active;
+                    let visited = only.as_deref().unwrap();
+                    active.retain(|i| visited.binary_search(i).is_err());
+                    if !cfg!(feature = "mutant_park_wake") {
+                        active.extend_from_slice(&act);
+                    }
+                } else {
+                    std::mem::swap(&mut self.cols[ci].active, &mut act);
+                }
+                if reindex {
+                    if let Some(sc) = self.scrolls[ci].as_mut() {
+                        let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
+                        match only.as_deref() {
+                            Some(o) => o.iter().for_each(|&i| Self::reindex(sc, d, v, i, u)),
+                            None => (0..self.cols[ci].len as u32).for_each(|i| Self::reindex(sc, d, v, i, u)),
                         }
-                        rest &= !(1 << sc.wx | 1 << sc.wy);
-                    }
-                }
-                if let Some(k) = self.keys[ci].as_ref() {
-                    if rest & (1 << k.word) != 0 {
-                        for (j, id) in [self.prev.w[k.word], u.w[k.word]].into_iter().enumerate() {
-                            if j == 0 && cfg!(feature = "mutant_key_old") {
-                                continue;
-                            }
-                            if let Some(v) = k.by_id.get(&id) {
-                                c.extend_from_slice(v);
-                            }
-                        }
-                        rest &= !(1 << k.word);
-                    }
-                }
-                if rest == 0 {
-                    if timed {
-                        c.extend_from_slice(&self.cols[ci].active);
-                    }
-                    c.sort_unstable();
-                    c.dedup();
-                    cand = Some(c);
-                }
-            }
-            let indexed = cand.is_some();
-            let full = first || (bits != 0 && !indexed);
-            if !full && !indexed && !timed {
-                continue;
-            }
-            // The index already includes future motion. Refresh it only for changes that can move that
-            // sweep within the scrolled space, rather than when the record moves inside its sweep.
-            let reindex = self.scrolls[ci].as_ref().is_some_and(|sc| first || bits & d.geom_reads & !(1 << sc.wx | 1 << sc.wy) != 0);
-            let keep_active = indexed && !timed;
-            let only = if full { None } else if indexed { cand } else { Some(std::mem::take(&mut self.cols[ci].active)) };
-            fs.cols_visited += 1;
-            fs.recs_visited += only.as_ref().map_or(self.cols[ci].len, Vec::len) as u32;
-            let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
-            act.clear();
-            moved |= (d.window)(v, &self.prev, u, mask, first, only.as_deref(), &mut pass!());
-            if keep_active {
-                // Reconsider what was visited and preserve the unvisited indices.
-                let active = &mut self.cols[ci].active;
-                let visited = only.as_deref().unwrap();
-                active.retain(|i| visited.binary_search(i).is_err());
-                if !cfg!(feature = "mutant_park_wake") {
-                    active.extend_from_slice(&act);
-                }
-            } else {
-                std::mem::swap(&mut self.cols[ci].active, &mut act);
-            }
-            if reindex {
-                if let Some(sc) = self.scrolls[ci].as_mut() {
-                    let v = view_of(&self.arena, self.pal_base, &self.cols[ci]);
-                    match only.as_deref() {
-                        Some(o) => o.iter().for_each(|&i| Self::reindex(sc, d, v, i, u)),
-                        None => (0..self.cols[ci].len as u32).for_each(|i| Self::reindex(sc, d, v, i, u)),
                     }
                 }
             }
@@ -1908,6 +1920,53 @@ impl Scene {
         self.prev = *u;
         self.first = false;
         fs
+    }
+    /// The records of a column with a scroll or key index that can show a difference, ascending, when only
+    /// the words that index answers (and the clock: `active`, the column's active set) are among `bits`;
+    /// `None`: some other word moved, and the whole column is visited.
+    #[inline(never)]
+    fn candidates(sc: Option<&Scroll>, key: Option<&Keyed>, prev: &U, u: &U, fh: u32, bits: u64, active: Option<&[u32]>) -> Option<Vec<u32>> {
+        let (mut rest, mut c) = (bits, Vec::new());
+        if let Some(sc) = sc {
+            if rest & (1 << sc.wx | 1 << sc.wy) != 0 {
+                c.extend(sc.unbounded.iter().copied());
+                // the rows of the scrolled space the frame showed and shows
+                for (k, b) in [prev, u].into_iter().enumerate() {
+                    if k == 0 && cfg!(feature = "mutant_scroll_band") {
+                        continue;
+                    }
+                    let py = (b.w[sc.wy] as i32) >> 8;
+                    for row in (-py) >> 8..=(fh as i32 - py) >> 8 {
+                        if let Some(v) = sc.rows.get(&row) {
+                            c.extend_from_slice(v);
+                        }
+                    }
+                }
+                rest &= !(1 << sc.wx | 1 << sc.wy);
+            }
+        }
+        if let Some(k) = key {
+            if rest & (1 << k.word) != 0 {
+                for (j, id) in [prev.w[k.word], u.w[k.word]].into_iter().enumerate() {
+                    if j == 0 && cfg!(feature = "mutant_key_old") {
+                        continue;
+                    }
+                    if let Some(v) = k.by_id.get(&id) {
+                        c.extend_from_slice(v);
+                    }
+                }
+                rest &= !(1 << k.word);
+            }
+        }
+        if rest == 0 {
+            if let Some(a) = active {
+                c.extend_from_slice(a);
+            }
+            c.sort_unstable();
+            c.dedup();
+            return Some(c);
+        }
+        None
     }
     /// Route an event to the next prefix checkpoint on each tile. Eager scheduling has no repair result,
     /// so it routes to every later reader. Level-0 windows are tile-aligned and clipped to the frame.
@@ -2061,7 +2120,7 @@ impl Scene {
     /// Some record still depends on the clock: the host owes the scene a frame at the output's next
     /// refresh. False: nothing moves, and no frame is owed until a block word or a record is written.
     pub fn animating(&self) -> bool {
-        self.cols.iter().any(|c| !c.active.is_empty()) || self.clocks.iter().any(|&(w, _, d)| self.block.w[w] < 32_768 && self.block.w[d] != 0)
+        self.cols.iter().any(|c| !c.active.is_empty()) || self.clocks.iter().any(|&(w, _, d)| self.prev.w[w] < 32_768 && self.prev.w[d] != 0)
     }
     /// Declare block word `word` derived: every `update` sets it to the Q15 progress of `Time` from word
     /// `start` over word `dur` ticks (0 before the start, 32,768 from the end on, and at once when `dur` is
@@ -2075,7 +2134,8 @@ impl Scene {
     /// The block the last `update` ran under (the host's, with the derived words): what the executors
     /// draw the frame under.
     pub fn block(&self) -> &U {
-        &self.block
+        // (`update` leaves it as `prev`: the block it ran under is the one the surface then shows)
+        &self.prev
     }
     /// Table `table`'s slots from 0 (packed RGBA8 words, as a colour operand holds them). The lanes are
     /// re-mounted (a record's opaque cover may depend on a table word) and the frame is redrawn: this is a
@@ -2418,7 +2478,7 @@ impl Scene {
     /// A whole CPU frame: update, then shade what the update damaged. `out` holds the previous frame.
     pub fn frame(&mut self, u: &U, out: &mut [u32], stride: usize, pool: &Pool, extra: usize) -> FrameStats {
         let mut fs = self.update(u);
-        let u = &self.block.clone();
+        let u = &self.prev.clone();
         let st = self.prepare(u);
         let mut tiles = std::mem::take(&mut self.tiles);
         self.damage.tiles(&mut tiles);
