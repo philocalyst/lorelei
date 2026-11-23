@@ -173,7 +173,7 @@ fn random_mixed() {
     let pool: Vec<&str> = vec![
         "a", "b", "f", "i", "l", "fi", "ffl", " ", " ", "  ", "\t", "\n", "\r\n", "\u{AD}", "é", "ß", "Ä", "ñ", "1", "2", ",", ".", "-",
         "/", "(", ")", "'", "\"", "%", "$", "日本", "語", "中文", "שלום", "עברית", "مرحبا", "سلام", "😀", "👍🏽", "e\u{301}", "\u{300}",
-        "Ω", "Ж", "δ", "\u{200B}", "\u{A0}", "\u{2028}", "word", "streaming", "Hello", "World",
+        "Ω", "Ж", "δ", "\u{200B}", "\u{A0}", "\u{2028}", "\u{200D}", "\u{200C}", "\u{FE0F}", "\u{20DD}", "word", "streaming", "Hello", "World",
     ];
     let mut seed = 0x9E3779B97F4A7C15u64;
     let mut skipped = 0;
@@ -202,13 +202,16 @@ fn random_mixed() {
     eprintln!("random mixed: {} cases equal ({skipped} newline + mark skipped); font segments: {f} by the table, {h} by harfrust", t.cases);
 }
 
-/// A line break (LF, CR, CRLF, LS, PS, NEL, VT, FF) immediately followed by a combining mark (General_Category M*).
+/// A line break (LF, CR, CRLF, LS, PS, NEL, VT, FF) immediately followed by a grapheme continuation: what the
+/// vendored parley cuts before (Grapheme_Cluster_Break Extend, SpacingMark or ZWJ: combining marks, ZWJ, ZWNJ,
+/// variation selectors, emoji modifiers, enclosing marks), the same predicate as `shape::mark_after_break`.
+/// Upstream parley 0.11.1 asserts or panics on these (`newline_mark.rs` covers them).
 fn newline_then_mark(s: &str) -> bool {
-    use icu_properties::props::{GeneralCategory, GeneralCategoryGroup};
-    let gc = icu_properties::CodePointMapData::<GeneralCategory>::new();
+    use icu_properties::props::GraphemeClusterBreak as G;
+    let gcb = icu_properties::CodePointMapData::<G>::new();
     let mut prev_newline = false;
     for c in s.chars() {
-        if prev_newline && GeneralCategoryGroup::Mark.contains(gc.get(c)) {
+        if prev_newline && matches!(gcb.get(c), G::Extend | G::SpacingMark | G::ZWJ) {
             return true;
         }
         prev_newline = matches!(c, '\n' | '\r' | '\u{B}' | '\u{C}' | '\u{85}' | '\u{2028}' | '\u{2029}');

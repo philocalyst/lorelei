@@ -461,11 +461,32 @@ fn shape_segment<B: Brush>(
     // LB10 makes the orphan mark AL): each side of such a break is shaped on its own, so the mark starts the next
     // line as its own cluster. Text without such a mark (`scx.mark_after_break`, set by the analysis) pays one test.
     if scx.mark_after_break {
-        if let Some(split) = mark_after_break(item_text, item_infos, segment_start_offset, segment_end_offset) {
-            shape_split(rcx, item, scx, font, item_text, item_infos, text_range, char_range, segment_start_offset, split, segment_end_offset, fb_script, layout);
+        let chars = item_text[..segment_start_offset].chars().count();
+        if let Some(split) = mark_after_break(item_text, item_infos, segment_start_offset, chars, segment_end_offset) {
+            shape_split(rcx, item, scx, font, item_text, item_infos, text_range, char_range, segment_start_offset, chars, split, segment_end_offset, fb_script, layout);
             return;
         }
     }
+    shape_piece(rcx, item, scx, font, item_text, item_infos, text_range, char_range, segment_start_offset, segment_end_offset, fb_script, layout);
+}
+
+/// Upstream's `shape_segment` body: one font segment (or one piece of it, `shape_split`) shaped as it is.
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+fn shape_piece<B: Brush>(
+    rcx: &ResolveContext,
+    item: &Item,
+    scx: &mut ShapeContext,
+    font: &SelectedFont,
+    item_text: &str,
+    item_infos: &[(CharInfo, u16)],
+    text_range: &core::ops::Range<usize>,
+    char_range: &core::ops::Range<usize>,
+    segment_start_offset: usize,
+    segment_end_offset: usize,
+    fb_script: fontique::Script,
+    layout: &mut Layout<B>,
+) {
     // Shape this font segment with harfrust
     let segment_text = &item_text[segment_start_offset..segment_end_offset];
     // Shape the entire segment text including newlines
@@ -645,11 +666,11 @@ fn shape_segment<B: Brush>(
 
 /// The byte offset (in `item_text`) of the first character of `item_text[start..end]` after its first that is a
 /// grapheme continuation (Extend, SpacingMark, ZWJ: what harfrust merges into the preceding cluster) at a mandatory
-/// line break (the character after BK / CR / LF / NL).
+/// line break (the character after BK / CR / LF / NL). `chars`: the number of characters before `start`.
 #[cold]
 #[inline(never)]
-fn mark_after_break(item_text: &str, item_infos: &[(CharInfo, u16)], start: usize, end: usize) -> Option<usize> {
-    let infos = &item_infos[item_text[..start].chars().count()..];
+fn mark_after_break(item_text: &str, item_infos: &[(CharInfo, u16)], start: usize, chars: usize, end: usize) -> Option<usize> {
+    let infos = &item_infos[chars..];
     item_text[start..end]
         .char_indices()
         .zip(infos)
@@ -664,7 +685,9 @@ fn mark_after_break(item_text: &str, item_infos: &[(CharInfo, u16)], start: usiz
         .map(|((i, _), _)| start + i)
 }
 
-/// bough fix (newline + mark): `shape_segment` on each side of `split` (the tail splits again if it must).
+/// bough fix (newline + mark): the segment shaped piece by piece, cut before each continuation that follows a
+/// mandatory break (`split` is the first cut). A loop with a running character count: any number of cuts in
+/// constant stack and one pass over the text.
 #[cold]
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
@@ -678,13 +701,20 @@ fn shape_split<B: Brush>(
     text_range: &core::ops::Range<usize>,
     char_range: &core::ops::Range<usize>,
     start: usize,
+    chars: usize,
     split: usize,
     end: usize,
     fb_script: fontique::Script,
     layout: &mut Layout<B>,
 ) {
-    shape_segment(rcx, item, scx, font, item_text, item_infos, text_range, char_range, start, split, fb_script, layout);
-    shape_segment(rcx, item, scx, font, item_text, item_infos, text_range, char_range, split, end, fb_script, layout);
+    let (mut from, mut from_chars, mut split) = (start, chars, Some(split));
+    while let Some(cut) = split {
+        shape_piece(rcx, item, scx, font, item_text, item_infos, text_range, char_range, from, cut, fb_script, layout);
+        from_chars += item_text[from..cut].chars().count();
+        from = cut;
+        split = mark_after_break(item_text, item_infos, from, from_chars, end);
+    }
+    shape_piece(rcx, item, scx, font, item_text, item_infos, text_range, char_range, from, end, fb_script, layout);
 }
 
 /// bough grafts 1-2: an item bough's table can model (left to right, Latin, default features, no language).

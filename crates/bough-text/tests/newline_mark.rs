@@ -32,6 +32,11 @@ const CASES: &[(&str, usize)] = &[
     ("x\u{2028}\u{300}y", 2),
     ("a\n\u{300}\n\u{301}b\n", 4),
     ("a\n\u{200D}b", 2),
+    // the other grapheme continuations harfrust merges (review: ZWNJ, a variation selector, an enclosing mark)
+    ("a\n\u{200C}b", 2),
+    ("a\n\u{FE0F}b", 2),
+    ("a\n\u{20DD}b", 2),
+    ("a\r\u{300}b", 2),
     // VT, FF and NEL are mandatory breaks to the analysis (the mark after one is split off, its own cluster), but
     // parley's line breaker ends lines at LF / CR / LS / PS only (upstream behaviour, the same as for "a\u{B}b").
     ("a\u{B}\u{300}b", 1),
@@ -126,4 +131,21 @@ fn newline_then_mark_at_every_offset() {
             }
         }
     }
+}
+
+/// Many newline + mark pairs in one font segment (a paste): the segment is cut piece by piece in constant stack
+/// (review finding: the first version recursed once per pair and overflowed a 2 MiB stack at 1,600 pairs). Laid
+/// out on a 256 KiB stack, 20,000 pairs give 20,001 lines.
+#[test]
+fn many_newline_marks_in_constant_stack() {
+    let fonts = dejavu();
+    let t = std::thread::Builder::new()
+        .stack_size(256 << 10)
+        .spawn(move || {
+            let mut g = grafted::Eng::new(&fonts, true);
+            let text = "\n\u{300}".repeat(20_000);
+            g.layout(&Case::plain(&text, "DejaVu Sans", 14.0, None)).len()
+        })
+        .unwrap();
+    assert_eq!(t.join().expect("laid out without overflowing the stack"), 20_001);
 }
