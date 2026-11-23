@@ -184,7 +184,8 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
     let d = m.tape_next();
     let mut old = std::mem::take(&mut m.rt.dyns.parts[d as usize]);
     let mut seals = std::mem::take(&mut m.rt.dyns.seals[d as usize]);
-    let mut scratch: Vec<u8> = m.rt.dyns.scratch.pop().unwrap_or_default();
+    // taken from the pool only when an item is re-sealed (most parts step over every item)
+    let mut scratch: Vec<u8> = Vec::new();
     let cx = (m.clip, m.space, m.depth, m.ox, m.oy);
     let lid = m.rt.lay.cur;
     let mut k = 0;
@@ -298,6 +299,9 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
             let it = &mut old[k];
             if !seals.refused {
                 // the description about to be applied, sealed for the next turn
+                if scratch.capacity() == 0 {
+                    scratch = m.rt.dyns.scratch.pop().unwrap_or_default();
+                }
                 scratch.clear();
                 let mut w = crate::seal::SealWrite { out: &mut scratch, descs: &mut m.rt.lay.descs, ok: true };
                 seal_context(cx, &mut w);
@@ -388,8 +392,10 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
     }
     m.rt.dyns.seals[d as usize] = seals;
     m.rt.dyns.parts[d as usize] = old;
-    scratch.clear();
-    m.rt.dyns.scratch.push(scratch);
+    if scratch.capacity() != 0 {
+        scratch.clear();
+        m.rt.dyns.scratch.push(scratch);
+    }
 }
 
 /// Is `e`, described in context `cx`, what `it`'s seal says? (bit-identical, identical but for paint)
