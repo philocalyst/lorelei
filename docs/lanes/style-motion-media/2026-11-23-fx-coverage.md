@@ -198,3 +198,47 @@ receipt within 0.07), so the gate exits 1. All 52 counters of the four new cells
 (`compare.sh … --require-same-cells --cells flatbench/cards300,damage/window,damage/stack,damage/4k`: PASS),
 and so do the 75 new fxbench operations. The largest move on any new counter between the receipt and the gate run is +1.9%
 (`fxbench/media/4 mixed/glass over playing video`). The `mixed` rows sit close to the 2% limit.
+
+## Performance
+
+The counters listed above as over the reference were not introduced by `lane/rethink/fx`: every lane
+commit (and the merge's first parent `8c48450874`) measures the same as the integration head. Bisected with
+each commit's own `fxbench` (instructions per frame, `REPS=24`) from `761d227fd4` (which reproduces the
+reference) they come from the effects-motion lane's merges into wave3:
+
+| class | culprit | cause |
+|---|---|---|
+| cpu1/idle (+3.7 K), all videos and a/v playback | `5e545db945` (fxbench `turn_med`) | two PMU reads inside the measured span, 1,614 instructions each (a system call, the same every time) |
+| cpu1/idle (rest) | not one commit | `Scene::shade` with no tiles still made a worker's scratch, a tile set and a lock: 3.1 K |
+| scroll, cpu1 and Metal | `1293a9fbd1` (rebuild when a quarter of the records moved) | the media scroll moves 13 of 14 records over almost no tiles; the rule rebuilt all 1,000 tiles' lists, and Metal then re-mirrored every tile |
+| Metal scroll (3.5x at media/4) | `03b3b08b53` (resident plan) | mirroring a rebuilt bin set asked each buffer for `contents` and `length` twice per tile (Metal messages): 373 K of a 1,000-tile frame |
+| one video frame | before `a66102aa8d` (a correctness fix) | the reference damaged 0 tiles for a published frame; the head damages 28 |
+
+Fixes (`c0ba171246`, `8aae02002d`, `711b7f2640`): fxbench takes the measured read cost off the span; `shade` returns
+at once for no tiles; `Bins::rebuild_cheaper` weighs the edits (tiles each moved record leaves and enters)
+against a build (tiles plus entries), measured at about one instruction-unit each over the benches' large
+moves; `Bins::build` makes the cuts while it fills the lists; `Gpu::res_lists` takes its three buffers once.
+
+| counter (instructions/frame) | reference | head before | after |
+|---|---:|---:|---:|
+| media/4 cpu1/idle | 5,400 | 9,400 | 3,000 |
+| effects/300 cpu1/idle | 5,400 | 9,500 | 3,100 |
+| media/4 cpu1/scroll 11 px | 88,100 | 135,500 | 17,800 |
+| media/4 metal/scroll 11 px | 166,800 | 589,000 | 94,800 |
+| media/24 metal/scroll 11 px | 543,300 | 846,200 | 501,700 |
+| media/48 metal/scroll 11 px | 1,075,400 | 1,189,300 | 912,100 |
+| media/4 cpu1/all videos (every 4th) | 6,900 | 9,400 | 3,000 |
+| pbench canvas4 canvas.pan/A | 3,426,600 | 5,200,700 | 2,978,700 |
+
+The one video frame stays above the reference for a reason: the reference drew nothing when a video
+published a frame (0 tiles: the picture on screen was stale). The head damages the video's window and no
+more: video 3 is the record at (648, 12)-(848, 124.5) px, which is tiles x 20..26 by y 0..3, 28 tiles, and
+the frame reports 28 tiles, 0 records visited, 0 prefix and 0 blocks. What the 28 tiles cost:
+
+| counter | reference (0 tiles) | after (28 tiles) |
+|---|---:|---:|
+| media/4 cpu1/one video frame | 5,300 | 8,279,600 |
+| media/4 cpu1-nocache/one video frame | 39,529,300 (27 tiles) | 41,932,700 (55 tiles) |
+| media/4 metal/one video frame | 56,000 | 73,000 to 75,000 |
+
+(media/24 and media/48's reference already drew 32 tiles for this frame; they are under it.)
