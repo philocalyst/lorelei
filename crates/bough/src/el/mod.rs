@@ -109,6 +109,7 @@ impl<'f> El<'f> {
         let n = self.n();
         if n.ext.is_null() {
             n.ext = arena::put(Ext::NEW);
+            n.has |= H_EXT;
         }
         // SAFETY: `ext` points into this turn's bump store and belongs to this node.
         unsafe { &mut *n.ext }
@@ -265,20 +266,21 @@ impl<'f> El<'f> {
         let pl = p.plug::<crate::elem::ApplyBg>(Seal);
         let n = self.kind_is(K_BOX, "a background");
         (n.paint, n.ink) = (pl.v.0, pl.w);
+        n.has = n.has & !H_INK | if pl.w.is_null() { 0 } else { H_INK };
         n.flags |= F_DRAW;
         self
     }
     #[track_caller]
     pub fn rounded(self, r: impl Len) -> Self {
         let n = self.kind_is(K_BOX, "a corner radius");
-        n.radius = r.pt();
+        n.m[0] = r.pt();
         n.flags |= F_DRAW;
         self
     }
     #[track_caller]
     pub fn border(self, w: impl Len, c: Color) -> Self {
         let n = self.kind_is(K_BOX, "a border");
-        (n.bw, n.bc) = (w.pt(), c.0);
+        (n.m[1], n.bc) = (w.pt(), c.0);
         n.flags |= F_DRAW | F_BORDER;
         self
     }
@@ -337,13 +339,14 @@ impl<'f> El<'f> {
         let pl = p.plug::<crate::boxops::ApplyTextColor>(Seal);
         let n = self.kind_is(K_TEXT, "an ink colour");
         (n.paint, n.ink) = (pl.v.0, pl.w);
+        n.has = n.has & !H_INK | if pl.w.is_null() { 0 } else { H_INK };
         self
     }
     /// Font size and line height, points.
     #[track_caller]
     pub fn font(self, size: impl Len, line_height: impl Len) -> Self {
         let n = self.kind_is(K_TEXT, "a font size");
-        (n.size, n.lh) = (size.pt(), line_height.pt());
+        n.m = [size.pt(), line_height.pt()];
         self
     }
 
@@ -458,7 +461,8 @@ fn text_node<'f, P: IntoProp<'f, Text>>(t: P, wrap: bool) -> El<'f> {
     let e = El::new(K_TEXT, Spec::new(false, false));
     let n = e.n();
     (n.text, n.len, n.flags, n.tw) = (pl.v.ptr, pl.v.len, pl.v.flags | if wrap { F_WRAP } else { 0 }, pl.w);
-    (n.size, n.lh, n.paint) = (14.0, 20.0, rgb(0x000000).0);
+    n.has = if pl.w.is_null() { 0 } else { H_TW };
+    (n.m, n.paint) = ([14.0, 20.0], rgb(0x000000).0);
     e
 }
 /// One line of text, as wide as its text: a string, an integer, a `Signal<String>` field, or a mapped source
@@ -483,7 +487,7 @@ pub fn button<'f, P: IntoProp<'f, Text>>(label: P) -> El<'f> {
 pub fn text_input<'f>(s: &'f crate::signal::Signal<String>) -> El<'f> {
     let e = El::new(K_INPUT, Spec::new(false, false));
     let n = e.n();
-    (n.text, n.size, n.lh) = (s as *const _ as *const u8, 240.0, 32.0);
+    (n.text, n.m) = (s as *const _ as *const u8, [240.0, 32.0]);
     e
 }
 impl<'f> El<'f> {
@@ -491,7 +495,7 @@ impl<'f> El<'f> {
     #[track_caller]
     pub fn input_size(self, w: impl Len, h: impl Len) -> Self {
         let n = self.kind_is(K_INPUT, "an input size");
-        (n.size, n.lh) = (w.pt(), h.pt());
+        n.m = [w.pt(), h.pt()];
         self
     }
 }

@@ -81,38 +81,42 @@ pub(crate) struct DNode {
     pub text: *const u8,
     /// Text: the byte length, or the integer (`F_INT`).
     pub len: u64,
-    /// Box: background colour. Text: ink.
-    pub paint: u32,
-    /// Border colour.
-    pub bc: u32,
-    pub radius: f32,
-    /// Border width.
-    pub bw: f32,
-    /// Text: font size and line height, points.
-    pub size: f32,
-    pub lh: f32,
-    pub spec: Spec,
     pub kind: u8,
     pub flags: u8,
     /// `OP_*` present in `ext`.
     pub ops: u8,
-    /// Always 0: the run from `radius` to here is plain initialised bytes (`operands`).
-    pub pad: u8,
+    /// `H_*`: which of `ink`, `tw`, `ext` are set (kept by the setters that set them).
+    pub has: u8,
+    /// Box: background colour. Text: ink.
+    pub paint: u32,
+    /// Border colour.
+    pub bc: u32,
+    pub spec: Spec,
+    /// Box: corner radius and border width. Text: font size and line height. Text input: its size.
+    pub m: [f32; 2],
 }
 
-/// The bytes of a node's fixed operands, `radius` through `pad` (all but the two colours): compared as one run
-/// when the node is sealed.
-pub(crate) const OPERANDS: usize = 104;
-const _: () = assert!(std::mem::offset_of!(DNode, pad) + 1 - std::mem::offset_of!(DNode, radius) == OPERANDS);
-const _: () = assert!(size_of::<DNode>() == std::mem::offset_of!(DNode, pad) + 1);
+/// `DNode::has`.
+pub(crate) const H_INK: u8 = 1;
+pub(crate) const H_TW: u8 = 2;
+pub(crate) const H_EXT: u8 = 4;
+
+/// The bytes of a node's fixed operands, `kind` through `m`: the start of its seal, compared as one run.
+pub(crate) const BLOCK: usize = 104;
+const _: () = {
+    use std::mem::offset_of;
+    assert!(offset_of!(DNode, m) + 8 - offset_of!(DNode, kind) == BLOCK && size_of::<DNode>() == offset_of!(DNode, m) + 8);
+    assert!(offset_of!(DNode, kind) % 8 == 0 && offset_of!(DNode, has) == offset_of!(DNode, kind) + 3 && offset_of!(DNode, paint) == offset_of!(DNode, kind) + 4);
+    assert!(offset_of!(DNode, spec) == offset_of!(DNode, kind) + 12 && size_of::<Spec>() == 84);
+};
 
 impl DNode {
-    /// `radius` through `pad`, as bytes.
+    /// `kind` through `m`: `BLOCK` plain initialised bytes (four `u8`s, two `u32`s, a `Spec` with no padding
+    /// (`layout.rs`) and two `f32`s, with no padding between them: the assertions above). Its first word, the
+    /// head, is below `1 << 27` (`H_*` < 8).
     #[inline(always)]
-    pub(crate) fn operands(&self) -> &[u8] {
-        // SAFETY: `radius..=pad` is a run of `f32`s, a `Spec` (plain bytes, no padding: `layout.rs`) and four
-        // `u8`s, with no padding between them (the assertions above), all written by `node`.
-        unsafe { std::slice::from_raw_parts(&self.radius as *const f32 as *const u8, OPERANDS) }
+    pub(crate) fn block(&self) -> *const u8 {
+        &self.kind as *const u8
     }
 }
 
@@ -213,7 +217,7 @@ impl Arena {
         let p = self.cur;
         // SAFETY: `cur < end`, both in one chunk of `CHUNK` slots.
         self.cur = unsafe { p.add(1) };
-        let n = DNode { turn: self.turn, next: ptr::null_mut(), first: ptr::null_mut(), last: ptr::null_mut(), ext: ptr::null_mut(), ink: ptr::null(), tw: ptr::null(), text: ptr::null(), len: 0, paint: 0, bc: 0, radius: 0.0, bw: 0.0, size: 0.0, lh: 0.0, spec, kind, flags: 0, ops: 0, pad: 0 };
+        let n = DNode { turn: self.turn, next: ptr::null_mut(), first: ptr::null_mut(), last: ptr::null_mut(), ext: ptr::null_mut(), ink: ptr::null(), tw: ptr::null(), text: ptr::null(), len: 0, paint: 0, bc: 0, spec, m: [0.0; 2], kind, flags: 0, ops: 0, has: 0 };
         // SAFETY: `p` is a valid, aligned, unaliased slot (no handle of this turn names it yet).
         unsafe { p.write(n) };
         // SAFETY: `p` is in a chunk, never null.
