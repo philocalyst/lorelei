@@ -864,7 +864,7 @@ unsafe fn eq_block(n: &DNode, p: At) -> bool {
 unsafe fn eq_n(a: At, b: At, n: usize) -> bool {
     // SAFETY: every read is inside `[0, n)` of both (overlapping words for the tail).
     unsafe {
-        if n >= 8 {
+        if n > 16 {
             let mut d = 0u64;
             let mut o = 0;
             while o + 8 <= n {
@@ -873,6 +873,8 @@ unsafe fn eq_n(a: At, b: At, n: usize) -> bool {
             }
             d |= rd64(a, n - 8) ^ rd64(b, n - 8);
             d == 0
+        } else if n >= 8 {
+            (rd64(a, 0) ^ rd64(b, 0)) | (rd64(a, n - 8) ^ rd64(b, n - 8)) == 0
         } else if n >= 4 {
             (rd32(a, 0) ^ rd32(b, 0)) | (rd32(a, n - 4) ^ rd32(b, n - 4)) == 0
         } else if n >= 2 {
@@ -1049,6 +1051,9 @@ mod tests {
                 (v % 2 == 0).then(|| text("maybe")),
                 (0..v % 4).map(|i| div().size(i + 1, 2).bg(crate::color::rgb(i))),
                 text("t").font(12 + v % 2, 18),
+                // texts of 8..=16 and of more than 16 bytes, differing in their last byte
+                text(format!("Row label {}", v % 2)),
+                text(format!("a label of more than sixteen bytes {}", v % 3)),
             ))
             .p(v % 2)
         };
