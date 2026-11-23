@@ -960,7 +960,8 @@ pub mod ops {
         s
     }
     pub fn x_cos(ph: u32) -> i32 {
-        x_sin(ph + 0x400000u32)
+        // a quarter turn on: `x_sin` reads the low 24 bits only, so masking first keeps the sum from wrapping
+        x_sin((ph & 0xFFFFFFu32) + 0x400000u32)
     }
     /// A spring's value (Q8) at `now`: it left for `to` at `t0` and is exactly `to` from `t0 + dur` on.
     /// `decay`: the envelope's rate per tick (Q16 nepers). Three forms, by `omega`:

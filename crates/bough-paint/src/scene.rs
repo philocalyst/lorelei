@@ -1247,8 +1247,9 @@ impl Scene {
         }
         words[page + 256 + r] = z;
         let at = page + 64 * LANES + r * w;
-        // SAFETY: `P: Words`: `w` whole words with no padding; the destination is `w` words inside the arena.
-        unsafe { std::ptr::copy_nonoverlapping(&p as *const P as *const u32, words[at..at + w].as_mut_ptr(), w) };
+        // SAFETY: `P: Words`: `w` whole words with no padding; the destination is `w` words inside the arena. Copied
+        // as bytes: `P` may be aligned to less than a word (a paint of constants only is zero-sized, align 1).
+        unsafe { std::ptr::copy_nonoverlapping(&p as *const P as *const u8, words[at..at + w].as_mut_ptr() as *mut u8, w * 4) };
         self.order.push((col.0 as u32) << IDX_BITS | i as u32);
         self.win.push([0; 4]);
         self.cover.push([0; 4]);
@@ -1277,7 +1278,7 @@ impl Scene {
         let z = words[page + 256 + r];
         let at = page + 64 * LANES + r * w;
         // SAFETY: as `push`.
-        unsafe { std::ptr::copy_nonoverlapping(&p as *const P as *const u32, words[at..at + w].as_mut_ptr(), w) };
+        unsafe { std::ptr::copy_nonoverlapping(&p as *const P as *const u8, words[at..at + w].as_mut_ptr() as *mut u8, w * 4) };
         self.touched.push(z);
         z
     }

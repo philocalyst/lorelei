@@ -383,6 +383,17 @@ mod native {
     #[link(name = "AppKit", kind = "framework")]
     unsafe extern "C" {}
 
+    /// The opaque `CGImage` a `CGImageRef` points at, so the message's return type encodes as AppKit declares it
+    /// (`^{CGImage=}`; objc2 checks the encoding in debug builds).
+    #[repr(C)]
+    struct CGImage {
+        _opaque: [u8; 0],
+    }
+    // SAFETY: the encoding is the one the Objective-C runtime reports for `CGImageRef`.
+    unsafe impl objc2::encode::RefEncode for CGImage {
+        const ENCODING_REF: objc2::encode::Encoding = objc2::encode::Encoding::Pointer(&objc2::encode::Encoding::Struct("CGImage", &[]));
+    }
+
     pub(super) fn svg(bytes: &[u8], [width, height]: [u32; 2]) -> ResultImage {
         use objc2::{
             class, msg_send,
@@ -408,9 +419,10 @@ mod native {
             );
             // SAFETY: this selector belongs to NSImage. The proposed rect can be edited during the
             // message. The borrowed CGImage stays live under the NSImage and autorelease pool.
-            let pixels: Ref = unsafe {
+            let pixels: *const CGImage = unsafe {
                 msg_send![&*image, CGImageForProposedRect: &mut bounds, context: null::<AnyObject>(), hints: null::<AnyObject>()]
             };
+            let pixels = pixels as Ref;
             if pixels.is_null() {
                 return Err(DecodeError::Invalid);
             }
