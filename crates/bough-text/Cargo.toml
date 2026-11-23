@@ -29,6 +29,8 @@ ttf-parser = "0.25"
 parley_upstream = { package = "parley", version = "=0.11.1", default-features = false, features = ["std", "system"] }
 # ICU's segmenters, the oracle for graft 3b's boundary machines (tests/breaks.rs).
 icu_segmenter = { version = "2.4", default-features = false, features = ["compiled_data"] }
+# General_Category for the twin's newline + mark skip (tests/parley_twin.rs random_mixed, tests/newline_mark.rs).
+icu_properties = { version = "2.4", default-features = false, features = ["compiled_data"] }
 
 # examples/gpu_shape.rs (Attempt 3, shaping on Metal) is macOS only.
 [target.'cfg(target_os = "macos")'.dev-dependencies]

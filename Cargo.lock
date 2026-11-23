@@ -446,6 +446,7 @@ dependencies = [
  "bough-damage-lab",
  "bough-face",
  "bough-mem",
+ "icu_properties",
  "icu_segmenter",
  "libc",
  "objc2",

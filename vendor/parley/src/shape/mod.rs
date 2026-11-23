@@ -13,14 +13,14 @@ use super::layout::Layout;
 use super::resolve::{ResolveContext, Resolved, ResolvedStyle};
 use super::style::{Brush, FontFeature, FontVariation};
 use crate::analysis::cluster::{Char, CharCluster, Status};
-use crate::analysis::{AnalysisDataSources, CharInfo};
+use crate::analysis::{AnalysisDataSources, Boundary, CharInfo};
 use crate::convert::script_to_harfrust;
 use crate::inline_box::InlineBox;
 use crate::lru_cache::LruCache;
 use crate::util::nearly_eq;
 use crate::{FontData, convert};
 use fontique::Language;
-use icu_properties::props::Script;
+use icu_properties::props::{GraphemeClusterBreak, Script};
 
 use fontique::{self, Query, QueryFamily, QueryFont};
 
@@ -33,6 +33,9 @@ pub(crate) struct ShapeContext {
     unicode_buffer: Option<harfrust::UnicodeBuffer>,
     features: Vec<harfrust::Feature>,
     char_cluster: CharCluster,
+    /// bough fix (newline + mark): the analysed text has a grapheme continuation right after a mandatory line
+    /// break (`shape_segment` splits there). Set by `analyze_text`.
+    pub(crate) mark_after_break: bool,
     /// bough graft: run metrics per (font, size, coordinates).
     metrics: crate::layout::data::MetricsCache,
     /// bough graft 1: the table shaper for covered font segments, and its variation scratch.
@@ -60,6 +63,7 @@ impl Default for ShapeContext {
             unicode_buffer: Some(harfrust::UnicodeBuffer::new()),
             features: Vec::new(),
             char_cluster: CharCluster::default(),
+            mark_after_break: false,
             metrics: Default::default(),
             #[cfg(feature = "std")]
             fast: Default::default(),
@@ -432,7 +436,8 @@ fn shape_item<'a, B: Brush>(
 }
 
 /// Shapes one font segment of an item (`item_text[segment_start_offset..segment_end_offset]`, every cluster on
-/// `font`) and pushes its run: bough's table first (graft 1), harfrust otherwise. Upstream's loop body, unchanged.
+/// `font`) and pushes its run: bough's table first (graft 1), harfrust otherwise. Upstream's loop body, unchanged
+/// but for the newline + mark split at its start.
 #[allow(clippy::too_many_arguments)]
 fn shape_segment<B: Brush>(
     rcx: &ResolveContext,
@@ -448,6 +453,19 @@ fn shape_segment<B: Brush>(
     fb_script: fontique::Script,
     layout: &mut Layout<B>,
 ) {
+    // bough fix (newline + mark): harfrust merges a continuation character (a combining mark, ZWJ, ...) into the
+    // preceding cluster even when that cluster is a line break, so `process_clusters` would see a newline cluster
+    // of several characters (upstream 0.11.1 asserts on it in debug; in release it is typed a ligature, and the
+    // mark's glyphs and the newline's are drawn on the newline's line). UAX #29 always ends a grapheme after CR /
+    // LF / controls (GB4, GB5) and UAX #14 breaks the line there (LB4-LB6; LB9 does not attach a mark across it,
+    // LB10 makes the orphan mark AL): each side of such a break is shaped on its own, so the mark starts the next
+    // line as its own cluster. Text without such a mark (`scx.mark_after_break`, set by the analysis) pays one test.
+    if scx.mark_after_break {
+        if let Some(split) = mark_after_break(item_text, item_infos, segment_start_offset, segment_end_offset) {
+            shape_split(rcx, item, scx, font, item_text, item_infos, text_range, char_range, segment_start_offset, split, segment_end_offset, fb_script, layout);
+            return;
+        }
+    }
     // Shape this font segment with harfrust
     let segment_text = &item_text[segment_start_offset..segment_end_offset];
     // Shape the entire segment text including newlines
@@ -623,6 +641,50 @@ fn shape_segment<B: Brush>(
 
     // Replace buffer to reuse allocation in next iteration.
     scx.unicode_buffer = Some(glyph_buffer.clear());
+}
+
+/// The byte offset (in `item_text`) of the first character of `item_text[start..end]` after its first that is a
+/// grapheme continuation (Extend, SpacingMark, ZWJ: what harfrust merges into the preceding cluster) at a mandatory
+/// line break (the character after BK / CR / LF / NL).
+#[cold]
+#[inline(never)]
+fn mark_after_break(item_text: &str, item_infos: &[(CharInfo, u16)], start: usize, end: usize) -> Option<usize> {
+    let infos = &item_infos[item_text[..start].chars().count()..];
+    item_text[start..end]
+        .char_indices()
+        .zip(infos)
+        .skip(1)
+        .find(|(_, (info, _))| {
+            info.boundary == Boundary::Mandatory
+                && matches!(
+                    info.grapheme_cluster_break,
+                    GraphemeClusterBreak::Extend | GraphemeClusterBreak::SpacingMark | GraphemeClusterBreak::ZWJ
+                )
+        })
+        .map(|((i, _), _)| start + i)
+}
+
+/// bough fix (newline + mark): `shape_segment` on each side of `split` (the tail splits again if it must).
+#[cold]
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn shape_split<B: Brush>(
+    rcx: &ResolveContext,
+    item: &Item,
+    scx: &mut ShapeContext,
+    font: &SelectedFont,
+    item_text: &str,
+    item_infos: &[(CharInfo, u16)],
+    text_range: &core::ops::Range<usize>,
+    char_range: &core::ops::Range<usize>,
+    start: usize,
+    split: usize,
+    end: usize,
+    fb_script: fontique::Script,
+    layout: &mut Layout<B>,
+) {
+    shape_segment(rcx, item, scx, font, item_text, item_infos, text_range, char_range, start, split, fb_script, layout);
+    shape_segment(rcx, item, scx, font, item_text, item_infos, text_range, char_range, split, end, fb_script, layout);
 }
 
 /// bough grafts 1-2: an item bough's table can model (left to right, Latin, default features, no language).
