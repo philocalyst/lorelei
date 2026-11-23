@@ -30,6 +30,6 @@ pub fn font_bytes() -> Vec<u8> {
 /// system's DejaVu 2.37 (the same files the zgx `*_dejavu` drivers register).
 pub fn dejavu(file: &str) -> Vec<u8> {
     let dir = std::env::var("BOUGH_DEJAVU_DIR")
-        .unwrap_or_else(|_| "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype".into());
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../fonts/dejavu").into());
     std::fs::read(format!("{dir}/{file}")).unwrap_or_else(|e| panic!("{dir}/{file}: {e} (set BOUGH_DEJAVU_DIR)"))
 }

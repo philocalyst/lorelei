@@ -225,16 +225,15 @@ pub fn read(path: &str) -> Option<Vec<u8>> {
     std::fs::read(path).ok()
 }
 
-pub const DEJAVU_DIR: &str = "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype";
+pub const DEJAVU_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fonts/dejavu");
 
 /// DejaVu Sans, Bold, Sans Mono (the families "DejaVu Sans", "DejaVu Sans Mono").
 pub fn dejavu() -> Vec<Vec<u8>> {
     let dir = std::env::var("BOUGH_DEJAVU_DIR").unwrap_or_else(|_| DEJAVU_DIR.into());
     let mut v = vec![zgx_workload::FONT_BYTES.to_vec()];
     for f in ["DejaVuSans-Bold.ttf", "DejaVuSansMono.ttf"] {
-        if let Some(b) = read(&format!("{dir}/{f}")) {
-            v.push(b);
-        }
+        // the faces are in the repository (fonts/dejavu): a missing one is a broken checkout, not a case to skip
+        v.push(read(&format!("{dir}/{f}")).unwrap_or_else(|| panic!("{dir}/{f} (DejaVu 2.37, fonts/dejavu)")));
     }
     v
 }

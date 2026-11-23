@@ -9,11 +9,9 @@ fn cached_table_equals_the_built_one() {
     unsafe { std::env::set_var("BOUGH_CACHE_DIR", &dir) };
     let mut fonts = vec![zgx_workload::FONT_BYTES.to_vec()];
     let d = std::env::var("BOUGH_DEJAVU_DIR")
-        .unwrap_or_else(|_| "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype".into());
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../fonts/dejavu").into());
     for f in ["DejaVuSans-Bold.ttf", "DejaVuSansMono.ttf"] {
-        if let Ok(b) = std::fs::read(format!("{d}/{f}")) {
-            fonts.push(b);
-        }
+        fonts.push(std::fs::read(format!("{d}/{f}")).unwrap_or_else(|e| panic!("{d}/{f} (DejaVu 2.37, fonts/dejavu): {e}")));
     }
     if let Ok(b) = std::fs::read("/System/Library/Fonts/SFNS.ttf") {
         fonts.push(b);

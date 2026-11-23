@@ -280,7 +280,7 @@ impl View for Faces {
 }
 
 fn font_file(var: &str, file: &str) -> Vec<u8> {
-    let dir = "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype";
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fonts/dejavu");
     std::fs::read(std::env::var(var).unwrap_or_else(|_| format!("{dir}/{file}"))).expect("DejaVu face")
 }
 

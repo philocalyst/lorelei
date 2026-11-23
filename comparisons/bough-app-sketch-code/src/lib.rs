@@ -26,7 +26,7 @@ pub fn font_sans() -> Vec<u8> {
 /// The code editor's font: DejaVu Sans Mono (`BOUGH_MONO_FONT`, else the system's DejaVu 2.37).
 pub fn font_mono() -> Vec<u8> {
     let path = std::env::var("BOUGH_MONO_FONT")
-        .unwrap_or_else(|_| "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono.ttf".into());
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../fonts/dejavu/DejaVuSansMono.ttf").into());
     std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e} (set BOUGH_MONO_FONT to DejaVuSansMono.ttf)"))
 }
 

@@ -9,9 +9,9 @@ use bough_text::stage::{bake, digits};
 use bough_text::{GlyphRun, Shaper, SimpleScript};
 
 fn font() -> Option<Vec<u8>> {
-    let dir = std::env::var("BOUGH_DEJAVU_DIR").unwrap_or_else(|_| "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype".into());
-    let cands = [std::env::var("BOUGH_FONT").ok(), Some(format!("{dir}/DejaVuSans.ttf")), Some("/System/Library/Fonts/Supplemental/Arial.ttf".into())];
-    cands.into_iter().flatten().find_map(|p| std::fs::read(p).ok())
+    let dir = std::env::var("BOUGH_DEJAVU_DIR").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../fonts/dejavu").into());
+    let path = std::env::var("BOUGH_FONT").unwrap_or_else(|_| format!("{dir}/DejaVuSans.ttf"));
+    Some(std::fs::read(&path).unwrap_or_else(|e| panic!("{path} (DejaVu 2.37, fonts/dejavu): {e}")))
 }
 
 struct Rng(u64);

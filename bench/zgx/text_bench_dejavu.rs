@@ -4,7 +4,7 @@
 //!
 //! bough's copy (bench/zgx/text_bench_dejavu.rs): zgx's text_bench unchanged except that the three styles resolve
 //! to DejaVu Sans, DejaVu Sans Bold and DejaVu Sans Mono (the fonts bough's port uses) instead of the system's
-//! SF NS (variable, bold by its weight axis) and Menlo. `DEJAVU_DIR` names their directory.
+//! SF NS (variable, bold by its weight axis) and Menlo. `DEJAVU_DIR` names their directory (default: lorelei's `fonts/dejavu`, baked in at build).
 use std::time::Instant;
 use zgx::{
     rich_text::{RichText, TextRun},
@@ -102,7 +102,8 @@ fn main() {
     let context = zgx_gpu::GpuContext::new().expect("GPU");
     let fonts = context.text_system();
     {
-        let dir = std::env::var("DEJAVU_DIR").unwrap_or_else(|_| "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype".into());
+        // default: the lorelei checkout's fonts/dejavu, baked in by build_text.sh
+        let dir = std::env::var("DEJAVU_DIR").ok().or(option_env!("BOUGH_DEJAVU_DIR").map(Into::into)).expect("DEJAVU_DIR (DejaVu 2.37: lorelei's fonts/dejavu)");
         let mut f = fonts.borrow_mut();
         for file in ["DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "DejaVuSansMono.ttf"] {
             f.db_mut().load_font_file(format!("{dir}/{file}")).expect("DejaVu font");

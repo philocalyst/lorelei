@@ -14,8 +14,9 @@ fn shaper(b: &[u8]) -> Shaper {
 }
 
 fn bold() -> Vec<u8> {
-    let p = "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-Bold.ttf";
-    std::fs::read(std::env::var("BOUGH_BOLD_FONT").unwrap_or(p.into())).unwrap_or_else(|_| zgx_workload::FONT_BYTES.to_vec())
+    let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fonts/dejavu/DejaVuSans-Bold.ttf");
+    let path = std::env::var("BOUGH_BOLD_FONT").unwrap_or(p.into());
+    std::fs::read(&path).unwrap_or_else(|e| panic!("{path} (DejaVu 2.37, fonts/dejavu): {e}"))
 }
 
 /// Everything a paragraph exposes, slot pens relative to slot 0.

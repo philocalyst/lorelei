@@ -23,10 +23,10 @@ pub fn ring_from_env() -> usize {
 }
 
 /// DejaVu's bold and mono faces (the documents' `font-weight >= 600` and monospace text), from
-/// `BOUGH_FONT_BOLD` / `BOUGH_FONT_MONO` or the system's DejaVu 2.37 install; absent files fall back to the
-/// regular face.
+/// `BOUGH_FONT_BOLD` / `BOUGH_FONT_MONO` or the repository's DejaVu 2.37 (`fonts/dejavu`); absent files fall
+/// back to the regular face.
 fn face_files() -> Vec<(u8, Vec<u8>)> {
-    const DIR: &str = "/Library/Fonts/Nix Fonts/vl9mbzk97wmh1s1yj3766b4zai8msjq6-dejavu-fonts-2.37/share/fonts/truetype";
+    const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fonts/dejavu");
     let mut v = Vec::new();
     for (logical, var, file) in [(bough::text::FACE_BOLD, "BOUGH_FONT_BOLD", "DejaVuSans-Bold.ttf"), (bough::text::FACE_MONO, "BOUGH_FONT_MONO", "DejaVuSansMono.ttf")] {
         let path = std::env::var(var).unwrap_or_else(|_| format!("{DIR}/{file}"));
