@@ -176,6 +176,7 @@ fn random_mixed() {
         "Ω", "Ж", "δ", "\u{200B}", "\u{A0}", "\u{2028}", "word", "streaming", "Hello", "World",
     ];
     let mut seed = 0x9E3779B97F4A7C15u64;
+    let mut skipped = 0;
     for _ in 0..3000 {
         let n = 1 + rng(&mut seed) as usize % 24;
         let mut s = String::new();
@@ -187,10 +188,32 @@ fn random_mixed() {
             1 => Some(80.0),
             _ => Some(300.0),
         };
+        // Upstream parley 0.11.1 bug: harfrust merges a combining mark into a preceding newline's cluster, which
+        // upstream turns into a ligature (a debug assertion in `process_clusters`; in release the mark is drawn on
+        // the newline's line). The vendored parley fixes it, so the twins differ on exactly these inputs:
+        // tests/newline_mark.rs covers them.
+        if newline_then_mark(&s) {
+            skipped += 1;
+            continue;
+        }
         t.check(&Case::plain(&s, SANS, 14.0, w));
     }
     let [h, f] = bough_text::parley::bough::segments();
-    eprintln!("random mixed: {} cases equal; font segments: {f} by the table, {h} by harfrust", t.cases);
+    eprintln!("random mixed: {} cases equal ({skipped} newline + mark skipped); font segments: {f} by the table, {h} by harfrust", t.cases);
+}
+
+/// A line break (LF, CR, CRLF, LS, PS, NEL, VT, FF) immediately followed by a combining mark (General_Category M*).
+fn newline_then_mark(s: &str) -> bool {
+    use icu_properties::props::{GeneralCategory, GeneralCategoryGroup};
+    let gc = icu_properties::CodePointMapData::<GeneralCategory>::new();
+    let mut prev_newline = false;
+    for c in s.chars() {
+        if prev_newline && GeneralCategoryGroup::Mark.contains(gc.get(c)) {
+            return true;
+        }
+        prev_newline = matches!(c, '\n' | '\r' | '\u{B}' | '\u{C}' | '\u{85}' | '\u{2028}' | '\u{2029}');
+    }
+    false
 }
 
 /// Style variants the shaping fast path must refuse (features, locale) or that act after shaping (spacing), sizes,

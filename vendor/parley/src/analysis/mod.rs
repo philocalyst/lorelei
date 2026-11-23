@@ -332,6 +332,8 @@ pub(crate) fn analyze_text<B: Brush>(
     if text.is_empty() {
         text = " ";
     }
+    // bough fix (newline + mark): set below; simple text (graft 3) is Latin-1, which has no marks.
+    lcx.scx.mark_after_break = false;
 
     // bough graft 3: text of letters, digits and spaces only (by ICU's own LineBreak / WordBreak properties)
     // needs no segmenter: its line and word boundaries are pair rules (see `analyze_simple`).
@@ -488,6 +490,7 @@ pub(crate) fn analyze_text<B: Brush>(
     });
 
     let mut needs_bidi_resolution = false;
+    let mut mark_after_break = false;
 
     lcx.info.reserve(text.len());
     boundary_iter
@@ -504,9 +507,17 @@ pub(crate) fn analyze_text<B: Brush>(
             let (info, needs_bidi, next_mandatory_linebreak) =
                 char_info(&lcx.analysis_data_sources, ch, boundary);
             needs_bidi_resolution |= needs_bidi;
+            // bough fix (newline + mark): a continuation harfrust would merge into the line break's cluster.
+            if is_mandatory_linebreak {
+                mark_after_break |= matches!(
+                    info.grapheme_cluster_break,
+                    GraphemeClusterBreak::Extend | GraphemeClusterBreak::SpacingMark | GraphemeClusterBreak::ZWJ
+                );
+            }
             lcx.info.push((info, 0)); // Style index is populated later
             next_mandatory_linebreak
         });
+    lcx.scx.mark_after_break = mark_after_break;
 
     if needs_bidi_resolution {
         lcx.bidi.resolve(
