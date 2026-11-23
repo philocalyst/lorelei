@@ -546,8 +546,6 @@ pub struct Bins {
     /// Tiles edited since the last `recut_touched`, and a flag per tile for it.
     touched: Vec<u32>,
     mark: Vec<bool>,
-    /// Entries of the lists in all (before the cuts): what a build pushes.
-    entries: usize,
 }
 /// What one tile an edit visits costs against one tile or entry a build makes: about the same (measured
 /// over the benches' large moves, instructions per unit: edits 46 to 103, builds 39 to 105; a pan of 1,760
@@ -616,12 +614,7 @@ impl Bins {
         if w[0] >= w[2] || w[1] >= w[3] {
             return (0, 0, 0, 0);
         }
-        let s = ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(self.tx), ((w[3].max(0) as usize + 31) >> 5).min(self.ty));
-        // (a window right of or below the frame: no tile, and an area of nought)
-        if s.0 >= s.2 || s.1 >= s.3 {
-            return (0, 0, 0, 0);
-        }
-        s
+        ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(self.tx), ((w[3].max(0) as usize + 31) >> 5).min(self.ty))
     }
     /// The cut of tile `t`: its list starts at the topmost opaque cover holding the whole tile that lies
     /// beneath every layer record listed there (a layer's prefix needs what is under a later cover).
@@ -662,13 +655,11 @@ impl Bins {
         self.touched.clear();
         self.mark.clear();
         self.mark.resize(nt, false);
-        self.entries = 0;
         for z in 0..l.win.len() {
             let b = l.bin(z);
             self.binned[z] = b;
             let (x0, y0, x1, y1) = self.span(&b);
             let lz = l.is_lay(z);
-            self.entries += (x1 - x0) * (y1 - y0);
             for y in y0..y1 {
                 for x in x0..x1 {
                     self.lists[y * tx + x].push(z as u32);
@@ -699,7 +690,6 @@ impl Bins {
                 if !inside(n, x, y) {
                     if let Ok(i) = self.lists[t].binary_search(&z) {
                         self.lists[t].remove(i);
-                        self.entries -= 1;
                     }
                     if lz {
                         self.lay[t].retain(|&k| k != z);
@@ -716,7 +706,6 @@ impl Bins {
                 let t = y * self.tx + x;
                 if let Err(i) = self.lists[t].binary_search(&z) {
                     self.lists[t].insert(i, z);
-                    self.entries += 1;
                 }
                 if lz {
                     if let Err(i) = self.lay[t].binary_search(&z) {
@@ -733,17 +722,29 @@ impl Bins {
     /// tile, which an executor that mirrors the bins then rewrites). A pan of a dense scene rebuilds; a
     /// scroll of a few large records over many tiles edits.
     pub fn rebuild_cheaper(&self, moved: &[u32], l: &Lanes) -> bool {
-        let area = |s: (usize, usize, usize, usize)| (s.2 - s.0) * (s.3 - s.1);
-        let build = self.lists.len() + self.entries;
-        let mut edit = 0;
-        for &z in moved {
+        // (a window right of or below the frame spans no tile: its span's ends cross)
+        let area = |s: (usize, usize, usize, usize)| s.2.saturating_sub(s.0) * s.3.saturating_sub(s.1);
+        let visits = |z: u32| {
             let old = self.binned.get(z as usize).copied().unwrap_or([0; 4]);
-            edit += EDIT_WEIGHT * (area(self.span(&old)) + area(self.span(&l.bin(z as usize))));
-            if edit > build {
-                return true;
-            }
+            EDIT_WEIGHT * (area(self.span(&old)) + area(self.span(&l.bin(z as usize))))
+        };
+        // a build is at least a visit per tile: the edits are cheaper until they pass that, and only then
+        // are the entries counted (a pass over the tiles, which a small edit does not pay)
+        let (mut edit, mut k) = (0, 0);
+        let nt = self.lists.len();
+        while k < moved.len() && edit <= nt {
+            edit += visits(moved[k]);
+            k += 1;
         }
-        false
+        if edit <= nt {
+            return false;
+        }
+        let build = nt + self.lists.iter().map(Vec::len).sum::<usize>();
+        while k < moved.len() && edit <= build {
+            edit += visits(moved[k]);
+            k += 1;
+        }
+        edit > build
     }
     #[inline]
     fn touch(&mut self, t: usize) {
