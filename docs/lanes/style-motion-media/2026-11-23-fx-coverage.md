@@ -188,3 +188,13 @@ records 0 tiles/frame); it now repaints 28.
 | `fxbench/pane/300` cpu1/idle | 5,500 | 9,500 | 1.727 |
 | `fxbench/pane/3000` cpu1/idle | 5,400 | 9,100 | 1.685 |
 
+
+### Focused gate at `16a4c1cb39`
+
+`BOUGH_FONT=$PWD/fonts/dejavu/DejaVuSans.ttf bench/baseline/gate.sh --cells <the eight fxbench cells>,flatbench/cards300,damage_x/window,damage_x/stack,damage_x/4k`
+built all three binaries again, replayed three repetitions with no errors and compared 316 primary counters.
+The result was 170 improved, 128 within the limit and the same 18 kept fxbench counters over it as above (the ratios agree with the
+receipt within 0.07), so the gate exits 1. All 52 counters of the four new cells pass on their own
+(`compare.sh … --require-same-cells --cells flatbench/cards300,damage_x/window,damage_x/stack,damage_x/4k`: PASS),
+and so do the 75 new fxbench operations. The largest move on any new counter between the receipt and the gate run is +1.9%
+(`fxbench/media/4 mixed/glass over playing video`). The `mixed` rows sit close to the 2% limit.
