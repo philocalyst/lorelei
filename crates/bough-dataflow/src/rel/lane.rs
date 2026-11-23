@@ -12,6 +12,8 @@ use core::cell::Cell;
 
 /// Items per block. 128 items of 4 to 40 bytes are 0.5 to 5 KiB: an insert moves on average half of that.
 pub const CAP: usize = 128;
+/// Items a block is laid out with (three quarters of [`CAP`]: room for inserts before the first split).
+const FILL: usize = CAP * 3 / 4;
 
 pub struct Lane<T> {
     blocks: Vec<Vec<T>>,
@@ -29,6 +31,49 @@ impl<T> Default for Lane<T> {
     }
 }
 
+impl<T: Copy> Lane<T> {
+    /// [`Lane::assign_iter`] from a slice: the same blocks, each filled by one copy.
+    pub fn assign(&mut self, v: &[T]) {
+        self.edited();
+        self.len = 0;
+        let nb = v.len().div_ceil(FILL);
+        self.blocks.truncate(nb);
+        self.blocks.reserve(nb - self.blocks.len());
+        for (b, chunk) in v.chunks(FILL).enumerate() {
+            if b == self.blocks.len() {
+                self.blocks.push(Vec::with_capacity(CAP));
+            }
+            let blk = &mut self.blocks[b];
+            blk.clear();
+            blk.extend_from_slice(chunk);
+        }
+        self.assigned(nb, v.len());
+    }
+    /// Append the items, in order, to `out` (a block at a time).
+    pub fn copy_to(&self, out: &mut Vec<T>) {
+        out.reserve(self.len);
+        for b in &self.blocks {
+            out.extend_from_slice(b);
+        }
+    }
+}
+
+impl<T: PartialEq> Lane<T> {
+    /// The length of the longest common prefix of the lane and `v` (a block at a time).
+    pub fn common_prefix(&self, v: &[T]) -> usize {
+        let mut at = 0;
+        for b in &self.blocks {
+            let rest = &v[at..];
+            if rest.len() >= b.len() && rest[..b.len()] == b[..] {
+                at += b.len();
+                continue;
+            }
+            return at + b.iter().zip(rest).take_while(|(x, y)| x == y).count();
+        }
+        at
+    }
+}
+
 impl<T> Lane<T> {
     pub const fn new() -> Lane<T> {
         Lane {
@@ -41,19 +86,47 @@ impl<T> Lane<T> {
     /// The items of `v`, in blocks three quarters full (room for inserts before the first split).
     pub fn from_vec(v: Vec<T>) -> Lane<T> {
         let mut l = Lane::new();
-        l.len = v.len();
-        let fill = CAP * 3 / 4;
-        let mut it = v.into_iter();
-        loop {
-            let mut blk = Vec::with_capacity(CAP);
-            blk.extend(it.by_ref().take(fill));
-            if blk.is_empty() {
+        l.assign_iter(v.into_iter());
+        l
+    }
+    /// The lane becomes the items of `it`, in blocks three quarters full as [`Lane::from_vec`] lays them, in
+    /// the blocks it already has: a lane rewritten with about as many items as it held allocates nothing, and
+    /// one rewritten with fewer frees the blocks it no longer needs.
+    pub fn assign_iter(&mut self, mut it: impl Iterator<Item = T>) {
+        // first, so a panic in `it` leaves a lane whose cursor names nothing (`get`'s unchecked read trusts it)
+        self.edited();
+        self.len = 0;
+        let want = it.size_hint().0.div_ceil(FILL);
+        if want > self.blocks.len() {
+            self.blocks.reserve(want - self.blocks.len());
+        }
+        let (mut b, mut len) = (0, 0);
+        // a block is taken only for an item that is there: no block is made to be found empty
+        while let Some(first) = it.next() {
+            if b == self.blocks.len() {
+                self.blocks.push(Vec::with_capacity(CAP));
+            }
+            let blk = &mut self.blocks[b];
+            blk.clear();
+            blk.push(first);
+            blk.extend(it.by_ref().take(FILL - 1));
+            len += blk.len();
+            b += 1;
+            if blk.len() < FILL {
                 break;
             }
-            l.blocks.push(blk);
         }
-        l.refen();
-        l
+        self.assigned(b, len);
+    }
+    /// The end of an assignment: the lane is its first `b` blocks, `len` items.
+    fn assigned(&mut self, b: usize, len: usize) {
+        self.blocks.truncate(b);
+        if self.blocks.capacity() > 4 * b + 16 {
+            // a lane that shrank to a fraction keeps no table for the blocks it had
+            self.blocks.shrink_to(b);
+        }
+        self.len = len;
+        self.refen();
     }
     #[inline(always)]
     pub fn len(&self) -> usize {
@@ -345,6 +418,62 @@ mod tests {
         }
         for x in [0u32, 1, 1500, 2999, 3000, u32::MAX] {
             assert_eq!(l.lower_bound(|&t| t < x), v.partition_point(|&t| t < x));
+        }
+    }
+    /// A lane rewritten in place (from a slice or an iterator, over blocks it had) is the lane `from_vec`
+    /// lays out, reads and edits as one, and copies and compares a block at a time as item by item.
+    #[test]
+    fn an_assigned_lane_is_a_fresh_lane() {
+        let mut s = 11u64;
+        let (mut a, mut b) = (Lane::<u32>::new(), Lane::<u32>::new());
+        for round in 0..200u32 {
+            let n = match round % 5 {
+                0 => 0,
+                1 => (rng(&mut s) % 4) as usize,
+                2 => FILL * (1 + (rng(&mut s) % 4) as usize),
+                _ => (rng(&mut s) % 2000) as usize,
+            };
+            let v: Vec<u32> = (0..n as u32).map(|i| i * 3 + round).collect();
+            // the previous contents are read through the cursor first: assignment must forget it
+            if !a.is_empty() {
+                let _ = a.get(a.len() - 1);
+                let _ = b.get(0);
+            }
+            a.assign(&v);
+            b.assign_iter(v.iter().copied().filter(|_| true));
+            let f = Lane::from_vec(v.clone());
+            for l in [&a, &b] {
+                assert_eq!(l.len(), v.len());
+                assert_eq!(l.blocks(), f.blocks(), "round {round}: the same layout");
+                assert!(l.iter().copied().eq(v.iter().copied()));
+                for (i, x) in v.iter().enumerate() {
+                    assert_eq!(l.get(i), x);
+                }
+                let mut out = vec![7];
+                l.copy_to(&mut out);
+                assert_eq!(out[0], 7);
+                assert_eq!(&out[1..], &v[..]);
+                assert_eq!(l.common_prefix(&v), v.len());
+                if !v.is_empty() {
+                    let k = (rng(&mut s) as usize) % v.len();
+                    let mut w = v.clone();
+                    w[k] ^= 1;
+                    assert_eq!(l.common_prefix(&w), k);
+                    assert_eq!(l.common_prefix(&v[..k]), k);
+                }
+            }
+            // and edits as a fresh lane does
+            let at = if v.is_empty() {
+                0
+            } else {
+                (rng(&mut s) as usize) % v.len()
+            };
+            a.insert(at, 1);
+            let mut w = v.clone();
+            w.insert(at, 1);
+            assert!(a.iter().copied().eq(w.iter().copied()));
+            assert_eq!(a.remove(at), 1);
+            assert!(a.blocks.iter().all(|b| b.capacity() >= CAP));
         }
     }
 }

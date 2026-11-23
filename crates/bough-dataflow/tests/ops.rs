@@ -431,3 +431,53 @@ fn a_seq_and_a_rel_tell_a_list_the_same() {
     }
     assert!(a.items().iter().eq(b.items().iter()));
 }
+
+/// A predicate that panics while a filter rebuilds (its output is rewritten in place as it runs) leaves a
+/// filter that recomputes: the next `sync`, `refilter` or `narrow` answers as a fresh filter does.
+#[test]
+fn a_panicking_rebuild_leaves_a_filter_that_recomputes() {
+    let rows = |n: u32| -> Table<Row> {
+        Table::from_vec(
+            (0..n)
+                .map(|i| Row {
+                    v: i as i64 % 7,
+                    g: 0,
+                })
+                .collect(),
+        )
+    };
+    let want = |t: &Table<Row>, cut: i64| -> Vec<u32> {
+        t.iter()
+            .filter(|(_, r)| pass(r, cut))
+            .map(|(id, _)| id)
+            .collect()
+    };
+    for (n, at) in [(1000u32, 500u32), (1000, 3), (300, 299)] {
+        let t = rows(n);
+        let mut f = Filter::new();
+        f.rebuild(&t, |r| pass(r, 3));
+        let mut seen = 0u32;
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            f.rebuild(&t, |r| {
+                seen += 1;
+                assert!(seen != at, "a predicate that panics");
+                pass(r, 5)
+            })
+        }));
+        assert!(caught.is_err());
+        let mut g = Filter::new();
+        g.rebuild(&t, |r| pass(r, 5));
+        f.sync(&t, |r| pass(r, 5));
+        assert_eq!(
+            f.ids().collect::<Vec<_>>(),
+            want(&t, 5),
+            "sync after the panic"
+        );
+        assert_eq!(f.ids().collect::<Vec<_>>(), g.ids().collect::<Vec<_>>());
+        // and the narrow and refilter paths over its output
+        f.narrow(&t, |r| pass(r, 2));
+        assert_eq!(f.ids().collect::<Vec<_>>(), want(&t, 2), "narrow");
+        f.refilter(&t, |r| pass(r, 6), t.ids());
+        assert_eq!(f.ids().collect::<Vec<_>>(), want(&t, 6), "refilter");
+    }
+}
