@@ -434,22 +434,26 @@ impl Styled for El<'_> {
 // =============================================================================== builders
 
 /// The styled-box primitive, born empty: add content with `.child(x)`, arrange it with `.layout(recipe)`.
+#[inline]
 pub fn div<'f>() -> El<'f> {
     El::new(K_BOX, Spec::new(true, true))
 }
 /// Children top to bottom.
+#[inline]
 pub fn column<'f>(c: impl ChildSeq<'f>) -> El<'f> {
     let e = El::new(K_BOX, Spec::new(true, true));
     c.into_children(e.n(), Seal);
     e
 }
 /// Children left to right.
+#[inline]
 pub fn row<'f>(c: impl ChildSeq<'f>) -> El<'f> {
     let e = El::new(K_BOX, Spec::new(true, false));
     c.into_children(e.n(), Seal);
     e
 }
 /// A leaf rectangle of `w` x `h` points (paint it with `.bg`).
+#[inline]
 pub fn block<'f>(w: impl Len, h: impl Len) -> El<'f> {
     let mut s = Spec::new(false, false);
     (s.w, s.h) = (Dim::Pt(w.pt()), Dim::Pt(h.pt()));
