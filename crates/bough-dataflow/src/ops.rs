@@ -75,6 +75,10 @@ fn set_bit(m: &mut Vec<u64>, id: u32, on: bool) {
 
 // ---- filter ------------------------------------------------------------------------------------------------
 
+/// The longest scratch list an operator keeps between changes (entries): what a change of a small result
+/// allocates is reused, a larger list is freed after use.
+const SCRATCH: usize = 4096;
+
 /// The rows of a table that pass a predicate, as ids in ascending order.
 pub struct Filter {
     member: Vec<u64>,
@@ -83,6 +87,9 @@ pub struct Filter {
     pub log: Log,
     pub journal: Journal,
     pub work: Work,
+    /// Scratch of `refilter` and `narrow` (the next output) and of `replace` (its changes), kept while small.
+    next: Vec<u32>,
+    changes: Vec<Change>,
 }
 impl Default for Filter {
     fn default() -> Self {
@@ -98,6 +105,8 @@ impl Filter {
             log: Log::new(Log::DEFAULT_CAP),
             journal: Journal::new(),
             work: Work::default(),
+            next: Vec::new(),
+            changes: Vec::new(),
         }
     }
     #[inline(always)]
@@ -115,12 +124,19 @@ impl Filter {
     pub fn ids(&self) -> impl Iterator<Item = u32> + '_ {
         self.out.iter().copied()
     }
+    /// The output's ids, in order, appended to `out`.
+    pub fn ids_into(&self, out: &mut Vec<u32>) {
+        self.out.copy_to(out)
+    }
     /// The position of `id` in the output, if it is a member.
     pub fn position(&self, id: u32) -> Option<usize> {
         bit(&self.member, id).then(|| self.out.lower_bound(|&x| x < id))
     }
     pub fn bytes(&self) -> usize {
-        self.out.bytes() + self.member.capacity() * 8
+        self.out.bytes()
+            + self.member.capacity() * 8
+            + self.next.capacity() * 4
+            + self.changes.capacity() * size_of::<Change>()
     }
     /// The version of the table's log this output is up to date with.
     pub fn seen_at(&self) -> u64 {
@@ -180,19 +196,21 @@ impl Filter {
     pub fn rebuild<T>(&mut self, t: &Table<T>, mut pred: impl FnMut(&T) -> bool) {
         self.work.rebuilds += 1;
         self.work.rows += t.len() as u64;
-        let ids: Vec<u32> = t
-            .iter()
-            .filter(|(_, r)| pred(r))
-            .map(|(id, _)| id)
-            .collect();
-        self.member.clear();
-        for &id in &ids {
-            set_bit(&mut self.member, id, true);
-        }
-        self.out = Lane::from_vec(ids);
-        self.seen = t.log.ver();
+        // Said first: the output is rewritten while `pred` runs, so if it panics the output is one that
+        // every reader, and the next `sync` or `refilter`, recomputes (`seen` names no version of the table).
+        self.seen = u64::MAX;
         self.log.reset();
         self.journal.push(Edit::Shift(0));
+        self.member.clear();
+        self.member.reserve(t.slots().div_ceil(64));
+        let member = &mut self.member;
+        // the members go straight into the lane's blocks (no list of them is made first)
+        self.out
+            .assign_iter(t.iter().filter(|(_, r)| pred(r)).map(|(id, _)| {
+                set_bit(member, id, true);
+                id
+            }));
+        self.seen = t.log.ver();
     }
     /// The predicate changed. `candidates` is every id that may pass now, ascending (an index's answer, the
     /// current members when the new predicate implies the old, or the whole table). If the table has edits the output has
@@ -209,34 +227,66 @@ impl Filter {
             return self.rebuild(t, pred);
         }
         let mut rows = 0u64;
-        let next: Vec<u32> = candidates
-            .filter(|&id| {
-                rows += 1;
-                t.get(id).is_some_and(&mut pred)
-            })
-            .collect();
+        let mut next = core::mem::take(&mut self.next);
+        next.clear();
+        next.extend(candidates.filter(|&id| {
+            rows += 1;
+            t.get(id).is_some_and(&mut pred)
+        }));
         self.work.rows += rows;
-        self.replace(next);
+        self.replace_from(&next);
+        self.keep_scratch(next);
         self.seen = t.log.ver();
     }
-    /// Narrow: the new predicate passes nothing the old one refused, so only members are asked.
-    pub fn narrow<T>(&mut self, t: &Table<T>, pred: impl FnMut(&T) -> bool) {
-        let cur: Vec<u32> = self.out.iter().copied().collect();
-        self.refilter(t, pred, cur.into_iter())
+    /// Narrow: the new predicate passes nothing the old one refused, so only members are asked. (What
+    /// `refilter` with the members as the candidates does, without copying them first: a list of the
+    /// members that pass is begun only at the first that fails, and none when all pass.)
+    pub fn narrow<T>(&mut self, t: &Table<T>, mut pred: impl FnMut(&T) -> bool) {
+        if self.seen != t.log.ver() {
+            // as `refilter`: the members were chosen without the table's latest edits
+            return self.rebuild(t, pred);
+        }
+        let mut next = core::mem::take(&mut self.next);
+        next.clear();
+        let mut all = true;
+        for (i, &id) in self.out.iter().enumerate() {
+            let pass = t.get(id).is_some_and(&mut pred);
+            if all {
+                if !pass {
+                    all = false;
+                    next.extend(self.out.iter().take(i).copied());
+                }
+            } else if pass {
+                next.push(id);
+            }
+        }
+        self.work.rows += self.out.len() as u64;
+        if !all {
+            self.replace_from(&next);
+        }
+        self.keep_scratch(next);
+        self.seen = t.log.ver();
+    }
+    /// A scratch list is kept for the next change if it is small; a large one is given back (its allocation
+    /// is amortised over the rows it held).
+    #[inline]
+    fn keep_scratch(&mut self, v: Vec<u32>) {
+        if v.capacity() <= SCRATCH {
+            self.next = v;
+        }
     }
     /// The output becomes `next` (ascending ids): the difference goes to the log and the journal.
     pub fn replace(&mut self, next: Vec<u32>) {
+        self.replace_from(&next)
+    }
+    /// [`Filter::replace`] from a borrowed list: the lane's blocks are rewritten in place.
+    pub fn replace_from(&mut self, next: &[u32]) {
         debug_assert!(
             next.windows(2).all(|w| w[0] < w[1]),
             "ids ascending, each once"
         );
         // the first position that differs is the length of the common prefix
-        let common = self
-            .out
-            .iter()
-            .zip(next.iter())
-            .take_while(|(a, b)| a == b)
-            .count();
+        let common = self.out.common_prefix(next);
         let (old_n, new_n) = (self.out.len(), next.len());
         if common == old_n && common == new_n {
             return;
@@ -251,13 +301,14 @@ impl Filter {
                     self.member.push((1u64 << (new_n % 64)) - 1);
                 }
             } else {
-                for &id in &next {
+                for &id in next {
                     set_bit(&mut self.member, id, true);
                 }
             }
             self.log.reset();
         } else {
-            let mut changes: Vec<Change> = Vec::new();
+            let mut changes = core::mem::take(&mut self.changes);
+            changes.clear();
             let mut i = common;
             let mut old = self.out.from(common).copied().peekable();
             loop {
@@ -293,15 +344,12 @@ impl Filter {
                     self.log.push(c);
                 }
             }
+            if changes.capacity() <= SCRATCH {
+                self.changes = changes;
+            }
         }
-        // the first position that differs is the length of the common prefix
-        let common = self
-            .out
-            .iter()
-            .zip(next.iter())
-            .take_while(|(a, b)| a == b)
-            .count();
-        self.out = Lane::from_vec(next);
+        // `common` is still the first position that differs: the output is unchanged so far
+        self.out.assign(next);
         self.journal.push(Edit::Shift(common as u32));
     }
 }
@@ -668,7 +716,12 @@ pub struct Join<K> {
     rseen: u64,
     pub journal: Journal,
     pub work: Work,
+    /// Lists of keys that lost their last row, for keys that gain their first (a few small ones).
+    spare: Vec<Vec<u32>>,
 }
+/// The most key lists a [`Join`] keeps for reuse, and the most ids such a list may have room for.
+const SPARE_KEYS: usize = 8;
+const SPARE_KEY_ROOM: usize = 16;
 impl<K: Hash + Eq + Clone> Default for Join<K> {
     fn default() -> Self {
         Join::new()
@@ -686,6 +739,7 @@ impl<K: Hash + Eq + Clone> Join<K> {
             rseen: 0,
             journal: Journal::new(),
             work: Work::default(),
+            spare: Vec::new(),
         }
     }
     pub fn len(&self) -> usize {
@@ -704,24 +758,40 @@ impl<K: Hash + Eq + Clone> Join<K> {
     pub fn index_keys(&self) -> usize {
         self.lidx.len() + self.ridx.len()
     }
-    fn pair(&mut self, p: (u32, u32), on: bool) {
-        let pos = self.out.lower_bound(|e| *e < p);
+    /// The pair `p` enters (`on`) or leaves the output. (A function of the fields it changes, so a caller may
+    /// hold the other side's index while it calls it.)
+    fn pair(out: &mut Lane<(u32, u32)>, journal: &mut Journal, p: (u32, u32), on: bool) {
+        let pos = out.lower_bound(|e| *e < p);
         if on {
-            self.out.insert(pos, p);
-            self.journal.push(Edit::Insert(pos as u32));
+            out.insert(pos, p);
+            journal.push(Edit::Insert(pos as u32));
         } else {
-            debug_assert!(*self.out.get(pos) == p);
-            self.out.remove(pos);
-            self.journal.push(Edit::Remove(pos as u32));
+            debug_assert!(*out.get(pos) == p);
+            out.remove(pos);
+            journal.push(Edit::Remove(pos as u32));
         }
     }
-    /// One side's row `id` changed: `new` is its key now (`None`: it is gone).
+    /// One side's row `id` changed: `new` is its key now (`None`: it is gone). The other side's rows of a key
+    /// are read in its index where they are (not copied out first), and the list of a key that loses its
+    /// last row is kept for the next key that gains its first: moving a row between keys allocates nothing.
     fn side(&mut self, left: bool, id: u32, new: Option<K>) {
-        let (keys, own) = if left {
-            (&mut self.lkey, &mut self.lidx)
+        let Join {
+            lkey,
+            rkey,
+            lidx,
+            ridx,
+            out,
+            journal,
+            spare,
+            ..
+        } = self;
+        let (keys, own, other) = if left {
+            (lkey, lidx, &*ridx)
         } else {
-            (&mut self.rkey, &mut self.ridx)
+            (rkey, ridx, &*lidx)
         };
+        let rows = |k: &K| other.get(k).map_or(&[][..], Vec::as_slice);
+        let p = |o: u32| if left { (id, o) } else { (o, id) };
         if id as usize >= keys.len() {
             keys.resize(id as usize + 1, None);
         }
@@ -730,17 +800,9 @@ impl<K: Hash + Eq + Clone> Join<K> {
             keys[id as usize] = old;
             if let Some(k) = &keys[id as usize] {
                 // the same pairs: the rows that show them may show something else
-                let other: Vec<u32> = if left {
-                    self.ridx.get(k)
-                } else {
-                    self.lidx.get(k)
-                }
-                .cloned()
-                .unwrap_or_default();
-                for o in other {
-                    let p = if left { (id, o) } else { (o, id) };
-                    let pos = self.out.lower_bound(|e| *e < p);
-                    self.journal.push(Edit::Update(pos as u32));
+                for &o in rows(k) {
+                    let pos = out.lower_bound(|e| *e < p(o));
+                    journal.push(Edit::Update(pos as u32));
                 }
             }
             return;
@@ -748,38 +810,25 @@ impl<K: Hash + Eq + Clone> Join<K> {
         if let Some(k) = old {
             if let Some(v) = own.get_mut(&k) {
                 v.retain(|&x| x != id);
-                if v.is_empty() {
-                    own.remove(&k);
+                if v.is_empty()
+                    && let Some(v) = own.remove(&k)
+                    && spare.len() < SPARE_KEYS
+                    && v.capacity() <= SPARE_KEY_ROOM
+                {
+                    spare.push(v);
                 }
             }
-            let other: Vec<u32> = if left {
-                self.ridx.get(&k)
-            } else {
-                self.lidx.get(&k)
-            }
-            .cloned()
-            .unwrap_or_default();
-            for o in other {
-                self.pair(if left { (id, o) } else { (o, id) }, false);
+            for &o in rows(&k) {
+                Self::pair(out, journal, p(o), false);
             }
         }
         if let Some(k) = new {
-            let (keys, own) = if left {
-                (&mut self.lkey, &mut self.lidx)
-            } else {
-                (&mut self.rkey, &mut self.ridx)
-            };
             keys[id as usize] = Some(k.clone());
-            own.entry(k.clone()).or_default().push(id);
-            let other: Vec<u32> = if left {
-                self.ridx.get(&k)
-            } else {
-                self.lidx.get(&k)
-            }
-            .cloned()
-            .unwrap_or_default();
-            for o in other {
-                self.pair(if left { (id, o) } else { (o, id) }, true);
+            own.entry(k.clone())
+                .or_insert_with(|| spare.pop().unwrap_or_default())
+                .push(id);
+            for &o in rows(&k) {
+                Self::pair(out, journal, p(o), true);
             }
         }
     }
@@ -794,16 +843,15 @@ impl<K: Hash + Eq + Clone> Join<K> {
         if l.log().since(self.lseen).is_none() || r.log().since(self.rseen).is_none() {
             return self.rebuild(l, r, lk, rk);
         }
-        let lc: Vec<Change> = l.log().since(self.lseen).expect("checked").collect();
-        for c in lc {
+        // the logs are the inputs' (not this operator's): read where they are
+        for c in l.log().since(self.lseen).expect("checked") {
             let (Change::Insert(id) | Change::Update(id) | Change::Remove(id)) = c;
             let live = !matches!(c, Change::Remove(_)) && l.contains(id);
             self.work.rows += live as u64;
             let k = live.then(|| lk(id));
             self.side(true, id, k);
         }
-        let rc: Vec<Change> = r.log().since(self.rseen).expect("checked").collect();
-        for c in rc {
+        for c in r.log().since(self.rseen).expect("checked") {
             let (Change::Insert(id) | Change::Update(id) | Change::Remove(id)) = c;
             let live = !matches!(c, Change::Remove(_)) && r.contains(id);
             self.work.rows += live as u64;

@@ -75,12 +75,6 @@ impl Post {
             }
         }
     }
-    fn each(&self, f: &mut dyn FnMut(u32)) {
-        match self {
-            Post::Small(v) => v.iter().for_each(|&x| f(x)),
-            Post::Big(b) => b.iter().flatten().for_each(|&x| f(x)),
-        }
-    }
 }
 
 #[inline(always)]
@@ -180,13 +174,20 @@ impl Trigrams {
     /// The ids that may hold `needle`, ascending: the shortest list among its trigrams. `None` for a needle
     /// with no trigram (under three bytes); an empty list when some trigram of it occurs nowhere.
     pub fn candidates(&self, needle: &[u8]) -> Option<Vec<u32>> {
+        let mut out = Vec::new();
+        self.candidates_into(needle, &mut out).then_some(out)
+    }
+    /// [`Trigrams::candidates`] into `out` (cleared first; its allocation is reused). False for a needle
+    /// with no trigram, and `out` is then empty.
+    pub fn candidates_into(&self, needle: &[u8], out: &mut Vec<u32>) -> bool {
+        out.clear();
         if needle.len() < 3 {
-            return None;
+            return false;
         }
         let mut best: Option<&Post> = None;
         for w in needle.windows(3) {
             match self.post.get(&tri(w)) {
-                None => return Some(Vec::new()),
+                None => return true,
                 Some(p) => {
                     if best.is_none_or(|b| p.len() < b.len()) {
                         best = Some(p)
@@ -195,9 +196,14 @@ impl Trigrams {
             }
         }
         let p = best.expect("a needle of three bytes has a trigram");
-        let mut out = Vec::with_capacity(p.len());
-        p.each(&mut |id| out.push(id));
-        Some(out)
+        match p {
+            Post::Small(v) => out.extend_from_slice(v),
+            Post::Big(b) => {
+                out.reserve(p.len());
+                b.iter().for_each(|v| out.extend_from_slice(v));
+            }
+        }
+        true
     }
     /// The length of the list [`Trigrams::candidates`] would return, without building it.
     pub fn estimate(&self, needle: &[u8]) -> Option<usize> {
@@ -243,6 +249,16 @@ struct Kept {
     needle: Vec<u8>,
     hits: Vec<u32>,
 }
+/// Kept results held at once (at most; a kept result past the budget is dropped first).
+const KEPT: usize = 16;
+/// Lists held for reuse by kept results: one per result that may be kept and the one kept before the
+/// oldest is dropped, each with room for at most [`SPARE_IDS`] ids (a larger list is freed when given up).
+/// They are made with the index ([`SPARE_ROOM`] each), so keeping a small result allocates nothing.
+const SPARE: usize = KEPT + 1;
+const SPARE_IDS: usize = 256;
+const SPARE_ROOM: usize = 32;
+/// The longest candidate list kept for the next change (a longer one is freed after use).
+const CAND: usize = 4096;
 
 /// How the last change of the needle was answered: what the count gates and the measurements read.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -268,6 +284,12 @@ pub struct Substring {
     /// Ids the kept results may hold in all: at most the table's slots, so they cost at most what one full
     /// result does.
     budget: usize,
+    /// Kept results given up (evicted, taken back, or of a table since edited), whose lists the next kept
+    /// result reuses: a change of the needle allocates nothing for the result it keeps. At most [`SPARE`],
+    /// each of at most [`SPARE_IDS`] ids.
+    spare: Vec<Kept>,
+    /// The index's candidates for the needle being answered (reused).
+    cand: Vec<u32>,
     built: bool,
     pub route: Route,
     /// Rows verified by the last change of the needle or the last sync.
@@ -286,6 +308,8 @@ impl Substring {
             needle: Vec::new(),
             kept: Vec::new(),
             budget: 0,
+            spare: Vec::new(),
+            cand: Vec::new(),
             built: false,
             route: Route::Same,
             verified: 0,
@@ -326,8 +350,11 @@ impl Substring {
             + self
                 .kept
                 .iter()
+                .chain(&self.spare)
                 .map(|k| k.hits.capacity() * 4 + k.needle.capacity())
                 .sum::<usize>()
+            + self.kept.capacity() * size_of::<Kept>()
+            + self.cand.capacity() * 4
     }
     /// Ids held in kept results.
     pub fn kept_ids(&self) -> usize {
@@ -337,6 +364,15 @@ impl Substring {
         self.tri
             .rebuild(t.iter().map(|(id, r)| (id, text(r).as_bytes())));
         self.built = true;
+        if self.spare.capacity() == 0 {
+            // what the kept results will hold, made once beside the index (whose cost it is lost in)
+            self.kept.reserve_exact(KEPT + 1);
+            self.spare.reserve_exact(SPARE);
+            self.spare.extend((0..SPARE).map(|_| Kept {
+                needle: Vec::with_capacity(SPARE_ROOM),
+                hits: Vec::with_capacity(SPARE_ROOM),
+            }));
+        }
     }
     /// Bring the index and the result up to date with the table's edits.
     pub fn sync<T>(&mut self, t: &Table<T>, text: impl Fn(&T) -> &str) {
@@ -360,12 +396,12 @@ impl Substring {
                     }
                     if any {
                         // a kept result is of the table as it was
-                        self.kept.clear();
+                        self.drop_kept();
                     }
                 }
             }
             if stale {
-                self.kept.clear();
+                self.drop_kept();
                 self.build(t, &text);
             }
         }
@@ -398,7 +434,8 @@ impl Substring {
         };
         if let Some(k) = self.kept.iter().position(|k| k.needle == new) {
             let k = self.kept.remove(k);
-            self.hits.replace(k.hits);
+            self.hits.replace_from(&k.hits);
+            self.retire(k);
             self.route = Route::Kept;
         } else {
             let narrow = holds(new, &self.needle).then(|| self.hits.len());
@@ -409,12 +446,23 @@ impl Substring {
                 self.hits.narrow(t, pred);
                 self.route = Route::Narrow;
             } else if index.is_some() {
-                let c = self.tri.candidates(new).expect("estimated");
-                self.hits.refilter(t, pred, c.into_iter());
+                let mut c = core::mem::take(&mut self.cand);
+                let estimated = self.tri.candidates_into(new, &mut c);
+                debug_assert!(estimated);
+                self.hits.refilter(t, pred, c.iter().copied());
+                if c.capacity() <= CAND {
+                    self.cand = c;
+                }
                 self.route = Route::Index;
             } else if new.is_empty() {
                 // everything holds nothing
-                self.hits.replace(t.ids().collect());
+                let mut all = core::mem::take(&mut self.cand);
+                all.clear();
+                all.extend(t.ids());
+                self.hits.replace_from(&all);
+                if all.capacity() <= CAND {
+                    self.cand = all;
+                }
                 self.route = Route::Scan;
             } else {
                 self.hits.refilter(t, pred, t.ids());
@@ -432,13 +480,32 @@ impl Substring {
         if n > self.budget / 2 || self.kept.iter().any(|k| k.needle == self.needle) {
             return;
         }
-        self.kept.push(Kept {
-            needle: self.needle.clone(),
-            hits: self.hits.ids().collect(),
+        // the lists of a result given up hold this one (no allocation once they have room)
+        let mut k = self.spare.pop().unwrap_or(Kept {
+            needle: Vec::new(),
+            hits: Vec::new(),
         });
-        while self.kept.len() > 16 || self.kept_ids() > self.budget {
+        k.needle.clear();
+        k.needle.extend_from_slice(&self.needle);
+        k.hits.clear();
+        self.hits.ids_into(&mut k.hits);
+        self.kept.push(k);
+        while self.kept.len() > KEPT || self.kept_ids() > self.budget {
             // the oldest: a backspace returns to the needles asked last
-            self.kept.remove(0);
+            let old = self.kept.remove(0);
+            self.retire(old);
+        }
+    }
+    /// A kept result is given up: its lists are held for the next (only small ones).
+    fn retire(&mut self, k: Kept) {
+        if self.spare.len() < SPARE && k.hits.capacity() <= SPARE_IDS {
+            self.spare.push(k);
+        }
+    }
+    /// Every kept result is given up (they are of the table as it was).
+    fn drop_kept(&mut self) {
+        while let Some(k) = self.kept.pop() {
+            self.retire(k);
         }
     }
 }
