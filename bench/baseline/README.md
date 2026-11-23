@@ -64,6 +64,10 @@ Use `--thresholds limits.json` for preregistered per-fixture and per-operation o
 {"sheet/rows10000/hover": {"instructions": 1.03}}
 ```
 
+`../baselines/native/limits.json` holds one override: `flatbench/cards300/Metal/idle` at 1.05×. The frame is about 55k instructions on the Metal encoding thread, and replays of one binary spread up to 7% there (three gate runs of the integration head read 54.4k to 56.0k against the reference's 54.5k); every other Metal row stays at the default.
+
+The reference's `supplements` record each value measured after `761d227`: cells and operations added later (`added`), and operations whose reference measured a defect or predates an accepted cost (`replaced`, each with its reason: canvas 1's drag that dragged nothing, the steady no-change search contract, a video frame that was not repainted, the bounds check in `Tiles::mark`).
+
 `../baselines/native/r3-historical-limits.json` applies when comparing typed-core R3 against `71ee3be`. `anim/208/pointer_words` permits 1.025× for the remaining 96 instructions in the checked page-delta path. The cap still rejects the pre-recovery 4,345. Dropping the dense partial-page path recovered the pointer count and raised sheet hover from about 5.3k to 12.9k in the control.
 
 The historical cold mounts permit 1.10× at 1,000 rows and 1.05× at 10,000 rows. The recovered 1,000-row instruction median ranged from 366,552 to 384,092 across two three-process replays, compared with a 356,808 historical median. At 10,000 rows the recovered medians were 365,094 and 366,044, compared with 359,070 historically. A cold probe at 1,000, 3,000 and 10,000 rows found a similar fixed increase of about 15k in the nine-process minima. Reusing capacity reduced the measured delta to roughly 0.4–1.8k at 1,000 and 3,000 rows. macOS includes kernel work in this count. The evidence identifies a cold-start boundary and leaves the exact kernel cause open. The default integration caps apply against the current reference.

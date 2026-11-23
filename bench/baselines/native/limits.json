@@ -1,1 +1,5 @@
-{}
+{
+  "flatbench/cards300/Metal/idle": {
+    "instructions": 1.05
+  }
+}
