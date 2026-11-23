@@ -304,7 +304,7 @@ impl<'a, T, V, F> WMap<'a, T, V, F> {
 pub(crate) unsafe fn patch_transit<T: Lerp>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
     // SAFETY: see the function contract.
     let s = unsafe { &*(sig as *const crate::signal::Signal<T>) };
-    let id = u32::from_le_bytes(w.recipe[..4].try_into().unwrap());
+    let id = unsafe { w.recipe.read_at::<u32>(0) };
     rt.transitions.retarget::<T>(id, **s);
 }
 
@@ -313,7 +313,7 @@ pub(crate) unsafe fn patch_transit<T: Lerp>(rt: &mut Rt, w: &Wire, sig: *const u
 unsafe fn patch_transit_map<T: 'static, P: Lerp, F: Fn(&T) -> P + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
     // SAFETY: see the function contract.
     let s = unsafe { &*(sig as *const crate::signal::Signal<T>) };
-    let id = u32::from_le_bytes(w.recipe[..4].try_into().unwrap());
+    let id = unsafe { w.recipe.read_at::<u32>(0) };
     let f: F = unsafe { std::ptr::read_unaligned(w.recipe.as_ptr().add(4) as *const F) };
     rt.transitions.retarget::<P>(id, f(s));
 }
@@ -326,9 +326,7 @@ impl<'a, T: Lerp, V> IntoProp<T, V> for Transit<Wired<'a, T, V>> {
     fn lower<K: Apply<P = T>>(self, m: &mut Mounter<'_, V>, node: u32) -> T {
         let init = *self.w.get();
         let id = m.rt.transitions.add::<T>(node, Box::new(apply_fn::<K> as fn(&mut Rt, u32, &T)), init, self.curve);
-        let mut recipe = [0u8; 16];
-        recipe[..4].copy_from_slice(&id.to_le_bytes());
-        m.wire(&self.w, patch_transit::<T>, node, recipe);
+        m.wire(&self.w, patch_transit::<T>, node, crate::rt::Recipe::of(id));
         init
     }
     /// At a re-description the wire keeps driving the transition; the value is its target.
@@ -345,11 +343,8 @@ where
         assert!(size_of::<F>() <= 12, "a transition's projection must capture at most 12 bytes");
         let init = (self.w.f)(self.w.w.get());
         let id = m.rt.transitions.add::<P>(node, Box::new(apply_fn::<K> as fn(&mut Rt, u32, &P)), init, self.curve);
-        let mut recipe = [0u8; 16];
-        recipe[..4].copy_from_slice(&id.to_le_bytes());
-        // SAFETY: F is Copy and at most 12 bytes (asserted): it fits after the id.
-        unsafe { std::ptr::write_unaligned(recipe.as_mut_ptr().add(4) as *mut F, self.w.f) };
-        m.wire(&self.w.w, patch_transit_map::<T, P, F>, node, recipe);
+        // F is at most 12 bytes (asserted): it fits after the id
+        m.wire(&self.w.w, patch_transit_map::<T, P, F>, node, crate::rt::Recipe::of(id).with_at(4, self.w.f));
         init
     }
     fn value(self) -> P {

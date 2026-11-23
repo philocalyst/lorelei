@@ -69,12 +69,6 @@ impl<V> Mounter<'_, V> {
         // SAFETY: as `tape_push`.
         unsafe { (&mut *self.tape)[i] = x };
     }
-    /// The next tape entry, not consumed (`el`: the node an element's `update` is about to read).
-    #[inline(always)]
-    pub(crate) fn tape_peek(&self) -> u32 {
-        // SAFETY: as `tape_push`; `update` runs only with a tape.
-        unsafe { (&*self.tape)[self.ti] }
-    }
     /// The next tape entry (`update`).
     #[inline(always)]
     pub(crate) fn tape_next(&mut self) -> u32 {
@@ -92,7 +86,7 @@ impl<V> Mounter<'_, V> {
         e.mount(self)
     }
     /// Install a wire for `w` (an `offset_of!`-proven field of this mounter's owner type).
-    pub(crate) fn wire<T>(&mut self, w: &Wired<'_, T, V>, patch: PatchFn, node: u32, recipe: [u8; 16]) {
+    pub(crate) fn wire<T>(&mut self, w: &Wired<'_, T, V>, patch: PatchFn, node: u32, recipe: crate::rt::Recipe) {
         // The runtime inference the proof replaced survives as a debug check: the operand is the owner's
         // own field (not a field of another value of the same type).
         debug_assert_eq!(w.sig as *const Signal<T> as usize, self.owner as usize + w.off as usize, "sig! operand is not a field of the mounted owner");
@@ -106,7 +100,7 @@ impl<V> Mounter<'_, V> {
     /// # Safety
     /// `off` is the `offset_of!`-proven offset of the cell whose head is `head` in this mounter's owner type,
     /// and `patch` reads exactly that cell type.
-    pub(crate) unsafe fn wire_cell(&mut self, head: &std::cell::Cell<u32>, off: u32, patch: PatchFn, node: u32, recipe: [u8; 16]) -> u32 {
+    pub(crate) unsafe fn wire_cell(&mut self, head: &std::cell::Cell<u32>, off: u32, patch: PatchFn, node: u32, recipe: crate::rt::Recipe) -> u32 {
         debug_assert_eq!(head as *const _ as usize, self.owner as usize + off as usize, "operand is not a field of the mounted owner");
         // SAFETY: this fn's contract: `off` is the proven offset of the cell whose head is `head` in this owner type, and
         // `patch` reads that cell type (`add_wire` asks for the same).
@@ -122,7 +116,7 @@ impl<V> Mounter<'_, V> {
     /// # Safety
     /// `head` is the head of a live cell of the type `ty` names (`reflect::cell_id`), and `patch` reads
     /// exactly that cell type with the recipe given.
-    pub(crate) unsafe fn wire_field(&mut self, head: &std::cell::Cell<u32>, ty: std::any::TypeId, patch: PatchFn, node: u32, recipe: [u8; 16]) -> bool {
+    pub(crate) unsafe fn wire_field(&mut self, head: &std::cell::Cell<u32>, ty: std::any::TypeId, patch: PatchFn, node: u32, recipe: crate::rt::Recipe) -> bool {
         let (at, base) = (head as *const _ as usize, self.owner as usize);
         if at < base || at - base >= size_of::<V>() {
             return false;
@@ -319,7 +313,7 @@ impl<V> IntoProp<Color, V> for Color {
 impl<T: Clone + 'static, V> IntoProp<T, V> for &Signal<T> {
     fn lower<K: Apply<P = T>>(self, m: &mut Mounter<'_, V>, node: u32) -> T {
         // SAFETY: `self` is a live `Signal<T>` and `patch_sig::<K, T>` reads a `Signal<T>` with no recipe.
-        unsafe { m.wire_field(self.head(), crate::reflect::cell_id::<Signal<T>>(), patch_sig::<K, T>, node, [0; 16]) };
+        unsafe { m.wire_field(self.head(), crate::reflect::cell_id::<Signal<T>>(), patch_sig::<K, T>, node, crate::rt::Recipe::NONE) };
         (**self).clone()
     }
     fn value(self) -> T {
@@ -345,12 +339,9 @@ pub(crate) unsafe fn patch_map<K: Apply, T: 'static, F: Fn(&T) -> K::P + Copy>(r
     K::apply(rt, w.node, &v);
 }
 
-pub(crate) fn recipe_of<F: Copy>(f: F) -> [u8; 16] {
+pub(crate) fn recipe_of<F: Copy>(f: F) -> Recipe {
     const { assert!(size_of::<F>() <= 16, "map closure: at most 16 bytes of captures") };
-    let mut r = [0u8; 16];
-    // SAFETY: size_of::<F>() <= 16 (checked at compile time); unaligned write into a byte array.
-    unsafe { std::ptr::write_unaligned(r.as_mut_ptr() as *mut F, f) };
-    r
+    Recipe::of(f)
 }
 
 
@@ -359,7 +350,9 @@ pub(crate) fn recipe_of<F: Copy>(f: F) -> [u8; 16] {
 /// it reaches the record through the wire. Equal identity means the installed wire is the one this
 /// description would install, so the element may be stepped over.
 #[inline(always)]
-pub(crate) fn seal_wire<S: crate::seal::Sealer>(s: &mut S, tag: u32, off: u32, recipe: [u8; 16]) {
+pub(crate) fn seal_wire<S: crate::seal::Sealer>(s: &mut S, tag: u32, off: u32, recipe: Option<[u8; 16]>) {
+    // a recipe with padding cannot be compared as bytes: the element is not sealed
+    let Some(recipe) = recipe else { return s.refuse() };
     s.word(tag);
     s.word(off);
     for w in recipe.chunks_exact(4) {
@@ -369,7 +362,7 @@ pub(crate) fn seal_wire<S: crate::seal::Sealer>(s: &mut S, tag: u32, off: u32, r
 
 impl<'a, T: Clone + 'static, V> IntoProp<T, V> for Wired<'a, T, V> {
     fn lower<K: Apply<P = T>>(self, m: &mut Mounter<'_, V>, node: u32) -> T {
-        m.wire(&self, patch_sig::<K, T>, node, [0; 16]);
+        m.wire(&self, patch_sig::<K, T>, node, crate::rt::Recipe::NONE);
         self.get().clone()
     }
     fn value(self) -> T {
@@ -377,7 +370,7 @@ impl<'a, T: Clone + 'static, V> IntoProp<T, V> for Wired<'a, T, V> {
     }
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x5749_5245, self.off, [0; 16])
+        seal_wire(s, 0x5749_5245, self.off, Some([0; 16]))
     }
 }
 
@@ -395,7 +388,7 @@ where
     }
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x574d_4150, self.w.off, recipe_of(self.f))
+        seal_wire(s, 0x574d_4150, self.w.off, recipe_of(self.f).bytes::<F>())
     }
 }
 
@@ -750,7 +743,7 @@ pub(crate) fn decimal(v: i128, buf: &mut [u8; 40]) -> &str {
 impl<V> TextSrc<V> for &Signal<String> {
     fn lower(self, m: &mut Mounter<'_, V>, node: u32) -> String {
         // SAFETY: `self` is a live `Signal<String>`, which `patch_text` reads; no recipe.
-        unsafe { m.wire_field(self.head(), crate::reflect::cell_id::<Signal<String>>(), patch_text, node, [0; 16]) };
+        unsafe { m.wire_field(self.head(), crate::reflect::cell_id::<Signal<String>>(), patch_text, node, crate::rt::Recipe::NONE) };
         (**self).clone()
     }
     fn value(self) -> String {
@@ -841,7 +834,7 @@ unsafe fn patch_text_num<T: 'static, F: Fn(&T) -> f32 + Copy>(rt: &mut Rt, w: &W
 
 impl<'a, V> TextSrc<V> for Wired<'a, String, V> {
     fn lower(self, m: &mut Mounter<'_, V>, node: u32) -> String {
-        m.wire(&self, patch_text, node, [0; 16]);
+        m.wire(&self, patch_text, node, crate::rt::Recipe::NONE);
         self.get().clone()
     }
     fn value(self) -> String {
@@ -849,7 +842,7 @@ impl<'a, V> TextSrc<V> for Wired<'a, String, V> {
     }
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x5754_5854, self.off, [0; 16])
+        seal_wire(s, 0x5754_5854, self.off, Some([0; 16]))
     }
 }
 impl<'a, T: 'static, V, F: Fn(&T) -> String + Copy + 'static> TextSrc<V> for WMap<'a, T, V, F> {
@@ -863,7 +856,7 @@ impl<'a, T: 'static, V, F: Fn(&T) -> String + Copy + 'static> TextSrc<V> for WMa
     }
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x5754_4d50, self.w.off, recipe_of(self.f))
+        seal_wire(s, 0x5754_4d50, self.w.off, recipe_of(self.f).bytes::<F>())
     }
 }
 impl<'a, T: 'static, V, F: Fn(&T) -> f32 + Copy + 'static> TextSrc<V> for Num<'a, T, V, F> {
@@ -884,7 +877,7 @@ impl<'a, T: 'static, V, F: Fn(&T) -> f32 + Copy + 'static> TextSrc<V> for Num<'a
         if n == usize::MAX { slow } else { bough_text::numeric::as_str(&buf, n).to_owned() }
     }    #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
-        seal_wire(s, 0x574e_554d, self.w.off, recipe_of(self.f));
+        seal_wire(s, 0x574e_554d, self.w.off, recipe_of(self.f).bytes::<F>());
         s.bytes(&self.fmt.identity());
     }
 }
@@ -1197,6 +1190,8 @@ pub fn virtual_list<'a, V>(
 /// # Safety
 /// `owner` points at the live owner `V`; `reg`'s row function is a `fn(&V, usize, &mut Mounter<V>)`.
 pub(crate) unsafe fn mount_row<V: 'static>(rt: &mut Rt, owner: *const u8, reg: usize, row: usize, recs: &mut Vec<RecordInit>) -> RowInfo {
+    // a row may be mounted outside any description (a scroll): its `El`s live until it is done
+    let _walk = crate::el::Walk::enter();
     let space = rt.alloc_space();
     let origin = rt.region_row_space_origin(reg, row);
     rt.set_space(space, origin);
@@ -1252,7 +1247,7 @@ impl<'a, V: 'static> Element<V> for VirtualList<'a, V> {
             mount_row: mount_row::<V>,
             row_fn: self.row as usize,
         });
-        m.wire(&self.scroll, patch_scroll, reg as u32, [0; 16]);
+        m.wire(&self.scroll, patch_scroll, reg as u32, crate::rt::Recipe::NONE);
         m.tape_push(reg as u32);
         // SAFETY: the owner pointer is the mounted owner (`App::new` / a row mount).
         unsafe { m.rt.region_initial(reg, m.owner as *const u8, *self.scroll.get(), m.recs) };

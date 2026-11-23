@@ -331,6 +331,61 @@ impl Node {
 /// `owner` must point at the live owner `V`.
 pub type PatchFn = unsafe fn(&mut Rt, &Wire, *const u8, *const u8);
 
+/// The bytes a wire or a route carries with its function: a closure's captures (at most 16 bytes), an index.
+/// What was written may have padding, so the bytes are never read as `u8`s, only as the type written
+/// (`read`), or as bytes where the writer's type is known to be padding-free (`bytes`).
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct Recipe(std::mem::MaybeUninit<[u8; 16]>);
+
+impl Recipe {
+    /// No captures: sixteen zero bytes.
+    pub const NONE: Recipe = Recipe(std::mem::MaybeUninit::new([0; 16]));
+    /// `f`'s bytes (the rest zero).
+    #[inline(always)]
+    pub fn of<F: Copy>(f: F) -> Recipe {
+        Recipe::NONE.with_at(0, f)
+    }
+    /// This recipe with `f` written at byte `at` (`at + size_of::<F>() <= 16`).
+    #[inline(always)]
+    pub fn with_at<F: Copy>(mut self, at: usize, f: F) -> Recipe {
+        assert!(at + size_of::<F>() <= 16, "a recipe holds at most 16 bytes of captures");
+        // SAFETY: in bounds (asserted); an unaligned write into the recipe's storage.
+        unsafe { std::ptr::write_unaligned((self.0.as_mut_ptr() as *mut u8).add(at) as *mut F, f) };
+        self
+    }
+    #[inline(always)]
+    pub fn as_ptr(&self) -> *const u8 {
+        self.0.as_ptr() as *const u8
+    }
+    /// The `F` at byte `at`.
+    ///
+    /// # Safety
+    /// An `F` was written at `at` (`of`, `with_at`).
+    #[inline(always)]
+    pub unsafe fn read_at<F: Copy>(&self, at: usize) -> F {
+        // SAFETY: the function contract.
+        unsafe { std::ptr::read_unaligned(self.as_ptr().add(at) as *const F) }
+    }
+    /// The bytes, without the proof `bytes` makes.
+    ///
+    /// # Safety
+    /// Everything written into the recipe was padding-free (`reflect::padding_free` of each type written).
+    #[inline(always)]
+    pub unsafe fn bytes_unchecked(&self) -> [u8; 16] {
+        // SAFETY: the function contract.
+        unsafe { self.0.assume_init() }
+    }
+    /// The bytes, when everything written into the recipe was padding-free (`reflect::padding_free`), else
+    /// `None`. `F` names what was written at 0 (the rest is zeros or more of the same rule).
+    #[inline(always)]
+    pub fn bytes<F>(&self) -> Option<[u8; 16]> {
+        // SAFETY: the recipe started as zeros and only an `F` was written over them; with no padding in `F`
+        // every byte is initialised.
+        crate::reflect::padding_free::<F>().then(|| unsafe { self.0.assume_init() })
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Wire {
     /// Next wire of the same signal (0 = end).
@@ -346,7 +401,7 @@ pub struct Wire {
     /// Owner class of the owner the wire's head lives in (`changed` is shown to that owner).
     pub cls: u32,
     pub patch: PatchFn,
-    pub recipe: [u8; 16],
+    pub recipe: Recipe,
 }
 
 impl Drop for Rt {
@@ -689,7 +744,7 @@ impl Rt {
         let mut cold: Col<Node> = store.carve("element cold", sc.ids);
         cold.push(Node::blank());
         let mut wires: Col<Wire> = store.carve("wires", sc.wires);
-        wires.push(Wire { next: 0, dead: true, latest: false, node: 0, head: 0, cls: 0, patch: nop, recipe: [0; 16] });
+        wires.push(Wire { next: 0, dead: true, latest: false, node: 0, head: 0, cls: 0, patch: nop, recipe: Recipe::NONE });
         let texts = store.carve("texts", sc.texts);
         let spans = crate::store::Spans::new(store.carve("spans", sc.spans));
         let lay = crate::layout::Lay::new(scale, &mut store, &sc);
@@ -1264,7 +1319,7 @@ impl Rt {
     /// # Safety
     /// `off` must be the `offset_of!`-proven offset of a headed cell field of the class's owner type, `head`
     /// that cell's head, and `patch` monomorphised for the cell's type (and `recipe` holding what it reads).
-    pub(crate) unsafe fn add_wire(&mut self, head: &std::cell::Cell<u32>, off: u32, cls: u32, patch: PatchFn, node: u32, recipe: [u8; 16]) -> u32 {
+    pub(crate) unsafe fn add_wire(&mut self, head: &std::cell::Cell<u32>, off: u32, cls: u32, patch: PatchFn, node: u32, recipe: Recipe) -> u32 {
         let addr = head as *const _ as usize;
         let h = head.get();
         let mut first = h & HEAD_IDX;

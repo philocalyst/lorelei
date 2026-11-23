@@ -106,7 +106,7 @@ number_plugs!(f32, i32, u32);
 impl<'f, T: Scalar> IntoProp<'f, T> for &'f Signal<T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: [0; 16] }) }
+        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE, exact: true }) }
     }
 }
 
@@ -133,18 +133,15 @@ pub struct Map<'f, S, F> {
     f: F,
 }
 
-fn recipe<F: Copy>(f: F) -> [u8; 16] {
+fn recipe<F: Copy>(f: F) -> crate::rt::Recipe {
     const { assert!(size_of::<F>() <= 16, "a map closure captures at most 16 bytes; put what it depends on in a signal") };
-    let mut r = [0u8; 16];
-    // SAFETY: `size_of::<F>() <= 16` (checked at compile time); an unaligned write into a byte array.
-    unsafe { ptr::write_unaligned(r.as_mut_ptr() as *mut F, f) };
-    r
+    crate::rt::Recipe::of(f)
 }
 
 impl<'f, S: 'static, T: Scalar, F: Fn(&S) -> T + Copy + 'static> IntoProp<'f, T> for Map<'f, S, F> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: (self.f)(self.sig), w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        Plug { v: (self.f)(self.sig), w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), exact: crate::reflect::padding_free::<F>() }) }
     }
 }
 
@@ -192,7 +189,7 @@ int_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 impl<'f> IntoProp<'f, Text> for &'f Signal<String> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: [0; 16] }) }
+        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE, exact: true }) }
     }
 }
 
@@ -201,7 +198,7 @@ impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> fo
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
         let s = (self.f)(self.sig);
-        Plug { v: TextVal { ptr: arena::bytes(s.as_bytes()), len: s.len() as u64, flags: 0 }, w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        Plug { v: TextVal { ptr: arena::bytes(s.as_bytes()), len: s.len() as u64, flags: 0 }, w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), exact: crate::reflect::padding_free::<F>() }) }
     }
 }
 

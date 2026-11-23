@@ -45,6 +45,21 @@ pub(crate) struct Hnd {
     pub kind: Kind,
     pub owner: u32,
     pub f: Box<dyn Fn(&mut dyn Any, &Ev)>,
+    /// A key handler's keys: `None` hears every key; `Some((keys, true))` only those, `Some((keys, false))` all
+    /// but those (an any-key route beside routes by key, `El::on_any_key`).
+    pub keys: Option<(Box<[crate::input::Key]>, bool)>,
+}
+
+impl Hnd {
+    /// Does this handler hear `e` (its kind matched)?
+    #[inline]
+    pub(crate) fn hears(&self, e: &Ev) -> bool {
+        match (&self.keys, e.key) {
+            (None, _) => true,
+            (Some((ks, only)), Some(k)) => ks.contains(&k) == *only,
+            (Some((_, only)), None) => !*only,
+        }
+    }
 }
 
 /// How an owner is reached from its parent owner (owner 0 is the root view).
@@ -351,6 +366,7 @@ impl<'c, 'a, V: 'static> Lower<'c, 'a, V> {
                     f(v, e)
                 }
             }),
+            keys: None,
         });
         let n = self.core.node(node);
         n.solid = true;
@@ -367,6 +383,12 @@ impl<'c, 'a, V: 'static> Lower<'c, 'a, V> {
     }
     pub(crate) fn owner(&self) -> u32 {
         self.core.owner
+    }
+    /// Restrict the handler just described to `keys` (`only`) or to every key but them.
+    pub(crate) fn last_handler_keys(&mut self, keys: Box<[crate::input::Key]>, only: bool) {
+        if let Some(h) = self.core.handlers.last_mut() {
+            h.keys = Some((keys, only));
+        }
     }
 }
 

@@ -133,17 +133,14 @@ pub fn latest<W>(w: W) -> Latest<W> {
     Latest(w)
 }
 
-fn recipe<F: Copy>(f: F) -> [u8; 16] {
+fn recipe<F: Copy>(f: F) -> crate::rt::Recipe {
     const { assert!(size_of::<F>() <= 16, "closure: at most 16 bytes of captures") };
-    let mut r = [0u8; 16];
-    // SAFETY: size checked at compile time; unaligned write into bytes.
-    unsafe { std::ptr::write_unaligned(r.as_mut_ptr() as *mut F, f) };
-    r
+    crate::rt::Recipe::of(f)
 }
 /// # Safety
 /// `r` holds an `F` written by `recipe`.
-unsafe fn unrecipe<F: Copy>(r: &[u8; 16]) -> F {
-    unsafe { std::ptr::read_unaligned(r.as_ptr() as *const F) }
+unsafe fn unrecipe<F: Copy>(r: &crate::rt::Recipe) -> F {
+    unsafe { r.read_at::<F>(0) }
 }
 
 unsafe fn patch_rmap<K: Apply, T: 'static, F: Fn(Option<&T>) -> K::P + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _o: *const u8) {
@@ -541,7 +538,7 @@ impl<'a, S: PartialEq + Clone + 'static, T: Send + 'static, V: 'static> crate::e
         m.scope.prods.push(pi);
         // SAFETY: `src` is an `offset_of!`-proven `Signal<S>` of `V`; `patch_produce::<S, T>` reads one, and its
         // producer names an `offset_of!`-proven `Reader<T>` of `V`.
-        let w = unsafe { m.wire_cell(self.src.sig.head(), self.src.off, patch_produce::<S, T>, pi, [0; 16]) };
+        let w = unsafe { m.wire_cell(self.src.sig.head(), self.src.off, patch_produce::<S, T>, pi, crate::rt::Recipe::NONE) };
         m.rt.make_latest(w);
         // the first request: fetch high, at mount
         let owner = m.owner as *const u8;
@@ -621,7 +618,7 @@ impl<'a, T: 'static, V: 'static, L: crate::elem::Element<V>, F: crate::elem::Ele
             let bi = m.rt.asy.bounds.len() as u32;
             m.rt.asy.bounds.push(Bound { clips, rect, shown });
             // SAFETY: `phead` sits at `off + 4`; the patch reads the reader 4 bytes before it.
-            unsafe { m.wire_cell(&self.r.r.phead, self.r.off + 4, patch_boundary::<T>, bi, [0; 16]) };
+            unsafe { m.wire_cell(&self.r.r.phead, self.r.off + 4, patch_boundary::<T>, bi, crate::rt::Recipe::NONE) };
             let prev = m.clip;
             m.clip = clips[0];
             self.loading.mount(m);

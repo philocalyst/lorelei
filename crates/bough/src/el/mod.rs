@@ -33,7 +33,7 @@ use arena::*;
 use plug::{IntoProp, Len, Seal, Text};
 use std::any::TypeId;
 use std::marker::PhantomData;
-use std::ptr::{self, NonNull};
+use std::ptr::NonNull;
 
 pub use arena::stats as arena_stats;
 pub(crate) use arena::Walk;
@@ -86,11 +86,12 @@ impl<'f> El<'f> {
     fn n(&self) -> &mut DNode {
         // SAFETY: node memory is never freed (`arena.rs`), so reading the turn number is always defined; when
         // it matches, the node is this handle's own and this handle (move-only) is the only one that names it.
-        let n = unsafe { &mut *self.node.as_ptr() };
-        if n.turn != self.turn {
+        let p = self.node.as_ptr();
+        // (the turn is read through the pointer: no reference to a slot of another description is formed)
+        if unsafe { std::ptr::addr_of!((*p).turn).read() } != self.turn {
             stale()
         }
-        n
+        unsafe { &mut *p }
     }
     #[inline(always)]
     #[track_caller]
@@ -128,7 +129,9 @@ impl<'f> El<'f> {
     pub fn w<P: IntoProp<'f, f32>>(self, p: P) -> Self {
         let pl = p.plug::<crate::boxops::ApplyBoxW>(Seal);
         if pl.w.is_null() {
-            self.n().spec.w = Dim::Pt(pl.v);
+            let n = self.n();
+            n.spec.w = Dim::Pt(pl.v);
+            n.ops &= !OP_W;
         } else {
             self.kind_is(K_BOX, "a width source").ops |= OP_W;
             let x = self.ext();
@@ -141,7 +144,9 @@ impl<'f> El<'f> {
     pub fn h<P: IntoProp<'f, f32>>(self, p: P) -> Self {
         let pl = p.plug::<crate::boxops::ApplyBoxH>(Seal);
         if pl.w.is_null() {
-            self.n().spec.h = Dim::Pt(pl.v);
+            let n = self.n();
+            n.spec.h = Dim::Pt(pl.v);
+            n.ops &= !OP_H;
         } else {
             self.kind_is(K_BOX, "a height source").ops |= OP_H;
             let x = self.ext();
@@ -152,15 +157,20 @@ impl<'f> El<'f> {
     pub fn size(self, w: impl Len, h: impl Len) -> Self {
         let n = self.n();
         (n.spec.w, n.spec.h) = (Dim::Pt(w.pt()), Dim::Pt(h.pt()));
+        n.ops &= !(OP_W | OP_H);
         self
     }
     /// Width / height as a fraction of the parent (1.0 = 100%).
     pub fn w_pct(self, f: f32) -> Self {
-        self.n().spec.w = Dim::Pct(f);
+        let n = self.n();
+        n.spec.w = Dim::Pct(f);
+        n.ops &= !OP_W;
         self
     }
     pub fn h_pct(self, f: f32) -> Self {
-        self.n().spec.h = Dim::Pct(f);
+        let n = self.n();
+        n.spec.h = Dim::Pct(f);
+        n.ops &= !OP_H;
         self
     }
     pub fn min_w(self, v: impl Len) -> Self {
@@ -374,15 +384,24 @@ impl<'f> El<'f> {
         self.route(A_ANY_KEY, Key::Escape, r)
     }
     /// Tab can move focus here.
+    #[track_caller]
     pub fn focusable(self) -> Self {
+        let k = self.n().kind;
+        if matches!(k, K_GROUP | K_FRAG) {
+            wrong_kind("focus", k, K_BOX)
+        }
         self.ext().flags |= X_FOCUS;
         self
     }
     #[track_caller]
     fn route<M>(self, kind: u8, key: Key, r: impl Route<M>) -> Self {
-        let (tramp, recipe, recv, recv_name) = r.lower(Seal);
+        let k = self.n().kind;
+        if matches!(k, K_GROUP | K_FRAG) {
+            wrong_kind("a route", k, K_BOX)
+        }
+        let RouteParts { tramp, recipe, exact, recv, recv_name } = r.lower(Seal);
         let x = self.ext();
-        x.acts = arena::put(ActReq { next: x.acts, tramp, recipe, recv, recv_name, key, kind });
+        x.acts = arena::put(ActReq { next: x.acts, tramp, recipe, exact, recv, recv_name, key, kind });
         self
     }
 }
@@ -663,30 +682,37 @@ iter_children!(std::array::IntoIter<T>, const N);
 pub trait Route<M>: Sized {
     #[doc(hidden)]
     #[allow(private_interfaces)]
-    fn lower(self, _: Seal) -> (RouteFn, [u8; 16], TypeId, &'static str);
+    fn lower(self, _: Seal) -> RouteParts;
+}
+
+/// A route as the arena keeps it.
+#[doc(hidden)]
+pub struct RouteParts {
+    tramp: RouteFn,
+    recipe: crate::rt::Recipe,
+    exact: bool,
+    recv: TypeId,
+    recv_name: &'static str,
 }
 
 #[inline]
-fn recipe<F: Copy>(f: F) -> [u8; 16] {
+fn parts<R: 'static, F: Copy>(tramp: RouteFn, f: F) -> RouteParts {
     const { assert!(size_of::<F>() <= 16, "a route captures at most 16 bytes: bind a value with `Owner::method.with(value)`, or keep it in the view's state") };
-    let mut r = [0u8; 16];
-    // SAFETY: `size_of::<F>() <= 16` (checked at compile time); an unaligned write into a byte array.
-    unsafe { ptr::write_unaligned(r.as_mut_ptr() as *mut F, f) };
-    r
+    RouteParts { tramp, recipe: crate::rt::Recipe::of(f), exact: crate::reflect::padding_free::<F>(), recv: TypeId::of::<R>(), recv_name: std::any::type_name::<R>() }
 }
 
 impl<R: 'static, F: Fn(&mut R) + Copy + 'static> Route<fn(&mut R)> for F {
     #[inline]
     #[allow(private_interfaces)]
-    fn lower(self, _: Seal) -> (RouteFn, [u8; 16], TypeId, &'static str) {
-        (crate::input::call_plain::<R, F>, recipe(self), TypeId::of::<R>(), std::any::type_name::<R>())
+    fn lower(self, _: Seal) -> RouteParts {
+        parts::<R, F>(crate::input::call_plain::<R, F>, self)
     }
 }
 impl<R: 'static, F: Fn(&mut R, &Ev) + Copy + 'static> Route<fn(&mut R, &Ev)> for F {
     #[inline]
     #[allow(private_interfaces)]
-    fn lower(self, _: Seal) -> (RouteFn, [u8; 16], TypeId, &'static str) {
-        (crate::input::call_ev::<R, F>, recipe(self), TypeId::of::<R>(), std::any::type_name::<R>())
+    fn lower(self, _: Seal) -> RouteParts {
+        parts::<R, F>(crate::input::call_ev::<R, F>, self)
     }
 }
 
@@ -696,6 +722,14 @@ pub struct Bound<F, A> {
     f: F,
     a: A,
 }
+/// # Safety
+/// `o` is the owner `R`; `r` holds a `Bound<F, A>` (`Route::lower` for `Bound`).
+unsafe fn call_bound<R, F: Fn(&mut R, A) + Copy, A: Copy>(o: *mut u8, r: &crate::rt::Recipe, _: &Ev) {
+    // SAFETY: the function contract.
+    let b: Bound<F, A> = unsafe { r.read_at(0) };
+    (b.f)(unsafe { &mut *(o as *mut R) }, b.a)
+}
+
 /// `.with(value)` on a method taking `(&mut Self, value)`.
 pub trait With<A>: Sized {
     fn with(self, a: A) -> Bound<Self, A>;
@@ -709,9 +743,10 @@ impl<F, A> With<A> for F {
 impl<R: 'static, A: Copy + 'static, F: Fn(&mut R, A) + Copy + 'static> Route<(fn(&mut R, A),)> for Bound<F, A> {
     #[inline]
     #[allow(private_interfaces)]
-    fn lower(self, _: Seal) -> (RouteFn, [u8; 16], TypeId, &'static str) {
-        let (f, a) = (self.f, self.a);
-        Route::<fn(&mut R)>::lower(move |r: &mut R| f(r, a), Seal)
+    fn lower(self, _: Seal) -> RouteParts {
+        // the recipe is the `Bound` itself (not a closure over it): a method is zero-sized, so it compares as
+        // bytes exactly when the bound value is padding-free
+        parts::<R, Bound<F, A>>(call_bound::<R, F, A>, self)
     }
 }
 

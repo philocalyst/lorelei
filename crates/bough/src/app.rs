@@ -694,6 +694,9 @@ impl<V: View> App<V> {
     /// One turn: run the handler, settle the wires it queued (text patches and marks happen inside the
     /// wires), lay out what changed.
     pub fn turn(&mut self, f: impl FnOnce(&mut V)) {
+        // the turn is a description boundary: what it describes (rows mounted by its settle, the re-description)
+        // is retired when it ends
+        let _walk = crate::el::Walk::enter();
         crate::lower::provenance::count(|c| c.rt_settle += 1);
         self.sync();
         if self.reclaiming() {

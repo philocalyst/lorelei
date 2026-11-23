@@ -544,7 +544,7 @@ impl<V: View> App<V> {
         let (a, n) = self.docs[at.0 as usize].nodes[at.1 as usize].hnd;
         let mut ran = false;
         for h in &self.handlers[a as usize..(a + n) as usize] {
-            if h.kind == kind {
+            if h.kind == kind && h.hears(e) {
                 if let Some(o) = resolve(&self.owners, h.owner, &mut self.lv.v) {
                     count(|c| c.dispatch += 1);
                     (h.f)(o, e);

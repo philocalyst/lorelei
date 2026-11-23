@@ -306,9 +306,7 @@ impl<T: crate::transition::Lerp, V> Restyled<T, V> for crate::transition::Transi
     fn install<F: Fn(&T, &mut Style) + Copy + 'static>(self, m: &mut Mounter<'_, V>, lid: u32, f: F) {
         let init = *self.w.get();
         let id = m.rt.transitions.add::<T>(lid, Box::new(move |rt: &mut Rt, lid: u32, v: &T| rt.lay_restyle(lid, |st| f(v, st))), init, self.curve);
-        let mut recipe = [0u8; 16];
-        recipe[..4].copy_from_slice(&id.to_le_bytes());
-        m.wire(&self.w, crate::transition::patch_transit::<T>, lid, recipe);
+        m.wire(&self.w, crate::transition::patch_transit::<T>, lid, crate::rt::Recipe::of(id));
         let mut st = m.rt.lay.eng.style(lid).clone();
         f(&init, &mut st);
         let sid = m.rt.lay.eng.intern(st);
@@ -318,10 +316,7 @@ impl<T: crate::transition::Lerp, V> Restyled<T, V> for crate::transition::Transi
 
 fn restyle_wired<T: 'static, V, F: Fn(&T, &mut Style) + Copy + 'static>(m: &mut Mounter<'_, V>, sig: crate::signal::Wired<'_, T, V>, lid: u32, f: F) {
     const { assert!(size_of::<F>() <= 16, "restyle closure: at most 16 bytes of captures") };
-    let mut r = [0u8; 16];
-    // SAFETY: size_of::<F>() <= 16 (checked above); unaligned write into a byte array.
-    unsafe { std::ptr::write_unaligned(r.as_mut_ptr() as *mut F, f) };
-    m.wire(&sig, patch_restyle::<T, F>, lid, r);
+    m.wire(&sig, patch_restyle::<T, F>, lid, crate::rt::Recipe::of(f));
     // the initial value applies at mount (the node's style starts as the template's; it is laid out cold)
     let mut st = m.rt.lay.eng.style(lid).clone();
     f(sig.get(), &mut st);

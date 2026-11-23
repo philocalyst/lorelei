@@ -51,13 +51,18 @@ fn seal_req<S: Sealer>(s: &mut S, w: *const WireReq) {
     }
     // SAFETY: as `wire`.
     let w = unsafe { &*w };
+    if !w.exact {
+        // a closure whose captures may have padding: its bytes cannot be compared, so the element is not sealed
+        return s.refuse();
+    }
     s.word(0x5749_5245);
     let (a, p) = (w.head as usize as u64, w.patch as usize as u64);
     s.word(a as u32);
     s.word((a >> 32) as u32);
     s.word(p as u32);
     s.word((p >> 32) as u32);
-    for c in w.recipe.chunks_exact(4) {
+    // SAFETY: `exact`: what was written is padding-free.
+    for c in unsafe { w.recipe.bytes_unchecked() }.chunks_exact(4) {
         s.word(u32::from_ne_bytes([c[0], c[1], c[2], c[3]]));
     }
 }
@@ -184,6 +189,14 @@ impl<V> BoxOps<V> for EOps {
     #[inline(always)]
     fn has_paint(&self) -> bool {
         self.ops & (OP_ALPHA | OP_TX | OP_TY) != 0
+    }
+    #[inline(always)]
+    fn owns_w(&self) -> bool {
+        self.ops & OP_W != 0
+    }
+    #[inline(always)]
+    fn owns_h(&self) -> bool {
+        self.ops & OP_H != 0
     }
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, node: u32, spec: &mut Spec) {
         if self.ops == 0 {
@@ -362,6 +375,24 @@ fn image(n: &DNode) -> crate::ui::ImageBox {
     b
 }
 
+/// A text input in a box carrying the node's layout (margins, flex settings), the box being what routes attach to.
+#[inline(always)]
+fn input_box<C>(n: &DNode, ch: C) -> LBox<EOp<Color>, C, EOps> {
+    LBox { spec: n.spec, draw: false, bg: EOp { v: Color(0), w: std::ptr::null() }, radius: 0.0, border: None, ch, x: EOps { x: std::ptr::null(), ops: 0 } }
+}
+
+/// What a re-description of an opaque element walks: nothing (`describe::update_opaque` steps over it).
+pub(crate) struct Opaque;
+impl<V> Element<V> for Opaque {
+    fn mount(self, _: &mut Mounter<'_, V>) {
+        unreachable!("an opaque element is mounted by its own builder")
+    }
+    #[inline]
+    fn update(self, m: &mut Mounter<'_, V>) {
+        update_opaque(m)
+    }
+}
+
 /// A text input's signal, proven a field of the mounting view.
 #[track_caller]
 fn input_signal<'a, V: 'static>(m: &Mounter<'_, V>, n: &DNode) -> crate::signal::Wired<'a, String, V> {
@@ -516,6 +547,10 @@ fn shape(n: &DNode) -> u64 {
             // SAFETY: as `image`.
             let b = unsafe { &*(n.text as *const crate::ui::ImageBox) };
             h = mix(mix(h, b.png.as_ptr() as usize as u64), b.png.len() as u64);
+            // an image is mounted once and stepped over: its layout is part of what it is
+            for c in n.spec.bytes().chunks_exact(8) {
+                h = mix(h, u64::from_ne_bytes(c.try_into().unwrap()));
+            }
         }
         _ => {}
     }
@@ -609,11 +644,15 @@ fn seal_at<S: Sealer, const LEAF: bool>(n: &DNode, s: &mut S) {
             s.paint(x.hover);
         }
         for r in acts(x) {
+            if !r.exact {
+                return s.refuse();
+            }
             s.word(r.kind as u32 | key_code(r.key) << 8);
             let t = r.tramp as usize as u64;
             s.word(t as u32);
             s.word((t >> 32) as u32);
-            for c in r.recipe.chunks_exact(4) {
+            // SAFETY: `exact`.
+            for c in unsafe { r.recipe.bytes_unchecked() }.chunks_exact(4) {
                 s.word(u32::from_ne_bytes([c[0], c[1], c[2], c[3]]));
             }
         }
@@ -639,24 +678,41 @@ impl<V: 'static> Element<V> for Item {
             K_GROUP => mount_dyn_as(m, Items(n.first), true),
             K_FRAG => mount_dyn_as(m, Items(n.first), false),
             K_INPUT => {
+                let before = m.recs.len();
                 let sig = input_signal::<V>(m, n);
-                crate::ui::TextInput { sig, w: n.size, h: n.lh }.mount(m)
+                input_box(n, crate::ui::TextInput { sig, w: n.size, h: n.lh }).mount(m);
+                if let Some(x) = interactive(n) {
+                    install(m, before, x);
+                }
             }
-            _ => image(n).mount(m),
+            _ => {
+                let before = m.recs.len();
+                image(n).mount(m);
+                if let Some(x) = interactive(n) {
+                    // the pixels are a decoration that takes no pointer: an image that hears one lets it hit, and
+                    // its box (the act's record) is the next interactive record up the chain
+                    for r in &mut m.recs[before + 1..] {
+                        r.kind &= !bough_core::bough::hit::KF_NOHIT;
+                    }
+                    install(m, before, x);
+                }
+            }
         }
     }
     fn update(self, m: &mut Mounter<'_, V>) {
         let n = self.n();
         match n.kind {
-            K_BOX | K_TEXT => {
-                let lid = m.tape_peek();
-                if n.kind == K_BOX {
-                    lbox(n).update(m)
-                } else {
-                    para(n).update(m)
+            K_GROUP | K_FRAG => update_dyn(m, Items(n.first)),
+            _ => {
+                // the element's first record carries its act (`input::act_for`)
+                let act = interactive(n).map(|x| (x, m.rt.bough.handle_at(m.pos)));
+                match n.kind {
+                    K_BOX => lbox(n).update(m),
+                    K_TEXT => para(n).update(m),
+                    K_INPUT => <LBox<EOp<Color>, Opaque, EOps> as Element<V>>::update(input_box(n, Opaque), m),
+                    _ => update_opaque(m),
                 }
-                if let Some(x) = interactive(n) {
-                    let h = m.rt.bough.handle_gen(lid);
+                if let Some((x, Some(h))) = act {
                     let a = m.rt.input.act_of_handle(h);
                     debug_assert!(a != 0, "an interactive element kept its act");
                     if a != 0 {
@@ -664,9 +720,6 @@ impl<V: 'static> Element<V> for Item {
                     }
                 }
             }
-            K_GROUP | K_FRAG => update_dyn(m, Items(n.first)),
-            K_INPUT => update_opaque(m),
-            _ => image(n).update(m),
         }
     }
     #[inline]
@@ -701,43 +754,53 @@ impl<V: 'static> Element<V> for Item {
             }
             K_GROUP | K_FRAG => Items(n.first).for_each(|c| c.lower(l)),
             K_INPUT => l.refuse("text_input"),
-            _ => image(n).lower(l),
+            _ => {
+                let at = l.core.next();
+                image(n).lower(l);
+                if let Some(x) = interactive(n).filter(|_| l.core.next() > at) {
+                    lower_acts(l, at, x);
+                }
+            }
         }
     }
 }
 
 fn lower_acts<V: 'static>(l: &mut crate::lower::Lower<'_, '_, V>, at: usize, x: &Ext) {
     use crate::lower::Kind;
-    let mut focus = x.flags & X_FOCUS != 0;
-    // the kernel's lowered runtime runs a node's handlers in the order they were described
-    let mut list: Vec<ActReq> = acts(x).copied().collect();
-    list.reverse();
-    for r in list {
-        check::<V>(&r);
-        let call = move |v: &mut V, e: &Ev| {
-            // SAFETY: `check` proved the trampoline's receiver type is `V`.
-            unsafe { (r.tramp)(v as *mut V as *mut u8, &r.recipe, e) }
-        };
-        match r.kind {
-            A_CLICK => l.handler(at, Kind::Click, call),
-            A_PRESS => l.handler(at, Kind::Press, call),
-            A_HOVER => l.handler(at, Kind::Hover, call),
-            A_DRAG => l.handler(at, Kind::Drag, call),
-            A_ANY_KEY => {
-                focus = true;
-                l.handler(at, Kind::Key, call)
+    // as the kernel's act (`set_routes`): the most recent route of each slot, one route per key, and the any-key
+    // route only for keys no route by key takes
+    let mut slot: [Option<ActReq>; 6] = [None; 6];
+    let mut keyed: Vec<ActReq> = Vec::new();
+    for r in acts(x) {
+        check::<V>(r);
+        if r.kind == A_KEY {
+            if !keyed.iter().any(|k| k.key == r.key) {
+                keyed.push(*r);
             }
-            _ => {
-                focus = true;
-                let key = r.key;
-                l.handler(at, Kind::Key, move |v: &mut V, e: &Ev| {
-                    if e.key == Some(key) {
-                        call(v, e)
-                    }
-                })
-            }
+        } else if slot[r.kind as usize].is_none() {
+            slot[r.kind as usize] = Some(*r);
         }
     }
+    let call = |r: ActReq| {
+        move |v: &mut V, e: &Ev| {
+            // SAFETY: `check` proved the trampoline's receiver type is `V`.
+            unsafe { (r.tramp)(v as *mut V as *mut u8, &r.recipe, e) }
+        }
+    };
+    for (k, kind) in [(A_CLICK, Kind::Click), (A_PRESS, Kind::Press), (A_HOVER, Kind::Hover), (A_DRAG, Kind::Drag)] {
+        if let Some(r) = slot[k as usize] {
+            l.handler(at, kind, call(r));
+        }
+    }
+    for r in &keyed {
+        l.handler(at, Kind::Key, call(*r));
+        l.last_handler_keys(Box::new([r.key]), true);
+    }
+    if let Some(r) = slot[A_ANY_KEY as usize] {
+        l.handler(at, Kind::Key, call(r));
+        l.last_handler_keys(keyed.iter().map(|k| k.key).collect(), false);
+    }
+    let focus = x.flags & X_FOCUS != 0 || !keyed.is_empty() || slot[A_ANY_KEY as usize].is_some();
     let node = l.core.node(at);
     if x.flags & X_HOVER != 0 {
         node.hover_bg = Some(x.hover);
@@ -756,12 +819,12 @@ fn lower_acts<V: 'static>(l: &mut crate::lower::Lower<'_, '_, V>, at: usize, x: 
 impl<V: 'static> Element<V> for super::El<'_> {
     fn mount(self, m: &mut Mounter<'_, V>) {
         let root = Item(self.raw());
-        let _w = Walk::enter();
+        let _w = Walk::hold();
         mount_dyn_as(m, std::iter::once(root), false);
     }
     fn update(self, m: &mut Mounter<'_, V>) {
         let root = Item(self.raw());
-        let _w = Walk::enter();
+        let _w = Walk::hold();
         update_dyn(m, std::iter::once(root));
     }
     #[inline]
@@ -786,7 +849,7 @@ impl<V: 'static> Element<V> for super::El<'_> {
         V: 'static,
     {
         let root = Item(self.raw());
-        let _w = Walk::enter();
+        let _w = Walk::hold();
         root.lower(l);
     }
 }
@@ -827,8 +890,12 @@ impl Cur<'_> {
         }
         // SAFETY: as `wire`.
         let w = unsafe { &*w };
+        if !w.exact {
+            return false;
+        }
         let (a, p) = (w.head as usize as u64, w.patch as usize as u64);
-        self.word(0x5749_5245) && self.word(a as u32) && self.word((a >> 32) as u32) && self.word(p as u32) && self.word((p >> 32) as u32) && self.recipe(&w.recipe)
+        // SAFETY: `exact`.
+        self.word(0x5749_5245) && self.word(a as u32) && self.word((a >> 32) as u32) && self.word(p as u32) && self.word((p >> 32) as u32) && self.recipe(&unsafe { w.recipe.bytes_unchecked() })
     }
     #[inline(always)]
     fn recipe(&mut self, r: &[u8; 16]) -> bool {
@@ -954,7 +1021,8 @@ fn check_ext(x: &Ext, c: &mut Cur<'_>) -> bool {
     }
     for r in acts(x) {
         let t = r.tramp as usize as u64;
-        if !(c.word(r.kind as u32 | key_code(r.key) << 8) && c.word(t as u32) && c.word((t >> 32) as u32) && c.recipe(&r.recipe)) {
+        // SAFETY: read only when `exact`.
+        if !(r.exact && c.word(r.kind as u32 | key_code(r.key) << 8) && c.word(t as u32) && c.word((t >> 32) as u32) && c.recipe(&unsafe { r.recipe.bytes_unchecked() })) {
             return false;
         }
     }

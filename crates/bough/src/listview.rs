@@ -394,6 +394,8 @@ unsafe fn mount_irow<V: 'static>(rt: &mut Rt, reg: u32, o: *const u8, i: u32, re
 /// # Safety
 /// `owner` is the live owner `body` mounts for, of class `cls`.
 unsafe fn mount_row<O>(rt: &mut Rt, reg: u32, owner: *const O, cls: u32, recs: &mut Vec<RecordInit>, body: impl FnOnce(&mut Mounter<'_, O>)) -> LRow {
+    // a row may be mounted outside any description (a push settled in a turn): its `El`s live until it is done
+    let _walk = crate::el::Walk::enter();
     let (depth, clip, width, cspace) = {
         let r = &rt.lists.regs[reg as usize];
         (r.depth, r.clip, r.width, rt.lay.info[r.lid as usize].space)
@@ -1577,7 +1579,7 @@ impl<T: 'static, V: 'static> RowSource<V> for ListRows<'_, T, V> {
     }
     fn wire(&self, m: &mut Mounter<'_, V>, reg: u32) {
         // SAFETY: `self.list` is an `offset_of!`-proven `List<T>` field of `V`; `patch_list::<T>` reads one.
-        unsafe { m.wire_cell(self.list.list.head(), self.list.off, patch_list::<T>, reg, [0; 16]) };
+        unsafe { m.wire_cell(self.list.list.head(), self.list.off, patch_list::<T>, reg, crate::rt::Recipe::NONE) };
     }
 }
 
@@ -1780,7 +1782,7 @@ impl<'a, S: RowSource<V>, V: 'static> Element<V> for LList<'a, S, V> {
         if let Some(sc) = self.scroll {
             // SAFETY: `sc` is a `Wired<f32, V>` (an `offset_of!`-proven `Signal<f32>` field of `V`);
             // `patch_scroll` reads a `Signal<f32>`.
-            unsafe { m.wire_cell(sc.sig.head(), sc.off, patch_scroll, reg as u32, [0; 16]) };
+            unsafe { m.wire_cell(sc.sig.head(), sc.off, patch_scroll, reg as u32, crate::rt::Recipe::NONE) };
         }
         m.scope.lregs.push(reg as u32);
         m.rt.lay.cur = parent;

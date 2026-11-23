@@ -1585,9 +1585,11 @@ where
         if !m.rt.lay.descs.is(m.rt.lay.info[lid as usize].spec_ix, &self.spec) {
             // the described spec changed (or this is the node's first re-description)
             if self.x.has_size() {
-                // the size operands own w/h: the description's other properties restyle around them
+                // the size operands own their axes: the description's other properties restyle around them
                 let cur = m.rt.lay.specs.get(&lid).copied().unwrap_or(self.spec);
-                let spec = Spec { w: cur.w, h: cur.h, ..self.spec };
+                let w = if self.x.owns_w() { cur.w } else { self.spec.w };
+                let h = if self.x.owns_h() { cur.h } else { self.spec.h };
+                let spec = Spec { w, h, ..self.spec };
                 m.rt.lay.specs.insert(lid, spec);
                 restyle(m.rt, lid, &spec);
             } else {

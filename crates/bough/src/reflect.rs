@@ -994,3 +994,88 @@ impl<V: crate::app::View> crate::app::App<V> {
         true
     }
 }
+
+/// Whether every byte of every value of `T` is an initialised, pointer-free integer byte: a zero-sized type, a
+/// `bool`, `char`, integer or float, a fieldless enum, or a struct, tuple or array of such with no padding.
+/// What may be read back as `u8`s (a closure's capture bytes compared in a seal, `el/walk.rs`). `false` when
+/// it cannot be shown: closures that capture, references, pointers, enums with fields, unions.
+pub fn padding_free<T>() -> bool {
+    const { pad_free(std::mem::type_info::of::<T>(), 0) }
+}
+
+#[rustc_comptime]
+fn pad_free(t: std::any::TypeId, depth: u8) -> bool {
+    let size = match t.size() {
+        Some(z) => z,
+        None => return false,
+    };
+    if size == 0 {
+        return true;
+    }
+    if depth >= MAX_DEPTH {
+        return false;
+    }
+    match kind_of(t) {
+        Kind::Bool | Kind::Char | Kind::Int | Kind::Float => true,
+        Kind::Enum => {
+            let nv = t.variants();
+            let mut v = 0;
+            while v < nv {
+                if t.fields(v) != 0 {
+                    return false;
+                }
+                v += 1;
+            }
+            true
+        }
+        Kind::Struct | Kind::Tuple => {
+            // fields that cover every byte, each padding-free
+            let nf = t.fields(0);
+            let mut sum = 0;
+            let mut k = 0;
+            while k < nf {
+                let f = t.field(0, k);
+                let fsize = match f.type_id().size() {
+                    Some(z) => z,
+                    None => return false,
+                };
+                if !pad_free(f.type_id(), depth + 1) {
+                    return false;
+                }
+                sum += fsize;
+                k += 1;
+            }
+            sum == size
+        }
+        Kind::Array => match t.element_ty() {
+            Some(e) => pad_free(e, depth + 1),
+            None => false,
+        },
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod padding_tests {
+    use super::padding_free;
+    #[derive(Clone, Copy)]
+    #[allow(dead_code)]
+    enum Axis {
+        H,
+        V,
+    }
+    #[test]
+    fn padding_is_seen() {
+        assert!(padding_free::<()>() && padding_free::<u32>() && padding_free::<(u32, f32)>() && padding_free::<Axis>() && padding_free::<[u16; 3]>());
+        assert!(!padding_free::<(u8, f32)>(), "three bytes of padding");
+        assert!(!padding_free::<(Axis, f32)>());
+        assert!(!padding_free::<&u32>() && !padding_free::<Option<u32>>());
+        let k = 3u32;
+        let c = move |x: u32| x + k;
+        fn of<T>(_: &T) -> bool {
+            padding_free::<T>()
+        }
+        assert!(!of(&c), "a capturing closure cannot be shown");
+        assert!(of(&|x: u32| x + 1), "a closure that captures nothing is zero-sized");
+    }
+}

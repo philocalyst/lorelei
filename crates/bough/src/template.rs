@@ -388,7 +388,7 @@ impl<V: 'static, C: Element<V>> ScrollY<'_, V, C> {
         if let Some(outer) = m.rt.input.mounting_view {
             m.rt.input.views[outer as usize].nested.push(v);
         }
-        m.wire(&self.sig, patch_view, v, [0; 16]);
+        m.wire(&self.sig, patch_view, v, crate::rt::Recipe::NONE);
         let saved = (m.space, m.ox, m.oy, m.clip, m.depth, m.rt.input.mounting_view);
         m.space = space;
         m.ox = 0.0;
@@ -486,7 +486,7 @@ impl<'a, V: 'static, Bg: crate::elem::IntoProp<Color, V>, Ch: Element<V>> Elemen
         let a = m.rt.input.act_of_handle(handle);
         let sc = m.rt.input.acts[a as usize].scroll;
         m.rt.add_place_hook(lid, crate::ltemplate::PlaceHook::ScrollPort { view: v, scroller: sc });
-        m.wire(&self.sig, patch_view, v, [0; 16]);
+        m.wire(&self.sig, patch_view, v, crate::rt::Recipe::NONE);
         // the view's index on the tape: a re-description finds its space and clip again (`update`)
         m.tape_push(v);
         let saved = (m.space, m.ox, m.oy, m.clip, m.depth, m.rt.input.mounting_view);
@@ -572,11 +572,8 @@ pub fn wired_clip<T: 'static, V, F: Fn(&T) -> [f32; 4] + Copy + 'static>(m: &mut
     let id = m.rt.bough.new_clip(r);
     let k = m.rt.input.wclips.len() as u32;
     m.rt.input.wclips.push((id, m.space, prev));
-    let mut recipe = [0u8; 16];
     const { assert!(size_of::<F>() <= 16, "clip closure: at most 16 bytes of captures") };
-    // SAFETY: size_of::<F>() <= 16 (checked above); unaligned write into a byte array.
-    unsafe { std::ptr::write_unaligned(recipe.as_mut_ptr() as *mut F, f) };
-    m.wire(&sig, patch_clip_by::<T, F>, k, recipe);
+    m.wire(&sig, patch_clip_by::<T, F>, k, crate::rt::Recipe::of(f));
     id
 }
 
@@ -724,8 +721,8 @@ impl<'a, V: 'static> PortList<'a, V> {
             mount_row: crate::elem::mount_row::<V>,
             row_fn: self.row as usize,
         });
-        m.wire(&self.scroll, crate::elem::patch_scroll, reg as u32, [0; 16]);
-        m.wire(&self.top, patch_port, reg as u32, [0; 16]);
+        m.wire(&self.scroll, crate::elem::patch_scroll, reg as u32, crate::rt::Recipe::NONE);
+        m.wire(&self.top, patch_port, reg as u32, crate::rt::Recipe::NONE);
         // SAFETY: the owner pointer is the mounted owner (`App::new` / a row mount).
         unsafe { m.rt.region_initial(reg, m.owner as *const u8, *self.scroll.get(), m.recs) };
     }
@@ -790,7 +787,7 @@ impl<V: 'static, C: Element<V>> Offset<'_, V, C> {
         m.recs.push(RecordInit { depth: m.depth, ink: NRect::EMPTY, kind: REC_BOX, payload: 0, handle: h.idx, clip: m.clip });
         let k = m.rt.input.offsets.len() as u32;
         m.rt.input.offsets.push((h, space, bx, by, cur));
-        m.wire(&self.sig, patch_offset, k, [0; 16]);
+        m.wire(&self.sig, patch_offset, k, crate::rt::Recipe::NONE);
         let saved = (m.space, m.ox, m.oy, m.depth);
         m.space = space;
         m.ox = 0.0;
@@ -899,7 +896,7 @@ impl<'a, V: 'static> Element<V> for PortListIn<'a, V> {
             mount_row: crate::elem::mount_row::<V>,
             row_fn: self.row as usize,
         });
-        m.wire(&self.scroll, crate::elem::patch_scroll, reg as u32, [0; 16]);
+        m.wire(&self.scroll, crate::elem::patch_scroll, reg as u32, crate::rt::Recipe::NONE);
         m.rt.add_place_hook(lid, crate::ltemplate::PlaceHook::Port { reg: reg as u32 });
         // no rows until the layout gives the port a size
     })

@@ -101,12 +101,12 @@ impl Ev {
 
 /// A typed route lowered: a trampoline monomorphised for (owner type, closure type) and the closure's
 /// bytes. Created only by `Mounter<V>`, whose `V` is the app's owner type (every mount in one runtime is).
-pub(crate) type RouteFn = unsafe fn(*mut u8, &[u8; 16], &Ev);
+pub(crate) type RouteFn = unsafe fn(*mut u8, &crate::rt::Recipe, &Ev);
 
 #[derive(Clone, Copy)]
 pub(crate) struct Route {
     f: RouteFn,
-    r: [u8; 16],
+    r: crate::rt::Recipe,
 }
 
 impl Route {
@@ -116,7 +116,7 @@ impl Route {
     /// `f` reads the owner it is later called with as the type it was monomorphised for, and `r` as the
     /// bytes it was written with: the caller has checked that type is the dispatching owner's.
     #[inline]
-    pub(crate) unsafe fn raw(f: RouteFn, r: [u8; 16]) -> Route {
+    pub(crate) unsafe fn raw(f: RouteFn, r: crate::rt::Recipe) -> Route {
         Route { f, r }
     }
     /// # Safety
@@ -128,27 +128,24 @@ impl Route {
     }
 }
 
-fn recipe<F: Copy>(f: F) -> [u8; 16] {
+fn recipe<F: Copy>(f: F) -> crate::rt::Recipe {
     const { assert!(size_of::<F>() <= 16, "route closure: at most 16 bytes of captures") };
-    let mut r = [0u8; 16];
-    // SAFETY: size_of::<F>() <= 16 (checked at compile time); unaligned write into a byte array.
-    unsafe { std::ptr::write_unaligned(r.as_mut_ptr() as *mut F, f) };
-    r
+    crate::rt::Recipe::of(f)
 }
 
 /// # Safety
 /// `o` is the owner `V`; `r` holds an `F` written by `recipe`.
-pub(crate) unsafe fn call_plain<V, F: Fn(&mut V) + Copy>(o: *mut u8, r: &[u8; 16], _: &Ev) {
+pub(crate) unsafe fn call_plain<V, F: Fn(&mut V) + Copy>(o: *mut u8, r: &crate::rt::Recipe, _: &Ev) {
     // SAFETY: see the function contract.
-    let f: F = unsafe { std::ptr::read_unaligned(r.as_ptr() as *const F) };
+    let f: F = unsafe { r.read_at::<F>(0) };
     f(unsafe { &mut *(o as *mut V) })
 }
 
 /// # Safety
 /// As `call_plain`.
-pub(crate) unsafe fn call_ev<V, F: Fn(&mut V, &Ev) + Copy>(o: *mut u8, r: &[u8; 16], e: &Ev) {
+pub(crate) unsafe fn call_ev<V, F: Fn(&mut V, &Ev) + Copy>(o: *mut u8, r: &crate::rt::Recipe, e: &Ev) {
     // SAFETY: see the function contract.
-    let f: F = unsafe { std::ptr::read_unaligned(r.as_ptr() as *const F) };
+    let f: F = unsafe { r.read_at::<F>(0) };
     f(unsafe { &mut *(o as *mut V) }, e)
 }
 
@@ -973,7 +970,7 @@ impl<V> TextField<'_, V> {
 /// # Safety
 /// Wire contract: `sig` is a `Signal<String>`; the recipe holds the field index.
 unsafe fn patch_caret(rt: &mut Rt, w: &Wire, _sig: *const u8, _owner: *const u8) {
-    let f = u32::from_le_bytes(w.recipe[..4].try_into().unwrap());
+    let f = unsafe { w.recipe.read_at::<u32>(0) };
     place_caret(rt, f);
 }
 
@@ -1100,9 +1097,7 @@ fn sig_caret<V>(sig: Wired<'_, String, V>, f: u32, color: Color) -> CaretOp<'_, 
 }
 impl<'a, V> crate::elem::IntoProp<Color, V> for CaretOp<'a, V> {
     fn lower<K: crate::elem::Apply<P = Color>>(self, m: &mut Mounter<'_, V>, _node: u32) -> Color {
-        let mut r = [0u8; 16];
-        r[..4].copy_from_slice(&self.f.to_le_bytes());
-        m.wire(&self.sig, patch_caret, NONE, r);
+        m.wire(&self.sig, patch_caret, NONE, crate::rt::Recipe::of(self.f));
         Color(self.color.0 & 0x00ff_ffff)
     }
     fn value(self) -> Color {

@@ -82,12 +82,9 @@ unsafe fn patch_lanes<T: 'static, F: Fn(&T, usize) -> Lane + Copy>(rt: &mut Rt, 
     rt.bough.set_ink_handle_wide(h, ink);
 }
 
-fn recipe_of<F: Copy>(f: F) -> [u8; 16] {
+fn recipe_of<F: Copy>(f: F) -> crate::rt::Recipe {
     const { assert!(size_of::<F>() <= 16, "lanes closure: at most 16 bytes of captures") };
-    let mut r = [0u8; 16];
-    // SAFETY: size checked at compile time.
-    unsafe { std::ptr::write_unaligned(r.as_mut_ptr() as *mut F, f) };
-    r
+    crate::rt::Recipe::of(f)
 }
 
 impl<'a, T: 'static, V: 'static, F: Fn(&T, usize) -> Lane + Copy + 'static> Element<V> for Lanes<'a, T, V, F> {

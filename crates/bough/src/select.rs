@@ -84,7 +84,7 @@ impl<'a, T: Copy + Eq + Hash + 'static, V, P: Clone + 'static> IntoProp<P, V> fo
                 m.rt.selects.tables.push(Box::new(SelTable::<T, P> { cur, by_key: HashMap::new() }));
                 m.rt.selects.by_head.push((head, t));
                 // SAFETY: `self.w` is an `offset_of!`-proven `Signal<T>`; the patch reads one and its table.
-                unsafe { m.wire_cell(self.w.sig.head(), self.w.off, patch_select::<T, P>, t, [0; 16]) };
+                unsafe { m.wire_cell(self.w.sig.head(), self.w.off, patch_select::<T, P>, t, crate::rt::Recipe::NONE) };
                 t
             }
         };

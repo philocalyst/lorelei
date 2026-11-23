@@ -149,7 +149,9 @@ pub(crate) struct WireReq {
     /// `reflect::cell_id` of the cell type `patch` reads.
     pub ty: TypeId,
     pub patch: PatchFn,
-    pub recipe: [u8; 16],
+    pub recipe: crate::rt::Recipe,
+    /// The recipe is padding-free (`reflect::padding_free`): it may be compared as bytes in a seal.
+    pub exact: bool,
 }
 
 /// A route asked for: the trampoline monomorphised where the route was written, the route's bytes, and the
@@ -159,7 +161,9 @@ pub(crate) struct WireReq {
 pub(crate) struct ActReq {
     pub next: *const ActReq,
     pub tramp: RouteFn,
-    pub recipe: [u8; 16],
+    pub recipe: crate::rt::Recipe,
+    /// As `WireReq::exact`.
+    pub exact: bool,
     pub recv: TypeId,
     pub recv_name: &'static str,
     pub key: Key,
@@ -306,24 +310,34 @@ pub(crate) fn bytes(b: &[u8]) -> *const u8 {
     p
 }
 
-/// A walk of a description (`walk.rs`). While any is alive the arena is not rewound; when the outermost one
-/// ends, also by unwinding, this turn's nodes are retired.
-pub(crate) struct Walk(());
+/// A walk of a description (`walk.rs`): opened by the kernel where it describes (a mount, a re-description, a
+/// list row, a lowering). While any is alive the arena is not rewound; when the outermost one ends, also by
+/// unwinding, this turn's nodes are retired.
+pub(crate) struct Walk(bool);
 
 impl Walk {
+    /// A kernel boundary: the description it encloses is retired when the outermost boundary ends.
     #[inline]
     pub(crate) fn enter() -> Walk {
         with(|a| a.busy += 1);
-        Walk(())
+        Walk(true)
+    }
+    /// An `El` walked by itself (an element of a typed builder): its siblings may be `El`s still to be walked,
+    /// so it keeps the arena from being rewound but never rewinds it; the next kernel boundary does.
+    #[inline]
+    pub(crate) fn hold() -> Walk {
+        with(|a| a.busy += 1);
+        Walk(false)
     }
 }
 
 impl Drop for Walk {
     #[inline]
     fn drop(&mut self) {
+        let boundary = self.0;
         with(|a| {
             a.busy -= 1;
-            if a.busy == 0 {
+            if a.busy == 0 && boundary {
                 a.rewind();
             }
         });

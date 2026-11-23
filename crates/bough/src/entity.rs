@@ -282,7 +282,7 @@ impl<'a, T: crate::app::View, V: 'static> EntityView<'a, T, V> {
         let ev = m.rt.eviews.len() as u32;
         m.rt.eviews.push(EView { cls, idx: self.e.idx });
         // SAFETY: `self.ents` is an `offset_of!`-proven `Entities<T>` field of `V`; `patch_entities::<T>` reads one.
-        unsafe { m.wire_cell(ents.head(), self.ents.off, patch_entities::<T>, ev, [0; 16]) };
+        unsafe { m.wire_cell(ents.head(), self.ents.off, patch_entities::<T>, ev, crate::rt::Recipe::NONE) };
         let recs: *mut Vec<RecordInit> = m.recs;
         let scope: *mut Scope = m.scope;
         {

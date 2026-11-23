@@ -155,6 +155,17 @@ pub trait BoxOps<V>: Sized {
     fn has_paint(&self) -> bool {
         Self::PAINT
     }
+    /// Does an operand set the box's width (height)? A re-description's spec keeps that axis from the operand.
+    const W: bool = Self::SIZE;
+    const H: bool = Self::SIZE;
+    #[inline(always)]
+    fn owns_w(&self) -> bool {
+        Self::W
+    }
+    #[inline(always)]
+    fn owns_h(&self) -> bool {
+        Self::H
+    }
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, node: u32, spec: &mut Spec);
     /// Re-description: apply the operands' current values.
     fn refresh(self, rt: &mut Rt, lid: u32, node: u32);
@@ -191,6 +202,8 @@ impl<V, A: BoxOps<V>, B: BoxOps<V>> BoxOps<V> for (A, B) {
     }
     const SIZE: bool = A::SIZE || B::SIZE;
     const PAINT: bool = A::PAINT || B::PAINT;
+    const W: bool = A::W || B::W;
+    const H: bool = A::H || B::H;
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, node: u32, spec: &mut Spec) {
         self.0.install(m, lid, node, spec);
         self.1.install(m, lid, node, spec);
@@ -241,6 +254,7 @@ impl<V, P: IntoProp<f32, V>> BoxOps<V> for WidthOp<P> {
         spec.w = Dim::Pt(self.0.value());
     }
     const SIZE: bool = true;
+    const H: bool = false;
     const PAINT: bool = false;
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, _node: u32, spec: &mut Spec) {
         spec.w = Dim::Pt(self.0.lower::<ApplyBoxW>(m, lid));
@@ -254,6 +268,7 @@ impl<V, P: IntoProp<f32, V>> BoxOps<V> for HeightOp<P> {
         spec.h = Dim::Pt(self.0.value());
     }
     const SIZE: bool = true;
+    const W: bool = false;
     const PAINT: bool = false;
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, _node: u32, spec: &mut Spec) {
         spec.h = Dim::Pt(self.0.lower::<ApplyBoxH>(m, lid));
