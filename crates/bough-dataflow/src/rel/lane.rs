@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn a_lane_is_a_vec_under_random_edits() {
         for seed in 1..6u64 {
-            let mut s = seed * 0x9e37_79b9_7f4a_7c15;
+            let mut s = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15);
             let init: Vec<u32> = (0..(seed as u32 * 97)).collect();
             let (mut l, mut v) = (Lane::from_vec(init.clone()), init);
             for step in 0..6000u32 {

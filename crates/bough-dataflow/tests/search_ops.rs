@@ -28,9 +28,9 @@ const NOUN: [&str; 8] = [
 fn repetitive(id: u32) -> String {
     format!(
         "{} {} {}",
-        ADJ[(id * 7 % 8) as usize],
-        COL[(id * 13 % 6) as usize],
-        NOUN[(id * 17 % 8) as usize]
+        ADJ[(id.wrapping_mul(7) % 8) as usize],
+        COL[(id.wrapping_mul(13) % 6) as usize],
+        NOUN[(id.wrapping_mul(17) % 8) as usize]
     )
 }
 fn unique(s: &mut u64) -> String {
