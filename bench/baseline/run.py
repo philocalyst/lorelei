@@ -97,6 +97,15 @@ def cells(worktree):
                                {"REPS": "24", "WORKERS": "5"}, "pbench"))
     else:
         unavailable["fxbench"] = "the staged paint and video adapter is absent from this checkout"
+    if (worktree / "crates/bough-paint/examples/flatbench.rs").is_file():
+        matrix.append(Cell("flatbench/cards300", "flatbench", ("300",), {"REPS": "24"}, "flatbench"))
+    else:
+        unavailable["flatbench"] = "the flat paint bank's benchmark is absent from this checkout"
+    if (worktree / "crates/bough-damage/examples/damage_x.rs").is_file():
+        for scene in ("window", "stack", "4k"):
+            matrix.append(example(f"damage_x/{scene}", "damage", SCENE=scene, REPS="64"))
+    else:
+        unavailable["damage_x"] = "the damage engine's benchmark is absent from this checkout"
     unavailable["windowed"] = "see the VM runbook for compositor scenarios"
     if not (worktree / "crates/bough/tests/glyph_reclaim.rs").is_file():
         unavailable["guibench/search-1000-filter"] = "historical glyph_x capacity panic"
@@ -120,7 +129,8 @@ def binary_spec(name, worktree):
         return f"release/{name}", ["--locked", "--release", "--manifest-path",
                                    "comparisons/bough-fx-bench/Cargo.toml",
                                    "--features", "full-effects,typed-core", "--bin", name]
-    package = "bough-paint" if name in ("pbench", "fxbench") else core_package(worktree)
+    package = ("bough-paint" if name in ("pbench", "fxbench", "flatbench") else
+               "bough-damage" if name == "damage_x" else core_package(worktree))
     return f"dist/examples/{name}", ["--locked", "--profile", "dist", "-p", package, "--example", name]
 
 
@@ -201,7 +211,7 @@ def build(worktree, target, binaries, toolchain, log, reuse):
     return after, manifest
 
 
-ENV_KEYS = set("ROWS REPS H NEAR SWEPT BROAD PART COLD WORKERS BOUGH_PMU SKIP_K".split())
+ENV_KEYS = set("ROWS REPS H NEAR SWEPT BROAD PART COLD WORKERS BOUGH_PMU SKIP_K SCENE CELL".split())
 SCOPES = {
     "sheet": "calling-thread instructions per operation",
     "events": "calling-thread dispatch and dispatch-plus-settle instructions per operation",
@@ -213,6 +223,8 @@ SCOPES = {
     "effects-core": "process instructions per operation, median of trace, or setup-to-first for startup",
     "fxbench": "calling-thread instructions per frame, rounded to 100 instructions by its TSV",
     "pbench": "serial CPU calling-thread instructions per phase, rounded to 100 instructions by its TSV",
+    "flatbench": "single-core CPU and Metal calling-thread instructions per frame, rounded to 100 instructions by its TSV",
+    "damage": "calling-thread instructions per frame of the damage engine",
 }
 
 

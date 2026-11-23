@@ -194,6 +194,9 @@ dependencies = [
 [[package]]
 name = "bough-damage"
 version = "0.0.0"
+dependencies = [
+ "bough-mem",
+]
 
 [[package]]
 name = "bough-damage-lab"

@@ -25,7 +25,9 @@ The runner writes one structured receipt, a readable table, and raw stdout, stde
 | `guibench/…` | Façade calling-thread instructions for mount and named batches |
 | `effects/…` | Façade mean process instructions per trace step, or exec to first frame for cold start |
 | `effects-core/…` | Typed core median process instructions per trace step, or setup to first frame for startup |
-| `fxbench/…` | Calling-thread instructions per frame, rounded to 100 instructions. Keeps CPU cached, CPU uncached and Metal rows separate and requires the retained-pixel verdict. |
+| `fxbench/…` | Calling-thread instructions per frame, rounded to 100 instructions. Keeps CPU cached, CPU uncached, Metal and chooser (`mixed`) rows separate, gates all four and requires the retained-pixel verdict. A `mixed` row also records the chooser's idle, CPU and GPU frame counts. The composite diagnostic columns are checked for shape and left in the raw log. |
+| `flatbench/cards300` | Calling-thread instructions per frame of the flat paint bank, rounded to 100 instructions. Gates the single-core CPU and Metal rows. The eight-worker rows must be present and pixel-exact, but their frame-thread share depends on scheduling, so their counters stay in the raw log. |
+| `damage_x/{window,stack,4k}` | Calling-thread instructions per frame of the damage engine alone (`crates/bough-damage/examples/damage_x.rs`): damage, moves, scrolls, masks, cover recommits and stacked blur layers |
 
 The `pbench` gate uses `A1`, `A`, `K`, and `K1`. Pooled and Metal executors have diagnostic counters in the raw logs. In repeat runs of one `fbf6a2637b` binary, the `canvas1` pan phase varied from 20,922,200 to 31,426,800 frame-thread instructions on `AP`. The frame thread's share of the parallel work depends on scheduling. The `AG` drag phase varied from 71,600 to 85,500 instructions. The gate still requires both executors to emit complete rows and pass the fixture's correctness check.
 
