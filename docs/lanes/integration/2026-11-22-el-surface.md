@@ -104,3 +104,87 @@ rows are stepped over without interpretation) before any port.
 ## Results
 
 (appended below)
+
+### What was built (branch `lane/reactivity/el-surface`)
+
+* `bough::prelude` is the `El` surface: `View::view(&self) -> El<'_>`; `div`/`row`/`column`/`block`/`text`/
+  `para`/`button`/`text_input`/`image`; setters taking a constant, `&self.signal` or `self.signal.map(f)`
+  (`IntoProp`), integer lengths (`Len`); children through `ChildSeq` (an `El`, `()`, tuples to 12, `Option`,
+  `Vec`, arrays, `each`, std iterator adapters); routes as methods (`.on_click(Counter::inc)`,
+  `.on_click(Panes::split.with(v))`, `.on_key(Key::Space, ..)`, `.on_any_key`, `.focusable()`), receiver
+  checked at mount by `TypeId` and named in the panic. The typed builders moved to `bough::builders`; the
+  64 in-tree users (workloads, benches, tests) were switched mechanically.
+* `El` is a cursor into a thread-local bump arena (`el/arena.rs`): nodes never freed, a turn number checked on
+  every use (a stale handle panics), rewound when the outermost `Walk::enter` boundary (mount, `turn`,
+  redescribe, row mounts, entity views, lowering) ends; El's own `Element` impls `Walk::hold`.
+* Interpretation (`el/walk.rs`) lowers nodes onto the kernel's typed builders (`LBox`, `Para`, `ImageBox`,
+  `TextInput`) with erased operands. **Deviation from the plan, in the design's favour:** every box's children
+  are an unsealed dynamic part keyed by `shape()`, so a kind change remounts *that position* (L3), not the
+  nearest enclosing dynamic item. Groups (`Option`/`Vec`/iterators) are sealed parts.
+* A fast seal check (`Element::seal_eq`, `SEAL_EQ`/`SEAL_HOLDS_KEY`) compares a node's retained seal in
+  registers with early exit: one 104-byte head block per node, texts of 8..=16 bytes as two words; a test
+  asserts it agrees with the streaming `SealCheck` on every case and that a seal matches only an identical
+  description.
+* `rt::Recipe` (16 bytes) carries closure captures for wires and routes. A recipe whose type
+  `reflect::padding_free` cannot prove padding-free is frozen in two registers by a read-only asm load after
+  it is written, so its bytes are always initialised and compare as bytes; `Sealer::recipe` compares them as
+  two `u64`s. (The first fix refused such seals and tripled sheet's re-description; the second froze with a
+  memory clobber, +8.4%; both measured and replaced.)
+
+### Card
+
+`EL=1 redescribe_cost 1000 10000`, instructions per turn at `19d484c87f` (same binary, interleaved):
+
+| rows | shape | typed | El | El / typed | allocs/turn (typed, El) |
+|---|---|---:|---:|---:|---|
+| 1000 | owned | 296,413 | 428,596 | 1.45 | 0, 0 |
+| 1000 | static | 293,131 | 437,728 | 1.49 | 0, 0 |
+| 1000 | bare | 125,231 | 166,573 | 1.33 | 0, 0 |
+| 10000 | owned | 2,915,417 | 4,182,478 | 1.43 | 0, 0 |
+| 10000 | static | 2,865,620 | 4,272,011 | 1.49 | 0, 0 |
+| 10000 | bare | 1,232,057 | 1,616,023 | 1.31 | 0, 0 |
+
+Inside the prediction (1.2–2.0x on `owned`/`static`, ≤2.5x on `bare`, zero allocations); far from the kill
+line. The path there: 2.9x first build → 2.18x (direct node seal, register check, bump arena) → 1.44x
+(`lane/reactivity/el-perf`: by-pointer check, chunked rewind, one head block, inlined containers).
+
+Correctness gates (`tests/el_surface.rs`, 10 tests): parity with a typed twin, ports under `once`, ports
+against re-description, kind change remounts its position (fails under the `mutant_el_shape` feature, as do
+"a sibling keeps its routes"), stale handle panics, wrong route owner panics by name, keys and `.with`, the
+progressive rungs move no pixels, rows take bound routes. `tests/el_review.rs` holds the review findings
+(R1–R4, R6): rewind in rows mounted outside a walk, a wired width with a constant height, an image's spec
+change, lowered key/click dispatch, padded bound values, routes on images and inputs, an input's margin.
+
+### The measured scenes (bough-workloads, not claimed by the card, checked anyway)
+
+`19d484c87f` against `06686cd98d`, all six scenes, `MODE=once` and `MODE=redescribe`, `RENDER=0`, median of
+3, instructions per step (full table: DeepSeek's run, `el-baseline-results.md` "Final tree (definitive)").
+Re-description steady state:
+
+| scene | baseline | final | Δ |
+|---|---:|---:|---:|
+| sheet | 43,670,656 | 43,271,582 | −0.91% |
+| ide | 23,250,759 | 23,329,570 | +0.34% |
+| dash | 3,948,654 | 3,932,717 | −0.40% |
+| canvas | 633,799 | 635,757 | +0.31% |
+| chat | 17,930,974 | 17,981,101 | +0.28% |
+| gbcanvas | 5,772,473 | 5,768,874 | −0.06% |
+
+Every mount, hover, theme, resize, resize_anim and anim cell in both modes is within ±1% (sheet anim
+redescribe −1.16%). Cells outside: `first_frame` (−48%…+0%) and `canvas`/`gbcanvas` steady once (+14%/−5%)
+move non-monotonically commit to commit with the frame total unchanged under `BOUGH_KPROF`: about 5–6k
+instructions of the same frame cross the harness's measurement boundary with code layout (bisected; not new
+work, and not the arena's TLS, whose first touch lands in mount). `idle` once is +30 instructions on ~550.
+
+Workspace tests: `bough` passes except `startup` in debug (it passes in release, its intended profile). Eight
+targets in other crates (`sketch-code`, `bough-dataflow` ×2, `bough-kernel exact`, `bough-paint` ×2,
+`bough-text parley_twin`, `bough-zgui drawing`) fail identically at `06686cd98d` (missing fonts, an unrelated
+pointer precondition); not touched here.
+
+### Open
+
+* `List<T>` as `El` children (needs a row mounter that is not a cast of the typed one).
+* `Reader` / `Entity` / `Motion` / token plugs; `boundary()` in `El`.
+* Routes dispatch on the root owner only (`root_owner_only`), rows included; owner chains are B3.
+* A map's recipe is not part of `shape()`; a re-description after settle corrects the value.
+* A hover colour changed while hovered shows on the next hover.
