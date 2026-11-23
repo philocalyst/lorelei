@@ -431,6 +431,18 @@ enum Exec {
     /// The chooser (`mixed::Mixed`): per change, CPU kernel or Metal.
     Mixed,
 }
+/// Instructions one counter read adds to a span it is taken inside (a system call: 1,614 on this machine,
+/// the same every time); the least of a few, so an interrupt cannot inflate it.
+fn pmu_read_cost() -> u64 {
+    (0..16)
+        .map(|_| {
+            let (a, _) = pmu::instructions_cycles();
+            let (b, _) = pmu::instructions_cycles();
+            b - a
+        })
+        .min()
+        .unwrap_or(0)
+}
 /// Run `cell` for `reps` frames on a fresh world. Returns the row and the mismatches found.
 fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Pool) -> (Row, usize) {
     let mut w = make();
@@ -453,12 +465,14 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
     let mut u = U::default();
     let mut tiles = Vec::new();
     let mut row = Row::default();
+    let read_cost = pmu_read_cost();
     // mount, then warm frames of the script (settle caches, first-touch pages), then the measured ones
     let warm = 8;
     for f in 0..warm + reps {
         let slots = if f == 0 { vec![] } else { decode(cell, f, &mut w) };
         let (i0, _) = pmu::instructions_cycles();
         let t0 = Instant::now();
+        let mut probe = 0;
         if f > 0 {
             turn(cell, f, &mut u, &mut w, &slots);
         }
@@ -475,8 +489,10 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
             let (j0, _) = pmu::instructions_cycles();
             let mut fs = if gpu.is_some() && eager { w.s.update_eager(&u) } else { w.s.update(&u) };
             let (j1, _) = pmu::instructions_cycles();
+            // these two reads are inside the frame's span: what they cost is taken off it below
+            probe = 2 * read_cost;
             if f >= warm {
-                row.turn.push(j1 - j0);
+                row.turn.push(j1 - j0 - read_cost);
             }
             match gpu.as_mut() {
                 None => {
@@ -517,7 +533,7 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
         let wall = t0.elapsed().as_secs_f64();
         let (i1, _) = pmu::instructions_cycles();
         if matches!(cell, Cell::OneSpring | Cell::AllSprings) && f % 40 == 1 {
-            row.spring_launch_instr.push(i1 - i0);
+            row.spring_launch_instr.push(i1 - i0 - probe);
         }
         let (fs_prefix, fs_blocks);
         w.s.media.reclaim();
@@ -530,7 +546,7 @@ fn run(make: &dyn Fn() -> World, cell: Cell, exec: Exec, reps: usize, pool: &Poo
             } else {
                 (fs_prefix, fs_blocks) = (fs.prefix_tiles, fs.blocks);
             }
-            row.instr.push(i1 - i0);
+            row.instr.push(i1 - i0 - probe);
             row.wall.push(wall);
             row.gpu.push(gs);
             row.tiles += tiles.len() as u64;

@@ -1648,7 +1648,8 @@ impl Gpu {
         if let Some(ch) = changed {
             let mut slab = std::mem::take(&mut self.res.slab);
             let mut used = self.res.used;
-            let cap = self.words(5).len() as u32;
+            let (lists, heads, keys) = self.list_words();
+            let cap = lists.len() as u32;
             let mut ok = true;
             for &t in ch {
                 let l = scene.bins.tile(t as usize);
@@ -1662,10 +1663,9 @@ impl Gpu {
                     used += c;
                 }
                 let off = slab[t as usize].0 as usize;
-                self.words_mut(5)[off..off + l.len()].copy_from_slice(l);
-                let th = self.words_mut(4);
-                (th[2 * t as usize], th[2 * t as usize + 1]) = (off as u32, l.len() as u32);
-                self.words_mut(23)[4 * t as usize + 3] = scene.bins.floor[t as usize];
+                lists[off..off + l.len()].copy_from_slice(l);
+                (heads[2 * t as usize], heads[2 * t as usize + 1]) = (off as u32, l.len() as u32);
+                keys[4 * t as usize + 3] = scene.bins.floor[t as usize];
             }
             (self.res.slab, self.res.used) = (slab, used);
             if ok {
@@ -1676,17 +1676,30 @@ impl Gpu {
         self.buf(5, (total * 2 + nt * 8) * 4);
         let mut slab = Vec::with_capacity(nt);
         let mut used = 0u32;
+        let (lists, heads, keys) = self.list_words();
         for t in 0..nt {
             let l = scene.bins.tile(t);
             let c = l.len() as u32 * 3 / 2 + 4;
-            self.words_mut(5)[used as usize..used as usize + l.len()].copy_from_slice(l);
-            let th = self.words_mut(4);
-            (th[2 * t], th[2 * t + 1]) = (used, l.len() as u32);
-            self.words_mut(23)[4 * t + 3] = scene.bins.floor[t];
+            lists[used as usize..used as usize + l.len()].copy_from_slice(l);
+            (heads[2 * t], heads[2 * t + 1]) = (used, l.len() as u32);
+            keys[4 * t + 3] = scene.bins.floor[t];
             slab.push((used, c));
             used += c;
         }
         (self.res.slab, self.res.used, self.res.mirrored) = (slab, used, true);
+    }
+    /// The tile lists' three buffers at once (slabs 5, heads 4, per-tile keys 23), each looked up once: a
+    /// buffer's `contents` and `length` are two messages to the Metal object, which per tile was most of
+    /// mirroring a rebuilt bin set (1,000 tiles: 373 K instructions a frame).
+    fn list_words(&mut self) -> (&mut [u32], &mut [u32], &mut [u32]) {
+        let mut part = |i: usize| {
+            let w = self.words_mut(i);
+            (w.as_mut_ptr(), w.len())
+        };
+        let ((a, na), (b, nb), (c, nc)) = (part(5), part(4), part(23));
+        // SAFETY: three distinct buffers of this executor (as `words_mut`: shared storage, no frame in flight,
+        // `&mut self` held for the slices' lifetime), so the slices do not overlap.
+        unsafe { (std::slice::from_raw_parts_mut(a, na), std::slice::from_raw_parts_mut(b, nb), std::slice::from_raw_parts_mut(c, nc)) }
     }
 
     /// A GPU-resident frame. The CPU's whole part is here: store the block and the pointer, encode the fixed
