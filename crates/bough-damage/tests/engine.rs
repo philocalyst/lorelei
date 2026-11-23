@@ -125,6 +125,19 @@ impl Bits {
             *a |= *b;
         }
     }
+    fn and(&mut self, o: &Bits) {
+        for (a, b) in self.v.iter_mut().zip(&o.v) {
+            *a &= *b;
+        }
+    }
+    /// The bounding box of the set.
+    fn hull(&self) -> Rect {
+        let mut r = Rect::EMPTY;
+        for y in 0..self.h {
+            self.runs(y, &mut |a, b| r = r.hull(Rect::new(a, y, b + 1, y + 1)));
+        }
+        r
+    }
     /// The tiles with a pixel in the set (a tile is half a word).
     fn tiles(&self) -> BTreeSet<(u32, u32)> {
         let mut t = BTreeSet::new();
@@ -274,12 +287,17 @@ fn dilate(s: &Bits, levels: u8, r: Rect) -> Bits {
 ///   within a tile, `old.expand(TILE).hits(new)`): the gap between them is repainted.
 /// * S5, a theme mask tells every layer its whole backdrop may have changed (`damage_mask`).
 ///
+/// With `gated` (each layer's real backdrop diff, by id; `None` for a layer with no old backdrop, which the gate
+/// takes as all changed), the engine may narrow each part of a backdrop it asks about to a rect within it
+/// (`resolve`: "`Some(rect)` (a part of it, or all of it)"). Every part it asks about is within the layer's
+/// backdrop change B, so what passes the gate is within B cut to the hull of the diff inside B: M takes that.
+///
 /// What the engine claims exact is not widened: the footprint itself (lib.rs: "the pyramid the footprints are
 /// exact for"), the cascade (a layer's changed output is the next layer's changed backdrop), the scroll's strip
 /// (`scroll`: "damaged only the strip the blit cannot supply"), the seams (`seam`: "where it is and where the
 /// blit carried its pixels") and the culling rule itself. Rebased damage (`rebase_orders`) has order 0 and is
 /// never culled in both sets: that is the driver's knowledge, not the engine's slack.
-fn oracle(sc: &Scene, told: &Told) -> (BTreeSet<(u32, u32)>, BTreeSet<(u32, u32)>) {
+fn oracle(sc: &Scene, told: &Told, gated: Option<&dyn Fn(u32) -> Option<Bits>>) -> (BTreeSet<(u32, u32)>, BTreeSet<(u32, u32)>) {
     let (w, h) = (sc.w, sc.h);
     let covers = sc.covers();
     // ---- M ----
@@ -293,6 +311,12 @@ fn oracle(sc: &Scene, told: &Told) -> (BTreeSet<(u32, u32)>, BTreeSet<(u32, u32)
         }
         for (_, o) in outs.iter().filter(|o| o.0 < l.z) {
             b.or(o);
+        }
+        if let Some(Some(diff)) = gated.map(|g| g(l.id)) {
+            let mut d = b.clone();
+            d.and(&diff);
+            let hull = d.hull();
+            b.and(&Bits::rect(w, h, hull));
         }
         outs.push((l.z, dilate(&b, l.max_level, l.rect)));
     }
@@ -679,11 +703,25 @@ fn run(seed: u64, w: i32, h: i32, mode: Mode, frames: u32, gated: bool) -> Seen 
         }
         // the tight oracle: the slack only widens; ungated the mask is the documented model tile for tile, gated
         // it is within it
-        let (model, exact) = oracle(&sc, &told);
-        assert!(exact.is_subset(&model), "seed {seed} frame {f}: E has tiles M lacks: {:?}", exact.difference(&model).collect::<Vec<_>>());
+        let diff = |id: u32| -> Option<Bits> {
+            let nb = &new_backs.iter().find(|b| b.0 == id)?.1;
+            let ob = &backs.iter().find(|b| b.0 == id)?.1;
+            let mut d = Bits::new(w, h);
+            for y in 0..h {
+                for x in 0..w {
+                    if nb.get(x, y) != ob.get(x, y) {
+                        d.set(x, y);
+                    }
+                }
+            }
+            Some(d)
+        };
+        let (model, exact) = oracle(&sc, &told, if gated { Some(&diff) } else { None });
         if gated {
+            // the gate knows the content: E (for any content) is no bound here, the pixel reference above is
             assert!(m.is_subset(&model), "seed {seed} frame {f} (gated): marked beyond the model: {:?}", m.difference(&model).collect::<Vec<_>>());
         } else {
+            assert!(exact.is_subset(&model), "seed {seed} frame {f}: E has tiles M lacks: {:?}", exact.difference(&model).collect::<Vec<_>>());
             assert_eq!(m, model, "seed {seed} frame {f} ({mode:?}): the mask is not the documented model; extra {:?}, missing {:?}; layers {:?}", m.difference(&model).collect::<Vec<_>>(), model.difference(&m).collect::<Vec<_>>(), sc.layers());
             seen.slack += (model.len() - exact.len()) as u64;
             seen.exact += exact.len() as u64;
