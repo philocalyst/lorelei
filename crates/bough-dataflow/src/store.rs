@@ -166,33 +166,41 @@ impl Tiles {
     #[inline(always)]
     fn mark_rows(&mut self, a: usize, b: usize, c: usize, d: usize) {
         if self.stride == 2 {
+            let (wa, wb) = (a >> 6, b >> 6);
             let end = 2 * (d + 1);
-            if (b >= 128) | (end > self.bits.len()) {
+            if (wb >= 2) | (end > self.bits.len()) {
                 invalid_damage();
             }
             self.lo = self.lo.min(c);
             self.hi = self.hi.max(d + 1);
-            let first = !0u64 << (a & 63);
-            let last = !0u64 >> (63 - (b & 63));
-            let masks = if a >= 64 {
-                [0, first & last]
-            } else if b < 64 {
-                [first & last, 0]
-            } else {
-                [first, last]
-            };
+            let (ma, mb) = (!0u64 << (a & 63), !0u64 >> (63 - (b & 63)));
             // SAFETY: c <= d after clipping, the row stride is two, and end was checked
-            // against the current bitmap. The tile coordinates come from nonnegative i32s.
-            // The first row is written before the loop, as in the one-word case.
+            // against the current bitmap; `wa <= wb < 2` (a <= b, and wb was checked), so
+            // every word written, `2 * row + wa` or `2 * row + wb` for a row in c..=d, is
+            // below `end`. The first row is written before the loop, as in the one-word case.
             unsafe {
-                let p = self.bits.as_mut_ptr();
-                *p.add(2 * c) |= masks[0];
-                *p.add(2 * c + 1) |= masks[1];
-                let mut row = c;
-                while row < d {
-                    row += 1;
-                    *p.add(2 * row) |= masks[0];
-                    *p.add(2 * row + 1) |= masks[1];
+                let mut p = self.bits.as_mut_ptr().add(2 * c);
+                if wa == wb {
+                    // the common case (a cell within one word): one word a row
+                    let m = ma & mb;
+                    p = p.add(wa);
+                    *p |= m;
+                    let mut row = c;
+                    while row < d {
+                        row += 1;
+                        p = p.add(2);
+                        *p |= m;
+                    }
+                } else {
+                    *p |= ma;
+                    *p.add(1) |= mb;
+                    let mut row = c;
+                    while row < d {
+                        row += 1;
+                        p = p.add(2);
+                        *p |= ma;
+                        *p.add(1) |= mb;
+                    }
                 }
             }
             return;
