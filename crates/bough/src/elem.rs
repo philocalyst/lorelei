@@ -69,6 +69,12 @@ impl<V> Mounter<'_, V> {
         // SAFETY: as `tape_push`.
         unsafe { (&mut *self.tape)[i] = x };
     }
+    /// The next tape entry, not consumed (`el`: the node an element's `update` is about to read).
+    #[inline(always)]
+    pub(crate) fn tape_peek(&self) -> u32 {
+        // SAFETY: as `tape_push`; `update` runs only with a tape.
+        unsafe { (&*self.tape)[self.ti] }
+    }
     /// The next tape entry (`update`).
     #[inline(always)]
     pub(crate) fn tape_next(&mut self) -> u32 {
@@ -149,6 +155,21 @@ pub trait Element<V>: Sized {
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
         s.refuse()
     }
+    /// A fast check of this description against a retained seal (`seal` written by `SealWrite`), without the
+    /// streaming checker: `Some(true)` iff `seal` would write exactly `retained`. `None`: no fast path (the
+    /// default); `Some(false)` sends the caller to the streaming check, which also tells "equal but for paint".
+    #[doc(hidden)]
+    #[inline(always)]
+    fn seal_eq(&self, _retained: &[u8]) -> Option<bool> {
+        None
+    }
+    /// The element has a `seal_eq` (the caller tries it before the streaming check).
+    #[doc(hidden)]
+    const SEAL_EQ: bool = false;
+    /// Equal seals imply equal `dyn_key`s (the seal covers everything the key is made of), so a dynamic part
+    /// steps over a sealed item without computing its key.
+    #[doc(hidden)]
+    const SEAL_HOLDS_KEY: bool = false;
     /// Describe this element as data for the lowered runtime (`lower/mod.rs`: the typed core). The default
     /// refuses by name: an element with no lowering is reported, never drawn as something else.
     fn lower(self, l: &mut crate::lower::Lower<'_, '_, V>)
@@ -749,6 +770,16 @@ pub(crate) fn set_node_text(rt: &mut Rt, node: u32, s: &str) {
         rt.lay_text_changed(node, s);
     } else {
         rt.text_set(n.link, s);
+    }
+}
+
+/// A text node's content as a property (`el`'s text port: `text(&self.title)`, `text(self.n.map(..))`).
+pub struct ApplyText;
+impl Apply for ApplyText {
+    type P = String;
+    #[inline]
+    fn apply(rt: &mut Rt, node: u32, v: &String) {
+        set_node_text(rt, node, v);
     }
 }
 

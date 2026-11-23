@@ -1,4 +1,4 @@
-use bough::prelude::*;
+use bough::builders::*;
 
 pub const WIDTH: f32 = 640.0;
 pub const HEIGHT: f32 = 400.0;

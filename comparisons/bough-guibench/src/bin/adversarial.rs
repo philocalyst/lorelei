@@ -8,7 +8,7 @@
 //! four transitions (or once after a sequence).
 #![recursion_limit = "4096"]
 #![type_length_limit = "100000000"]
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Config};
 use bough_guibench::{
     driver,

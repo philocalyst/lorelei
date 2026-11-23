@@ -1,6 +1,6 @@
 use bough::app::{App, Config};
 use bough::backend::MemSurfaces;
-use bough::prelude::*;
+use bough::builders::*;
 
 struct Scene {
     x: Signal<f32>,

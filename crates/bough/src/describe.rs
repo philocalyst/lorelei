@@ -41,6 +41,9 @@ pub struct Dyns {
     pub(crate) parts: Vec<Vec<DynItem>>,
     pub(crate) seals: Vec<Seals>,
     free: Vec<u32>,
+    /// Seal buffers between uses (`update_dyn` takes one and returns it; a nested part takes another), so
+    /// re-sealing an item that changed allocates nothing once the buffers have grown.
+    scratch: Vec<Vec<u8>>,
 }
 
 /// The mounting context an item inherits, as the head of its seal: a change of clip, space, depth or
@@ -122,6 +125,12 @@ impl Rt {
 /// Mount the items of a dynamic part. A fixed owner mounts them inline (no tape, no per-item scope); a
 /// re-describing one gives each item its own scope and tape and records the part on the owner's tape.
 pub(crate) fn mount_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl Iterator<Item = E>) {
+    mount_dyn_as(m, items, true)
+}
+
+/// `mount_dyn`; `sealed == false`: the part's items are never sealed (a fixed child list, where an item is
+/// always updated in place and only a change of its key remounts it).
+pub(crate) fn mount_dyn_as<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl Iterator<Item = E>, sealed: bool) {
     if !m.taping() {
         for e in items {
             e.mount(m);
@@ -129,6 +138,7 @@ pub(crate) fn mount_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl It
         return;
     }
     let d = m.rt.dyns.alloc();
+    m.rt.dyns.seals[d as usize].refused = !sealed;
     m.tape_push(d);
     m.scope.dyns.push(d);
     let mut out = Vec::new();
@@ -174,7 +184,7 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
     let d = m.tape_next();
     let mut old = std::mem::take(&mut m.rt.dyns.parts[d as usize]);
     let mut seals = std::mem::take(&mut m.rt.dyns.seals[d as usize]);
-    let mut scratch: Vec<u8> = Vec::new();
+    let mut scratch: Vec<u8> = m.rt.dyns.scratch.pop().unwrap_or_default();
     let cx = (m.clip, m.space, m.depth, m.ox, m.oy);
     let lid = m.rt.lay.cur;
     let mut k = 0;
@@ -193,7 +203,7 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
             None => {
                 let mut next = None;
                 for e in items.by_ref() {
-                    if k < old.len() && old[k].key == e.dyn_key() && sealed_as(&old[k], &e, &seals, &m.rt.lay.descs, cx).0 {
+                    if k < old.len() && (E::SEAL_HOLDS_KEY || old[k].key == e.dyn_key()) && sealed_as(&old[k], &e, &seals, &m.rt.lay.descs, cx).0 {
                         m.pos += old[k].nrec as usize;
                         m.kid += old[k].nkid as usize;
                         k += 1;
@@ -378,6 +388,8 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
     }
     m.rt.dyns.seals[d as usize] = seals;
     m.rt.dyns.parts[d as usize] = old;
+    scratch.clear();
+    m.rt.dyns.scratch.push(scratch);
 }
 
 /// Is `e`, described in context `cx`, what `it`'s seal says? (bit-identical, identical but for paint)
@@ -387,10 +399,31 @@ fn sealed_as<V, E: Element<V>>(it: &DynItem, e: &E, seals: &Seals, descs: &crate
         return (false, false);
     }
     let (o, n) = (it.seal.0 as usize, it.seal.1 as usize);
+    // an element with a fast check: the context words, then its own compare in one pass
+    if E::SEAL_EQ {
+        if let Some(rest) = context_rest(&seals.bytes[o..o + n], cx) {
+            if e.seal_eq(rest) == Some(true) {
+                return (true, true);
+            }
+        }
+    }
     let mut c = crate::seal::SealCheck::new(&seals.bytes[o..o + n], descs);
     seal_context(cx, &mut c);
     e.seal(&mut c);
     (c.equal(), c.shape())
+}
+
+/// The seal after its context words, when they are `cx`'s (`seal_context`).
+#[inline(always)]
+fn context_rest(b: &[u8], cx: (u16, u16, u16, f32, f32)) -> Option<&[u8]> {
+    let (clip, space, depth, ox, oy) = cx;
+    let (head, rest) = b.split_first_chunk::<16>()?;
+    let mut want = [0u8; 16];
+    want[0..4].copy_from_slice(&(clip as u32 | (space as u32) << 16).to_ne_bytes());
+    want[4..8].copy_from_slice(&(depth as u32).to_ne_bytes());
+    want[8..12].copy_from_slice(&ox.to_bits().to_ne_bytes());
+    want[12..16].copy_from_slice(&oy.to_bits().to_ne_bytes());
+    (*head == want).then_some(rest)
 }
 
 /// Take `nrec` records and `nkid` layout children out at the walk's position (a removed item's run).
@@ -422,6 +455,7 @@ impl<V, E: Element<V>> Element<V> for Option<E> {
 /// # Safety
 /// `tape` is the tape recorded when `v` was mounted at the start of the Bough, and `v` is that owner.
 pub(crate) unsafe fn redescribe<V: crate::app::View>(rt: &mut Rt, v: &V, tape: &mut Vec<u32>) {
+    let _walk = crate::el::Walk::enter();
     let el = v.view();
     let mut recs: Vec<RecordInit> = Vec::new();
     let mut scope = Scope::default();

@@ -1,5 +1,5 @@
 //! Independent replay of a mixed write and a scroll-only operand on the ordinary typed façade.
-use bough::{lower, prelude::*, typed};
+use bough::{lower, builders::*, typed};
 
 fn config() -> bough::app::Config {
     let mut cfg = bough::app::Config::new(80., 40., 1., bough::ui::default_font());

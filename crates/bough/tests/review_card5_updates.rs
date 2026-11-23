@@ -1,6 +1,6 @@
 //! Independent tests of typed descriptions, list publications and input identity.
 use bough::input::Button;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::typed::App;
 use std::cell::Cell;
 use std::panic::{AssertUnwindSafe, catch_unwind};

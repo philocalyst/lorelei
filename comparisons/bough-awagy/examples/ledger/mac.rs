@@ -86,7 +86,7 @@ unsafe impl GlobalAlloc for Tracing {
 use crate::{counter, dashboard, scroll};
 
 use bough::app::{App, View};
-use bough::prelude::*;
+use bough::builders::*;
 use std::alloc::{GlobalAlloc, Layout};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;

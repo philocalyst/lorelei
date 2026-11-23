@@ -1,6 +1,6 @@
 //! Integration Card 5: elements the update walk does not read where they are.
 use bough::input::Button;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::Config;
 use bough::typed::App;
 

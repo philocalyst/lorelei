@@ -1539,15 +1539,11 @@ where
         let mut spec = self.spec;
         m.rt.reflect.elem(hd.idx, std::any::type_name::<Self>());
         // size operands: the box is created with their initial values, the spec kept for later restyles
-        let lid = if X::SIZE {
-            let lid = m.rt.lay.eng.add(hd, &spec, s, None);
-            lid
-        } else {
-            m.rt.lay.eng.add(hd, &spec, s, None)
-        };
+        let (sized, painted) = (self.x.has_size(), self.x.has_paint());
+        let lid = m.rt.lay.eng.add(hd, &spec, s, None);
         let parent = attach(m, lid);
         m.rt.lay.last_box = lid;
-        assert!(!X::PAINT || self.draw, "opacity/translate need a painted box (bg, rounded or border)");
+        assert!(!painted || self.draw, "opacity/translate need a painted box (bg, rounded or border)");
         let mut qnode = NONE;
         if self.draw {
             let node = m.rt.node_at(hd);
@@ -1565,9 +1561,9 @@ where
             // a paint-less box still has a record: the layout structure IS the Bough's depth column
             m.recs.push(RecordInit { depth: m.depth, ink: NRect::EMPTY, kind: REC_BOX, payload: 0, handle: hd.idx, clip: m.clip });
         }
-        if X::SIZE || X::PAINT {
+        if sized || painted {
             self.x.install(m, lid, qnode, &mut spec);
-            if X::SIZE {
+            if sized {
                 m.rt.lay.specs.insert(lid, spec);
                 if spec != self.spec {
                     // not laid out yet (its records are not in the Bough): the style is set, nothing invalidated
@@ -1588,7 +1584,7 @@ where
         let lid = m.tape_next();
         if !m.rt.lay.descs.is(m.rt.lay.info[lid as usize].spec_ix, &self.spec) {
             // the described spec changed (or this is the node's first re-description)
-            if X::SIZE {
+            if self.x.has_size() {
                 // the size operands own w/h: the description's other properties restyle around them
                 let cur = m.rt.lay.specs.get(&lid).copied().unwrap_or(self.spec);
                 let spec = Spec { w: cur.w, h: cur.h, ..self.spec };

@@ -1,5 +1,5 @@
 use crate::spec::{self, Ids, Op, Row};
-use bough::prelude::*;
+use bough::builders::*;
 
 macro_rules! contents {
     ($label:expr, $value:expr) => {

@@ -2,7 +2,7 @@
 //! px down a scrolled column drew wrong once scrolled into view, because their inks were clamped to the 16-bit
 //! window domain when written and a clamped rect cannot be translated back. The oracle is a fresh mount at the
 //! same scroll offset.
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Caps, Config};
 
 struct Rows {

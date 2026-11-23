@@ -434,6 +434,7 @@ impl<V: View> App<V> {
         let ptr = &*owner as *const V;
         rt.owner = ptr as *const u8;
         {
+            let _walk = crate::el::Walk::enter();
             let el = owner.view();
             let tp: *mut Vec<u32> = if once { std::ptr::null_mut() } else { &mut tape };
             let mut m = Mounter { rt: &mut rt, owner: ptr, recs: &mut recs, scope: &mut scope, depth: 0, ox: 0.0, oy: 0.0, space: 0, clip: 0, pending_num: None, cls: 0, tape: tp, ti: 0, pos: 0, kid: 0, keep: false };
@@ -891,7 +892,11 @@ impl<V: View> App<V> {
                 }
             }
         }
-        let dst = c.intersect(c.translate(dx, dy)).canon();
+        // a scroll farther than the coordinate domain moves nothing that stays inside it: no copy
+        let dst = match c.translate_in_domain(dx, dy) {
+            Some(t) => c.intersect(t).canon(),
+            None => bough_core::NRect::EMPTY,
+        };
         if dst.is_empty() {
             return SlotCopy::NONE;
         }

@@ -4,7 +4,7 @@
 //!
 //!     cargo test --profile dist -p bough-workloads --no-default-features --test defects -- --ignored   (macOS)
 #![cfg(target_os = "macos")]
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{clip_by, offset, quad, App, Config, Curve};
 
 fn first_diff(a: &[u8], b: &[u8], w: usize) -> Option<(usize, usize, u8, u8)> {

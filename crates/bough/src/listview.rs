@@ -435,6 +435,7 @@ fn view_row<T: crate::app::View>(v: &T, m: &mut Mounter<'_, T>) {
     if m.rt.class_changed[m.cls as usize].is_none() {
         m.rt.class_changed[m.cls as usize] = Some(crate::changed::changed_shim::<T>);
     }
+    let _walk = crate::el::Walk::enter();
     v.view().mount(m)
 }
 
@@ -1549,6 +1550,7 @@ pub struct ListRows<'a, T, V> {
     lower: Option<for<'c, 'x> fn(&T, &mut crate::lower::Lower<'c, 'x, T>)>,
 }
 fn lower_row<T: crate::app::View>(v: &T, l: &mut crate::lower::Lower<'_, '_, T>) {
+    let _walk = crate::el::Walk::enter();
     v.view().lower(l)
 }
 impl<T, V> sealed::Sealed for ListRows<'_, T, V> {}

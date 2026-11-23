@@ -329,7 +329,7 @@ fn count_bands() {
 /// added at the end enters where nothing else changed, and one removed leaves the same way, so the only damage
 /// is the free row's own (the negative controls `mutant_free_enter` and `mutant_free_leave` fail here).
 mod grow {
-    use bough::prelude::*;
+    use bough::builders::*;
     pub struct Grow {
         pub n: usize,
     }

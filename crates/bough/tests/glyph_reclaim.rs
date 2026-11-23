@@ -1,6 +1,6 @@
 use bough::app::{App, Config};
 use bough::backend::MemSurfaces;
-use bough::prelude::*;
+use bough::builders::*;
 
 const LABELS: usize = 120;
 const SIZE: (u32, u32) = (240, 96);

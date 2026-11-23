@@ -12,7 +12,7 @@
 //! Software devices are allowed (lavapipe, llvmpipe). A test passes vacuously, saying so, where its executor does not
 //! run (no Vulkan driver, no EGL, macOS without `BOUGH_VK_LIB`).
 #![cfg(any(target_os = "linux", target_os = "macos"))]
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Config};
 
 struct Scene {

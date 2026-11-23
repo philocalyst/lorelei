@@ -66,7 +66,7 @@
 //!   range caption is a number with a prefix ("last 24h"), not the labels "1h / 6h / 24h / 7d";
 //! * no wrapping row: the grid is 40 explicit rows of 5 and cannot reflow to a different column count.
 use crate::{scaled, Rng, Scene};
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{anchor, bars, deco_box, quad, App, Button, Caps, Ev, NumFmt, Shadow};
 
 pub const MAX_CARDS: usize = 200;

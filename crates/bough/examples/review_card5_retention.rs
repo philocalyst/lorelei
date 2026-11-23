@@ -1,5 +1,5 @@
 //! Text retention through maintenance boundaries and 10,000 mixed turns.
-use bough::{prelude::*, typed::App};
+use bough::{builders::*, typed::App};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 

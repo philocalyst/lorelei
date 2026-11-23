@@ -30,7 +30,7 @@ single run, a microbenchmark that skips the frame path, or a machine with other 
   integration of anything that claims a win.
 * **What was not checked**, and any history that could not be replayed.
 
-For application code and new benchmarks, use `bough::prelude` only. Don't add a per-view static switch to `View`.
+For application code, use `bough::prelude` only (`El` views). Benchmarks that measure the kernel's typed builders use `bough::builders`. Don't add a per-view static switch to `View`.
 Record vendored-crate edits in `vendor/README.md`. Put no absolute paths in manifests or scripts.
 
 ## Research states

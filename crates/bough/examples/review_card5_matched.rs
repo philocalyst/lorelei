@@ -1,7 +1,7 @@
 //! Card 5 with the exact Round 2 rectangle viewport and operations.
 #[path = "review_card3/common.rs"]
 mod common;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::typed::App;
 use common::*;
 

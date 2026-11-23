@@ -3,7 +3,7 @@
 //!
 //!   cargo run --release -p bough --example counter        # a window; click "+"
 //!   cargo test --release -p bough --test counter          # headless: real clicks, the count, the pixels
-use bough::prelude::*;
+use bough::builders::*;
 
 const BAR: Flex = Flex::row().align(Align::Center).gap(12.0);
 

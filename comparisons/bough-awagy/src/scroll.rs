@@ -2,7 +2,7 @@
 //! logical pixels with 12 px padding, black 14 px `Item N`, alternating #f5f5f5 / #e6e6e6, in a 1000 x 700
 //! window. The list is mounted whole; the wheel scrolls it.
 use crate::scroll_config::row_count;
-use bough::prelude::*;
+use bough::builders::*;
 
 pub struct ScrollApp {
     rows: usize,

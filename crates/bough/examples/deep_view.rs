@@ -4,7 +4,7 @@
 //! this depth on monomorphised layout did not finish code generation in 3 h 32 min.
 //!
 //! `bough::prelude` only. The leaf (`leaf`) is the function the incremental measurement edits.
-use bough::prelude::*;
+use bough::builders::*;
 
 pub struct Deep {
     pub count: Signal<u32>,

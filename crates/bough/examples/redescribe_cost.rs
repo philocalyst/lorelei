@@ -4,8 +4,13 @@
 //! what application code writes), `static` (two `&'static str`), `bare` (the box alone). `once` is the owned
 //! shape mounted with `Config::once()` (its output goes stale: a cost control only).
 //!
+//! Each shape also has its `El` twin (`bough::prelude`, the same rows written as `El<'_>`: the card of
+//! `docs/lanes/integration/2026-11-22-el-surface.md`), measured in the same run, and the allocator calls of a
+//! steady turn are counted for both.
+//!
 //!     cargo run --release -p bough --example redescribe_cost -- [rows...]
-use bough::prelude::*;
+use bough::builders::*;
+use bough::el::El;
 use bough::raw::{App, Caps, Config};
 use bough_sys::perf::tinstr;
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -71,6 +76,93 @@ impl View for Table<2> {
         let line = move |i: usize| row(()).w(960.0).h(32.0).bg(tint(self, i));
         div().bg(rgb(0xffffff)).child(each((0..self.rows.len()).map(line)))
     }
+}
+
+/// The same three row shapes written on the author surface (`bough::prelude`: `El<'_>`).
+struct ETable<const K: u32> {
+    rows: Vec<(u32, String)>,
+    selected: u32,
+}
+fn etint<const K: u32>(t: &ETable<K>, i: usize) -> Color {
+    if t.rows[i].0 == t.selected { rgb(0x2f6bff) } else if i % 2 == 0 { rgb(0xf5f5f5) } else { rgb(0xe6e6e6) }
+}
+impl bough::el::View for ETable<0> {
+    fn view(&self) -> El<'_> {
+        use bough::prelude as p;
+        let line = move |i: usize| {
+            let (id, label) = &self.rows[i];
+            p::row((p::text(*id).w(64), p::text(label.as_str()))).w(960).h(32).bg(etint(self, i))
+        };
+        p::div().bg(rgb(0xffffff)).child((0..self.rows.len()).map(line))
+    }
+}
+impl bough::el::View for ETable<1> {
+    fn view(&self) -> El<'_> {
+        use bough::prelude as p;
+        let line = move |i: usize| p::row((p::text("12345").w(64), p::text("Row label 12345"))).w(960).h(32).bg(etint(self, i));
+        p::div().bg(rgb(0xffffff)).child((0..self.rows.len()).map(line))
+    }
+}
+impl bough::el::View for ETable<2> {
+    fn view(&self) -> El<'_> {
+        use bough::prelude as p;
+        let line = move |i: usize| p::row(()).w(960).h(32).bg(etint(self, i));
+        p::div().bg(rgb(0xffffff)).child((0..self.rows.len()).map(line))
+    }
+}
+
+/// A table either way: built from its rows, its selection written by a turn.
+trait Shape: View {
+    fn make(rows: Vec<(u32, String)>) -> Self;
+    fn sel(&mut self) -> &mut u32;
+}
+impl<const K: u32> Shape for Table<K>
+where
+    Table<K>: View,
+{
+    fn make(rows: Vec<(u32, String)>) -> Self {
+        Table { rows, selected: u32::MAX }
+    }
+    fn sel(&mut self) -> &mut u32 {
+        &mut self.selected
+    }
+}
+impl<const K: u32> Shape for ETable<K>
+where
+    ETable<K>: bough::el::View,
+{
+    fn make(rows: Vec<(u32, String)>) -> Self {
+        ETable { rows, selected: u32::MAX }
+    }
+    fn sel(&mut self) -> &mut u32 {
+        &mut self.selected
+    }
+}
+
+/// Instructions and allocator calls per steady turn (selection moved), by slope.
+fn measure_shape<T: Shape>(n: usize, once: bool) -> (u64, f64) {
+    let font = std::fs::read(std::env::var("ZGX_FONT_FILE").unwrap_or_else(|_| "/System/Library/Fonts/Supplemental/Arial.ttf".into())).unwrap();
+    let mut cfg = Config::new(1280.0, 800.0, 1.0, font);
+    cfg.caps = Caps { instances: 1 << 17, pages: 1 << 13, glyphs: 1 << 20, runs: 1 << 17, spaces: 1 << 12, clips: 1 << 12, strikes: 16 };
+    if once {
+        cfg = cfg.once();
+    }
+    let rows = (0..n as u32).map(|i| (i, format!("Row label {i}"))).collect();
+    let mut a = App::new(T::make(rows), cfg, false);
+    a.turn(|_| {});
+    let mut run = |reps: u32| {
+        let (t0, c0) = (tinstr(), CALLS.load(Relaxed));
+        for k in 0..reps {
+            a.turn(|t| *t.sel() = k % n as u32);
+        }
+        (tinstr() - t0, CALLS.load(Relaxed) - c0)
+    };
+    run(8);
+    if let Some(n) = std::env::var("SPIN").ok().and_then(|v| v.parse::<u32>().ok()) {
+        run(n);
+    }
+    let (lo, hi) = (run(16), run(48));
+    ((hi.0 - lo.0) / 32, (hi.1 as f64 - lo.1 as f64) / 32.0)
 }
 
 fn measure<const K: u32>(n: usize, once: bool) -> u64
@@ -261,6 +353,48 @@ fn main() {
             let (o, s, b) = (mount::<0>(n), mount::<1>(n), mount::<2>(n));
             let k = n as u64;
             println!("{n},{o},{},{s},{},{b},{}", o / k, s / k, b / k);
+        }
+        return;
+    }
+    if std::env::var_os("EL_SPIN").is_some() {
+        // profiling: steady El turns only (with SPIN=<turns>)
+        let n = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(10000);
+        println!("{:?}", measure_shape::<ETable<0>>(n, false));
+
+        return;
+    }
+    if std::env::var_os("EL_BUILD").is_some() {
+        // the El description alone: `view` and the arena's rewind, no walk
+        for n in std::env::args().skip(1).filter_map(|s| s.parse::<usize>().ok()) {
+            let t = ETable::<0> { rows: (0..n as u32).map(|i| (i, format!("Row label {i}"))).collect(), selected: 3 };
+            let mut run = |reps: u32| {
+                let t0 = tinstr();
+                for _ in 0..reps {
+                    let e = bough::el::View::view(&t);
+                    std::hint::black_box(&e);
+                    drop(e);
+                    bough::el::rewind_for_bench();
+                }
+                tinstr() - t0
+            };
+            run(4);
+            let (lo, hi) = (run(8), run(24));
+            println!("{n} rows: view {} instructions per turn, {} per row", (hi - lo) / 16, (hi - lo) / 16 / n as u64);
+        }
+        return;
+    }
+    if std::env::var_os("EL").is_some() {
+        // the card: typed and El twins, interleaved in one run
+        println!("rows,shape,typed_instr,el_instr,el_over_typed,typed_allocs_per_turn,el_allocs_per_turn");
+        for n in std::env::args().skip(1).filter_map(|s| s.parse::<usize>().ok()) {
+            let cells: [(&str, (u64, f64), (u64, f64)); 3] = [
+                ("owned", measure_shape::<Table<0>>(n, false), measure_shape::<ETable<0>>(n, false)),
+                ("static", measure_shape::<Table<1>>(n, false), measure_shape::<ETable<1>>(n, false)),
+                ("bare", measure_shape::<Table<2>>(n, false), measure_shape::<ETable<2>>(n, false)),
+            ];
+            for (name, t, e) in cells {
+                println!("{n},{name},{},{},{:.2},{:.2},{:.2}", t.0, e.0, e.0 as f64 / t.0.max(1) as f64, t.1, e.1);
+            }
         }
         return;
     }

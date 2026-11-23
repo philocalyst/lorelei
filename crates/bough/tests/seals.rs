@@ -5,7 +5,7 @@
 //! spec, the number of rows, the order of rows) and the context a row inherits (a clip and an origin above
 //! it). `BOUGH_SEAL_MUTANT=1` makes the check ignore text bytes: the gate must fail then
 //! (`a_seal_that_ignores_text_is_caught`).
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Config};
 
 #[derive(Clone)]

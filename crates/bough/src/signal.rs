@@ -248,6 +248,12 @@ impl<T, V> Clone for Wired<'_, T, V> {
 impl<T, V> Copy for Wired<'_, T, V> {}
 
 impl<'a, T, V> Wired<'a, T, V> {
+    /// # Safety
+    /// `sig` is the field of owner type `V` at byte offset `off`.
+    #[inline(always)]
+    pub(crate) unsafe fn at(sig: &'a Signal<T>, off: u32) -> Self {
+        Wired { sig, off, _v: PhantomData }
+    }
     /// The current value (for the description's initial state).
     #[inline(always)]
     pub fn get(&self) -> &'a T {

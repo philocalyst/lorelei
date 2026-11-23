@@ -7,7 +7,7 @@
 //! fresh mount among them describes the same state from nothing, with none of the retained path's memory).
 use bough::input::{Button, Ev};
 use bough::lower::provenance;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::Config;
 use bough::typed::App;
 

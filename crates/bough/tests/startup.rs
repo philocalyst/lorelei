@@ -3,7 +3,7 @@
 //! and resident from the start). It is a mapping now, and the façade's own tables are columns carved from
 //! another: an empty App is ~1.3 M instructions. The bound keeps an eager clear (or any per-capacity work at
 //! construction) from coming back unnoticed.
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Caps, Config};
 use bough_metal::perf::tinstr;
 

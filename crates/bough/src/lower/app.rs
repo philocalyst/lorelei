@@ -214,7 +214,9 @@ impl<V: View> App<V> {
         } else {
             0
         };
+        let walk = crate::el::Walk::enter();
         View::view(&self.lv.v).lower(&mut Lower::new(&mut core));
+        drop(walk);
         let t1 = if self.stats.profile {
             bough_sys::perf::thread_instructions()
         } else {

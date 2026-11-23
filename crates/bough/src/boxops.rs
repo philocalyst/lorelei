@@ -78,6 +78,36 @@ impl Apply for ApplyTranslate {
     }
 }
 
+/// One component of the paint offset (`el`'s `.translate_x` / `.translate_y` ports: each is its own plug).
+pub struct ApplyTx;
+pub struct ApplyTy;
+fn shift(rt: &mut Rt, node: u32, x: Option<f32>, y: Option<f32>) {
+    let s = rt.scale;
+    let inst = rt.inst_of(node);
+    let n = rt.mod_of(node);
+    let (tx, ty) = (x.map_or(n.tx, |v| v * s), y.map_or(n.ty, |v| v * s));
+    if n.tx == tx && n.ty == ty {
+        return;
+    }
+    n.tx = tx;
+    n.ty = ty;
+    let (x, y) = (n.x + tx, n.y + ty);
+    rt.inst_mut(inst).pos = [x, y];
+    rt.quad_ink(node);
+}
+impl Apply for ApplyTx {
+    type P = f32;
+    fn apply(rt: &mut Rt, node: u32, v: &f32) {
+        shift(rt, node, Some(*v), None);
+    }
+}
+impl Apply for ApplyTy {
+    type P = f32;
+    fn apply(rt: &mut Rt, node: u32, v: &f32) {
+        shift(rt, node, None, Some(*v));
+    }
+}
+
 /// Width / height operands address the layout node (`node` = its id), whose user spec is kept.
 pub struct ApplyBoxW;
 pub struct ApplyBoxH;
@@ -115,6 +145,16 @@ pub trait BoxOps<V>: Sized {
     const SIZE: bool;
     /// Does any operand write the box's paint (it must have paint)?
     const PAINT: bool;
+    /// `SIZE` / `PAINT` of this value: the constants for every typed chain (so a typed box compiles as
+    /// before); `el`'s operands, whose set is data, answer from it.
+    #[inline(always)]
+    fn has_size(&self) -> bool {
+        Self::SIZE
+    }
+    #[inline(always)]
+    fn has_paint(&self) -> bool {
+        Self::PAINT
+    }
     fn install(self, m: &mut Mounter<'_, V>, lid: u32, node: u32, spec: &mut Spec);
     /// Re-description: apply the operands' current values.
     fn refresh(self, rt: &mut Rt, lid: u32, node: u32);

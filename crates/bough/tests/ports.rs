@@ -5,7 +5,7 @@
 //!
 //! Negative control: `--features mutant_cell_offset` lists every cell one head further on, so no borrowed
 //! field is proven and both tests here fail.
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Config};
 use bough::reflect::{cell_id, cells};
 

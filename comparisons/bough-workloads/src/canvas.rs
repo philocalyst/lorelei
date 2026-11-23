@@ -84,7 +84,7 @@
 //!   first step would not hover), and `hover(k = 0)` has to release it.
 //! * `App::presented_pixels` / `reference_pixels` are BGRA (red and blue swapped in a PNG written as RGBA).
 use crate::{scaled, Rng, Scene};
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{clip, clip_by, deco_box, no_hit, offset, quad, svg_image, text as rtext, App, Button, Caps, Ev, Grad, Mounter, NumFmt, Shadow};
 
 // ------------------------------------------------------------------------------------------------ geometry

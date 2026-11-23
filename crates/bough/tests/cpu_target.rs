@@ -3,7 +3,7 @@
 //! (paint-only frames: surfaces held), and structural changes; and on x86-64 the AVX2 + F16C tile loop writes the
 //! same bytes as the scalar one (`BOUGH_CPU_SCALAR`).
 use bough::backend::MemSurfaces;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Config};
 
 struct Scene {

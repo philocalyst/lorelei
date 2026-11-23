@@ -3,7 +3,7 @@ use crate::{
     model::{Coarse, Fine, Rows, f_key},
     spec,
 };
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Button, Caps, Config};
 use bough::sys::perf::{snap, tinstr};
 use std::time::Instant;

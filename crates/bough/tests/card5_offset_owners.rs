@@ -1,5 +1,5 @@
 //! Independent probes for typed list owner offsets.
-use bough::{prelude::*, typed::App};
+use bough::{builders::*, typed::App};
 
 fn cfg() -> bough::app::Config {
     let mut cfg = bough::app::Config::new(64.0, 64.0, 1.0, bough::ui::default_font());

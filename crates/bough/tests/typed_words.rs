@@ -9,7 +9,7 @@
 //! the wheel) describe nothing at all. The four oracles hold after every step.
 use bough::input::Button;
 use bough::lower::provenance;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::Config;
 use bough::typed::{App, PassStats};
 use std::alloc::{GlobalAlloc, Layout, System};

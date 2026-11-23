@@ -1,5 +1,5 @@
 //! Independent checks of owner reach, publication, and projection assumptions.
-use bough::{input::Button, prelude::*, typed::App};
+use bough::{input::Button, builders::*, typed::App};
 use std::cell::Cell;
 
 fn cfg() -> bough::app::Config {

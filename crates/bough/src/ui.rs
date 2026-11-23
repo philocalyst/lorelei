@@ -44,6 +44,7 @@ impl Flex {
     pub const fn column() -> Flex {
         Flex { column: true, ..Flex::row() }
     }
+    /// The gap between children, points.
     pub const fn gap(self, v: f32) -> Flex {
         Flex { gap: v, ..self }
     }
@@ -172,10 +173,11 @@ impl Application {
 
 /// A raster image (PNG bytes) in flow, sized by layout (by default its pixel size, in points). The pixels are
 /// decoded once into the image atlas and drawn on the GPU wherever layout puts the box.
+#[derive(Clone, Copy)]
 pub struct ImageBox {
-    png: &'static [u8],
-    spec: Spec,
-    px: (u32, u32),
+    pub(crate) png: &'static [u8],
+    pub(crate) spec: Spec,
+    pub(crate) px: (u32, u32),
 }
 
 pub fn image(png: &'static [u8]) -> ImageBox {
@@ -280,9 +282,9 @@ impl<V: 'static> Element<V> for ImageBox {
 
 /// A one-line text input in flow, bound two-way to a `Signal<String>` (`text_input(sig!(self.notes))`).
 pub struct TextInput<'a, V> {
-    sig: Wired<'a, String, V>,
-    w: f32,
-    h: f32,
+    pub(crate) sig: Wired<'a, String, V>,
+    pub(crate) w: f32,
+    pub(crate) h: f32,
 }
 
 pub fn text_input<V>(sig: Wired<'_, String, V>) -> TextInput<'_, V> {

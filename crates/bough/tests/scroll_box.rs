@@ -7,7 +7,7 @@
 //! * Plain state inside a scroll box: a handler changes a plain field the description reads inside the scroll
 //!   box; the re-description must reach it (before the fix the scroll box was opaque to re-description, so the
 //!   window kept its first state).
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Config};
 
 const W: f32 = 320.0;

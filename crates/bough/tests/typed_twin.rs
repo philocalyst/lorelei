@@ -9,7 +9,7 @@
 //! presented pixels are sampled at each block's centre. No pixel of one runtime is compared with the other's
 //! (their rasters differ in text and edges; a block's centre does not).
 use bough::input::Button;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::Config;
 
 struct Twin {

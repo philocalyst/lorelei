@@ -10,7 +10,7 @@
 //! * `idle`: a turn that writes nothing.
 //!
 //!     cargo run --release -p bough --example signal_cost -- [rows...]   (rows <= 256)
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Caps, Config};
 use bough::NumFmt;
 use bough_sys::perf::tinstr;

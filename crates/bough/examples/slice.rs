@@ -4,7 +4,7 @@
 //!
 //! The same source runs on the legacy runtime (`bough::raw::App`) and on the lowered one (`bough::lower::App`):
 //! the tests (`tests/lowered_slice.rs`) and the benchmark (`examples/card3_cost.rs`) include this file.
-use bough::prelude::*;
+use bough::builders::*;
 
 pub const ROW_H: f32 = 28.0;
 pub const LABELS: [&str; 8] = [

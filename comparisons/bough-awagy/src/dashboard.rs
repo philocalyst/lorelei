@@ -3,7 +3,7 @@
 //! window. Geometry matches the other apps' (egui's) toolbar: input at (24, 70) 360 x 40, Refresh at (416, 70)
 //! and the toggle at (624, 70), both 160 x 40, the count at (24, 124), the list from y = 180 — reached by
 //! layout (padding, gaps, sizes), not coordinates.
-use bough::prelude::*;
+use bough::builders::*;
 
 const IMAGES: [&[u8]; 10] = [
     include_bytes!("../assets/dashboard-0.png"),

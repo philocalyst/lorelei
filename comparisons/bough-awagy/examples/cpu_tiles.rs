@@ -387,7 +387,7 @@ fn main() {
             }
         }
         "counter" => {
-            let mut app = App::new(counter::Counter { count: bough::prelude::Signal::new(0) }, Config::new(480.0, 320.0, 2.0, font()), true);
+            let mut app = App::new(counter::Counter { count: bough::builders::Signal::new(0) }, Config::new(480.0, 320.0, 2.0, font()), true);
             app.frame();
             compare(&mut app, "counter");
             for _ in 0..7 {

@@ -9,7 +9,7 @@
 use crate::guibench_spec::canvas as sc;
 use crate::Scene;
 use bough::app::View;
-use bough::prelude::{Key, Mods};
+use bough::builders::{Key, Mods};
 use bough::raw::{App, Caps};
 
 #[path = "../../bough-guibench-scenes/src/canvas.rs"]

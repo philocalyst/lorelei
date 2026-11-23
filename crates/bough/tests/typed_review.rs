@@ -4,7 +4,7 @@
 //! its generation and its call site; on the typed path a handler reaches its item by slot and generation, a
 //! list keeps a row's records across edits, and the hovered set and a held press are stamped records.
 use bough::input::{Button, Key, Mods};
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::Config;
 use bough::typed::App;
 

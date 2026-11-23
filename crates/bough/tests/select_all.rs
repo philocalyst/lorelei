@@ -1,6 +1,6 @@
 //! A text field's select-all (ctrl or cmd + A): the next edit replaces or clears the whole text, a movement key
 //! ends the selection, and the window equals a fresh mount of the same text (the highlight leaves no trace).
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Config};
 
 struct Form {

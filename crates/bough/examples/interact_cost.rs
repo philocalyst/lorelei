@@ -13,7 +13,7 @@ mod counter;
 
 use bough::app::{App, Config, Repair, View};
 use bough::input::Button;
-use bough::prelude::*;
+use bough::builders::*;
 use std::time::Instant;
 
 struct Form {

@@ -1,7 +1,7 @@
 //! Independent probes of the Card 3 public façade. Ignored tests describe open semantic failures.
 use bough::input::{Button, Key, Mods};
 use bough::lower::App;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::Config;
 
 fn new<V: View>(v: V, w: f32, h: f32, s: f32, ring: usize) -> App<V> {

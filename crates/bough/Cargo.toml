@@ -78,6 +78,8 @@ mutant_typed_log = []
 mutant_typed_skip = []
 # the cell table lists every cell one head further on (tests/ports.rs must fail)
 mutant_cell_offset = []
+# (tests/el_surface.rs) El items keyed by nothing: a box swapped for a text is updated in place as if it were one
+mutant_el_shape = []
 # (bough-dataflow/mutant_rigid: rows kept across an insert or a remove keep their old rects)
 mutant_rigid = ["bough-dataflow/mutant_rigid"]
 # The presenter on the vendored wgpu-hal with wgsl-rs kernels (crates/bough-gpu) instead of direct Metal.

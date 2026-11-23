@@ -126,7 +126,7 @@ live in the ignored `runtime/` (agents: `AGENTS.md`).
 1. `research/AUDIT.md` §0: the state in fifteen items.
 2. `designs/reactivity/final/00-model.md`: the model, the laws L1–L14, the rejection list.
 3. `BRIEF.md`: where everything is, what was measured, how it is built.
-4. `crates/bough/src/lib.rs` (the two surfaces), then `crates/bough/examples/counter.rs`:
+4. `crates/bough/src/lib.rs` (the surfaces), then `crates/bough/examples/progressive.rs`:
 
 ```rust
 use bough::prelude::*;
@@ -144,12 +144,11 @@ impl Counter {
 }
 
 impl View for Counter {
-    fn view(&self) -> impl Element<Self> + '_ {
-        div()
-            .layout(BAR)
-            .p(24.0)
-            .child(text(sig!(self.count).map(|n| format!("Count: {n}"))))
-            .child(button("+").on_click(Counter::inc))
+    fn view(&self) -> El<'_> {
+        div().layout(BAR).p(24).child((
+            text(self.count.map(|n| format!("Count: {n}"))), // a signal field, mapped: a port
+            button("+").on_click(Counter::inc),               // a route is a method
+        ))
     }
 }
 
@@ -157,6 +156,7 @@ fn main() {
     Application::run(Window::document(Counter { count: Signal::new(0) }).title("Counter"));
 }
 ```
+
 
 `sig!` is an interim spelling; the design binds `&self.count` directly (AUDIT D2, lane `surface-api`).
 
@@ -192,8 +192,8 @@ describes.
 
 | path | what it is |
 |---|---|
-| `crates/` | bough's crates. `bough`: the façade, with `bough::prelude` (the design surface: views, signals, lists, entities, readers, elements in flow, `Application::run`) and `bough::raw` (the scene-level surface the benchmarks use). `bough-core`: the paint-preorder record tree (64-slot SoA pages, negated-max rects, tile damage planes, hit testing). `bough-text`: shaping into the GPU glyph pool, over vendored parley. `bough-metal`: the fused binned-compute presenter on Metal. `bough-gpu`: the same presenter on vendored wgpu-hal with wgsl-rs kernels (`--features wgpu`). `bough-mem`: region columns. `bough-damage-lab`: damage-representation experiments |
-| `comparisons/` | Benchmark ports: zgx's suite, scenes and apps (`bough-suite`, `-heavy`, `-scenes`, `-vlist`, `-text-bench`, `-app-*`, `-widgets`); zgui's (`bough-zgui`); the areweactuallyguiyet workloads (`bough-awagy`, the only ones written on `bough::prelude` so far) |
+| `crates/` | bough's crates. `bough`: the façade, with `bough::prelude` (the design surface: `View::view(&self) -> El<'_>`, ports that take constants, signal fields and mapped sources, children as tuples, `Option`s and iterators, routes as methods, `Application::run`), `bough::builders` (the kernel's typed builders `El` is walked onto, which the measured workload scenes are written in) and `bough::raw` (the scene-level surface the benchmark ports use). `bough-core`: the paint-preorder record tree (64-slot SoA pages, negated-max rects, tile damage planes, hit testing). `bough-text`: shaping into the GPU glyph pool, over vendored parley. `bough-metal`: the fused binned-compute presenter on Metal. `bough-gpu`: the same presenter on vendored wgpu-hal with wgsl-rs kernels (`--features wgpu`). `bough-mem`: region columns. `bough-damage-lab`: damage-representation experiments |
+| `comparisons/` | Benchmark ports: zgx's suite, scenes and apps (`bough-suite`, `-heavy`, `-scenes`, `-vlist`, `-text-bench`, `-app-*`, `-widgets`); zgui's (`bough-zgui`); the areweactuallyguiyet workloads (`bough-awagy`, on `bough::builders`) |
 | `bench/` | Harnesses and raw results. `bench/awagy/` is a macOS port of areweactuallyguiyet.mespin.me with bough, zgx, BUI and Vizia measured and 18 frameworks reported ([page](bench/awagy/results/bough-on-awagy.html)) |
 | `vendor/` | Plain-source copies of parley, fontique, harfrust, skrifa, wgpu, wgpu-hal, naga, winit, wgsl-rs and cephal, each with every local edit listed in `vendor/README.md` |
 | `docs/` | **Where to direct effort.** `LANES.md` (thirteen lanes: question, first task, success criterion), `AVENUES.md` (the exhaustive backlog and the per-platform plan), `SETTLED.md` (what not to reopen), `CARD.md` (the experiment card), `lanes/<lane>/` (each lane's public reports and cards) |

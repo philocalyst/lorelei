@@ -68,7 +68,7 @@
 //! * everything is mounted, nothing virtualised: 3,000 editor rows, 2,000 tree rows and 3,000 minimap blocks are
 //!   live records (`virtual_list` / `list` rows cannot read the root's signals).
 use crate::{scaled, Rng, Scene};
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{no_hit, App, Caps, Ev, Mounter, NumFmt};
 
 // ---------------------------------------------------------------------------------------------- geometry

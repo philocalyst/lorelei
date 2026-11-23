@@ -1,7 +1,7 @@
 #[path = "review_card3/common.rs"]
 mod common;
 use bough::lower::App;
-use bough::prelude::*;
+use bough::builders::*;
 use common::*;
 
 struct Item(u32);

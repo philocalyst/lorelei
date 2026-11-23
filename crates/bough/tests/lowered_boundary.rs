@@ -4,7 +4,7 @@
 //! A refusal is by name and whole (the application does not start half-drawn); nothing is silently dropped.
 //! When a construct is lowered, its probe fails and is replaced by a gate. The list is in the lane report.
 use bough::lower::App;
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::Config;
 
 fn cfg() -> Config {

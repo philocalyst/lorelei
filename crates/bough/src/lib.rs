@@ -24,6 +24,7 @@ pub mod color;
 pub mod kernel_backend;
 pub mod deco;
 pub mod describe;
+pub mod el;
 pub mod elem;
 pub mod entity;
 pub mod flat;
@@ -62,9 +63,29 @@ pub use bough_text::numeric::NumFmt;
 pub use bough_frame as frame;
 pub use bough_sys as sys;
 
-/// The application surface (`designs/reactivity/final`): views, state, elements in flow (laid out by cephal),
-/// routes, and `Application::run`. No coordinates: `use bough::raw::*;`.
+/// The application surface (`designs/reactivity/final`): a view is a plain struct whose `view` returns an
+/// [`El`](crate::el::El); elements in flow (laid out by cephal), ports that take constants, signal fields and
+/// mapped sources, children as tuples, `Option`s and iterators, routes as methods, and `Application::run`.
 pub mod prelude {
+    pub use crate::changed::Changed;
+    pub use crate::color::{rgb, Color};
+    pub use crate::el::plug::{IntoProp, Len};
+    pub use crate::el::{block, button, column, div, image, para, row, text, text_input, ChildSeq, El, Hover, Map, Route, Source, View, With};
+    pub use crate::elem::each;
+    pub use crate::entity::{Entities, Entity};
+    pub use crate::input::{Ev, Key, Mods};
+    pub use crate::layout::{Align, Justify, Styled};
+    pub use crate::list::{List, Slot};
+    pub use crate::reader::{Reader, Request};
+    pub use crate::signal::Signal;
+    pub use crate::transition::{Curve, Ease};
+    pub use crate::ui::{Application, Flex, Window};
+}
+
+/// The kernel's typed builders in flow (what [`El`](crate::el::El) is walked onto, and what the measured
+/// workload scenes are written in): every element a nested generic type over its owner, operands wired with
+/// `sig!`. Machinery, like [`raw`]; an application writes [`prelude`].
+pub mod builders {
     pub use crate::app::View;
     pub use crate::changed::Changed;
     pub use crate::color::{rgb, Color};

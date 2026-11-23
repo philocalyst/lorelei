@@ -17,7 +17,7 @@
 //!   cell's two wires run on a hover (the fan-out is all 200,000 wires, of which 20,000 change a pixel).
 use crate::guibench_spec::sheet as spec;
 use crate::{scaled, Rng, Scene};
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{App, Caps, Ev, NumFmt};
 
 pub const COLS: usize = 10;

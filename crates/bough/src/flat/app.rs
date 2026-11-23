@@ -299,7 +299,9 @@ impl<V: View> FlatApp<V> {
         text.begin_pass();
         let mut core = Core::new(self.scale, (w, h), &self.lists, &mut text, &mut images);
         core.displayed_lists = Some(displayed_lists);
+        let walk = crate::el::Walk::enter();
         View::view(&self.v).lower(&mut Lower::new(&mut core));
+        drop(walk);
         assert!(core.refused.is_empty(), "the lowering does not describe these elements yet: {:?}", core.refused);
         let scene = crate::lower::finish(&core, w, h, &mut self.lay);
         let Core { docs, handlers, owners, displayed_lists, rows, .. } = core;

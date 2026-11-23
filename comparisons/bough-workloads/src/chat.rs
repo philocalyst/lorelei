@@ -106,7 +106,7 @@
 //! * **max-width bubbles**: no `max_w`, so a history bubble is a fixed fraction of its column (`w_pct`), not
 //!   shrink-to-fit (an arrival row, whose width is not definite yet when it mounts, comes out content-sized).
 use crate::{scaled, Rng, Scene};
-use bough::prelude::*;
+use bough::builders::*;
 use bough::raw::{no_hit, App, Button, Caps, Ev, NumFmt, Wired};
 
 pub const PARTS: usize = 12;

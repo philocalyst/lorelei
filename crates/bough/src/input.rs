@@ -59,6 +59,15 @@ pub enum Key {
     PageDown,
 }
 
+#[allow(non_upper_case_globals)]
+impl Key {
+    /// Printable keys by name (`.on_key(Key::Space, Player::toggle)`): the `Key::Char` of their character.
+    pub const Space: Key = Key::Char(' ');
+    pub const Backslash: Key = Key::Char('\\');
+    pub const Minus: Key = Key::Char('-');
+    pub const Equal: Key = Key::Char('=');
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Mods {
     pub shift: bool,
@@ -101,6 +110,15 @@ pub(crate) struct Route {
 }
 
 impl Route {
+    /// A route from its parts (`el`: the trampoline is monomorphised where the route is written).
+    ///
+    /// # Safety
+    /// `f` reads the owner it is later called with as the type it was monomorphised for, and `r` as the
+    /// bytes it was written with: the caller has checked that type is the dispatching owner's.
+    #[inline]
+    pub(crate) unsafe fn raw(f: RouteFn, r: [u8; 16]) -> Route {
+        Route { f, r }
+    }
     /// # Safety
     /// `owner` points at the live owner the route was lowered for.
     #[inline]
@@ -120,7 +138,7 @@ fn recipe<F: Copy>(f: F) -> [u8; 16] {
 
 /// # Safety
 /// `o` is the owner `V`; `r` holds an `F` written by `recipe`.
-unsafe fn call_plain<V, F: Fn(&mut V) + Copy>(o: *mut u8, r: &[u8; 16], _: &Ev) {
+pub(crate) unsafe fn call_plain<V, F: Fn(&mut V) + Copy>(o: *mut u8, r: &[u8; 16], _: &Ev) {
     // SAFETY: see the function contract.
     let f: F = unsafe { std::ptr::read_unaligned(r.as_ptr() as *const F) };
     f(unsafe { &mut *(o as *mut V) })
@@ -128,7 +146,7 @@ unsafe fn call_plain<V, F: Fn(&mut V) + Copy>(o: *mut u8, r: &[u8; 16], _: &Ev) 
 
 /// # Safety
 /// As `call_plain`.
-unsafe fn call_ev<V, F: Fn(&mut V, &Ev) + Copy>(o: *mut u8, r: &[u8; 16], e: &Ev) {
+pub(crate) unsafe fn call_ev<V, F: Fn(&mut V, &Ev) + Copy>(o: *mut u8, r: &[u8; 16], e: &Ev) {
     // SAFETY: see the function contract.
     let f: F = unsafe { std::ptr::read_unaligned(r.as_ptr() as *const F) };
     f(unsafe { &mut *(o as *mut V) }, e)
@@ -163,6 +181,8 @@ pub(crate) struct Act {
     pub hover: Option<Route>,
     pub key: Option<Route>,
     pub drag: Option<Route>,
+    /// `Input::keymaps` index (routes by key, `.on_key(key, route)`), or 0.
+    pub keys: u32,
     /// `Input::scrollers` index, or NONE.
     pub scroll: u32,
     /// `Input::fields` index, or NONE.
@@ -173,7 +193,7 @@ pub(crate) struct Act {
 
 impl Act {
     fn new(handle: Handle) -> Act {
-        Act { handle, node: NONE, inst: NONE, hover_bg: None, base: 0, bordered: false, hovered: false, click: None, press: None, hover: None, key: None, drag: None, scroll: NONE, field: NONE, tip: NONE }
+        Act { handle, node: NONE, inst: NONE, hover_bg: None, base: 0, bordered: false, hovered: false, click: None, press: None, hover: None, key: None, drag: None, keys: 0, scroll: NONE, field: NONE, tip: NONE }
     }
 }
 
@@ -252,6 +272,9 @@ pub struct InputStats {
 pub struct Input {
     pub(crate) acts: Vec<Act>,
     by_handle: Vec<u32>,
+    /// Routes by key (`Act::keys`; entry 0 is never used) and the entries free for reuse.
+    pub(crate) keymaps: Vec<Vec<(Key, Route)>>,
+    keymap_free: Vec<u32>,
     pub(crate) scrollers: Vec<Scroller>,
     pub(crate) fields: Vec<Field>,
     pub(crate) tips: Vec<Tip>,
@@ -300,6 +323,8 @@ impl Default for Input {
         Input {
             acts: vec![Act::new(Handle::default())],
             by_handle: Vec::new(),
+            keymaps: vec![Vec::new()],
+            keymap_free: Vec::new(),
             scrollers: Vec::new(),
             fields: Vec::new(),
             tips: Vec::new(),
@@ -359,6 +384,24 @@ impl Input {
         if self.by_handle.len() <= h.idx as usize {
             self.by_handle.resize(h.idx as usize + 1, 0);
         }
+        let stale = self.by_handle[h.idx as usize];
+        if stale != 0 {
+            // the act of an element that is gone (same index, an older generation): its entry is this
+            // element's now. Nothing may still name the old element through it.
+            let keys = self.acts[stale as usize].keys;
+            if keys != 0 {
+                self.keymaps[keys as usize].clear();
+                self.keymap_free.push(keys);
+            }
+            self.acts[stale as usize] = Act::new(h);
+            if self.pressed == stale {
+                (self.pressed, self.dragging) = (0, false);
+            }
+            if self.focus_act == stale {
+                self.focus_act = 0;
+            }
+            return stale;
+        }
         self.acts.push(Act::new(h));
         let a = (self.acts.len() - 1) as u32;
         self.by_handle[h.idx as usize] = a;
@@ -369,6 +412,20 @@ impl Input {
     }
     pub(crate) fn act_of_handle(&self, h: Handle) -> u32 {
         self.act_of(h)
+    }
+    /// The (emptied) keymap of act `a`, created if absent: the caller pushes this description's routes.
+    pub(crate) fn keymap(&mut self, a: u32) -> &mut Vec<(Key, Route)> {
+        let mut k = self.acts[a as usize].keys;
+        if k == 0 {
+            k = self.keymap_free.pop().unwrap_or_else(|| {
+                self.keymaps.push(Vec::new());
+                (self.keymaps.len() - 1) as u32
+            });
+            self.acts[a as usize].keys = k;
+        }
+        let m = &mut self.keymaps[k as usize];
+        m.clear();
+        m
     }
     pub(crate) fn tips_of(&self, v: usize) -> &[u32] {
         &self.views[v].tips
@@ -394,7 +451,7 @@ impl Input {
 
 /// Make the first record `m` pushed since `before` interactive: give it a handle (if it has none), flag
 /// it, and return its act. A quad's node and instance are found so interaction styles can write it.
-fn act_for<V>(m: &mut Mounter<'_, V>, before: usize, flags: u8) -> u32 {
+pub(crate) fn act_for<V>(m: &mut Mounter<'_, V>, before: usize, flags: u8) -> u32 {
     assert!(m.recs.len() > before, "an interactive element mounts a record");
     let rec = m.recs[before];
     // a node's index is its record's handle index
@@ -451,7 +508,7 @@ pub fn act_at<V>(m: &mut Mounter<'_, V>, rec: usize) -> u32 {
 /// type, `Mounter::cls != 0`) the route's `V` is not the root's, and calling it would be undefined
 /// behaviour. Refused at mount (a panic, not UB) until routes carry their owner.
 #[track_caller]
-fn root_owner_only<V>(m: &Mounter<'_, V>, what: &str) {
+pub(crate) fn root_owner_only<V>(m: &Mounter<'_, V>, what: &str) {
     assert!(m.cls == 0, "{what} inside a list row or an entity view: routes run on the app's root owner; put it on an element of the root view");
 }
 
@@ -1511,7 +1568,11 @@ impl<V: View> App<V> {
                 for q in chain {
                     let Some(h) = self.rt.bough.handle_at(q) else { continue };
                     let a = self.rt.input.act_of(h);
-                    if let Some(r) = self.rt.input.acts[a as usize].key {
+                    // a route for this key on the element, else the element's any-key route; an element with
+                    // neither lets the key pass to the one above it
+                    let act = &self.rt.input.acts[a as usize];
+                    let by_key = self.rt.input.keymaps[act.keys as usize].iter().find(|(k, _)| *k == key).map(|(_, r)| *r);
+                    if let Some(r) = by_key.or(act.key) {
                         let e = Ev { key: Some(key), mods, ..Ev::at(0.0, 0.0) };
                         let o = self.owner_mut();
                         self.rt.input.stats.routes += 1;

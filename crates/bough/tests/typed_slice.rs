@@ -17,13 +17,13 @@ fn cfg(w: f32, h: f32, scale: f32, ring: usize) -> Config {
     c.ring = ring;
     c
 }
-fn admitted<V: bough::prelude::View>(v: V, c: Config) -> App<V> {
+fn admitted<V: bough::builders::View>(v: V, c: Config) -> App<V> {
     match App::new(v, c) {
         Ok(a) => a,
         Err((_, why)) => panic!("not admitted to the typed path: {why:?}"),
     }
 }
-fn click<V: bough::prelude::View>(app: &mut App<V>, x: f32, y: f32) {
+fn click<V: bough::builders::View>(app: &mut App<V>, x: f32, y: f32) {
     app.pointer_down(x, y, Button::Primary);
     app.pointer_up(x, y, Button::Primary);
 }

@@ -2,7 +2,7 @@ use crate::{
     model::{plain_row, striped_row},
     spec,
 };
-use bough::prelude::*;
+use bough::builders::*;
 
 pub struct Search {
     pub rows: Vec<spec::Row>,
