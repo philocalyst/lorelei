@@ -3,6 +3,7 @@
 import argparse
 import json
 import math
+import re
 from pathlib import Path
 import sys
 
@@ -11,9 +12,23 @@ DEFAULT_LIMITS = {"instructions": 1.02, "wall": 1.10, "rss": 1.05}
 PRIMARY = ("instr_p50", "dispatch_instr", "step_instr", "instructions", "dispatch_allocs")
 
 
+LEGACY_NAME = re.compile(r"^(sheet|events|text|anim|ops|damage)_x(?=/|$)")
+
+
 def build_args(args):
-    # The typed core's package was `bough-x` in receipts taken before its rename; the build is the same.
-    return ["bough-dataflow" if arg == "bough-x" else arg for arg in args]
+    # The typed core's package was `bough-x` in receipts taken before its rename, and its fixtures `sheet_x`,
+    # `events_x`, ...; the build is the same.
+    return ["bough-dataflow" if arg == "bough-x" else LEGACY_NAME.sub(r"\1", arg) for arg in args]
+
+
+def current_names(doc):
+    """A receipt with the fixtures' current names (`sheet_x/rows1000` was measured as `sheet/rows1000` is)."""
+    doc["cells"] = {LEGACY_NAME.sub(r"\1", name): {**cell, **({"binary": LEGACY_NAME.sub(r"\1", cell["binary"])}
+                                                            if "binary" in cell else {})}
+                    for name, cell in doc["cells"].items()}
+    if "binaries" in doc:
+        doc["binaries"] = {LEGACY_NAME.sub(r"\1", name): spec for name, spec in doc["binaries"].items()}
+    return doc
 
 
 def numeric(value):
@@ -87,10 +102,15 @@ def read(path):
     return json.loads(Path(path).read_text())
 
 
+def read_receipt(path):
+    return current_names(read(path))
+
+
 def read_limits(path):
     data = read(path) if path else {}
     if not isinstance(data, dict):
         raise ValueError("thresholds must be an object")
+    data = {LEGACY_NAME.sub(r"\1", name): limits for name, limits in data.items()}
     for name, limits in data.items():
         if (not isinstance(limits, dict) or (limits.keys() - DEFAULT_LIMITS.keys()) or
                 any(not numeric(value) or value < 1 for value in limits.values())):
@@ -110,7 +130,7 @@ def main():
     args = parser.parse_args()
     if args.require_same_cells and args.allow_missing:
         parser.error("strict coverage cannot be combined with --allow-missing")
-    base, head = read(args.base), read(args.head)
+    base, head = read_receipt(args.base), read_receipt(args.head)
     validate(base)
     validate(head)
     if base["format"] != head["format"]:

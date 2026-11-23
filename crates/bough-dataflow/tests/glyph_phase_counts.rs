@@ -1,4 +1,4 @@
-//! Phase counts for the glyph memo on the rows scene (the two cells of `text_x`: "scroll a page" and
+//! Phase counts for the glyph memo on the rows scene (the two cells of `text`: "scroll a page" and
 //! "collect the glyph memo"): memo lookups, shapings and heap operations per step. Heap operations are counted
 //! by a global allocator, so a collection that releases memory and then grows it again shows as allocations.
 //! Run with `-- --nocapture` to read the counts; the asserts hold the ordinary behaviour (a scroll over text

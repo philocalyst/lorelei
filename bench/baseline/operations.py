@@ -57,7 +57,8 @@ def table(kind, stdout, env):
                 raise ValueError("unexpected logical row count")
         else:
             scene = row.pop("scene", None)
-            if scene is not None and kind != "text" and scene != f"{kind}_x":
+            # (`{kind}_x`: the fixture's name before the rename, in output from an older checkout)
+            if scene is not None and kind != "text" and scene not in (kind, f"{kind}_x"):
                 raise ValueError("unexpected fixture name")
             if unsigned(row["steps"]) == 0:
                 raise ValueError("zero operation samples")

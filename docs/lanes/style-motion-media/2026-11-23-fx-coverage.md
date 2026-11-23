@@ -103,9 +103,9 @@ can be reapplied from this table.
 
 ## Native gate cells
 
-The new cells are `flatbench/cards300` and `damage_x/{window,stack,4k}` in `bench/baseline/run.py`, parsed by
-`operations.py` (`flatbench`, and the `damage` table in `sheet_x`'s format). `damage_x` is
-`crates/bough-damage/examples/damage_x.rs`. It counts calling-thread instructions per frame of the engine
+The new cells are `flatbench/cards300` and `damage/{window,stack,4k}` in `bench/baseline/run.py`, parsed by
+`operations.py` (`flatbench`, and the `damage` table in `sheet`'s format). `damage` is
+`crates/bough-damage/examples/damage.rs`. It counts calling-thread instructions per frame of the engine
 alone, bracket cost subtracted, as the median of 64 frames after 16 warm-up frames. The scenes are
 `window` (1280 x 800, 26 covers, a glass pane and a glass header), `stack` (66 covers, three stacked panes
 at levels 5, 4 and 3, plus the header) and `4k` (3840 x 2160, 1026 covers, four layers).
@@ -124,7 +124,7 @@ SHA-256 matching the reference) with
 
 ```sh
 BOUGH_FONT=$PWD/fonts/dejavu/DejaVuSans.ttf bench/baseline/run.sh --name fx-cover-fee87b8e09 --reps 3 \
-    --expected-inputs-from bench/baselines/native/reference.json --cells <the eight fxbench cells>,flatbench/cards300,damage_x/window,damage_x/stack,damage_x/4k
+    --expected-inputs-from bench/baselines/native/reference.json --cells <the eight fxbench cells>,flatbench/cards300,damage/window,damage/stack,damage/4k
 ```
 
 This added four cells and 75 fxbench operations (`mixed/*` and the media `a/v playback` rows) to
@@ -134,7 +134,7 @@ load) is recorded under the reference's new `supplements` field.
 
 Median calling-thread instructions per frame:
 
-| Operation | `damage_x/window` | `damage_x/stack` | `damage_x/4k` |
+| Operation | `damage/window` | `damage/stack` | `damage/4k` |
 |---|---:|---:|---:|
 | idle | 433 | 755 | 795 |
 | hover (two rows) | 3,195 | 3,587 | 8,350 |
@@ -191,10 +191,10 @@ records 0 tiles/frame); it now repaints 28.
 
 ### Focused gate at `16a4c1cb39`
 
-`BOUGH_FONT=$PWD/fonts/dejavu/DejaVuSans.ttf bench/baseline/gate.sh --cells <the eight fxbench cells>,flatbench/cards300,damage_x/window,damage_x/stack,damage_x/4k`
+`BOUGH_FONT=$PWD/fonts/dejavu/DejaVuSans.ttf bench/baseline/gate.sh --cells <the eight fxbench cells>,flatbench/cards300,damage/window,damage/stack,damage/4k`
 built all three binaries again, replayed three repetitions with no errors and compared 316 primary counters.
 The result was 170 improved, 128 within the limit and the same 18 kept fxbench counters over it as above (the ratios agree with the
 receipt within 0.07), so the gate exits 1. All 52 counters of the four new cells pass on their own
-(`compare.sh … --require-same-cells --cells flatbench/cards300,damage_x/window,damage_x/stack,damage_x/4k`: PASS),
+(`compare.sh … --require-same-cells --cells flatbench/cards300,damage/window,damage/stack,damage/4k`: PASS),
 and so do the 75 new fxbench operations. The largest move on any new counter between the receipt and the gate run is +1.9%
 (`fxbench/media/4 mixed/glass over playing video`). The `mixed` rows sit close to the 2% limit.

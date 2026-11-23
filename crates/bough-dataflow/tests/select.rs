@@ -401,7 +401,7 @@ fn the_anim_fixture_with_declared_reach_paints_the_same() {
         assert!(retained.px == fb.px, "step {step}: retained != full redraw");
     }
     assert!(wb.fast_stats.near_hits > 100 && wa.fast_stats.near_hits == 0);
-    // the sequence `anim_x` counts, at its exposure
+    // the sequence `anim` counts, at its exposure
     let h = 10288;
     let (mut a, mut b) = (Anim::new(100_000, h), Anim::new(100_000, h));
     b.near = true;

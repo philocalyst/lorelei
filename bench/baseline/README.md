@@ -16,18 +16,18 @@ The runner writes one structured receipt, a readable table, and raw stdout, stde
 
 | Fixture | Primary counter |
 |---|---|
-| `sheet_x/rows1000`, `sheet_x/rows10000` | Calling-thread instructions per phase |
-| `events_x/rows10000` | Calling-thread instructions for dispatch alone and dispatch plus settle, with dispatch allocation counts |
-| `text_x` | Calling-thread instructions per scenario and phase |
-| `anim_x/208` | Calling-thread instructions per phase |
-| `anim_x/208/{near,swept,near-swept}`, `ops_x/{select,lane,ops,search,corpus}` | Calling-thread instructions from the incremental-operators fixtures |
+| `sheet/rows1000`, `sheet/rows10000` | Calling-thread instructions per phase |
+| `events/rows10000` | Calling-thread instructions for dispatch alone and dispatch plus settle, with dispatch allocation counts |
+| `text` | Calling-thread instructions per scenario and phase |
+| `anim/208` | Calling-thread instructions per phase |
+| `anim/208/{near,swept,near-swept}`, `ops/{select,lane,ops,search,corpus}` | Calling-thread instructions from the incremental-operators fixtures |
 | `pbench/{canvas1,canvas4,anim600}` | Calling-thread instructions per serial CPU phase, rounded to 100 instructions. Requires all executor rows and a passing pixel cross-check. |
 | `guibench/…` | Façade calling-thread instructions for mount and named batches |
 | `effects/…` | Façade mean process instructions per trace step, or exec to first frame for cold start |
 | `effects-core/…` | Typed core median process instructions per trace step, or setup to first frame for startup |
 | `fxbench/…` | Calling-thread instructions per frame, rounded to 100 instructions. Keeps CPU cached, CPU uncached, Metal and chooser (`mixed`) rows separate, gates all four and requires the retained-pixel verdict. A `mixed` row also records the chooser's idle, CPU and GPU frame counts. The composite diagnostic columns are checked for shape and left in the raw log. |
 | `flatbench/cards300` | Calling-thread instructions per frame of the flat paint bank, rounded to 100 instructions. Gates the single-core CPU and Metal rows. The eight-worker rows must be present and pixel-exact, but their frame-thread share depends on scheduling, so their counters stay in the raw log. |
-| `damage_x/{window,stack,4k}` | Calling-thread instructions per frame of the damage engine alone (`crates/bough-damage/examples/damage_x.rs`): damage, moves, scrolls, masks, cover recommits and stacked blur layers |
+| `damage/{window,stack,4k}` | Calling-thread instructions per frame of the damage engine alone (`crates/bough-damage/examples/damage.rs`): damage, moves, scrolls, masks, cover recommits and stacked blur layers |
 
 The `pbench` gate uses `A1`, `A`, `K`, and `K1`. Pooled and Metal executors have diagnostic counters in the raw logs. In repeat runs of one `fbf6a2637b` binary, the `canvas1` pan phase varied from 20,922,200 to 31,426,800 frame-thread instructions on `AP`. The frame thread's share of the parallel work depends on scheduling. The `AG` drag phase varied from 71,600 to 85,500 instructions. The gate still requires both executors to emit complete rows and pass the fixture's correctness check.
 
@@ -49,9 +49,9 @@ The comparison reports an over-limit instruction count as `VARIED (same binary)`
 Use `--thresholds limits.json` for preregistered per-fixture and per-operation overrides. For example, an override on `hover` leaves every other sheet operation under the fixture default.
 
 ```json
-{"sheet_x/rows10000/hover": {"instructions": 1.03}}
+{"sheet/rows10000/hover": {"instructions": 1.03}}
 ```
 
-`../baselines/native/r3-historical-limits.json` applies when comparing typed-core R3 against `71ee3be`. `anim_x/208/pointer_words` permits 1.025× for the remaining 96 instructions in the checked page-delta path. The cap still rejects the pre-recovery 4,345. Dropping the dense partial-page path recovered the pointer count and raised sheet hover from about 5.3k to 12.9k in the control.
+`../baselines/native/r3-historical-limits.json` applies when comparing typed-core R3 against `71ee3be`. `anim/208/pointer_words` permits 1.025× for the remaining 96 instructions in the checked page-delta path. The cap still rejects the pre-recovery 4,345. Dropping the dense partial-page path recovered the pointer count and raised sheet hover from about 5.3k to 12.9k in the control.
 
 The historical cold mounts permit 1.10× at 1,000 rows and 1.05× at 10,000 rows. The recovered 1,000-row instruction median ranged from 366,552 to 384,092 across two three-process replays, compared with a 356,808 historical median. At 10,000 rows the recovered medians were 365,094 and 366,044, compared with 359,070 historically. A cold probe at 1,000, 3,000 and 10,000 rows found a similar fixed increase of about 15k in the nine-process minima. Reusing capacity reduced the measured delta to roughly 0.4–1.8k at 1,000 and 3,000 rows. macOS includes kernel work in this count. The evidence identifies a cold-start boundary and leaves the exact kernel cause open. The default integration caps apply against the current reference.

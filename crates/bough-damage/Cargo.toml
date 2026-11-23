@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 description = "The damage engine: tile masks, effect hulls, opaque-cover culling, backdrop-blur footprints, scroll blits and the executor choice. No dependencies, no unsafe, no generics"
 
-# The benchmark's calling-thread counters (`examples/damage_x.rs`); the library itself depends on nothing.
+# The benchmark's calling-thread counters (`examples/damage.rs`); the library itself depends on nothing.
 [dev-dependencies]
 bough-mem = { path = "../bough-mem" }
 

@@ -13,7 +13,7 @@ from run import binary_spec, cells, core_package, summary, summarize
 
 class OperationsTests(unittest.TestCase):
     def test_sheet_reads_named_instruction_column(self):
-        rows = [f"sheet_x\t{name}\t32\t13504\t13521\t1000\t329" for name in REQUIRED["sheet"]]
+        rows = [f"sheet\t{name}\t32\t13504\t13521\t1000\t329" for name in REQUIRED["sheet"]]
         stdout = "scene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\n" + "\n".join(rows)
         self.assertEqual(table("sheet", stdout, {})["hover"]["instr_p50"], 13504)
         self.assertEqual(table("sheet", stdout, {})["hover"]["tiles_p50"], 329)
@@ -31,7 +31,7 @@ class OperationsTests(unittest.TestCase):
 
     def test_search_keeps_both_empty_query_backspaces(self):
         header = "scene\tpart\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\n"
-        row = "ops_x\tsearch\tscan backspace (empty query)\t1\t25\t25\t0\n"
+        row = "ops\tsearch\tscan backspace (empty query)\t1\t25\t25\t0\n"
         operations = table("ops", header + row * 2, {"PART": "search"})
         self.assertEqual(len(operations), 2)
         with self.assertRaises(ValueError):
@@ -114,19 +114,19 @@ class OperationsTests(unittest.TestCase):
 
     def test_damage_engine_table_requires_every_phase(self):
         header = "scene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50\n"
-        rows = [f"damage_x\t{phase}\t64\t3213\t3395\t473\t39" for phase in sorted(REQUIRED["damage"])]
+        rows = [f"damage\t{phase}\t64\t3213\t3395\t473\t39" for phase in sorted(REQUIRED["damage"])]
         self.assertEqual(table("damage", header + "\n".join(rows), {})["scroll"]["instr_p50"], 3213)
         with self.assertRaises(ValueError):
             table("damage", header + "\n".join(rows[1:]), {})
         with self.assertRaises(ValueError):
-            table("damage", header + "\n".join(rows).replace("damage_x", "sheet_x"), {})
+            table("damage", header + "\n".join(rows).replace("damage", "sheet"), {})
 
     def test_the_matrix_holds_the_flat_and_damage_cells(self):
         matrix, unavailable = cells(Path(__file__).resolve().parents[2])
         names = {cell.name: cell for cell in matrix}
-        self.assertTrue({"flatbench/cards300", "damage_x/window", "damage_x/stack", "damage_x/4k"} <= names.keys())
-        self.assertEqual(names["damage_x/4k"].env, {"SCENE": "4k", "REPS": "64"})
-        self.assertEqual(binary_spec("damage_x", Path("."))[1][-3:], ["bough-damage", "--example", "damage_x"])
+        self.assertTrue({"flatbench/cards300", "damage/window", "damage/stack", "damage/4k"} <= names.keys())
+        self.assertEqual(names["damage/4k"].env, {"SCENE": "4k", "REPS": "64"})
+        self.assertEqual(binary_spec("damage", Path("."))[1][-3:], ["bough-damage", "--example", "damage"])
         self.assertEqual(binary_spec("flatbench", Path("."))[1][-3:], ["bough-paint", "--example", "flatbench"])
         self.assertNotIn("flatbench", unavailable)
 
@@ -139,14 +139,14 @@ class OperationsTests(unittest.TestCase):
 
 class CompareTests(unittest.TestCase):
     def setUp(self):
-        self.cid = "sheet_x/rows10000"
+        self.cid = "sheet/rows10000"
         self.doc = {
             "format": 2, "name": "baseline", "commit": "a" * 40, "errors": [],
             "load": {"ok": False}, "rustc": "nightly", "host": {"cpu": "Apple Silicon"},
             "contract": "test", "runtime_inputs": {}, "reps": 3,
-            "binaries": {"sheet_x": {"cargo_args": ["--profile", "dist"]}},
+            "binaries": {"sheet": {"cargo_args": ["--profile", "dist"]}},
             "cells": {self.cid: {
-                "valid": True, "load": [25.0] * 3, "binary": "sheet_x", "argv": [], "env": {"ROWS": "10000"},
+                "valid": True, "load": [25.0] * 3, "binary": "sheet", "argv": [], "env": {"ROWS": "10000"},
                 "parser": "sheet", "counter_scope": "thread", "check": [], "operations": {"hover": {"instr_p50": summary([13504] * 3)}},
                 "process": {k: summary([99999] * 3) for k in ("instructions", "wall_ms", "rss_bytes")},
             }},
@@ -172,13 +172,13 @@ class CompareTests(unittest.TestCase):
 
     def test_instruction_variance_requires_identical_binary(self):
         base = copy.deepcopy(self.doc)
-        base["binaries"]["sheet_x"]["sha256"] = "a" * 64
+        base["binaries"]["sheet"]["sha256"] = "a" * 64
         head = copy.deepcopy(base)
         head["cells"][self.cid]["operations"]["hover"]["instr_p50"] = summary([15000] * 3)
         repeat = self.compare(base, head, "--require-same-cells")
         self.assertEqual(repeat.returncode, 0, repeat.stderr)
         self.assertIn("VARIED (same binary)", repeat.stdout)
-        head["binaries"]["sheet_x"]["sha256"] = "b" * 64
+        head["binaries"]["sheet"]["sha256"] = "b" * 64
         changed = self.compare(base, head, "--require-same-cells")
         self.assertEqual(changed.returncode, 1, changed.stderr)
         self.assertIn("REGRESSED", changed.stdout)
@@ -209,15 +209,15 @@ class CompareTests(unittest.TestCase):
 
     def test_renamed_core_package_is_the_same_build(self):
         base, head = copy.deepcopy(self.doc), copy.deepcopy(self.doc)
-        base["binaries"]["sheet_x"]["cargo_args"] = ["--profile", "dist", "-p", "bough-x", "--example", "sheet_x"]
-        head["binaries"]["sheet_x"]["cargo_args"] = ["--profile", "dist", "-p", "bough-dataflow", "--example", "sheet_x"]
+        base["binaries"]["sheet"]["cargo_args"] = ["--profile", "dist", "-p", "bough-x", "--example", "sheet"]
+        head["binaries"]["sheet"]["cargo_args"] = ["--profile", "dist", "-p", "bough-dataflow", "--example", "sheet"]
         same = self.compare(base, head)
         self.assertEqual(same.returncode, 0, same.stderr)
         # the negative controls: every other build option still has to match
-        head["binaries"]["sheet_x"]["cargo_args"][1] = "release"
+        head["binaries"]["sheet"]["cargo_args"][1] = "release"
         self.assertEqual(self.compare(base, head).returncode, 1)
-        head["binaries"]["sheet_x"]["cargo_args"][1] = "dist"
-        head["binaries"]["sheet_x"]["cargo_args"][3] = "bough"
+        head["binaries"]["sheet"]["cargo_args"][1] = "dist"
+        head["binaries"]["sheet"]["cargo_args"][3] = "bough"
         self.assertEqual(self.compare(base, head).returncode, 1)
 
     def test_core_package_follows_the_checkout(self):
@@ -226,6 +226,32 @@ class CompareTests(unittest.TestCase):
             self.assertEqual(core_package(tree), "bough-x")
             (tree / "crates/bough-dataflow").mkdir(parents=True)
             self.assertEqual(core_package(tree), "bough-dataflow")
+
+
+    def test_fixtures_measured_under_their_old_names_compare(self):
+        # a receipt from before the rename names the cell `sheet_x/...`, its binary `sheet_x`, `--example sheet_x`
+        base = copy.deepcopy(self.doc)
+        base["cells"] = {"sheet_x/rows10000": {**base["cells"][self.cid], "binary": "sheet_x"}}
+        base["binaries"] = {"sheet_x": {"cargo_args": ["--profile", "dist", "-p", "bough-x", "--example", "sheet_x"]}}
+        head = copy.deepcopy(self.doc)
+        head["binaries"]["sheet"]["cargo_args"] = ["--profile", "dist", "-p", "bough-dataflow", "--example", "sheet"]
+        same = self.compare(base, head, "--require-same-cells")
+        self.assertEqual(same.returncode, 0, same.stdout + same.stderr)
+        # a different fixture is not an alias
+        head["binaries"]["sheet"]["cargo_args"][-1] = "events"
+        self.assertEqual(self.compare(base, head).returncode, 1)
+
+    def test_example_name_follows_the_checkout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            tree = Path(folder)
+            examples = tree / "crates/bough-x/examples"
+            examples.mkdir(parents=True)
+            (examples / "sheet_x.rs").write_text("")
+            self.assertEqual(binary_spec("sheet", tree)[1][-1], "sheet_x")
+            (tree / "crates/bough-dataflow/examples").mkdir(parents=True)
+            (tree / "crates/bough-dataflow/examples/sheet.rs").write_text("")
+            self.assertEqual(binary_spec("sheet", tree)[1][-3:], ["bough-dataflow", "--example", "sheet"])
+            self.assertEqual(binary_spec("pbench", tree)[1][-1], "pbench")
 
 
 if __name__ == "__main__":

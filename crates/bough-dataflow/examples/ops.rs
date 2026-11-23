@@ -1,7 +1,7 @@
 //! The incremental-operators card, counted: instructions and cycles of the calling thread per step, bracket
-//! subtracted, median of `REPS` steps (as `sheet_x`, `anim_x` and `text_x` count theirs).
+//! subtracted, median of `REPS` steps (as `sheet`, `anim` and `text` count theirs).
 //!
-//!   REPS=64 cargo run --profile dist -p bough-dataflow --example ops_x            (every part)
+//!   REPS=64 cargo run --profile dist -p bough-dataflow --example ops            (every part)
 //!   PART=select|lane|ops|search|corpus ...                                 (one part)
 //!
 //! Parts: `select` (a selection change and a pointer event on the grid fixture, declared against opaque forms,
@@ -58,7 +58,7 @@ impl Meter {
         v.sort();
         let (m, p95) = (v[v.len() / 2], v[(v.len() * 95 / 100).min(v.len() - 1)]);
         println!(
-            "ops_x\t{part}\t{name}\t{}\t{}\t{}\t{}",
+            "ops\t{part}\t{name}\t{}\t{}\t{}\t{}",
             self.reps, m.0, p95.0, m.1
         );
         m.0
@@ -227,11 +227,11 @@ fn ops(m: &Meter) {
             Join::<u16>::new(),
         );
         let full = m.one(|| f.rebuild(&t, |r| r.v % 3 == 0)).0;
-        println!("ops_x\tops\tFilter n={n} recompute\t1\t{full}\t{full}\t0");
+        println!("ops\tops\tFilter n={n} recompute\t1\t{full}\t{full}\t0");
         let full = m.one(|| so.rebuild(&t, |id| t.row(id).v)).0;
-        println!("ops_x\tops\tSort n={n} recompute\t1\t{full}\t{full}\t0");
+        println!("ops\tops\tSort n={n} recompute\t1\t{full}\t{full}\t0");
         let full = m.one(|| g.rebuild(&t, |id| (t.row(id).g, t.row(id).v))).0;
-        println!("ops_x\tops\tGroup n={n} recompute\t1\t{full}\t{full}\t0");
+        println!("ops\tops\tGroup n={n} recompute\t1\t{full}\t{full}\t0");
         // the join is of a tenth of the table, or its output is the table times a constant
         let small: Table<Item> = Table::from_vec(
             (0..n / 10)
@@ -246,7 +246,7 @@ fn ops(m: &Meter) {
             .one(|| j.rebuild(&small, &u, |id| small.row(id).g, |id| u.row(id).g))
             .0;
         println!(
-            "ops_x\tops\tJoin n={} x 200 recompute ({} pairs)\t1\t{full}\t{full}\t0",
+            "ops\tops\tJoin n={} x 200 recompute ({} pairs)\t1\t{full}\t{full}\t0",
             n / 10,
             j.len()
         );
@@ -319,7 +319,7 @@ fn search_part(m: &Meter, n: usize) {
                         world.settle(&v);
                     });
                     world.tiles.clear();
-                    println!("ops_x\tsearch\t{tag} n={n} type {:?} (needle {:?}, {} hits)\t1\t{ins}\t{ins}\t0", c, &q[..=i], v.hits.len());
+                    println!("ops\tsearch\t{tag} n={n} type {:?} (needle {:?}, {} hits)\t1\t{ins}\t{ins}\t0", c, &q[..=i], v.hits.len());
                 }
                 for i in (0..q.len()).rev() {
                     let (ins, _) = m.one(|| {
@@ -327,10 +327,10 @@ fn search_part(m: &Meter, n: usize) {
                         world.settle(&v);
                     });
                     world.tiles.clear();
-                    println!("ops_x\tsearch\t{tag} n={n} backspace (needle {:?}, {} hits)\t1\t{ins}\t{ins}\t0", &q[..i], v.hits.len());
+                    println!("ops\tsearch\t{tag} n={n} backspace (needle {:?}, {} hits)\t1\t{ins}\t{ins}\t0", &q[..i], v.hits.len());
                 }
             }
-            // text_x's two phases, as it runs them
+            // text's two phases, as it runs them
             for t in ["quick ", "river"] {
                 world.text(&mut v, t);
                 world.settle(&v);
@@ -420,20 +420,20 @@ fn corpus(m: &Meter) {
             let mut q = Substring::new();
             let build = m.one(|| q.sync(&t, text)).0;
             let tag = if unique { "unique" } else { "repetitive" };
-            println!("ops_x\tcorpus\t{tag} n={n} build the index\t1\t{build}\t{build}\t0");
+            println!("ops\tcorpus\t{tag} n={n} build the index\t1\t{build}\t{build}\t0");
             let scan = m
                 .one(|| {
                     black_box(t.iter().filter(|(_, r)| r.contains(&needle)).count());
                 })
                 .0;
             println!(
-                "ops_x\tcorpus\t{tag} n={n} a scan with String::contains ({:?})\t1\t{scan}\t{scan}\t0",
+                "ops\tcorpus\t{tag} n={n} a scan with String::contains ({:?})\t1\t{scan}\t{scan}\t0",
                 needle
             );
             for len in 1..=needle.len() {
                 let (ins, _) = m.one(|| q.set_needle(&t, text, &needle[..len]));
                 println!(
-                    "ops_x\tcorpus\t{tag} n={n} needle {:?}: {:?}, {} verified, {} hits\t1\t{ins}\t{ins}\t0",
+                    "ops\tcorpus\t{tag} n={n} needle {:?}: {:?}, {} verified, {} hits\t1\t{ins}\t{ins}\t0",
                     &needle[..len],
                     q.route,
                     q.verified,
@@ -443,7 +443,7 @@ fn corpus(m: &Meter) {
             for len in (0..needle.len()).rev() {
                 let (ins, _) = m.one(|| q.set_needle(&t, text, &needle[..len]));
                 println!(
-                    "ops_x\tcorpus\t{tag} n={n} back to {:?}: {:?}, {} verified, {} hits\t1\t{ins}\t{ins}\t0",
+                    "ops\tcorpus\t{tag} n={n} back to {:?}: {:?}, {} verified, {} hits\t1\t{ins}\t{ins}\t0",
                     &needle[..len],
                     q.route,
                     q.verified,
@@ -455,7 +455,7 @@ fn corpus(m: &Meter) {
             let other: String = t.row(4242 % n as u32).chars().skip(1).take(5).collect();
             let (ins, _) = m.one(|| q.set_needle(&t, text, &other));
             println!(
-                "ops_x\tcorpus\t{tag} n={n} replaced by {:?}: {:?}, {} verified, {} hits\t1\t{ins}\t{ins}\t0",
+                "ops\tcorpus\t{tag} n={n} replaced by {:?}: {:?}, {} verified, {} hits\t1\t{ins}\t{ins}\t0",
                 other,
                 q.route,
                 q.verified,

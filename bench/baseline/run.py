@@ -40,11 +40,11 @@ def example(name, parser, **env):
 
 def cells(worktree):
     matrix = [
-        example("sheet_x/rows1000", "sheet", ROWS="1000", REPS="32"),
-        example("sheet_x/rows10000", "sheet", ROWS="10000", REPS="32"),
-        example("events_x/rows10000", "events", ROWS="10000", REPS="31"),
-        example("text_x", "text", ROWS="3000", REPS="64"),
-        example("anim_x/208", "anim", H="208"),
+        example("sheet/rows1000", "sheet", ROWS="1000", REPS="32"),
+        example("sheet/rows10000", "sheet", ROWS="10000", REPS="32"),
+        example("events/rows10000", "events", ROWS="10000", REPS="31"),
+        example("text", "text", ROWS="3000", REPS="64"),
+        example("anim/208", "anim", H="208"),
         Cell("pbench/canvas1", "pbench", ("canvas", "1"), {"REPS": "8", "WORKERS": "5"}, "pbench"),
     ]
     for scene, rows, op, repeats in (
@@ -60,18 +60,18 @@ def cells(worktree):
         matrix.append(Cell(f"guibench/{label}-{rows}-{op}", "headless", args, {}, "guibench"))
     unavailable = {}
     core = worktree / "crates" / core_package(worktree)
-    if 'var("BROAD")' in (core / "examples/sheet_x.rs").read_text():
-        matrix.append(example("sheet_x/rows10000/broad", "sheet", ROWS="10000", REPS="32", BROAD="1"))
+    if 'var("BROAD")' in core_example(worktree, "sheet").read_text():
+        matrix.append(example("sheet/rows10000/broad", "sheet", ROWS="10000", REPS="32", BROAD="1"))
     else:
-        unavailable["sheet_x/rows10000/broad"] = "this checkout lacks the BROAD sheet fixture"
-    if (core / "examples/ops_x.rs").is_file():
+        unavailable["sheet/rows10000/broad"] = "this checkout lacks the BROAD sheet fixture"
+    if core_example(worktree, "ops").is_file():
         for part in ("select", "lane", "ops", "search", "corpus"):
-            matrix.append(example(f"ops_x/{part}", "ops", PART=part, REPS="64", ROWS="100000"))
+            matrix.append(example(f"ops/{part}", "ops", PART=part, REPS="64", ROWS="100000"))
         for mode, env in (("near", {"NEAR": "1"}), ("swept", {"SWEPT": "1"}),
                           ("near-swept", {"NEAR": "1", "SWEPT": "1"})):
-            matrix.append(example(f"anim_x/208/{mode}", "anim", H="208", **env))
+            matrix.append(example(f"anim/208/{mode}", "anim", H="208", **env))
     else:
-        unavailable["incremental"] = "ops_x and near/swept variants require incremental operators"
+        unavailable["incremental"] = "ops and near/swept variants require incremental operators"
     if (worktree / "comparisons/bough-fx-bench/Cargo.toml").is_file():
         for count in ("200", "1000", "5000"):
             for op in ("startup", "idle", "one", "many", "hover", "theme", "scroll", "resize"):
@@ -101,11 +101,11 @@ def cells(worktree):
         matrix.append(Cell("flatbench/cards300", "flatbench", ("300",), {"REPS": "24"}, "flatbench"))
     else:
         unavailable["flatbench"] = "the flat paint bank's benchmark is absent from this checkout"
-    if (worktree / "crates/bough-damage/examples/damage_x.rs").is_file():
+    if (worktree / "crates/bough-damage/examples/damage.rs").is_file():
         for scene in ("window", "stack", "4k"):
-            matrix.append(example(f"damage_x/{scene}", "damage", SCENE=scene, REPS="64"))
+            matrix.append(example(f"damage/{scene}", "damage", SCENE=scene, REPS="64"))
     else:
-        unavailable["damage_x"] = "the damage engine's benchmark is absent from this checkout"
+        unavailable["damage"] = "the damage engine's benchmark is absent from this checkout"
     unavailable["windowed"] = "see the VM runbook for compositor scenarios"
     if not (worktree / "crates/bough/tests/glyph_reclaim.rs").is_file():
         unavailable["guibench/search-1000-filter"] = "historical glyph_x capacity panic"
@@ -121,6 +121,22 @@ def core_package(worktree):
     return "bough-dataflow" if (worktree / "crates/bough-dataflow").is_dir() else "bough-x"
 
 
+# The typed core's fixtures were `sheet_x`, `events_x`, ... (`_x` for bough-x) before they took their own names.
+LEGACY_EXAMPLES = ("sheet", "events", "text", "anim", "ops", "damage")
+
+
+def example_name(name, worktree):
+    """The fixture's example target in this checkout: `sheet`, or `sheet_x` in a checkout before the rename."""
+    if name not in LEGACY_EXAMPLES:
+        return name
+    crate = worktree / "crates" / ("bough-damage" if name == "damage" else core_package(worktree)) / "examples"
+    return name if (crate / f"{name}.rs").is_file() or not (crate / f"{name}_x.rs").is_file() else f"{name}_x"
+
+
+def core_example(worktree, name):
+    return worktree / "crates" / core_package(worktree) / "examples" / f"{example_name(name, worktree)}.rs"
+
+
 def binary_spec(name, worktree):
     if name == "headless":
         return "release/headless", ["--release", "--manifest-path", "comparisons/bough-guibench/Cargo.toml",
@@ -130,8 +146,9 @@ def binary_spec(name, worktree):
                                    "comparisons/bough-fx-bench/Cargo.toml",
                                    "--features", "full-effects,typed-core", "--bin", name]
     package = ("bough-paint" if name in ("pbench", "fxbench", "flatbench") else
-               "bough-damage" if name == "damage_x" else core_package(worktree))
-    return f"dist/examples/{name}", ["--locked", "--profile", "dist", "-p", package, "--example", name]
+               "bough-damage" if name == "damage" else core_package(worktree))
+    target = example_name(name, worktree)
+    return f"dist/examples/{target}", ["--locked", "--profile", "dist", "-p", package, "--example", target]
 
 
 def fetch(argv, cwd=None, env=None):

@@ -75,7 +75,7 @@ bench/baseline/gate.sh
 
 The command checks the font digest before building, runs the complete native suite and compares its receipt with `bench/baselines/native/reference.json` using the checked-in limits. An unexplained regression, an invalid fixture, or a changed set of operation names makes it exit nonzero. Treat an added fixture as a reference update requiring a measured receipt. The gate writes a fresh output directory under `runtime/baseline/` for each invocation. The native performance gate runs alongside the existing `bench/gate.sh` code gate.
 
-For a focused replay, run `bench/baseline/gate.sh --cells sheet_x/rows10000`. The gate still requires every operation in each requested fixture. Use the default invocation for full integration coverage.
+For a focused replay, run `bench/baseline/gate.sh --cells sheet/rows10000`. The gate still requires every operation in each requested fixture. Use the default invocation for full integration coverage.
 
 To resume a comparison after an interrupted wrapper, use `bench/baseline/gate.sh --check-receipt path/to/integration.json`. It checks complete coverage using the existing capture.
 
@@ -87,9 +87,9 @@ bench/baseline/run.sh --name head --worktree "$HEAD_WORKTREE" --reps 3
 bench/baseline/compare.sh runtime/baseline/base/base.json runtime/baseline/head/head.json
 ```
 
-Set `BASE_WORKTREE` and `HEAD_WORKTREE` to the checkouts being compared. Omit `--worktree` to use the harness checkout. Use `--cells sheet_x/rows10000` to run the sheet alone or `--cells sheet_x/rows10000/hover` with `compare.sh` to isolate the hover counter. Use the same face override `BOUGH_FONT` in both runs when measuring façade or effects workloads.
+Set `BASE_WORKTREE` and `HEAD_WORKTREE` to the checkouts being compared. Omit `--worktree` to use the harness checkout. Use `--cells sheet/rows10000` to run the sheet alone or `--cells sheet/rows10000/hover` with `compare.sh` to isolate the hover counter. Use the same face override `BOUGH_FONT` in both runs when measuring façade or effects workloads.
 
-`run.sh` builds and records instruction counts without the lock. Use three repetitions. `--timing` takes the shared lock around each timed child. Unlocked wall and RSS columns are diagnostic. The native gate compares named per-operation counters emitted by `sheet_x`, `events_x`, `text_x`, `anim_x`, `ops_x`, and the effects adapters. The current matrix includes near/swept animation variants, retained-pixel correctness checks for both effects adapters, and the staged paint, panes and video rows from `bench/fx/run.sh`. The JSON also keeps whole-process instructions, wall time and RSS as separate metrics. Results default to `runtime/baseline/<name>/`, with raw logs in `raw/`. `--no-build` requires matching source, toolchain and binary fingerprints.
+`run.sh` builds and records instruction counts without the lock. Use three repetitions. `--timing` takes the shared lock around each timed child. Unlocked wall and RSS columns are diagnostic. The native gate compares named per-operation counters emitted by `sheet`, `events`, `text`, `anim`, `ops`, and the effects adapters. The current matrix includes near/swept animation variants, retained-pixel correctness checks for both effects adapters, and the staged paint, panes and video rows from `bench/fx/run.sh`. The JSON also keeps whole-process instructions, wall time and RSS as separate metrics. Results default to `runtime/baseline/<name>/`, with raw logs in `raw/`. `--no-build` requires matching source, toolchain and binary fingerprints.
 
 Default limits are 2% for instructions, 10% for wall time and 5% for process RSS. Wall and RSS are unqualified above the load ceiling. Wall is also unqualified if either input spreads more than the tolerance. See [native measurement scope and threshold overrides](baseline/README.md).
 

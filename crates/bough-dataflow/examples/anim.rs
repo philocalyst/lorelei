@@ -1,7 +1,7 @@
 //! The hot uniforms, counted: what a frame costs while records animate, and what a pointer event costs when
 //! records read the pointer words. Instructions and cycles of the calling thread, bracket subtracted, median.
 //!
-//!   H=208 cargo run --profile dist -p bough-dataflow --example anim_x      (4 rows exposed: 32 + 32 records)
+//!   H=208 cargo run --profile dist -p bough-dataflow --example anim      (4 rows exposed: 32 + 32 records)
 //!   H=10288 ...                                                     (256 rows: 2,048 + 2,048 records)
 #[path = "../scenes/anim.rs"]
 mod anim;
@@ -68,7 +68,7 @@ fn main() {
                 .collect();
             v.sort();
             let m = v[v.len() / 2];
-            println!("anim_x\t{name}\t{reps}\t{}\t{}\t{}", m.0, m.1, m.2);
+            println!("anim\t{name}\t{reps}\t{}\t{}\t{}", m.0, m.1, m.2);
         };
     phase("frame_endless", &mut world, &mut a, &mut |w, _, _| {
         t += 16;

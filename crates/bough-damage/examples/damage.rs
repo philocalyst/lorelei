@@ -1,8 +1,8 @@
-//! The damage engine's frame cost, counted like `bough-dataflow`'s `sheet_x`: instructions and cycles of the
+//! The damage engine's frame cost, counted like `bough-dataflow`'s `sheet`: instructions and cycles of the
 //! calling thread per frame (`begin_frame`, the frame's damage calls, `resolve`), bracket cost subtracted,
 //! median and 95th percentile of `REPS` frames after a warm-up of the same script.
 //!
-//!   SCENE=stack REPS=64 cargo run --profile dist -p bough-damage --example damage_x
+//!   SCENE=stack REPS=64 cargo run --profile dist -p bough-damage --example damage
 //!
 //! Scenes (`SCENE`):
 //! * `window` (default): 1280 x 800, a header and 24 opaque cards as covers, one glass pane and a glass header;
@@ -118,7 +118,7 @@ impl Meter {
         let (i50, i95) = pick(&|r| r.0);
         let (c50, _) = pick(&|r| r.1);
         let (t50, _) = pick(&|r| r.2 as u64);
-        println!("damage_x\t{name}\t{reps}\t{i50}\t{i95}\t{c50}\t{t50}");
+        println!("damage\t{name}\t{reps}\t{i50}\t{i95}\t{c50}\t{t50}");
     }
 }
 
@@ -132,7 +132,7 @@ fn main() {
     assert!(matches!(name.as_str(), "window" | "stack" | "4k"), "SCENE is window, stack or 4k");
     let s = scene(&name);
     let m = Meter::new();
-    println!("# damage_x scene={name} window={}x{} covers={} layers={} reps={reps}", s.w, s.h, s.covers.len(), s.layers.len());
+    println!("# damage scene={name} window={}x{} covers={} layers={} reps={reps}", s.w, s.h, s.covers.len(), s.layers.len());
     println!("scene\tphase\tsteps\tinstr_p50\tinstr_p95\tcycles_p50\ttiles_p50");
     let mut e = DamageEngine::new(s.w, s.h);
     commit(&mut e, &s);

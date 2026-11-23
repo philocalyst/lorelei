@@ -5,7 +5,7 @@
 //! row. Cold: the same step after sweeping 64 MiB through the cache (the cycles above warm are what the lines
 //! it touches cost from memory). Rows: 100, 10,000, 1,000,000 (`ROWS` to pick one).
 //!
-//!   cargo run --profile dist -p bough-dataflow --example events_x
+//!   cargo run --profile dist -p bough-dataflow --example events
 use bough_mem::pmu;
 use bough_dataflow::event::{Interact, Key, Mods};
 use bough_dataflow::prelude::*;

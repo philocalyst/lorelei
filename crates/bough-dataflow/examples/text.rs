@@ -1,8 +1,8 @@
-//! Text on the new core below pixels (text lane): the rows and search scenes' phases, counted as `sheet_x`
+//! Text on the new core below pixels (text lane): the rows and search scenes' phases, counted as `sheet`
 //! counts the sheet. Instructions and cycles of the calling thread per step, bracket cost subtracted, median of
 //! `REPS` steps; a step is the handler and the settle, from the input to the damage bitmap.
 //!
-//!   ROWS=3000 REPS=64 cargo run --profile dist -p bough-dataflow --example text_x
+//!   ROWS=3000 REPS=64 cargo run --profile dist -p bough-dataflow --example text
 //!
 //! `COLD=1` walks a 64 MiB buffer before every step, so the step starts with nothing of its own in any cache:
 //! with `BOUGH_PMU=l1d-misses,cache-misses,branch-misses` (Linux) the L1 column is then close to the number of

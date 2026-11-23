@@ -2,7 +2,7 @@
 //! instructions and cycles of the calling thread per step, bracket cost subtracted, median of `REPS` steps.
 //! A step is the handler and the settle: from the input to the damage bitmap.
 //!
-//!   ROWS=10000 REPS=32 cargo run --profile dist -p bough-dataflow --example sheet_x
+//!   ROWS=10000 REPS=32 cargo run --profile dist -p bough-dataflow --example sheet
 #[path = "../scenes/sheet.rs"]
 mod sheet;
 use bough_mem::pmu;
@@ -66,7 +66,7 @@ impl Meter {
         for i in 2..self.n {
             extra += &format!("\t{}", med(&|r| r.0[i]).0);
         }
-        println!("sheet_x\t{name}\t{reps}\t{i50}\t{i95}\t{c50}\t{t50}{extra}");
+        println!("sheet\t{name}\t{reps}\t{i50}\t{i95}\t{c50}\t{t50}{extra}");
     }
 }
 
@@ -118,7 +118,7 @@ fn main() {
         "# mounted: {records} records in {pages} pages, {bytes} bytes of columns, {mount_us:.1} us wall"
     );
     println!(
-        "sheet_x\tmount\t1\t{}\t{}\t{}\t{}",
+        "sheet\tmount\t1\t{}\t{}\t{}\t{}",
         d.v[0] - m.bracket[0],
         d.v[0] - m.bracket[0],
         d.v[1].saturating_sub(m.bracket[1]),
