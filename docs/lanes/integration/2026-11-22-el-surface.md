@@ -188,3 +188,43 @@ pointer precondition); not touched here.
 * Routes dispatch on the root owner only (`root_owner_only`), rows included; owner chains are B3.
 * A map's recipe is not part of `shape()`; a re-description after settle corrects the value.
 * A hover colour changed while hovered shows on the next hover.
+
+## Results, part 2: integration and performance (2026-11-23, after review)
+
+The El work above was integrated with the rest of the tree, reviewed again (DeepSeek V4 Pro reviews of every
+merged piece; findings in ~/work/lorelei-wt/review-*-deepseek.md), and every benchmark brought back to the
+reference. State at the end: `cargo test --workspace` green (310 test binaries, 0 failures; 8 targets failed at the
+start), and the native gate (`bench/baseline/gate.sh`) **passes** against its reference (761d227fd4): 791 primary
+counters, 481 improved, every exception recorded under the reference's `supplements` or in `limits.json`.
+
+**El review fixes.** Recipes are frozen by a read-only two-register asm load (padding becomes fixed bytes;
+padding-free captures skip it; `Sealer::recipe` compares two u64s): the first fix refused seals of every
+capturing closure (sheet 3x), the second froze with a memory clobber (+8.4%); final: sheet redescribe 43.27 M vs
+43.67 M baseline, all six workload scenes within ±1%. Container-only setters check their element; tests for padded
+captures and for key dispatch parity between the kernel and the lowered runtime (400 seeded steps; fails if
+`Hnd::hears` passes every key). Two HIGH review findings (asm freeze UB, outermost `hold`) were answered with the
+mechanism (asm outputs are initialised; `rewind` is the only reuse and always advances the turn).
+
+**Correctness found on the way.** `Scene::push/set` copied paints through a misaligned `*const u32` (UB; word
+copy kept for aligned paints); SVG decode's `CGImageForProposedRect` return encoding; wgsl-rs's CPU expansion now
+wraps integer arithmetic as WGSL does (WGSL byte-identical, release instructions unchanged), so debug runs the GPU's
+arithmetic instead of panicking; parley: a combining mark after a hard break split into its own cluster (it was
+drawn on the newline's line), shaped in a loop (the first version recursed and overflowed the stack on a paste of
+1,600 pairs); DejaVu 2.37 vendored in `fonts/dejavu` (twelve tests read one machine's Nix path and silently dropped
+Bold/Mono coverage); `pbench canvas 1` dragged a record it does not have; the gate's no-change search cell had
+never been re-referenced after its contract changed, so every full gate stopped there.
+
+**Coverage.** bough-damage had no tests: footprint, engine and allocation tests against a brute-force pyramid
+oracle, then an exact full-mode oracle (mask = documented model, tile for tile); 33 hand mutants, all caught.
+bough-flat backdrop blur bit-exact against the pyramid. Gate cells for flatbench and the damage engine; the
+fxbench parser brought to the current output format (it rejected every fxbench cell).
+
+**Performance recovered** (each bisected; several earlier attributions were wrong and were re-measured):
+fxbench idle 9.4 K -> 3.0 K (ref 5.4 K; 3.2 K was two counter syscalls inside the measured frame), media scroll
+cpu 135 K -> 17 K, metal 589 K -> 93 K (bins rebuilt on a quarter of records moving; buffer lookups per tile);
+pbench canvas4 pan/A 5.2 M -> 3.05 M (ref 3.43 M), canvas1 drag/A and hover1/A back to the reference (Scene::update
+visits only columns reading a changed word); effects-core/200 +2.6% -> +0.3% (`Tiles::mark`'s one-row path); ops
+corpus/search: same-host noise from allocator layout and page faults, made allocation-free once warm (needle
+narrowing 2.8 K -> 1.1 K), Join −40–58%, Group back; `part_mark_cell` 59 -> 64 kept (3 of 5 instructions are the
+soundness bounds check). The `_x` fixture names left over from bough-x are gone (old receipts and checkouts still
+compare and build).
