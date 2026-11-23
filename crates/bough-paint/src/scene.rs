@@ -546,7 +546,14 @@ pub struct Bins {
     /// Tiles edited since the last `recut_touched`, and a flag per tile for it.
     touched: Vec<u32>,
     mark: Vec<bool>,
+    /// Entries of the lists in all (before the cuts): what a build pushes.
+    entries: usize,
 }
+/// What one tile an edit visits costs against one tile or entry a build makes: about the same (measured
+/// over the benches' large moves, instructions per unit: edits 46 to 103, builds 39 to 105; a pan of 1,760
+/// of the canvas's 10,101 records edits for 2.9 M or builds for 1.6 M, a scroll of the media scene's 13
+/// records over nothing edits for 3.5 K or builds for 124 K).
+const EDIT_WEIGHT: usize = 1;
 /// The lanes the bins are made from.
 pub struct Lanes<'a> {
     pub win: &'a [[i16; 4]],
@@ -609,7 +616,12 @@ impl Bins {
         if w[0] >= w[2] || w[1] >= w[3] {
             return (0, 0, 0, 0);
         }
-        ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(self.tx), ((w[3].max(0) as usize + 31) >> 5).min(self.ty))
+        let s = ((w[0].max(0) as usize) >> 5, (w[1].max(0) as usize) >> 5, ((w[2].max(0) as usize + 31) >> 5).min(self.tx), ((w[3].max(0) as usize + 31) >> 5).min(self.ty));
+        // (a window right of or below the frame: no tile, and an area of nought)
+        if s.0 >= s.2 || s.1 >= s.3 {
+            return (0, 0, 0, 0);
+        }
+        s
     }
     /// The cut of tile `t`: its list starts at the topmost opaque cover holding the whole tile that lies
     /// beneath every layer record listed there (a layer's prefix needs what is under a later cover).
@@ -650,11 +662,13 @@ impl Bins {
         self.touched.clear();
         self.mark.clear();
         self.mark.resize(nt, false);
+        self.entries = 0;
         for z in 0..l.win.len() {
             let b = l.bin(z);
             self.binned[z] = b;
             let (x0, y0, x1, y1) = self.span(&b);
             let lz = l.is_lay(z);
+            self.entries += (x1 - x0) * (y1 - y0);
             for y in y0..y1 {
                 for x in x0..x1 {
                     self.lists[y * tx + x].push(z as u32);
@@ -685,6 +699,7 @@ impl Bins {
                 if !inside(n, x, y) {
                     if let Ok(i) = self.lists[t].binary_search(&z) {
                         self.lists[t].remove(i);
+                        self.entries -= 1;
                     }
                     if lz {
                         self.lay[t].retain(|&k| k != z);
@@ -701,6 +716,7 @@ impl Bins {
                 let t = y * self.tx + x;
                 if let Err(i) = self.lists[t].binary_search(&z) {
                     self.lists[t].insert(i, z);
+                    self.entries += 1;
                 }
                 if lz {
                     if let Err(i) = self.lay[t].binary_search(&z) {
@@ -711,6 +727,23 @@ impl Bins {
             }
         }
         self.binned[z as usize] = new;
+    }
+    /// Whether one build costs less than editing the lists for the records `moved`: the edits pay per tile
+    /// each record left or entered, the build per tile and per entry of the whole scene (and it changes every
+    /// tile, which an executor that mirrors the bins then rewrites). A pan of a dense scene rebuilds; a
+    /// scroll of a few large records over many tiles edits.
+    pub fn rebuild_cheaper(&self, moved: &[u32], l: &Lanes) -> bool {
+        let area = |s: (usize, usize, usize, usize)| (s.2 - s.0) * (s.3 - s.1);
+        let build = self.lists.len() + self.entries;
+        let mut edit = 0;
+        for &z in moved {
+            let old = self.binned.get(z as usize).copied().unwrap_or([0; 4]);
+            edit += EDIT_WEIGHT * (area(self.span(&old)) + area(self.span(&l.bin(z as usize))));
+            if edit > build {
+                return true;
+            }
+        }
+        false
     }
     #[inline]
     fn touch(&mut self, t: usize) {
@@ -1791,14 +1824,15 @@ impl Scene {
             }
         }
         // the certificate is a scan per event and tile of what lies above the event: when a good part of
-        // the scene moved (the same line the bins draw between editing and rebuilding) what is above moved
+        // the scene moved (a quarter of its records) what is above moved
         // too and the scan proves nothing (measured at 600 dense: a pan's turn 13.9 M without it, 18.3 M with)
         self.cert = !self.no_cert && rebin.len() * 4 <= self.order.len();
         if moved {
             let lanes = Lanes { win: &self.win, cover: &self.cover, halo: &self.halo, lay: &self.layers.of, cut: self.cut };
-            // edits pay per moved record and tile; when a good part of the scene moved (a pan) one pass over
-            // every record is cheaper (measured on the canvas's pan: edits alone were 12x the rebuild)
-            if first || rebin.len() * 4 > self.order.len() {
+            // edits pay per tile a moved record left or entered, a rebuild per tile and entry of the scene:
+            // a pan of most of a dense scene rebuilds, a scroll of a few records (however many of the scene's
+            // records they are) edits (`Bins::rebuild_cheaper` weighs the two)
+            if first || self.bins.rebuild_cheaper(&rebin, &lanes) {
                 self.bins.build(&lanes, self.tx, self.ty);
             } else {
                 for &z in &rebin {
@@ -2301,6 +2335,10 @@ impl Scene {
         // set (bounded, no duplicates), which is the whole proof that workers write disjoint pixels
         assert!(stride >= self.fw as usize, "stride {stride} is less than the frame's width");
         assert!(out.len() >= (self.fh as usize - 1) * stride + self.fw as usize);
+        if tiles.is_empty() {
+            // an idle frame: no worker's scratch, no set, no lock (3,100 instructions a frame otherwise)
+            return Stats::default();
+        }
         let nt = self.tx * self.ty;
         let mut seen = vec![0u64; nt.div_ceil(64)];
         for &t in tiles {

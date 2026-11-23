@@ -70,7 +70,6 @@ impl Mixed {
         let mut tiles = std::mem::take(&mut self.tiles);
         scene.damage.tiles(&mut tiles);
         let limit = (GPU_FRAME_INSTR + GPU_DISPATCH_INSTR * self.gpu.resident_dispatches() as u64) / CPU_INSTR_PER_WEIGHT;
-        let due = scene.event_weight(limit);
         let idle = tiles.is_empty() && !scene.owes_layers();
         let ran = if idle {
             Ran::Idle
@@ -82,7 +81,7 @@ impl Mixed {
         } else {
             // the damage's weight before any repair: the layer tiles that are due and the tiles to shade,
             // summed only until the CPU's side of the comparison is lost (the sum is then not needed)
-            let mut w = due;
+            let mut w = scene.event_weight(limit);
             for &t in &tiles {
                 if w > limit {
                     break;
@@ -98,7 +97,9 @@ impl Mixed {
             scene.route_events();
             scene.prepare(u);
         }
-        scene.damage.tiles(&mut tiles);
+        if !idle {
+            scene.damage.tiles(&mut tiles);
+        }
         scene.damage.clear();
         fs.tiles = tiles.len() as u32;
         self.last_gpu = 0.0;
