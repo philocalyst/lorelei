@@ -716,7 +716,12 @@ pub struct Join<K> {
     rseen: u64,
     pub journal: Journal,
     pub work: Work,
+    /// Lists of keys that lost their last row, for keys that gain their first (a few small ones).
+    spare: Vec<Vec<u32>>,
 }
+/// The most key lists a [`Join`] keeps for reuse, and the most ids such a list may have room for.
+const SPARE_KEYS: usize = 8;
+const SPARE_KEY_ROOM: usize = 16;
 impl<K: Hash + Eq + Clone> Default for Join<K> {
     fn default() -> Self {
         Join::new()
@@ -734,6 +739,7 @@ impl<K: Hash + Eq + Clone> Join<K> {
             rseen: 0,
             journal: Journal::new(),
             work: Work::default(),
+            spare: Vec::new(),
         }
     }
     pub fn len(&self) -> usize {
@@ -752,24 +758,40 @@ impl<K: Hash + Eq + Clone> Join<K> {
     pub fn index_keys(&self) -> usize {
         self.lidx.len() + self.ridx.len()
     }
-    fn pair(&mut self, p: (u32, u32), on: bool) {
-        let pos = self.out.lower_bound(|e| *e < p);
+    /// The pair `p` enters (`on`) or leaves the output. (A function of the fields it changes, so a caller may
+    /// hold the other side's index while it calls it.)
+    fn pair(out: &mut Lane<(u32, u32)>, journal: &mut Journal, p: (u32, u32), on: bool) {
+        let pos = out.lower_bound(|e| *e < p);
         if on {
-            self.out.insert(pos, p);
-            self.journal.push(Edit::Insert(pos as u32));
+            out.insert(pos, p);
+            journal.push(Edit::Insert(pos as u32));
         } else {
-            debug_assert!(*self.out.get(pos) == p);
-            self.out.remove(pos);
-            self.journal.push(Edit::Remove(pos as u32));
+            debug_assert!(*out.get(pos) == p);
+            out.remove(pos);
+            journal.push(Edit::Remove(pos as u32));
         }
     }
-    /// One side's row `id` changed: `new` is its key now (`None`: it is gone).
+    /// One side's row `id` changed: `new` is its key now (`None`: it is gone). The other side's rows of a key
+    /// are read in its index where they are (not copied out first), and the list of a key that loses its
+    /// last row is kept for the next key that gains its first: moving a row between keys allocates nothing.
     fn side(&mut self, left: bool, id: u32, new: Option<K>) {
-        let (keys, own) = if left {
-            (&mut self.lkey, &mut self.lidx)
+        let Join {
+            lkey,
+            rkey,
+            lidx,
+            ridx,
+            out,
+            journal,
+            spare,
+            ..
+        } = self;
+        let (keys, own, other) = if left {
+            (lkey, lidx, &*ridx)
         } else {
-            (&mut self.rkey, &mut self.ridx)
+            (rkey, ridx, &*lidx)
         };
+        let rows = |k: &K| other.get(k).map_or(&[][..], Vec::as_slice);
+        let p = |o: u32| if left { (id, o) } else { (o, id) };
         if id as usize >= keys.len() {
             keys.resize(id as usize + 1, None);
         }
@@ -778,17 +800,9 @@ impl<K: Hash + Eq + Clone> Join<K> {
             keys[id as usize] = old;
             if let Some(k) = &keys[id as usize] {
                 // the same pairs: the rows that show them may show something else
-                let other: Vec<u32> = if left {
-                    self.ridx.get(k)
-                } else {
-                    self.lidx.get(k)
-                }
-                .cloned()
-                .unwrap_or_default();
-                for o in other {
-                    let p = if left { (id, o) } else { (o, id) };
-                    let pos = self.out.lower_bound(|e| *e < p);
-                    self.journal.push(Edit::Update(pos as u32));
+                for &o in rows(k) {
+                    let pos = out.lower_bound(|e| *e < p(o));
+                    journal.push(Edit::Update(pos as u32));
                 }
             }
             return;
@@ -796,38 +810,25 @@ impl<K: Hash + Eq + Clone> Join<K> {
         if let Some(k) = old {
             if let Some(v) = own.get_mut(&k) {
                 v.retain(|&x| x != id);
-                if v.is_empty() {
-                    own.remove(&k);
+                if v.is_empty()
+                    && let Some(v) = own.remove(&k)
+                    && spare.len() < SPARE_KEYS
+                    && v.capacity() <= SPARE_KEY_ROOM
+                {
+                    spare.push(v);
                 }
             }
-            let other: Vec<u32> = if left {
-                self.ridx.get(&k)
-            } else {
-                self.lidx.get(&k)
-            }
-            .cloned()
-            .unwrap_or_default();
-            for o in other {
-                self.pair(if left { (id, o) } else { (o, id) }, false);
+            for &o in rows(&k) {
+                Self::pair(out, journal, p(o), false);
             }
         }
         if let Some(k) = new {
-            let (keys, own) = if left {
-                (&mut self.lkey, &mut self.lidx)
-            } else {
-                (&mut self.rkey, &mut self.ridx)
-            };
             keys[id as usize] = Some(k.clone());
-            own.entry(k.clone()).or_default().push(id);
-            let other: Vec<u32> = if left {
-                self.ridx.get(&k)
-            } else {
-                self.lidx.get(&k)
-            }
-            .cloned()
-            .unwrap_or_default();
-            for o in other {
-                self.pair(if left { (id, o) } else { (o, id) }, true);
+            own.entry(k.clone())
+                .or_insert_with(|| spare.pop().unwrap_or_default())
+                .push(id);
+            for &o in rows(&k) {
+                Self::pair(out, journal, p(o), true);
             }
         }
     }
@@ -842,16 +843,15 @@ impl<K: Hash + Eq + Clone> Join<K> {
         if l.log().since(self.lseen).is_none() || r.log().since(self.rseen).is_none() {
             return self.rebuild(l, r, lk, rk);
         }
-        let lc: Vec<Change> = l.log().since(self.lseen).expect("checked").collect();
-        for c in lc {
+        // the logs are the inputs' (not this operator's): read where they are
+        for c in l.log().since(self.lseen).expect("checked") {
             let (Change::Insert(id) | Change::Update(id) | Change::Remove(id)) = c;
             let live = !matches!(c, Change::Remove(_)) && l.contains(id);
             self.work.rows += live as u64;
             let k = live.then(|| lk(id));
             self.side(true, id, k);
         }
-        let rc: Vec<Change> = r.log().since(self.rseen).expect("checked").collect();
-        for c in rc {
+        for c in r.log().since(self.rseen).expect("checked") {
             let (Change::Insert(id) | Change::Update(id) | Change::Remove(id)) = c;
             let live = !matches!(c, Change::Remove(_)) && r.contains(id);
             self.work.rows += live as u64;
