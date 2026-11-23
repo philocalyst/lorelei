@@ -136,21 +136,35 @@ impl Tiles {
             (y0 >> TILE_SHIFT) as usize,
             ((y1 - 1) >> TILE_SHIFT) as usize,
         );
-        if self.stride == 1 {
-            if (b >= 64) | (d >= self.bits.len()) {
-                invalid_damage();
-            }
-            self.lo = self.lo.min(c);
-            self.hi = self.hi.max(d + 1);
-            let mask = (!0u64 << (a & 63)) & (!0u64 >> (63 - (b & 63)));
-            // SAFETY: clipping a nonempty rect proves c <= d and the check above proves
-            // d < bits.len(). A stride of one places every affected row in this slice.
-            let rows = unsafe { self.bits.get_unchecked_mut(c..d + 1) };
-            for word in rows {
-                *word |= mask;
-            }
-            return;
+        // The one-word row is the only stride tested inline: the others are one branch away, so the
+        // tile loops (`each` into `mark`, a ring of damage bitmaps) pay one compare for the dispatch.
+        if self.stride != 1 {
+            return self.mark_rows(a, b, c, d);
         }
+        if (b >= 64) | (d >= self.bits.len()) {
+            invalid_damage();
+        }
+        self.lo = self.lo.min(c);
+        self.hi = self.hi.max(d + 1);
+        let mask = (!0u64 << (a & 63)) & (!0u64 >> (63 - (b & 63)));
+        // SAFETY: clipping a nonempty rect proves c <= d and the check above proves
+        // d < bits.len(). A stride of one makes row `r` the word `r`. The first row is
+        // written before the loop: a one-row mark (every tile handed back by `each`) costs
+        // one compare past the store, not a vector loop's set-up.
+        unsafe {
+            let p = self.bits.as_mut_ptr();
+            *p.add(c) |= mask;
+            let mut row = c;
+            while row < d {
+                row += 1;
+                *p.add(row) |= mask;
+            }
+        }
+    }
+
+    /// [`Tiles::mark`] for a stride other than one.
+    #[inline(always)]
+    fn mark_rows(&mut self, a: usize, b: usize, c: usize, d: usize) {
         if self.stride == 2 {
             let end = 2 * (d + 1);
             if (b >= 128) | (end > self.bits.len()) {
@@ -169,10 +183,17 @@ impl Tiles {
             };
             // SAFETY: c <= d after clipping, the row stride is two, and end was checked
             // against the current bitmap. The tile coordinates come from nonnegative i32s.
-            let rows = unsafe { self.bits.get_unchecked_mut(2 * c..end) };
-            for row in rows.as_chunks_mut::<2>().0 {
-                row[0] |= masks[0];
-                row[1] |= masks[1];
+            // The first row is written before the loop, as in the one-word case.
+            unsafe {
+                let p = self.bits.as_mut_ptr();
+                *p.add(2 * c) |= masks[0];
+                *p.add(2 * c + 1) |= masks[1];
+                let mut row = c;
+                while row < d {
+                    row += 1;
+                    *p.add(2 * row) |= masks[0];
+                    *p.add(2 * row + 1) |= masks[1];
+                }
             }
             return;
         }
