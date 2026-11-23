@@ -1125,7 +1125,8 @@ mod dot {
                 fn dot(self, other: Self) -> Self::Scalar {
                     let a = self.to_array();
                     let b = other.to_array();
-                    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+                    // WGSL integer arithmetic wraps
+                    a.iter().zip(b.iter()).fold(0, |s: $scalar, (x, y)| s.wrapping_add(x.wrapping_mul(*y)))
                 }
             }
         };

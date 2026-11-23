@@ -33,6 +33,19 @@ schell/wgsl-rs `b2de16a1b8`, whose naga is 29; 29.0.4 is that line's latest patc
   `wgsl-rs-ir/src/render/builtin_lookup.rs`). naga 29 accepts them without an `enable` directive and emits
   `simd_prefix_exclusive_sum` / `simd_sum` / `simd_max` / `simd_ballot`. The binned kernels' ordered compaction is
   built on them (`crates/bough-gpu/src/shaders/compact.rs`, checked by `halprobe`).
+* **wgsl-rs: WGSL integer semantics on the CPU.** WGSL's integer `+ - *` and unary `-` wrap and its shifts take
+  the amount modulo the bit width; Rust's operators panic on overflow in a debug build, so a debug test of a CPU
+  executor panicked where the GPU and release agree (`grad_color`, a spring's wrapping phase `omega * e`), and the
+  workspace carried `overflow-checks = false` for bough-kernel and wgsl-rs as a stopgap. rustc has no per-module
+  overflow-check switch, so the `#[wgsl]` expansion rewrites the arithmetic of the module's Rust tokens instead
+  (`wgsl-rs-macros/src/wrap.rs`, run from `go_wgsl` after the WGSL is built from the unmodified source, so the
+  emitted WGSL is unchanged): `a + b`, `- * << >>`, the compound forms and non-literal `-a` become calls of
+  `wgsl_rs::std::wrap::{add, sub, mul, shl, shr, neg, *_assign}` (`crates/wgsl-rs/src/std/wrap.rs`: `wrapping_*`
+  for `i32`/`u32`, the plain operator for `f32`, the type's own operator for vectors and matrices, whose integer
+  forms already wrap). All-literal operations, `const`/`static` initialisers, `const fn`s, array lengths, types,
+  patterns, macro arguments and `#[wgsl_ignore]` items are left alone; `/` and `%` are not rewritten (WGSL defines
+  `x / 0` and `i32::MIN / -1`, Rust panics in every profile). Integer `dot` (`std/numeric.rs`) wraps too. Checked by `crates/bough-kernel/tests/wrap.rs`; the WGSL
+  (and the MSL / SPIR-V built from it) of every bough module is byte-identical to before.
 * **wgsl-rs workspace manifest**: `members` trimmed to the five vendored crates (the examples and test crates are
   not vendored).
 * **wgpu-hal (Metal): two additive accessors** (15 lines, no existing line changed):

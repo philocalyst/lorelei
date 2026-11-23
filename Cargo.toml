@@ -8,14 +8,6 @@ exclude = ["vendor", "reactivity", "designs", "comparisons/bough-workloads"]  # 
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
-# bough-kernel is written in the wgsl-rs subset: the same source is the GPU's WGSL/MSL, whose integer arithmetic
-# wraps. Its CPU executors take that meaning in every profile (release already does), so a debug test sees the
-# arithmetic the GPU runs instead of an overflow panic the GPU cannot have.
-[profile.dev.package.bough-kernel]
-overflow-checks = false
-[profile.dev.package.wgsl-rs]
-overflow-checks = false
-
 [profile.release]
 debug = 1
 lto = "thin"

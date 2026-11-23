@@ -27,6 +27,7 @@ mod swizzle;
 mod texture;
 mod uniform;
 mod workgroup;
+mod wrap;
 
 /// Visitor that strips `#[wgsl_allow(...)]` attributes from expressions.
 /// These attributes are used by wgsl-rs during parsing but should not appear
@@ -743,6 +744,12 @@ fn go_wgsl(attr: TokenStream, mut input_mod: syn::ItemMod) -> Result<TokenStream
     // type-erased default (`Uniform<WgslTypeVariable>`, i.e. just
     // `Uniform`) because the concrete type is not known at module level.
     rewrite_generic_linkages(&mut input_mod, &wgsl_module, &crate_path)?;
+
+    // WGSL's integer semantics on the CPU: rewrite the Rust tokens' integer
+    // arithmetic into wrapping calls (`wrap.rs`). The WGSL was built above
+    // from the unmodified source, and the generated items appended below are
+    // not rewritten.
+    wrap::WrapArith { crate_path: &crate_path }.visit_item_mod_mut(&mut input_mod);
 
     // Compute the union of type parameters across all entry points in this
     // module. These become the module-level type parameters for the generated
