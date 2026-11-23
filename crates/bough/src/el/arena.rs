@@ -265,11 +265,21 @@ impl Arena {
         }
     }
     fn rewind(&mut self) {
-        let used = self.used();
-        for k in 0..used {
-            // SAFETY: nodes `0..used` were written this turn (`node`); only the turn number is touched, and
-            // no reference to a node is live outside a walk or a setter (both have returned).
-            unsafe { (*(self.chunks[k / CHUNK].as_ptr().add(k % CHUNK) as *mut DNode)).turn = 0 };
+        if !self.cur.is_null() {
+            // the full chunks before `at`, then chunk `at` up to `cur`
+            for (i, c) in self.chunks[..=self.at].iter().enumerate() {
+                let mut p = c.as_ptr() as *mut DNode;
+                // SAFETY: chunk `i` holds `CHUNK` slots; `cur` is in chunk `at`.
+                let end = if i == self.at { self.cur } else { unsafe { p.add(CHUNK) } };
+                while p != end {
+                    // SAFETY: the slots before `end` were written this turn (`node`); only the turn number is
+                    // touched, and no reference to a node is live outside a walk or a setter (both have returned).
+                    unsafe {
+                        (*p).turn = 0;
+                        p = p.add(1);
+                    }
+                }
+            }
         }
         (self.cur, self.end, self.at) = (ptr::null_mut(), ptr::null_mut(), 0);
         self.aux_chunk = 0;
