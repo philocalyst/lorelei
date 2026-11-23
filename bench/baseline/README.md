@@ -46,6 +46,18 @@ The gate allows a 2% increase in the primary instruction counters by default. Pr
 
 The comparison reports an over-limit instruction count as `VARIED (same binary)` when the executable SHA-256, runtime inputs and workload contract match. Those are repeat measurements of one executable. This rule still checks fixture coverage, correctness, dispatch allocations and qualified time and RSS. A changed executable uses the operation limit. Repeated `fbf6a2637b` captures saw instruction variation in the corpus index and Metal paths, including more than 2× on one small corpus probe. Inspect the samples when a changed executable exceeds the limit on these workloads.
 
+A small `ops/corpus`, `ops/search` or `ops/ops` row that allocates is mostly `malloc` and `free`. The
+cost of those calls on this host's allocator depends on the executable's layout, not only on the code
+being measured. `94b559f8ec` built in two target directories gave medians of 2,477 and 1,806
+instructions, over 15 processes each, for `corpus/unique n=100000 needle "cbqbpo"`. Across the 23 builds
+between `761d227fd4` and `94b559f8ec` that change the fixture's crates, the row moved between −25% and +17%.
+None of those builds changed `index.rs`, `ops.rs` or `rel/`. `Join … one left row's key edited` alternated
+between about 2,320 and 2,780 in the same way. The counter includes kernel work too. The first touch of
+a fresh page adds about 6,700 instructions and a syscall about 1,100. A step whose allocation lands on a
+new page therefore jumps by that much in some processes. Since `1c06a0ae22` and `b35fc4729f`, the operator paths that
+these rows measure do not allocate once warm. Compare such a row over at least 15 processes of each executable
+and check its minimum as well as its median.
+
 Use `--thresholds limits.json` for preregistered per-fixture and per-operation overrides. For example, an override on `hover` leaves every other sheet operation under the fixture default.
 
 ```json
