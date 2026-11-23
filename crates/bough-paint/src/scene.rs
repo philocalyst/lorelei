@@ -618,6 +618,9 @@ impl Bins {
     }
     /// The cut of tile `t`: its list starts at the topmost opaque cover holding the whole tile that lies
     /// beneath every layer record listed there (a layer's prefix needs what is under a later cover).
+    // (out of line: inlined into `recut_touched`, its only caller in a release build, the edit path of a
+    // pane that moves 1 px took 5 K more on Metal)
+    #[inline(never)]
     fn recut(&mut self, t: usize, l: &Lanes) {
         let (ox, oy) = ((t % self.tx) as i32 * 32, (t / self.tx) as i32 * 32);
         let (mut start, mut floor) = (0, 0);
