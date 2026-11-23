@@ -17,7 +17,7 @@ use bough_paint::driver::{Driver, Ran};
 use bough_paint::metal::Gpu;
 use bough_paint::plan;
 use bough_paint::scene::{Desc, Scene};
-use bough_paint::scenes::{Model, anim, canvas};
+use bough_paint::scenes::{Model, Motion, anim, canvas};
 use std::time::Instant;
 
 fn proc_instr() -> u64 {
@@ -288,8 +288,12 @@ fn main() {
             u.w[1] = (u.w[1] as i32 + d) as u32;
             None
         });
-        b.phase("drag", false, |k, u| {
-            u.w[3] = canvas::DRAG_ID + 7;
+        // the record dragged: the eighth draggable one where the scene has it (canvas 4), else its last (canvas 1
+        // has three; an id with no record dragged nothing, and the phase measured an idle update)
+        let drag = b.model.nodes.iter().filter_map(|n| match n.motion { Motion::Drag { id } => Some(id), _ => None })
+            .filter(|&id| id <= canvas::DRAG_ID + 7).max().expect("a draggable record");
+        b.phase("drag", false, move |k, u| {
+            u.w[3] = drag;
             let d = if (k / 6) % 2 == 0 { 1 } else { -1 };
             u.w[4] = (u.w[4] as i32 + d * 3 * 256) as u32;
             u.w[5] = (u.w[5] as i32 + d * 2 * 256 + 64) as u32;
