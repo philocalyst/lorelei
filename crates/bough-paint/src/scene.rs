@@ -653,27 +653,50 @@ impl Bins {
         self.binned.clear();
         self.binned.resize(l.win.len(), [0; 4]);
         self.touched.clear();
+        // during the fill, `mark` says a layer record is listed in the tile (its cut can go no higher)
         self.mark.clear();
         self.mark.resize(nt, false);
+        // the cuts are made as the lists are filled (what `recut` finds walking a list afterwards): in paint
+        // order, the last opaque cover holding the whole tile before the tile's first layer record
         for z in 0..l.win.len() {
             let b = l.bin(z);
             self.binned[z] = b;
             let (x0, y0, x1, y1) = self.span(&b);
             let lz = l.is_lay(z);
+            // the tiles the record's cover holds whole
+            let c = l.cover[z];
+            let held = if l.cut && !lz && c[0] < c[2] {
+                let up = |v: i16| (v as i32 + 31).div_euclid(32);
+                let dn = |v: i16| (v as i32).div_euclid(32);
+                (up(c[0]), up(c[1]), dn(c[2]), dn(c[3]))
+            } else {
+                (0, 0, 0, 0)
+            };
             for y in y0..y1 {
+                let hy = (y as i32) >= held.1 && (y as i32) < held.3;
                 for x in x0..x1 {
-                    self.lists[y * tx + x].push(z as u32);
+                    let t = y * tx + x;
                     if lz {
-                        self.lay[y * tx + x].push(z as u32);
+                        self.lay[t].push(z as u32);
+                        self.mark[t] = true;
+                    } else if hy && (x as i32) >= held.0 && (x as i32) < held.2 && !self.mark[t] {
+                        (self.start[t], self.floor[t]) = (self.lists[t].len() as u32, z as u32);
                     }
+                    self.lists[t].push(z as u32);
                 }
             }
         }
+        self.mark.fill(false);
         self.changed.clear();
+        self.changed.extend(0..nt as u32);
         self.chg_mark.clear();
-        self.chg_mark.resize(nt, false);
-        for t in 0..nt {
-            self.recut(t, l);
+        self.chg_mark.resize(nt, true);
+        if cfg!(debug_assertions) {
+            let (start, floor) = (self.start.clone(), self.floor.clone());
+            for t in 0..nt {
+                self.recut(t, l);
+            }
+            debug_assert!(start == self.start && floor == self.floor, "the cuts made while filling are recut's");
         }
     }
     /// Record `z`'s window, halo or cover changed: edit the lists of the tiles it left and entered, and
@@ -721,12 +744,13 @@ impl Bins {
     /// each record left or entered, the build per tile and per entry of the whole scene (and it changes every
     /// tile, which an executor that mirrors the bins then rewrites). A pan of a dense scene rebuilds; a
     /// scroll of a few large records over many tiles edits.
-    pub fn rebuild_cheaper(&self, moved: &[u32], l: &Lanes) -> bool {
-        // (a window right of or below the frame spans no tile: its span's ends cross)
-        let area = |s: (usize, usize, usize, usize)| s.2.saturating_sub(s.0) * s.3.saturating_sub(s.1);
+    #[inline(never)]
+    pub fn rebuild_cheaper(&self, moved: &[u32]) -> bool {
+        // a record leaves the tiles it was listed in and enters about as many: twice its listed tiles (a
+        // window right of or below the frame spans none: its span's ends cross)
         let visits = |z: u32| {
-            let old = self.binned.get(z as usize).copied().unwrap_or([0; 4]);
-            EDIT_WEIGHT * (area(self.span(&old)) + area(self.span(&l.bin(z as usize))))
+            let s = self.span(self.binned.get(z as usize).unwrap_or(&[0; 4]));
+            2 * EDIT_WEIGHT * s.2.saturating_sub(s.0) * s.3.saturating_sub(s.1)
         };
         // a build is at least a visit per tile: the edits are cheaper until they pass that, and only then
         // are the entries counted (a pass over the tiles, which a small edit does not pay)
@@ -1833,7 +1857,7 @@ impl Scene {
             // edits pay per tile a moved record left or entered, a rebuild per tile and entry of the scene:
             // a pan of most of a dense scene rebuilds, a scroll of a few records (however many of the scene's
             // records they are) edits (`Bins::rebuild_cheaper` weighs the two)
-            if first || self.bins.rebuild_cheaper(&rebin, &lanes) {
+            if first || self.bins.rebuild_cheaper(&rebin) {
                 self.bins.build(&lanes, self.tx, self.ty);
             } else {
                 for &z in &rebin {
