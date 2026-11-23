@@ -36,6 +36,13 @@ pub trait Sealer {
         self.word(v as u32);
         self.word((v >> 32) as u32);
     }
+    /// A recipe (`rt::Recipe::bytes`): its sixteen bytes as four words.
+    #[inline(always)]
+    fn recipe(&mut self, r: &[u8; 16]) {
+        for c in r.chunks_exact(4) {
+            self.word(u32::from_ne_bytes([c[0], c[1], c[2], c[3]]));
+        }
+    }
     /// This description cannot be sealed.
     fn refuse(&mut self);
     #[inline(always)]
@@ -54,6 +61,10 @@ impl Sealer for SealWrite<'_> {
     #[inline]
     fn word(&mut self, w: u32) {
         self.out.extend_from_slice(&w.to_ne_bytes());
+    }
+    #[inline]
+    fn recipe(&mut self, r: &[u8; 16]) {
+        self.out.extend_from_slice(r);
     }
     #[inline]
     fn bytes(&mut self, b: &[u8]) {
@@ -111,6 +122,18 @@ impl Sealer for SealCheck<'_> {
     #[inline(always)]
     fn word(&mut self, w: u32) {
         self.ok &= self.take_word() == w;
+    }
+    /// The same four words, compared as two `u64`s behind one bounds check.
+    #[inline(always)]
+    fn recipe(&mut self, r: &[u8; 16]) {
+        match self.cur.split_first_chunk::<16>() {
+            Some((h, rest)) => {
+                self.cur = rest;
+                let w = |s: &[u8; 16], o: usize| u64::from_ne_bytes(s[o..o + 8].try_into().unwrap());
+                self.ok &= (w(h, 0) ^ w(r, 0)) | (w(h, 8) ^ w(r, 8)) == 0;
+            }
+            None => self.ok = false,
+        }
     }
     #[inline(always)]
     fn bytes(&mut self, b: &[u8]) {

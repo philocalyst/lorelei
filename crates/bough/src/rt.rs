@@ -353,7 +353,10 @@ impl Recipe {
         assert!(at + size_of::<F>() <= 16, "a recipe holds at most 16 bytes of captures");
         // SAFETY: in bounds (asserted); an unaligned write into the recipe's storage.
         unsafe { std::ptr::write_unaligned((self.0.as_mut_ptr() as *mut u8).add(at) as *mut F, f) };
-        freeze(&mut self.0);
+        // what has no padding needs no freeze (a capture-free closure, an index): its bytes stay constants
+        if !crate::reflect::padding_free::<F>() {
+            freeze(&mut self.0);
+        }
         self
     }
     #[inline(always)]
@@ -377,12 +380,34 @@ impl Recipe {
     }
 }
 
-/// Make every byte of `r` initialised, keeping what memory holds. The asm does nothing, but the compiler must
-/// assume it may have written any bytes through the pointer, so afterwards no byte is uninitialised (the
-/// padding of what was written becomes some fixed bytes): the inline-asm freeze.
+/// Make every byte of `r` initialised, keeping what memory holds (the padding of what was written becomes
+/// some fixed bytes): the inline-asm freeze. The asm loads the sixteen bytes into two registers, whose values
+/// are whatever the memory holds (an asm block's outputs are always initialised), and they are stored back as
+/// integers. The asm only reads `r`, so the compiler keeps everything else it holds in registers.
 #[inline(always)]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn freeze(r: &mut std::mem::MaybeUninit<[u8; 16]>) {
-    // SAFETY: the template is empty: it reads and writes nothing, touches no stack and no flags.
+    let p = r.as_ptr() as *const u8;
+    let (a, b): (u64, u64);
+    // SAFETY: `p` is valid for 16 bytes of reads (unaligned loads are allowed on both targets); the asm reads
+    // only those bytes and touches no stack and no flags.
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        std::arch::asm!("ldp {a}, {b}, [{p}]", p = in(reg) p, a = out(reg) a, b = out(reg) b, options(pure, readonly, nostack, preserves_flags))
+    };
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        std::arch::asm!("mov {a}, qword ptr [{p}]", "mov {b}, qword ptr [{p} + 8]", p = in(reg) p, a = out(reg) a, b = out(reg) b, options(pure, readonly, nostack, preserves_flags))
+    };
+    // SAFETY: two initialised `u64`s are sixteen initialised bytes.
+    *r = std::mem::MaybeUninit::new(unsafe { std::mem::transmute::<[u64; 2], [u8; 16]>([a, b]) });
+}
+/// Elsewhere: an empty asm the compiler must assume wrote any bytes through the pointer (slower: it also
+/// assumes other memory changed).
+#[inline(always)]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+fn freeze(r: &mut std::mem::MaybeUninit<[u8; 16]>) {
+    // SAFETY: the template is empty.
     unsafe { std::arch::asm!("/* {0} */", in(reg) r.as_mut_ptr(), options(nostack, preserves_flags)) };
 }
 

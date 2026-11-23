@@ -353,9 +353,7 @@ pub(crate) fn recipe_of<F: Copy>(f: F) -> Recipe {
 pub(crate) fn seal_wire<S: crate::seal::Sealer>(s: &mut S, tag: u32, off: u32, recipe: [u8; 16]) {
     s.word(tag);
     s.word(off);
-    for w in recipe.chunks_exact(4) {
-        s.word(u32::from_ne_bytes([w[0], w[1], w[2], w[3]]));
-    }
+    s.recipe(&recipe);
 }
 
 impl<'a, T: Clone + 'static, V> IntoProp<T, V> for Wired<'a, T, V> {
