@@ -748,12 +748,14 @@ impl Bins {
     /// tile, which an executor that mirrors the bins then rewrites). A pan of a dense scene rebuilds; a
     /// scroll of a few large records over many tiles edits.
     #[inline(never)]
-    pub fn rebuild_cheaper(&self, moved: &[u32]) -> bool {
-        // a record leaves the tiles it was listed in and enters about as many: twice its listed tiles (a
-        // window right of or below the frame spans none: its span's ends cross)
+    pub fn rebuild_cheaper(&self, moved: &[u32], l: &Lanes) -> bool {
+        // a record leaves the tiles it was listed in and enters those of its new window (a record that grows
+        // or shrinks pays its new size, not its old one twice; a window right of or below the frame spans none:
+        // its span's ends cross)
+        let area = |s: (usize, usize, usize, usize)| s.2.saturating_sub(s.0) * s.3.saturating_sub(s.1);
         let visits = |z: u32| {
-            let s = self.span(self.binned.get(z as usize).unwrap_or(&[0; 4]));
-            2 * EDIT_WEIGHT * s.2.saturating_sub(s.0) * s.3.saturating_sub(s.1)
+            let old = self.span(self.binned.get(z as usize).unwrap_or(&[0; 4]));
+            EDIT_WEIGHT * (area(old) + area(self.span(&l.bin(z as usize))))
         };
         // a build is at least a visit per tile: the edits are cheaper until they pass that, and only then
         // are the entries counted (a pass over the tiles, which a small edit does not pay)
@@ -1860,7 +1862,7 @@ impl Scene {
             // edits pay per tile a moved record left or entered, a rebuild per tile and entry of the scene:
             // a pan of most of a dense scene rebuilds, a scroll of a few records (however many of the scene's
             // records they are) edits (`Bins::rebuild_cheaper` weighs the two)
-            if first || self.bins.rebuild_cheaper(&rebin) {
+            if first || self.bins.rebuild_cheaper(&rebin, &lanes) {
                 self.bins.build(&lanes, self.tx, self.ty);
             } else {
                 for &z in &rebin {
