@@ -30,5 +30,10 @@ fn an_empty_app_stays_under_two_million_instructions() {
     };
     one(); // the process's first App builds the font's tables
     let n = one();
-    assert!(n < 2_000_000, "an empty App took {n} instructions (bound 2,000,000; ~1.3 M when this was written)");
+    // The bound is for an optimised build (~1.3 M when this was written). Unoptimised code runs ~3x the
+    // instructions for the same work, so a debug run has its own bound, still well below the 12 M an eager
+    // per-capacity clear costs: the test holds in both profiles.
+    let bound = if cfg!(debug_assertions) { 6_000_000 } else { 2_000_000 };
+    eprintln!("an empty App: {n} instructions (bound {bound})");
+    assert!(n < bound, "an empty App took {n} instructions (bound {bound}; ~1.3 M optimised when this was written)");
 }
