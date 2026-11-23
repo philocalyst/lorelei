@@ -214,7 +214,7 @@ reference) they come from the effects-motion lane's merges into wave3:
 | Metal scroll (3.5x at media/4) | `03b3b08b53` (resident plan) | mirroring a rebuilt bin set asked each buffer for `contents` and `length` twice per tile (Metal messages): 373 K of a 1,000-tile frame |
 | one video frame | before `a66102aa8d` (a correctness fix) | the reference damaged 0 tiles for a published frame; the head damages 28 |
 
-Fixes (`c0ba171246`, `8aae02002d`, `711b7f2640`): fxbench takes the measured read cost off the span; `shade` returns
+Fixes (`c0ba171246`, `8aae02002d`, `711b7f2640`, `29df8a394f`): fxbench takes the measured read cost off the span; `shade` returns
 at once for no tiles; `Bins::rebuild_cheaper` weighs the edits (tiles each moved record leaves and enters)
 against a build (tiles plus entries), measured at about one instruction-unit each over the benches' large
 moves; `Bins::build` makes the cuts while it fills the lists; `Gpu::res_lists` takes its three buffers once.
@@ -223,12 +223,17 @@ moves; `Bins::build` makes the cuts while it fills the lists; `Gpu::res_lists` t
 |---|---:|---:|---:|
 | media/4 cpu1/idle | 5,400 | 9,400 | 3,000 |
 | effects/300 cpu1/idle | 5,400 | 9,500 | 3,100 |
-| media/4 cpu1/scroll 11 px | 88,100 | 135,500 | 17,800 |
-| media/4 metal/scroll 11 px | 166,800 | 589,000 | 94,800 |
-| media/24 metal/scroll 11 px | 543,300 | 846,200 | 501,700 |
-| media/48 metal/scroll 11 px | 1,075,400 | 1,189,300 | 912,100 |
+| media/4 cpu1/scroll 11 px | 88,100 | 135,500 | 16,900 |
+| media/4 metal/scroll 11 px | 166,800 | 589,000 | 93,100 |
+| media/24 metal/scroll 11 px | 543,300 | 846,200 | 496,800 |
+| media/48 metal/scroll 11 px | 1,075,400 | 1,189,300 | 791,500 |
 | media/4 cpu1/all videos (every 4th) | 6,900 | 9,400 | 3,000 |
-| pbench canvas4 canvas.pan/A | 3,426,600 | 5,200,700 | 2,978,700 |
+| pbench canvas4 canvas.pan/A | 3,426,600 | 5,200,700 | 2,940,600 |
+| pbench canvas4 canvas.full/A | 4,285,500 | 4,118,800 | 3,759,600 |
+| pbench canvas1 canvas.full/A | 2,546,400 | 2,553,700 | 2,368,200 |
+| pbench canvas1 canvas.drag/A1 | 7,200 | 7,900 | 5,000 |
+| pbench canvas1 canvas.drag/A | 3,800 | 4,400 | 4,500 |
+| pbench canvas1 canvas.hover1/A | 50,600 | 51,600 | 51,700 |
 
 The one video frame stays above the reference for a reason: the reference drew nothing when a video
 published a frame (0 tiles: the picture on screen was stale). The head damages the video's window and no
@@ -239,6 +244,14 @@ the frame reports 28 tiles, 0 records visited, 0 prefix and 0 blocks. What the 2
 |---|---:|---:|
 | media/4 cpu1/one video frame | 5,300 | 8,279,600 |
 | media/4 cpu1-nocache/one video frame | 39,529,300 (27 tiles) | 41,932,700 (55 tiles) |
-| media/4 metal/one video frame | 56,000 | 73,000 to 75,000 |
+| media/4 metal/one video frame | 56,000 | 72,800 to 75,000 |
 
 (media/24 and media/48's reference already drew 32 tiles for this frame; they are under it.)
+
+Not recovered: pbench canvas1 `canvas.drag/A` (window pass + bins only) and `canvas.hover1/A`. Neither frame
+builds bins; the drag frame's update is about 2.3 K of window pass over five key-indexed columns, and it
+grew by about 600 instructions across the wave3 merges of the effects-motion lane (3.8 K at `761d227fd4`,
+4.0 K at `a3ddfa09a7`, 4.1 K at `03b3b08b53`, 4.5 K at `9c987df26c`), not in one place. The cost-weighed
+bins decision adds up to 100 to each (4.4 K and 51.6 K with the old quarter rule, at the TSV's 0.1 K
+rounding). The `mixed` rows that cross the limit in one gate run and not the next (effects/600-dense
+hover above glass 72.4 K to 75.9 K between repetitions of one binary) are the Metal command path's jitter.
