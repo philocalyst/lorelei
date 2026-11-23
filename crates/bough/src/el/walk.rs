@@ -18,7 +18,7 @@ use crate::rt::*;
 use crate::seal::Sealer;
 use bough_core::bough::hit::{KF_FOCUS, KF_INTERACT};
 use std::any::TypeId;
-use std::ptr::NonNull;
+use std::ptr::{self, NonNull};
 
 // =============================================================================== erased operands
 
@@ -796,177 +796,261 @@ const _: () = assert!(KF_INTERACT != KF_FOCUS);
 
 // =============================================================================== the fast check
 
-/// A retained seal being read: `seal_at`'s words, compared in place with early exit (the checker of `seal.rs`
-/// streams through memory; this one keeps its position in registers).
-struct Cur<'a>(&'a [u8]);
+/// A retained seal being read by the fast check: `seal_at`'s words, compared in place with early exit. The
+/// position travels by value (in and out of every function, null once something differed) and the bounds are
+/// checked once per fixed-size run, so a row's check keeps both in registers.
+type At = *const u8;
 
-impl Cur<'_> {
-    #[inline(always)]
-    fn word(&mut self, w: u32) -> bool {
-        match self.0.split_first_chunk::<4>() {
-            Some((h, r)) if u32::from_ne_bytes(*h) == w => {
-                self.0 = r;
-                true
-            }
-            _ => false,
-        }
+/// The 4 bytes at `p + o` as a word (`p + o + 4` is in bounds: checked by the caller).
+#[inline(always)]
+unsafe fn rd32(p: At, o: usize) -> u32 {
+    // SAFETY: in bounds (caller); an unaligned read of plain bytes.
+    unsafe { ptr::read_unaligned(p.add(o) as *const u32) }
+}
+#[inline(always)]
+unsafe fn rd64(p: At, o: usize) -> u64 {
+    // SAFETY: as `rd32`.
+    unsafe { ptr::read_unaligned(p.add(o) as *const u64) }
+}
+#[inline(always)]
+fn left(p: At, end: At) -> usize {
+    end as usize - p as usize
+}
+
+/// `seal_req(w)` at `p`: the wire's identity, or the one zero word of no wire.
+#[inline(always)]
+fn check_req(w: *const WireReq, p: At, end: At) -> At {
+    if w.is_null() {
+        // SAFETY: four bytes are left (checked).
+        return if left(p, end) >= 4 && unsafe { rd32(p, 0) } == 0 { unsafe { p.add(4) } } else { ptr::null() };
     }
-    #[inline(always)]
-    fn bytes(&mut self, b: &[u8]) -> bool {
-        if !self.word(b.len() as u32) || self.0.len() < b.len() {
-            return false;
-        }
-        let (h, r) = self.0.split_at(b.len());
-        self.0 = r;
-        eq_bytes(h, b)
+    if left(p, end) < 36 {
+        return ptr::null();
     }
-    #[inline(always)]
-    fn req(&mut self, w: *const WireReq) -> bool {
-        if w.is_null() {
-            return self.word(0);
-        }
-        // SAFETY: as `wire`.
-        let w = unsafe { &*w };
-        let (a, p) = (w.head as usize as u64, w.patch as usize as u64);
-        self.word(0x5749_5245) && self.word(a as u32) && self.word((a >> 32) as u32) && self.word(p as u32) && self.word((p >> 32) as u32) && self.recipe(&w.recipe)
-    }
-    #[inline(always)]
-    fn recipe(&mut self, r: &[u8; 16]) -> bool {
-        match self.0.split_first_chunk::<16>() {
-            Some((h, rest)) if h == r => {
-                self.0 = rest;
-                true
-            }
-            _ => false,
-        }
+    // SAFETY: as `wire`; 36 bytes are left (checked).
+    unsafe {
+        let w = &*w;
+        let (a, f) = (w.head as usize as u64, w.patch as usize as u64);
+        let words = (rd32(p, 0) ^ 0x5749_5245) | (rd32(p, 4) ^ a as u32) | (rd32(p, 8) ^ (a >> 32) as u32) | (rd32(p, 12) ^ f as u32) | (rd32(p, 16) ^ (f >> 32) as u32);
+        let r = w.recipe.as_ptr();
+        let recipe = (rd64(p, 20) ^ rd64(r, 0)) | (rd64(p, 28) ^ rd64(r, 8));
+        if words == 0 && recipe == 0 { p.add(36) } else { ptr::null() }
     }
 }
 
-/// `a == b` for slices of one length: eight bytes at a time, inline.
+/// `n.operands()` against the `OPERANDS` bytes at `p` (in bounds: checked by the caller).
 #[inline(always)]
-fn eq_bytes(a: &[u8], b: &[u8]) -> bool {
-    let n = a.len();
-    if n < 8 {
-        return a == b;
-    }
-    let w = |s: &[u8], o: usize| u64::from_ne_bytes(s[o..o + 8].try_into().unwrap());
+unsafe fn eq_operands(n: &DNode, p: At) -> bool {
+    let o = n.operands().as_ptr();
     let mut d = 0u64;
-    let mut o = 0;
-    while o + 8 <= n {
-        d |= w(a, o) ^ w(b, o);
-        o += 8;
+    for i in 0..OPERANDS / 8 {
+        // SAFETY: `OPERANDS` bytes at both (`operands`, caller).
+        d |= unsafe { rd64(p, i * 8) ^ rd64(o, i * 8) };
     }
-    d |= w(a, n - 8) ^ w(b, n - 8);
+    const { assert!(OPERANDS % 8 == 0) };
     d == 0
 }
 
-/// Whether `seal_at` would write exactly what `c` holds next (and consume it).
+/// `a[..n] == b[..n]` (`n` bytes readable at both), inline at every length.
 #[inline(always)]
-fn check_at<const LEAF: bool>(n: &DNode, c: &mut Cur<'_>) -> bool {
-    let x = ext(n);
-    let has = |w: *const WireReq, bit: u32| if w.is_null() { 0 } else { bit };
-    let head = n.kind as u32 | (n.flags as u32) << 8 | (n.ops as u32) << 16 | has(n.ink, 1 << 24) | has(n.tw, 1 << 25) | if x.is_some() { 1 << 26 } else { 0 };
-    if !c.word(head) {
-        return false;
-    }
-    match n.kind {
-        K_BOX => {
-            if !(c.word(n.paint) && c.word(n.bc) && c.bytes(n.operands())) {
-                return false;
+unsafe fn eq_n(a: At, b: At, n: usize) -> bool {
+    // SAFETY: every read is inside `[0, n)` of both (overlapping words for the tail).
+    unsafe {
+        if n >= 8 {
+            let mut d = 0u64;
+            let mut o = 0;
+            while o + 8 <= n {
+                d |= rd64(a, o) ^ rd64(b, o);
+                o += 8;
             }
-            if !n.ink.is_null() && !c.req(n.ink) {
-                return false;
-            }
-            if n.ops != 0 && !check_ops(n, c) {
-                return false;
-            }
-            if !check_kids::<LEAF>(n, c, 0x4b49_0000) {
-                return false;
-            }
+            d |= rd64(a, n - 8) ^ rd64(b, n - 8);
+            d == 0
+        } else if n >= 4 {
+            (rd32(a, 0) ^ rd32(b, 0)) | (rd32(a, n - 4) ^ rd32(b, n - 4)) == 0
+        } else if n >= 2 {
+            let h = |p: At, o: usize| ptr::read_unaligned(p.add(o) as *const u16);
+            (h(a, 0) ^ h(b, 0)) | (h(a, n - 2) ^ h(b, n - 2)) == 0
+        } else {
+            n == 0 || *a == *b
         }
-        K_TEXT => {
-            if !(c.word(n.paint) && c.bytes(n.operands())) {
-                return false;
-            }
-            if !n.ink.is_null() && !c.req(n.ink) {
-                return false;
-            }
-            let ok = if n.flags & F_INT != 0 {
-                c.word(n.len as u32) && c.word((n.len >> 32) as u32)
-            } else {
-                // SAFETY: as `EText::with`.
-                c.bytes(unsafe { std::slice::from_raw_parts(n.text, n.len as usize) })
-            };
-            if !ok || (!n.tw.is_null() && !c.req(n.tw)) {
-                return false;
-            }
-        }
-        K_GROUP | K_FRAG => {
-            if !check_kids::<LEAF>(n, c, 0x4752_0000) {
-                return false;
-            }
-        }
-        _ => return false,
-    }
-    match x {
-        None => true,
-        Some(x) => check_ext(x, c),
     }
 }
 
+/// `seal_at`'s head word.
 #[inline(always)]
-fn check_kids<const LEAF: bool>(n: &DNode, c: &mut Cur<'_>, tag: u32) -> bool {
+fn head(n: &DNode) -> u32 {
+    let has = |w: *const WireReq, bit: u32| if w.is_null() { 0 } else { bit };
+    n.kind as u32 | (n.flags as u32) << 8 | (n.ops as u32) << 16 | has(n.ink, 1 << 24) | has(n.tw, 1 << 25) | if n.ext.is_null() { 0 } else { 1 << 26 }
+}
+
+/// Whether `seal_at` would write exactly the bytes at `p` (then: the position after them; else null).
+#[inline(always)]
+fn check_at<const LEAF: bool>(n: &DNode, p: At, end: At) -> At {
+    let mut p = p;
+    match n.kind {
+        K_BOX => {
+            // head, paint, border colour, the operands' length word, the operands
+            if left(p, end) < 16 + OPERANDS {
+                return ptr::null();
+            }
+            // SAFETY: `16 + OPERANDS` bytes are left (checked).
+            unsafe {
+                let words = (rd32(p, 0) ^ head(n)) | (rd32(p, 4) ^ n.paint) | (rd32(p, 8) ^ n.bc) | (rd32(p, 12) ^ OPERANDS as u32);
+                if words != 0 || !eq_operands(n, p.add(16)) {
+                    return ptr::null();
+                }
+                p = p.add(16 + OPERANDS);
+            }
+            if !n.ink.is_null() {
+                p = check_req(n.ink, p, end);
+                if p.is_null() {
+                    return p;
+                }
+            }
+            if n.ops != 0 {
+                p = check_ops(n, p, end);
+                if p.is_null() {
+                    return p;
+                }
+            }
+            p = check_kids::<LEAF>(n, p, end, 0x4b49_0000);
+        }
+        K_TEXT => {
+            // head, ink, the operands' length word, the operands
+            if left(p, end) < 12 + OPERANDS {
+                return ptr::null();
+            }
+            // SAFETY: `12 + OPERANDS` bytes are left (checked).
+            unsafe {
+                let words = (rd32(p, 0) ^ head(n)) | (rd32(p, 4) ^ n.paint) | (rd32(p, 8) ^ OPERANDS as u32);
+                if words != 0 || !eq_operands(n, p.add(12)) {
+                    return ptr::null();
+                }
+                p = p.add(12 + OPERANDS);
+            }
+            if !n.ink.is_null() {
+                p = check_req(n.ink, p, end);
+                if p.is_null() {
+                    return p;
+                }
+            }
+            if n.flags & F_INT != 0 {
+                // SAFETY: eight bytes are left (checked).
+                if left(p, end) < 8 || unsafe { (rd32(p, 0) ^ n.len as u32) | (rd32(p, 4) ^ (n.len >> 32) as u32) } != 0 {
+                    return ptr::null();
+                }
+                p = unsafe { p.add(8) };
+            } else {
+                let len = n.len as usize;
+                // SAFETY: `4 + len` bytes are left (checked); the node's text is `len` bytes (as `EText::with`).
+                if left(p, end) < 4 + len || unsafe { rd32(p, 0) } != len as u32 || !unsafe { eq_n(p.add(4), n.text, len) } {
+                    return ptr::null();
+                }
+                p = unsafe { p.add(4 + len) };
+            }
+            if !n.tw.is_null() {
+                p = check_req(n.tw, p, end);
+            }
+        }
+        K_GROUP | K_FRAG => {
+            // SAFETY: four bytes are left (checked).
+            if left(p, end) < 4 || unsafe { rd32(p, 0) } != head(n) {
+                return ptr::null();
+            }
+            p = check_kids::<LEAF>(n, unsafe { p.add(4) }, end, 0x4752_0000);
+        }
+        _ => return ptr::null(),
+    }
+    if p.is_null() || n.ext.is_null() {
+        return p;
+    }
+    // SAFETY: a node's `ext` is its own (as `ext`).
+    check_ext(unsafe { &*n.ext }, p, end)
+}
+
+#[inline(always)]
+fn check_kids<const LEAF: bool>(n: &DNode, p: At, end: At, tag: u32) -> At {
+    let mut p = p;
     let mut k = 0u32;
     if !LEAF {
         for it in Items(n.first) {
             let ch = it.n();
-            let ok = if ch.first.is_null() { check_at::<true>(ch, c) } else { check_deep(ch, c) };
-            if !ok {
-                return false;
+            p = if ch.first.is_null() { check_at::<true>(ch, p, end) } else { check_deep(ch, p, end) };
+            if p.is_null() {
+                return p;
             }
             k += 1;
         }
     }
-    c.word(tag | k)
+    // SAFETY: four bytes are left (checked).
+    if left(p, end) >= 4 && unsafe { rd32(p, 0) } == tag | k { unsafe { p.add(4) } } else { ptr::null() }
 }
 
 #[inline(never)]
-fn check_deep(n: &DNode, c: &mut Cur<'_>) -> bool {
-    check_at::<false>(n, c)
+fn check_deep(n: &DNode, p: At, end: At) -> At {
+    check_at::<false>(n, p, end)
 }
 
 #[cold]
-fn check_ops(n: &DNode, c: &mut Cur<'_>) -> bool {
+fn check_ops(n: &DNode, p: At, end: At) -> At {
     // SAFETY: `ops != 0` only with an `Ext`.
     let x = unsafe { &*n.ext };
+    let mut p = p;
     for (bit, v, w) in [(OP_ALPHA, x.alpha, x.wa), (OP_TX, x.tx, x.wtx), (OP_TY, x.ty, x.wty), (OP_W, x.w, x.ww), (OP_H, x.h, x.wh)] {
-        if n.ops & bit != 0 && !(c.word(v.to_bits()) && c.req(w)) {
-            return false;
+        if n.ops & bit != 0 {
+            // SAFETY: four bytes are left (checked).
+            if left(p, end) < 4 || unsafe { rd32(p, 0) } != v.to_bits() {
+                return ptr::null();
+            }
+            p = check_req(w, unsafe { p.add(4) }, end);
+            if p.is_null() {
+                return p;
+            }
         }
     }
-    true
+    p
 }
 
 #[inline(never)]
-fn check_ext(x: &Ext, c: &mut Cur<'_>) -> bool {
-    if !c.word(x.flags as u32) || (x.flags & X_HOVER != 0 && !c.word(x.hover)) {
-        return false;
+fn check_ext(x: &Ext, p: At, end: At) -> At {
+    let mut p = p;
+    let word = |p: At, w: u32| -> At {
+        // SAFETY: four bytes are left (checked).
+        if left(p, end) >= 4 && unsafe { rd32(p, 0) } == w { unsafe { p.add(4) } } else { ptr::null() }
+    };
+    p = word(p, x.flags as u32);
+    if p.is_null() {
+        return p;
     }
-    for r in acts(x) {
-        let t = r.tramp as usize as u64;
-        if !(c.word(r.kind as u32 | key_code(r.key) << 8) && c.word(t as u32) && c.word((t >> 32) as u32) && c.recipe(&r.recipe)) {
-            return false;
+    if x.flags & X_HOVER != 0 {
+        p = word(p, x.hover);
+        if p.is_null() {
+            return p;
         }
     }
-    c.word(0x4143_0000)
+    for r in acts(x) {
+        if left(p, end) < 28 {
+            return ptr::null();
+        }
+        let t = r.tramp as usize as u64;
+        // SAFETY: 28 bytes are left (checked).
+        let ok = unsafe { (rd32(p, 0) ^ (r.kind as u32 | key_code(r.key) << 8)) | (rd32(p, 4) ^ t as u32) | (rd32(p, 8) ^ (t >> 32) as u32) == 0 && eq_n(p.add(12), r.recipe.as_ptr(), 16) };
+        if !ok {
+            return ptr::null();
+        }
+        p = unsafe { p.add(28) };
+    }
+    word(p, 0x4143_0000)
 }
 
 /// `Element::seal_eq` for a node.
 #[inline(always)]
 fn seal_eq_node(n: &DNode, retained: &[u8]) -> bool {
-    let mut c = Cur(retained);
-    let ok = if n.first.is_null() { check_at::<true>(n, &mut c) } else { check_at::<false>(n, &mut c) };
-    ok && c.0.is_empty()
+    let p = retained.as_ptr();
+    // SAFETY: one past the end of `retained`.
+    let end = unsafe { p.add(retained.len()) };
+    let q = if n.first.is_null() { check_at::<true>(n, p, end) } else { check_at::<false>(n, p, end) };
+    q == end && !q.is_null()
 }
 
 #[cfg(test)]
