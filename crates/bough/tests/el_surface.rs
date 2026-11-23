@@ -343,6 +343,7 @@ fn rows_take_bound_routes() {
     });
     assert!(hit.is_some(), "a row's button");
     assert_eq!((app.owner.rows[0].count, app.owner.rows[1].count, app.owner.rows[2].count), (0, 0, 1));
+    app.pointer_leave(); // the clicked button shows its hover style while the pointer is on it
     let p = shot(&mut app);
     let mut fresh = App::new(Board { rows: (0..3).map(|i| Row { label: if i == 0 { "a".into() } else { format!("row {i}") }, count: (i == 2) as u32 }).collect() }, cfg(), true);
     assert_eq!(p, shot(&mut fresh), "the re-described board matches a fresh mount");

@@ -25,7 +25,7 @@ impl Rng {
 #[test]
 fn list_ops_match_a_vec_oracle() {
     for seed in 1..40u64 {
-        let mut r = Rng(seed * 0x9E37_79B9_7F4A_7C15);
+        let mut r = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         let mut l: List<u64> = List::new();
         let mut v: Vec<u64> = Vec::new();
         let mut slots: Vec<(Slot<u64>, u64)> = Vec::new();
