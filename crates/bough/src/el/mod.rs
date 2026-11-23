@@ -79,6 +79,15 @@ impl<'f> El<'f> {
         let (node, turn) = arena::node(kind, spec);
         El { node, turn, _f: PhantomData }
     }
+    /// The node of an element just made, before any code that could end the description ran (so it is this
+    /// description's: not checked).
+    #[inline(always)]
+    #[allow(clippy::mut_from_ref)]
+    fn fresh(&self) -> &mut DNode {
+        // SAFETY: `new` wrote the node for this handle, and no walk has ended since (the caller runs nothing in
+        // between), so it is this handle's own and the only one that names it.
+        unsafe { &mut *self.node.as_ptr() }
+    }
     /// The node, checked to be of this description.
     #[inline(always)]
     #[track_caller]
@@ -463,7 +472,7 @@ pub fn block<'f>(w: impl Len, h: impl Len) -> El<'f> {
 fn text_node<'f, P: IntoProp<'f, Text>>(t: P, wrap: bool) -> El<'f> {
     let pl = t.plug::<crate::elem::ApplyText>(Seal);
     let e = El::new(K_TEXT, Spec::new(false, false));
-    let n = e.n();
+    let n = e.fresh();
     (n.text, n.len, n.flags, n.tw) = (pl.v.ptr, pl.v.len, pl.v.flags | if wrap { F_WRAP } else { 0 }, pl.w);
     n.has = if pl.w.is_null() { 0 } else { H_TW };
     (n.m, n.paint) = ([14.0, 20.0], rgb(0x000000).0);
@@ -490,7 +499,7 @@ pub fn button<'f, P: IntoProp<'f, Text>>(label: P) -> El<'f> {
 /// A one-line text input bound two-way to a `Signal<String>` field of the view.
 pub fn text_input<'f>(s: &'f crate::signal::Signal<String>) -> El<'f> {
     let e = El::new(K_INPUT, Spec::new(false, false));
-    let n = e.n();
+    let n = e.fresh();
     (n.text, n.m) = (s as *const _ as *const u8, [240.0, 32.0]);
     e
 }
