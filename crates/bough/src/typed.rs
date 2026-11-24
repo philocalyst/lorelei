@@ -2635,7 +2635,7 @@ mod card5_safety {
         };
         assert_eq!(len, 2);
         assert_eq!(&journal.log[..2], &[Edit::Insert(0), Edit::Update(1)]);
-        let changed = crate::changed::Changed {
+        let changed: crate::changed::Changed<'_, Owner> = crate::changed::Changed {
             pubs: &pubs,
             readers: &[],
             _v: PhantomData,
