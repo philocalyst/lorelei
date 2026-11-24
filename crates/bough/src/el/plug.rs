@@ -7,7 +7,7 @@
 //! signal or a map is a store plus a wire request the walk installs when the signal is a field of the view
 //! that describes it. Publishing a wired signal then patches the element without rerunning `view`.
 use super::arena::{self, F_INT, F_NEG, WireReq};
-use super::arena::{W_GUARD, W_LATEST, W_PHEAD};
+use super::arena::{W_GUARD, W_LATEST, W_PHEAD, tagged};
 use crate::color::Color;
 use crate::elem::{Apply, patch_map, patch_sig};
 use crate::reader::{Reader, patch_rmap, patch_rpmap};
@@ -108,7 +108,7 @@ number_plugs!(f32, i32, u32);
 impl<'f, T: Scalar> IntoProp<'f, T> for &'f Signal<T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE, flags: 0 }) }
+        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE }) }
     }
 }
 
@@ -145,7 +145,7 @@ fn recipe<F: Copy>(f: F) -> crate::rt::Recipe {
 impl<'f, S: 'static, T: Scalar, F: Fn(&S) -> T + Copy + 'static> IntoProp<'f, T> for Map<&'f Signal<S>, F> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: (self.f)(self.src), w: arena::put(WireReq { head: self.src.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), flags: 0 }) }
+        Plug { v: (self.f)(self.src), w: arena::put(WireReq { head: self.src.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
     }
 }
 
@@ -193,7 +193,7 @@ int_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 impl<'f> IntoProp<'f, Text> for &'f Signal<String> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE, flags: 0 }) }
+        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE }) }
     }
 }
 
@@ -202,7 +202,7 @@ impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> fo
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
         let s = (self.f)(self.src);
-        Plug { v: owned_text(&s), w: arena::put(WireReq { head: self.src.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), flags: 0 }) }
+        Plug { v: owned_text(&s), w: arena::put(WireReq { head: self.src.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
     }
 }
 
@@ -253,13 +253,13 @@ impl<'f, S: 'static> Source<'f> for Latest<'f, S> {
 impl<'f, T: Scalar> IntoProp<'f, T> for Latest<'f, T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: **self.0, w: arena::put(WireReq { head: self.0.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE, flags: W_LATEST }) }
+        Plug { v: **self.0, w: arena::put(WireReq { head: tagged(self.0.head(), W_LATEST), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE }) }
     }
 }
 impl<'f> IntoProp<'f, Text> for Latest<'f, String> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        Plug { v: borrowed(self.0), w: arena::put(WireReq { head: self.0.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE, flags: W_LATEST }) }
+        Plug { v: borrowed(self.0), w: arena::put(WireReq { head: tagged(self.0.head(), W_LATEST), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE }) }
     }
 }
 
@@ -267,42 +267,42 @@ impl<'f, S: 'static, P: Scalar, F: Fn(&S) -> P + Copy + 'static> IntoProp<'f, P>
     #[inline]
     fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
         let s = self.src.0;
-        Plug { v: (self.f)(s), w: arena::put(WireReq { head: s.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), flags: W_LATEST }) }
+        Plug { v: (self.f)(s), w: arena::put(WireReq { head: tagged(s.head(), W_LATEST), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
     }
 }
 impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> for Map<Latest<'f, S>, F> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
         let s = self.src.0;
-        Plug { v: owned_text(&(self.f)(s)), w: arena::put(WireReq { head: s.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), flags: W_LATEST }) }
+        Plug { v: owned_text(&(self.f)(s)), w: arena::put(WireReq { head: tagged(s.head(), W_LATEST), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
     }
 }
 impl<'f, T: 'static, P: Scalar, F: Fn(Option<&T>) -> P + Copy + 'static> IntoProp<'f, P> for Map<&'f Reader<T>, F> {
     #[inline]
     fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
         let r = self.src;
-        Plug { v: (self.f)(r.latest()), w: arena::put(WireReq { head: r.head_cell(), ty: cell_id::<Reader<T>>(), patch: patch_rmap::<K, T, F>, recipe: recipe(self.f), flags: W_GUARD }) }
+        Plug { v: (self.f)(r.latest()), w: arena::put(WireReq { head: tagged(r.head_cell(), W_GUARD), ty: cell_id::<Reader<T>>(), patch: patch_rmap::<K, T, F>, recipe: recipe(self.f) }) }
     }
 }
 impl<'f, T: 'static, F: Fn(Option<&T>) -> String + Copy + 'static> IntoProp<'f, Text> for Map<&'f Reader<T>, F> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
         let r = self.src;
-        Plug { v: owned_text(&(self.f)(r.latest())), w: arena::put(WireReq { head: r.head_cell(), ty: cell_id::<Reader<T>>(), patch: patch_rmap::<K, T, F>, recipe: recipe(self.f), flags: W_GUARD }) }
+        Plug { v: owned_text(&(self.f)(r.latest())), w: arena::put(WireReq { head: tagged(r.head_cell(), W_GUARD), ty: cell_id::<Reader<T>>(), patch: patch_rmap::<K, T, F>, recipe: recipe(self.f) }) }
     }
 }
 impl<'f, T: 'static, P: Scalar, F: Fn(bool) -> P + Copy + 'static> IntoProp<'f, P> for Map<Pending<'f, T>, F> {
     #[inline]
     fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
         let r = self.src.0;
-        Plug { v: (self.f)(r.is_pending()), w: arena::put(WireReq { head: r.phead_cell(), ty: cell_id::<Reader<T>>(), patch: patch_rpmap::<K, T, F>, recipe: recipe(self.f), flags: W_PHEAD }) }
+        Plug { v: (self.f)(r.is_pending()), w: arena::put(WireReq { head: tagged(r.phead_cell(), W_PHEAD), ty: cell_id::<Reader<T>>(), patch: patch_rpmap::<K, T, F>, recipe: recipe(self.f) }) }
     }
 }
 impl<'f, T: 'static, F: Fn(bool) -> String + Copy + 'static> IntoProp<'f, Text> for Map<Pending<'f, T>, F> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
         let r = self.src.0;
-        Plug { v: owned_text(&(self.f)(r.is_pending())), w: arena::put(WireReq { head: r.phead_cell(), ty: cell_id::<Reader<T>>(), patch: patch_rpmap::<K, T, F>, recipe: recipe(self.f), flags: W_PHEAD }) }
+        Plug { v: owned_text(&(self.f)(r.is_pending())), w: arena::put(WireReq { head: tagged(r.phead_cell(), W_PHEAD), ty: cell_id::<Reader<T>>(), patch: patch_rpmap::<K, T, F>, recipe: recipe(self.f) }) }
     }
 }
 

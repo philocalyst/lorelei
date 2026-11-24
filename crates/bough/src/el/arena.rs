@@ -154,33 +154,49 @@ impl Ext {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct WireReq {
-    /// The head the wire hangs on: the cell's own (its first field), or a second head inside it (`W_PHEAD`).
+    /// The head the wire hangs on (the cell's own, its first field, or a reader's pending head), its two low
+    /// bits (heads are 4-aligned) tagged with the wire's kind (`W_*`), so a wire's identity (seal, shape) is this
+    /// word, the patch and the recipe as before.
     pub head: *const Cell<u32>,
     /// `reflect::cell_id` of the cell type `patch` reads.
     pub ty: TypeId,
     pub patch: PatchFn,
     pub recipe: crate::rt::Recipe,
-    /// `W_*`.
-    pub flags: u32,
 }
 
-/// `WireReq::flags`: the wire hangs on a reader's pending head (`phead`, 4 bytes into the cell).
-pub(crate) const W_PHEAD: u32 = 1;
-/// The wire runs while its source is held by a pending cohort (`latest(..)`).
-pub(crate) const W_LATEST: u32 = 2;
-/// The port reads a reader's value: a boundary around it guards that reader (`El::child` of a boundary).
-pub(crate) const W_GUARD: u32 = 4;
+/// `WireReq::head` tags: a `latest(..)` port (it runs while a cohort holds its signal).
+pub(crate) const W_LATEST: usize = 1;
+/// A reader's pending head (`phead`, 4 bytes into the cell): `is_pending(..)` ports.
+pub(crate) const W_PHEAD: usize = 2;
+/// A reader's value head, read by a port: a boundary around it guards that reader (`Boundary::child`).
+pub(crate) const W_GUARD: usize = 3;
+
+/// `h` tagged `t` (`W_*`).
+#[inline(always)]
+pub(crate) fn tagged(h: &Cell<u32>, t: usize) -> *const Cell<u32> {
+    (h as *const Cell<u32> as usize | t) as *const Cell<u32>
+}
 
 impl WireReq {
+    /// The wire's kind (`W_*`, 0: a plain port).
+    #[inline(always)]
+    pub(crate) fn tag(&self) -> usize {
+        self.head as usize & 3
+    }
+    /// The head the wire hangs on.
+    #[inline(always)]
+    pub(crate) fn wire_head(&self) -> *const Cell<u32> {
+        (self.head as usize & !3) as *const Cell<u32>
+    }
     /// Bytes from the cell's start to the head the wire hangs on.
     #[inline(always)]
     pub(crate) fn sub(&self) -> usize {
-        if self.flags & W_PHEAD != 0 { 4 } else { 0 }
+        if self.tag() == W_PHEAD { 4 } else { 0 }
     }
     /// The cell's address.
     #[inline(always)]
     pub(crate) fn cell(&self) -> usize {
-        self.head as usize - self.sub()
+        self.wire_head() as usize - self.sub()
     }
 }
 

@@ -37,26 +37,20 @@ fn wire<V>(m: &mut Mounter<'_, V>, w: *const WireReq, node: u32) {
         // of the type `ty` names, and `patch` reads that cell type with this recipe (`plug.rs`).
         unsafe {
             let w = &*w;
-            if m.wire_field(&*w.head, w.sub() as u32, w.ty, w.patch, node, w.recipe) {
-                if w.flags & W_LATEST != 0 {
+            if m.wire_field(&*w.wire_head(), w.sub() as u32, w.ty, w.patch, node, w.recipe) {
+                if w.tag() == W_LATEST {
                     let i = *m.scope.wires.last().unwrap();
                     m.rt.make_latest(i);
                 }
-                if w.flags & W_PHEAD != 0 {
+                if w.tag() == W_PHEAD {
                     // the pending flag was read when `view` ran, and a producer mounted since (its first request)
                     // may have moved it: the port is settled once more from the reader's state now
-                    crate::signal::queue(&*w.head);
+                    crate::signal::queue(&*w.wire_head());
                     m.rt.asy.rescan = true;
                 }
             }
         }
     }
-}
-
-/// The first word of a wire's seal: what kind of wire it is (a `latest` one is not the plain one).
-#[inline(always)]
-fn req_tag(w: &WireReq) -> u32 {
-    0x5749_5245 ^ (w.flags & W_LATEST) << 24
 }
 
 /// A wire's identity in a seal: the cell's address, the patch and its recipe.
@@ -68,7 +62,7 @@ fn seal_req<S: Sealer>(s: &mut S, w: *const WireReq) {
     }
     // SAFETY: as `wire`.
     let w = unsafe { &*w };
-    s.word(req_tag(w));
+    s.word(0x5749_5245);
     let (a, p) = (w.head as usize as u64, w.patch as usize as u64);
     s.word(a as u32);
     s.word((a >> 32) as u32);
@@ -413,6 +407,26 @@ fn prod(n: &DNode) -> &ProdReq {
 fn prod_words(p: &ProdReq) -> [u64; 3] {
     [p.src as usize as u64, p.dst as usize as u64, p.f as u64]
 }
+#[cold]
+#[inline(never)]
+fn seal_prod<S: Sealer>(n: &DNode, s: &mut S) {
+    for w in prod_words(prod(n)) {
+        s.word(w as u32);
+        s.word((w >> 32) as u32);
+    }
+}
+/// `seal_prod`'s words at `p` (then: the position after them; else null).
+#[cold]
+#[inline(never)]
+fn check_prod(n: &DNode, p: At, end: At) -> At {
+    if left(p, end) < 24 {
+        return ptr::null();
+    }
+    let [a, b, c] = prod_words(prod(n));
+    // SAFETY: 24 bytes are left (checked).
+    let d = unsafe { (rd32(p, 0) ^ a as u32) | (rd32(p, 4) ^ (a >> 32) as u32) | (rd32(p, 8) ^ b as u32) | (rd32(p, 12) ^ (b >> 32) as u32) | (rd32(p, 16) ^ c as u32) | (rd32(p, 20) ^ (c >> 32) as u32) };
+    if d != 0 { ptr::null() } else { unsafe { p.add(24) } }
+}
 #[inline(always)]
 fn bound(n: &DNode) -> &BoundReq {
     // SAFETY: a boundary node's `text` is the `BoundReq` its builder put in the bump store.
@@ -609,7 +623,7 @@ fn mix_req(h: u64, w: *const WireReq) -> u64 {
     }
     // SAFETY: as `wire`.
     let w = unsafe { &*w };
-    mix(mix(h, w.head as usize as u64 ^ ((w.flags & W_LATEST) as u64) << 56), w.patch as usize as u64)
+    mix(mix(h, w.head as usize as u64), w.patch as usize as u64)
 }
 
 /// What a re-description cannot change in place: the node's kind, paint, text metrics, reactive operations,
@@ -732,12 +746,7 @@ fn seal_at<S: Sealer, const LEAF: bool>(n: &DNode, s: &mut S) {
             }
             s.word(0x4752_0000 | k);
         }
-        K_PROD => {
-            for w in prod_words(prod(n)) {
-                s.word(w as u32);
-                s.word((w >> 32) as u32);
-            }
-        }
+        K_PROD => seal_prod(n, s),
         // a boundary's shown arm is state the description does not determine: never stepped over
         _ => s.refuse(),
     }
@@ -804,9 +813,6 @@ impl<V: 'static> Element<V> for Item {
         let n = self.n();
         match n.kind {
             K_GROUP | K_FRAG => update_dyn(m, Items(n.first)),
-            // a producer keeps its wire and its last input; its identity is its shape
-            K_PROD => {}
-            K_BOUND => update_bound(m, n),
             _ => {
                 // the element's first record carries its act (`input::act_for`)
                 let act = interactive(n).map(|x| (x, m.rt.bough.handle_at(m.pos)));
@@ -814,6 +820,9 @@ impl<V: 'static> Element<V> for Item {
                     K_BOX => lbox(n).update(m),
                     K_TEXT => para(n).update(m),
                     K_INPUT => <LBox<EOp<Color>, Opaque, EOps> as Element<V>>::update(input_box(n, Opaque), m),
+                    // a producer keeps its wire and its last input; its identity is its shape
+                    K_PROD => {}
+                    K_BOUND => update_bound(m, n),
                     _ => update_opaque(m),
                 }
                 if let Some((x, Some(h))) = act {
@@ -1000,7 +1009,7 @@ fn check_req(w: *const WireReq, p: At, end: At) -> At {
     unsafe {
         let w = &*w;
         let (a, f) = (w.head as usize as u64, w.patch as usize as u64);
-        let words = (rd32(p, 0) ^ req_tag(w)) | (rd32(p, 4) ^ a as u32) | (rd32(p, 8) ^ (a >> 32) as u32) | (rd32(p, 12) ^ f as u32) | (rd32(p, 16) ^ (f >> 32) as u32);
+        let words = (rd32(p, 0) ^ 0x5749_5245) | (rd32(p, 4) ^ a as u32) | (rd32(p, 8) ^ (a >> 32) as u32) | (rd32(p, 12) ^ f as u32) | (rd32(p, 16) ^ (f >> 32) as u32);
         let r = w.recipe.as_ptr();
         let recipe = (rd64(p, 20) ^ rd64(r, 0)) | (rd64(p, 28) ^ rd64(r, 8));
         if words == 0 && recipe == 0 { p.add(36) } else { ptr::null() }
@@ -1097,18 +1106,7 @@ fn check_at<const LEAF: bool>(n: &DNode, p: At, end: At) -> At {
             }
         }
         K_GROUP | K_FRAG => p = check_kids::<LEAF>(n, p, end, 0x4752_0000),
-        K_PROD => {
-            if left(p, end) < 24 {
-                return ptr::null();
-            }
-            let [a, b, c] = prod_words(prod(n));
-            // SAFETY: 24 bytes are left (checked).
-            let d = unsafe { (rd32(p, 0) ^ a as u32) | (rd32(p, 4) ^ (a >> 32) as u32) | (rd32(p, 8) ^ b as u32) | (rd32(p, 12) ^ (b >> 32) as u32) | (rd32(p, 16) ^ c as u32) | (rd32(p, 20) ^ (c >> 32) as u32) };
-            if d != 0 {
-                return ptr::null();
-            }
-            p = unsafe { p.add(24) };
-        }
+        K_PROD => p = check_prod(n, p, end),
         _ => return ptr::null(),
     }
     if p.is_null() || n.ext.is_null() {

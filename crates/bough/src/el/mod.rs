@@ -665,19 +665,19 @@ fn collect_guards(n: &DNode, list: &mut *const GuardReq) {
     }
     let mut take = |w: *const WireReq| {
         // SAFETY: a wire request of this description's node.
-        if let Some(w) = unsafe { w.as_ref() } {
-            if w.flags & W_GUARD != 0 {
-                let r = w.cell();
-                let mut g = *list;
-                // SAFETY: the list's entries are this description's.
-                while let Some(x) = unsafe { g.as_ref() } {
-                    if x.reader == r {
-                        return;
-                    }
-                    g = x.next;
+        if let Some(w) = unsafe { w.as_ref() }
+            && w.tag() == W_GUARD
+        {
+            let r = w.cell();
+            let mut g = *list;
+            // SAFETY: the list's entries are this description's.
+            while let Some(x) = unsafe { g.as_ref() } {
+                if x.reader == r {
+                    return;
                 }
-                *list = arena::put(GuardReq { next: *list, reader: r, ty: w.ty });
+                g = x.next;
             }
+            *list = arena::put(GuardReq { next: *list, reader: r, ty: w.ty });
         }
     };
     take(n.ink);
