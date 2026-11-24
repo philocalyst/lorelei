@@ -228,3 +228,46 @@ corpus/search: same-host noise from allocator layout and page faults, made alloc
 narrowing 2.8 K -> 1.1 K), Join −40–58%, Group back; `part_mark_cell` 59 -> 64 kept (3 of 5 instructions are the
 soundness bounds check). The `_x` fixture names left over from bough-x are gone (old receipts and checkouts still
 compare and build).
+
+## Reader plugs and `boundary()` in El (card frozen 2026-11-24, before building; branch `lane/reactivity/el-reader`)
+
+**What is built.** `Reader<T>` fields of a view as plugs of the El surface (`self.r.map(|o: Option<&T>| ..)`,
+`is_pending(&self.r).map(..)`, `latest(&self.sel)`), proven fields by the cell table as signals are; an El
+producer element (`produce(&self.sel, &self.r, request)`); and `boundary().loading(..).failed(..).child(..)`
+in El, which guards the readers its child arm reads (collected while the child is described, which by Rust's
+evaluation order is after `boundary()` and before `.child(..)` is called). All of it lowers onto the kernel's
+own reader machinery (`reader.rs`: ticket, cohort, `patch_rmap*`, clip-switched branches).
+
+**Question.** Does a completion reaching an El reader port, and a boundary's verdict through an El boundary,
+cost what the kernel's typed spelling (`sig!(self.r).map(..)`, `boundary(sig!(self.r))`) costs, with no
+allocation beyond the completion's own; and do the existing cells stay where they are?
+
+**Measure.** New example `crates/bough/examples/reader_cost.rs`, El and typed twins in one binary, interleaved:
+instructions on the calling thread by slope over two repeat counts, allocator calls per cycle counted by a
+counting global allocator (as `redescribe_cost`). Cells: (a) *port*: one producer `q -> r`, a text port and an
+`is_pending` opacity port on `r`; a cycle is `turn(q += 1)` (request), `run_jobs(1)`, `poll()` (admission,
+commit, patches); the request turn and the completion turn reported apart, under `Config::once()` (no
+re-description) and under re-description; (b) *boundary*: the same with the ports inside a boundary
+(`loading`/`child` arms); per completion the boundary's verdict wire runs (branch unchanged); and the
+first-readiness switch (loading -> child) as a single turn on fresh apps (median of 8). Also, unchanged:
+`EL=1 redescribe_cost 1000 10000` base (1a090b8b7f) vs head, same host, same session.
+
+**Prediction.** Once mode: El / typed <= 1.05 on every port and boundary cell (the same kernel wires run; the
+El boundary's verdict loops over its guards, one here). Re-description mode: El / typed <= 1.3 per turn (El's
+view of a handful of nodes is described each turn, as in the main card). Allocator calls per cycle: El equals
+typed (the request's boxes, the result's box, the formatted text: the completion's own payload); zero in a
+turn with no request and no completion. `redescribe_cost`: every typed and El cell within +-1% of base, zero
+allocations per steady turn.
+
+**Kill line.** Any once-mode cell above 1.3x typed, any El allocation per cycle beyond typed's, or any
+`redescribe_cost` cell outside +-1%. Past it, the work moves below the surface (the El operand carries the
+kernel's request directly) before anything else is added.
+
+**Correctness gates** (`crates/bough/tests/el_reader.rs`, each with a mutant behind a cargo feature that must
+fail it): a stale completion (an older request finishing after a newer one) is rejected (mutant
+`mutant_reader_stamp`: the ticket check passes everything); drop-cancel: unmounting a branch revokes its
+producer and a late completion changes nothing; loading -> content -> revalidation keeps content -> failure
+shows the failed arm (policy) -> success heals (mutant `mutant_el_boundary_ready`: the boundary ignores first
+readiness and shows loading while any guard is pending); the `is_pending` opacity port; a reader port patches
+with zero `view` runs (counted); and the retained pixels equal a fresh mount of the same state after every
+step of seeded random scripts of request / complete / fail / supersede / branch flip.
