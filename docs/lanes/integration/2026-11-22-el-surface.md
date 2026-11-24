@@ -228,3 +228,41 @@ corpus/search: same-host noise from allocator layout and page faults, made alloc
 narrowing 2.8 K -> 1.1 K), Join −40–58%, Group back; `part_mark_cell` 59 -> 64 kept (3 of 5 instructions are the
 soundness bounds check). The `_x` fixture names left over from bough-x are gone (old receipts and checkouts still
 compare and build).
+
+## Motion as a plug, map recipes, hover colours (card frozen 2026-11-24, before building)
+
+Branch `lane/reactivity/el-motion` from `1a090b8b7f`. Items: (A) `animate(&self.x).spring(..)` / `.over(ms)` /
+`.curve(..)` / `.delay(ms)` as a plug of the f32 and `Color` ports (`opacity`, `translate_x/y`, `w`, `h`, `bg`,
+`fg`), lowered onto the kernel's wire transitions (`transition.rs`); (B1) a change of a map's captured recipe
+reaches the installed wire on the turn it is described; (B2) a hover colour changed while hovered shows at once;
+(C) theme tokens only if the kernel has a mechanism to lower onto.
+
+**Question.** Does a view that uses none of this pay anything, and what does an El motion port cost per frame and
+per retarget against the typed `sig!(..).transition(..)` it lowers onto?
+
+**Measure.** (1) `EL=1 redescribe_cost 1000 10000` (instructions per turn and allocator calls per steady turn,
+typed and El twins), base `1a090b8b7f` against head, same host, same session. (2) The six workload scenes
+(`comparisons/bough-workloads`, `MODE=once` and `MODE=redescribe`, `RENDER=0`, median of 3), base against head,
+because the change touches the kernel's `Wire`, `cut_scope` and `Transitions` that their transitions use. (3) A new
+example `el_motion_cost`: N animated boxes (N = 1, 1000) in one binary, El `animate(..).curve(c)` against typed
+`sig!(..).transition(c)` on the same curve, plus El `animate(..).spring(..)`; instructions per `App::tick` with every
+box in flight, instructions per retarget turn (`Config::once`, one signal published), and `HEAP=1` allocator calls
+per tick and per retarget.
+
+**Prediction.** (1) and (2): every cell within ±1% of base, zero allocator calls per steady turn. (3) The El eased
+port runs the kernel's own transition state, so per tick it is within ±2% of typed; a retarget costs at most 1.3x
+typed (an affine map and an equality cut in the patch); a spring tick costs at most 2.5x an eased tick (one `exp` and
+one `sin_cos` per box); zero allocator calls per tick and per retarget once warm, for all three.
+
+**Kill line.** Any allocator call in a steady tick or retarget; El eased tick above 1.1x typed; any redescribe_cost
+cell or workload cell outside ±1% that is not shown to be code-layout noise by a no-op rebuild. Past any, the motion
+port does not land in this form.
+
+**Correctness gates** (each with a mutant feature that must fail it): retarget mid-flight is continuous (C0; C1 for
+springs and `Curve::smooth`), mutant retargets from the target instead of the presented value; one timestamp gives
+one value at 64 Hz, 128 Hz and an irregular cadence; the settled frame equals a fresh mount at the target (pixels);
+a motion port reruns no `view`; idle after settle steps nothing and requests no frame; a branch flip mid-flight
+remounts per 02 §6 (the old track is dropped, the new position equals a fresh mount), mutant keeps the old track; a
+view with no motion makes no transition state; B1 and B2 each against a fresh mount, each with a mutant.
+
+**Not claimed.** Frame time; the lowered runtime (`lower`) presents a motion port's target (no motion lanes there).
