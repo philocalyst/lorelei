@@ -361,6 +361,58 @@ def pbench(stdout, args, env):
     return operations
 
 
+# The `EL=1 redescribe_cost` fixture's output rows: one row per (row count, row shape).
+REDESCRIBE_HEADER = ("rows", "shape", "typed_instr", "el_instr", "el_over_typed",
+                     "typed_allocs_per_turn", "el_allocs_per_turn")
+REDESCRIBE_SHAPES = ("owned", "static", "bare")
+
+
+def redescribe(stdout, args, env):
+    """`crates/bough/examples/redescribe_cost.rs` in `EL=1` mode: instructions and allocation calls per
+    steady re-description turn for the typed and El twins of three row shapes, at each requested row count."""
+    wanted = {f"{rows}/{shape}" for rows in args for shape in REDESCRIBE_SHAPES}
+    header = None
+    operations = {}
+    for line in stdout.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split(",")
+        if fields[0] == "rows":
+            if header is not None or tuple(fields) != REDESCRIBE_HEADER:
+                raise ValueError("repeated or unexpected redescribe header")
+            header = fields
+            continue
+        if header is None or len(fields) != len(header):
+            raise ValueError("malformed redescribe row")
+        row = dict(zip(header, fields))
+        rows, shape = unsigned(row["rows"]), row["shape"]
+        if shape not in REDESCRIBE_SHAPES:
+            raise ValueError(f"unexpected redescribe row shape {shape!r}")
+        typed, el = unsigned(row["typed_instr"]), unsigned(row["el_instr"])
+        ratio = Decimal(row["el_over_typed"])
+        typed_allocs, el_allocs = Decimal(row["typed_allocs_per_turn"]), Decimal(row["el_allocs_per_turn"])
+        if typed == 0 or el == 0:
+            raise ValueError("redescribe instruction counter unavailable")
+        if min(ratio, typed_allocs, el_allocs) < 0:
+            raise ValueError("negative redescribe counter")
+        key = f"{rows}/{shape}"
+        if key in operations:
+            raise ValueError(f"duplicate redescribe row {key}")
+        operations[key] = {
+            "instr_p50": el,                       # the El path is this cell's subject
+            "typed_instr": typed,                  # the typed twin, gated beside it
+            "el_over_typed": float(ratio),
+            "typed_allocs_per_turn": float(typed_allocs),
+            "el_allocs_per_turn": float(el_allocs),
+        }
+    missing = wanted - operations.keys()
+    if missing:
+        raise ValueError(f"missing redescribe operations: {', '.join(sorted(missing))}")
+    if operations.keys() - wanted:
+        raise ValueError("unexpected redescribe operations")
+    return operations
+
+
 def parse(kind, stdout, stderr, args, env):
     if kind in TABLES:
         return table(kind, stdout, env)
@@ -376,4 +428,6 @@ def parse(kind, stdout, stderr, args, env):
         return pbench(stdout, args, env)
     if kind == "flatbench":
         return flatbench(stdout, args, env)
+    if kind == "redescribe":
+        return redescribe(stdout, args, env)
     raise ValueError(f"unknown fixture parser {kind!r}")

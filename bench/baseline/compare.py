@@ -10,6 +10,10 @@ import sys
 
 DEFAULT_LIMITS = {"instructions": 1.02, "wall": 1.10, "rss": 1.05}
 PRIMARY = ("instr_p50", "dispatch_instr", "step_instr", "instructions", "dispatch_allocs")
+# Counters some fixtures gate beside PRIMARY: the El redescribe twin's typed control, and steady-state
+# allocation counts (gated at zero by the ratio rule: a zero baseline against any positive head is infinite).
+GATED = PRIMARY + ("typed_instr", "typed_allocs_per_turn", "el_allocs_per_turn")
+ALLOCATION_COUNTERS = ("dispatch_allocs", "typed_allocs_per_turn", "el_allocs_per_turn")
 
 
 LEGACY_NAME = re.compile(r"^(sheet|events|text|anim|ops|damage)_x(?=/|$)")
@@ -209,13 +213,13 @@ def main():
             if set(old) != set(new):
                 raise ValueError(f"counter columns changed for {key}")
             cap = {**limits, **thresholds.get(key, {})}
-            gated = [counter for counter in PRIMARY if counter in old]
+            gated = [counter for counter in GATED if counter in old]
             if not gated:
                 raise ValueError(f"no instruction counter for {key}")
             for counter in gated:
                 failed |= display(f"{key} [{counter}]", metric(old[counter], base["reps"]),
                                   metric(new[counter], head["reps"]), cap["instructions"],
-                                  same_binary=same_binary and counter != "dispatch_allocs")
+                                  same_binary=same_binary and counter not in ALLOCATION_COUNTERS)
                 compared += 1
     if wanted - found:
         raise ValueError(f"unknown cells or operations: {', '.join(sorted(wanted - found))}")
