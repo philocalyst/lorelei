@@ -55,9 +55,13 @@ fn instances(w: &World, l: &L) -> Vec<Instance> {
 
 impl World {
     fn new() -> Self {
+        World::with_font(FONT)
+    }
+
+    fn with_font(font: &[u8]) -> Self {
         World {
-            sh: Shaper::new(SimpleScript::build(FONT, 0).unwrap()),
-            cache: GlyphCache::new(FONT),
+            sh: Shaper::new(SimpleScript::build(font, 0).unwrap()),
+            cache: GlyphCache::new(font),
             pool: GlyphPool::new(),
             run: GlyphRun::default(),
             oracle_tiles: 0,
@@ -299,4 +303,37 @@ fn moved_label_patches_as_one_allocated_there() {
         }
     }
     assert!(patched > 300, "the digit patch path was exercised after moves ({patched})");
+}
+
+/// A face that kerns a digit pair (Arial kerns "11", so `1` is a position class of its own; the corpus face's ten
+/// digits are one class and cannot show this). An equal-length all-digit change keeps every pen only when each
+/// changed lane keeps its class: `119` -> `777` must re-step the pens (the retained label otherwise drew `777`
+/// on `119`'s kerned pens, one pixel off a fresh shape: tests/el_fuzz.rs in bough), while `2345` -> `6789` still
+/// takes the vector patch. Arial ships with macOS only: elsewhere set `BOUGH_KERNED_DIGITS_FONT` to such a face,
+/// or the test reports that it was skipped. Negative control: `--features mutant_digit_class` fails it.
+#[test]
+fn digit_patch_in_a_face_that_kerns_digits() {
+    let path = std::env::var("BOUGH_KERNED_DIGITS_FONT").unwrap_or_else(|_| "/System/Library/Fonts/Supplemental/Arial.ttf".into());
+    let Ok(bytes) = std::fs::read(&path) else {
+        eprintln!("SKIPPED digit_patch_in_a_face_that_kerns_digits: no face at {path}");
+        return;
+    };
+    let mut w = World::with_font(&bytes);
+    assert!(!w.sh.digits_one_class, "{path}: the face's digits are one class (it kerns no digit pair)");
+    let mut l = w.label(14.0, [62.62069, 15.0], [0, 0], 1);
+    w.set(&mut l, "119");
+    w.set(&mut l, "777");
+    w.set(&mut l, "2345");
+    let p = w.set(&mut l, "6789");
+    #[cfg(target_arch = "aarch64")]
+    assert!(p, "a class-preserving digit change takes the vector patch");
+    let mut st = 0x9E37_79B9_7F4A_7C15u64;
+    let mut patched = 0;
+    for _ in 0..if full() { 20_000 } else { 2_000 } {
+        let v = xorshift(&mut st) % 100_000;
+        patched += w.set(&mut l, &format!("{v:05}")) as u32;
+    }
+    #[cfg(target_arch = "aarch64")]
+    assert!(patched > 0, "digit changes that keep their classes still take the vector patch");
+    let _ = (p, patched);
 }

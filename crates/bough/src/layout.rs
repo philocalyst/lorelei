@@ -1548,7 +1548,7 @@ where
         if self.draw {
             let node = m.rt.node_at(hd);
             let bg = self.bg.lower::<ApplyBg>(m, node);
-            let (ins, _kind, margin) = quad_instance(bg, snap(self.radius * s), self.border, s, m.space);
+            let (ins, _kind, margin) = quad_instance(bg, self.radius * s, self.border, s, m.space);
             // the box's state is its instance (at its own id) and eight hot bytes
             let inst = m.rt.inst_of(node);
             *m.rt.inst_mut(inst) = ins;
@@ -1609,6 +1609,9 @@ where
             let bg = self.bg.value();
             let s = m.rt.scale;
             let (ins, _kind, margin) = quad_instance(bg, self.radius * s, self.border, s, m.space);
+            // negative control: the re-description's radius off the grid the mount put it on
+            #[cfg(feature = "mutant_radius_grid")]
+            let ins = Instance { radius: self.radius * s, ..ins };
             let _ = margin;
             let inst = m.rt.inst_of(node);
             let old = *m.rt.inst_mut(inst);

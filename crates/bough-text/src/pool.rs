@@ -23,7 +23,7 @@
 //!
 //! A new value of a retained label is diffed against the old bytes (one NEON compare for
 //! labels up to 16 bytes). If every changed byte stays in its *position-equivalence class*
-//! (`Shaper::pos_class`; the ten digits are one class in DejaVu Sans), no pen position can
+//! (`Shaper::pos_class`; the ten digits are one class in DejaVu Sans, not in Arial, which kerns "11"), no pen position can
 //! change: the update stores the 16 widened bytes as the `ent` lanes (one store pair, changed
 //! or not) and nothing else. Otherwise the steps are recomputed from the first changed byte
 //! only (`x` of the slot before it is kept), and for equal-length edits only up to the last
@@ -574,10 +574,20 @@ impl GlyphPool {
                 return true;
             }
             // Position-class test, vector form for the common case: every lane unchanged or
-            // digit -> digit (the digits are one class). Exact per-lane fallback otherwise.
+            // digit -> digit of the same class. In a face whose ten digits are one class (DejaVu
+            // Sans) that is any digit; where the face kerns a digit pair (Arial's "11": `1` is its
+            // own class) the lane's old and new digit classes are compared (`Shaper::digit_class`),
+            // else a pen would move. Exact per-lane fallback otherwise.
             let d0 = vdupq_n_u8(b'0');
             let ten = vdupq_n_u8(10);
-            let digits = vandq_u8(vcltq_u8(vsubq_u8(vn, d0), ten), vcltq_u8(vsubq_u8(vo, d0), ten));
+            let (dn, do_) = (vsubq_u8(vn, d0), vsubq_u8(vo, d0));
+            #[allow(unused_mut)]
+            let mut digits = vandq_u8(vcltq_u8(dn, ten), vcltq_u8(do_, ten));
+            #[cfg(not(feature = "mutant_digit_class"))]
+            if !sh.digits_one_class {
+                let dc = vld1q_u8(sh.digit_class.as_ptr());
+                digits = vandq_u8(digits, vceqq_u8(vqtbl1q_u8(dc, dn), vqtbl1q_u8(dc, do_)));
+            }
             let all_digits = vminvq_u8(vorrq_u8(eq, digits)) == 0xFF;
             if !all_digits {
                 if vmaxvq_u8(vn) >= 0x80 {
