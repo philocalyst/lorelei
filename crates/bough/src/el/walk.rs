@@ -12,7 +12,7 @@ use crate::boxops::{ApplyBoxH, ApplyBoxW, ApplyOpacity, ApplyTx, ApplyTy, BoxLow
 use crate::color::Color;
 use crate::describe::{mount_dyn_as, update_dyn, update_opaque};
 use crate::elem::{decimal, Apply, Element, IntoProp, Mounter, TextSrc};
-use crate::input::{Ev, Key, Route, UP_ROOT};
+use crate::input::{ActOwner, Ev, Key, Route, UP_ROOT};
 use crate::layout::{Dim, LBox, Para, Spec};
 use crate::rt::*;
 use crate::seal::Sealer;
@@ -553,22 +553,22 @@ fn resolve<V: 'static>(lists: &crate::listview::Lists, root: Option<TypeId>, r: 
 fn set_routes<V: 'static>(m: &mut Mounter<'_, V>, a: u32, x: &Ext) {
     let row = if x.acts.is_null() { (NONE, 0, 0) } else { chain_row(m) };
     let rt = &mut *m.rt;
-    let (lists, input, root) = (&rt.lists, &mut rt.input, rt.root_ty);
+    let (lists, input, root) = (&rt.lists, &mut rt.input, rt.lists.root_ty);
     let act = &mut input.acts[a as usize];
     (act.click, act.press, act.hover, act.drag, act.key) = (None, None, None, None, None);
-    act.row = row;
+    let mut owner = ActOwner { row, up: [UP_ROOT; 5] };
     let mut keys = 0;
     for r in acts(x) {
         let up = resolve::<V>(lists, root, r, row);
         // SAFETY: `resolve` proved the trampoline's receiver type is the type of the owner `up` names.
-        let route = Some(unsafe { Route::raw(r.tramp, r.recipe, up) });
+        let route = Some(unsafe { Route::raw(r.tramp, r.recipe) });
         // the list is most recent first: the last description of a slot wins
-        let slot = match r.kind {
-            A_CLICK => &mut act.click,
-            A_PRESS => &mut act.press,
-            A_HOVER => &mut act.hover,
-            A_DRAG => &mut act.drag,
-            A_ANY_KEY => &mut act.key,
+        let (slot, i) = match r.kind {
+            A_CLICK => (&mut act.click, 0),
+            A_PRESS => (&mut act.press, 1),
+            A_HOVER => (&mut act.hover, 2),
+            A_DRAG => (&mut act.drag, 3),
+            A_ANY_KEY => (&mut act.key, 4),
             _ => {
                 keys += 1;
                 continue;
@@ -576,16 +576,21 @@ fn set_routes<V: 'static>(m: &mut Mounter<'_, V>, a: u32, x: &Ext) {
         };
         if slot.is_none() {
             *slot = route;
+            owner.up[i] = up;
         }
     }
     if keys != 0 || act.keys != 0 {
-        let map = input.keymap(a);
+        input.keymap(a);
         for r in acts(x).filter(|r| r.kind == A_KEY) {
             let up = resolve::<V>(lists, root, r, row);
-            // SAFETY: as above.
-            map.push((r.key, unsafe { Route::raw(r.tramp, r.recipe, up) }));
+            // SAFETY: as above (the receiver is recorded in step: `Input::keymap_ups`).
+            let route = unsafe { Route::raw(r.tramp, r.recipe) };
+            let k = input.acts[a as usize].keys as usize;
+            input.keymaps[k].push((r.key, route));
+            input.keymap_ups[k].push(up);
         }
     }
+    input.set_owner(a, owner);
     let act = &mut input.acts[a as usize];
     if x.flags & X_HOVER != 0 {
         act.hover_bg = Some(x.hover);

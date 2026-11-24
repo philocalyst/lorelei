@@ -7,13 +7,15 @@
 //! (the root re-describes every turn). Instructions per `App::turn` on the calling thread by slope over two
 //! repeat counts, allocator calls per turn; El and typed interleaved in one run.
 //!
-//! Cells: `mount` (App::new + first turn, N rows minus 0 rows; the region mounts the rows its visible rect
+//! Cells: `mount` (App::new + first turn, N rows minus 0 rows, the least of three each; the region mounts the rows its visible rect
 //! meets, 25 of 32-point rows in the 800-point window, plus the overscan), `edit` (one visible row's label set
-//! through `List::edit`), `move` (one visible row moved there and back), `splice` (one row inserted among the
-//! visible ones and removed, per pair), `parent` (the root's title changes; the list does not). Also the rows
+//! through `List::edit`, in place), `move` (one visible row moved there and back), `splice` (one row inserted among the
+//! visible ones and removed, per pair), `parent` (the root's title alternates between two values; the list does not change). Also the rows
 //! described per turn.
 //!
 //!     cargo run --release -p bough --example el_list_cost -- [rows...]
+//!
+//! `RAW=1` prints each cell's two runs (instructions, allocator calls, rows described) to stderr.
 use bough::raw::{App, Caps, Config};
 use bough_sys::perf::tinstr;
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -152,7 +154,11 @@ fn measure<T: Shape>(font: &[u8], n: usize, op: Op) -> (u64, f64, f64) {
             k += 1;
             match op {
                 Op::Edit => a.turn(|t| {
-                    T::label(t.items().edit(mid)).set(if k % 2 == 0 { "Row label even".into() } else { "Row label odd".into() });
+                    // rewritten in place (a `Signal`'s `DerefMut` queues its wires): the turn allocates nothing
+                    // of the bench's own
+                    let s: &mut String = T::label(t.items().edit(mid));
+                    s.clear();
+                    s.push_str(if k % 2 == 0 { "Row label even" } else { "Row label odd" });
                 }),
                 Op::Move => a.turn(|t| if k % 2 == 0 { t.items().move_to(mid, mid + 3) } else { t.items().move_to(mid + 3, mid) }),
                 Op::Splice => {
@@ -163,13 +169,16 @@ fn measure<T: Shape>(font: &[u8], n: usize, op: Op) -> (u64, f64, f64) {
                         t.items().remove(mid);
                     });
                 }
-                Op::Parent => a.turn(|t| *t.title() = k),
+                Op::Parent => a.turn(|t| *t.title() = k % 2), // two values: no glyph is new after the warm-up
             }
         }
         (tinstr() - t0, CALLS.load(Relaxed) - c0, described(&a) - d0)
     };
     run(8);
     let (lo, hi) = (run(16), run(48));
+    if std::env::var_os("RAW").is_some() {
+        eprintln!("{op:?} n={n}: 16 reps {lo:?}, 48 reps {hi:?}");
+    }
     ((hi.0 - lo.0) / 32, (hi.1 as f64 - lo.1 as f64) / 32.0, (hi.2 as f64 - lo.2 as f64) / 32.0)
 }
 
@@ -186,8 +195,10 @@ fn mount<T: Shape>(font: &[u8], n: usize) -> (u64, f64) {
         d
     };
     one(1);
-    let (z, f) = (one(0), one(n));
-    (f.0 - z.0, (f.1 - z.1) as f64)
+    // the least of three (a first mount pays one-time costs: page faults, glyphs, table growth)
+    let best = |n: usize| (0..3).map(|_| one(n)).min().unwrap();
+    let (z, f) = (best(0), best(n));
+    (f.0 - z.0, f.1 as f64 - z.1 as f64)
 }
 
 fn main() {

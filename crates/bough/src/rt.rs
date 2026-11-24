@@ -471,6 +471,10 @@ pub struct Scope {
 }
 
 impl Scope {
+    /// Everything the scope held is released (`Rt::release_scope`, `Rt::reclaim`): it may be reused.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.wires.is_empty() && self.texts.is_empty() && self.insts.is_empty() && self.runs.is_empty() && self.series.is_empty() && self.lroots.is_empty() && self.dyns.is_empty() && self.lregs.is_empty() && self.prods.is_empty()
+    }
     /// Heap bytes of the scope's lists (memory ledger).
     pub fn heap_bytes(&self) -> usize {
         (self.wires.capacity() + self.texts.capacity() + self.insts.capacity() + self.runs.capacity() + self.lroots.capacity() + self.dyns.capacity() + self.lregs.capacity() + self.prods.capacity()) * 4 + self.series.capacity() * 8
@@ -644,8 +648,6 @@ pub struct Rt {
     pub lay: crate::layout::Lay,
     /// List regions (`listview.rs`).
     pub lists: crate::listview::Lists,
-    /// The app's root view type (`App::new`): a route mounted with the root's class runs on it (`el/walk.rs`).
-    pub(crate) root_ty: Option<std::any::TypeId>,
     /// Reflection (`reflect.rs`): wired fields' descriptors, element type names by record handle.
     pub reflect: crate::reflect::Reflect,
     /// Released subtrees whose resources return to the free lists at the next frames (`reclaim`).
@@ -829,7 +831,6 @@ impl Rt {
             ctr: Counters::default(),
             lay,
             lists: Default::default(),
-            root_ty: None,
             reclaim_q: Vec::new(),
             reflect,
             dyns: Default::default(),
@@ -1684,6 +1685,8 @@ impl Rt {
         self.cut_scope(&mut s);
         if !(s.texts.is_empty() && s.insts.is_empty() && s.series.is_empty() && s.runs.is_empty() && s.dyns.is_empty()) {
             self.reclaim_q.push(s);
+        } else {
+
         }
     }
 
@@ -1733,6 +1736,8 @@ impl Rt {
             }
             if !(s.texts.is_empty() && s.insts.is_empty() && s.series.is_empty() && s.runs.is_empty() && s.dyns.is_empty()) {
                 self.reclaim_q.push(s);
+            } else {
+
             }
         }
         // layout leaves' glyph blocks; their states are kept for reuse

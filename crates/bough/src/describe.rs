@@ -122,6 +122,40 @@ impl Rt {
     }
 }
 
+impl Rt {
+    /// Region `reg`'s records changed by `d` outside the walk of the description that holds it: every dynamic
+    /// item enclosing it counts them, so a later re-description finds the run it holds now. The owner's top
+    /// parts are disjoint runs; visit only the path containing `reg`. A part taken out for a walk is absent
+    /// from its owner's scope, so that walk counts its regions afresh.
+    pub(crate) fn count_in_items(&mut self, top_parts: &[u32], reg: u32, d: i64) {
+        fn walk(rt: &mut Rt, s: &Scope, reg: u32, d: i64) -> bool {
+            let mut found = s.lregs.contains(&reg);
+            for &q in &s.dyns {
+                found |= part(rt, q, reg, d);
+            }
+            found
+        }
+        fn part(rt: &mut Rt, p: u32, reg: u32, d: i64) -> bool {
+            let mut found = false;
+            let mut items = std::mem::take(&mut rt.dyns.parts[p as usize]);
+            for i in 0..items.len() {
+                let hit = walk(rt, &items[i].scope, reg, d);
+                if hit {
+                    items[i].nrec = (items[i].nrec as i64 + d) as u32;
+                    found = true;
+                }
+            }
+            rt.dyns.parts[p as usize] = items;
+            found
+        }
+        for &p in top_parts {
+            if part(self, p, reg, d) {
+                break;
+            }
+        }
+    }
+}
+
 /// Mount the items of a dynamic part. A fixed owner mounts them inline (no tape, no per-item scope); a
 /// re-describing one gives each item its own scope and tape and records the part on the owner's tape.
 pub(crate) fn mount_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl Iterator<Item = E>) {
@@ -178,30 +212,6 @@ fn mount_item<V, E: Element<V>>(m: &mut Mounter<'_, V>, e: E, into: Option<&mut 
     DynItem { key: 0, nrec: nrec as u32, nkid: nkid as u32, scope, tape, seal: (0, 0) }
 }
 
-/// The records an item holds now: what it counted when it was last walked, and what the list regions in it
-/// mounted or unmounted since (their rows are state: they change between descriptions).
-fn live_nrec(rt: &Rt, it: &DynItem) -> usize {
-    fn walk(rt: &Rt, s: &Scope, n: &mut i64) {
-        for &r in &s.lregs {
-            let g = &rt.lists.regs[r as usize];
-            if !g.dead {
-                *n += g.recs as i64 - g.seen as i64;
-            }
-        }
-        for &d in &s.dyns {
-            for it in &rt.dyns.parts[d as usize] {
-                walk(rt, &it.scope, n);
-            }
-        }
-    }
-    if it.scope.lregs.is_empty() && it.scope.dyns.is_empty() {
-        return it.nrec as usize;
-    }
-    let mut n = it.nrec as i64;
-    walk(rt, &it.scope, &mut n);
-    n as usize
-}
-
 /// Re-describe a dynamic part: item `k` updates retained item `k`, new items are mounted as one run at the
 /// end of the part, surplus items are removed as one run.
 pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl Iterator<Item = E>) {
@@ -255,7 +265,7 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
                 }
                 m.rt.lay.eng.splice_kids(&m.rt.bough, lid, m.kid, gone.nkid as usize);
             }
-            let nrec = live_nrec(m.rt, &gone);
+            let nrec = gone.nrec as usize;
             m.rt.bough.remove_run(m.pos, nrec);
             m.rt.release_scope(gone.scope);
             let mut buf = Vec::new();
@@ -292,7 +302,7 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
                 if k + 1 < old.len() && sealed_as(&old[k + 1], &e, &seals, &m.rt.lay.descs, cx).1 {
                     let gone = old.remove(k);
                     seals.dead += gone.seal.1;
-                    let nrec = live_nrec(m.rt, &gone);
+                    let nrec = gone.nrec as usize;
                     remove_items(m, lid, nrec, gone.nkid as usize);
                     m.rt.release_scope(gone.scope);
                     pending = Some(e); // against the retained item now at `k`
@@ -390,7 +400,7 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
     } else if k < old.len() {
         let gone: Vec<DynItem> = old.drain(k..).collect();
         seals.dead += gone.iter().map(|i| i.seal.1).sum::<u32>();
-        let nrec: usize = gone.iter().map(|i| live_nrec(m.rt, i)).sum();
+        let nrec: usize = gone.iter().map(|i| i.nrec as usize).sum();
         let nkid: usize = gone.iter().map(|i| i.nkid as usize).sum();
         if lid != NONE && nkid > 0 {
             for i in 0..nkid {

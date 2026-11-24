@@ -272,9 +272,6 @@ pub struct LRegion {
     pub(crate) row_size: usize,
     /// The mounted rows' records (the sum of their `nrec`): an El list's re-description steps over them in O(1).
     pub(crate) recs: usize,
-    /// `recs` when the owner's description last walked the region: the records the enclosing dynamic items
-    /// counted then (`describe::live_nrec` adds what changed since).
-    pub(crate) seen: usize,
     /// The owner the region was mounted in (`OWNER_*`), its type, and for a row owner its slot's generation.
     pub(crate) owner_kind: u8,
     pub(crate) owner_ty: std::any::TypeId,
@@ -330,6 +327,9 @@ pub struct Lists {
     perm: Vec<u32>,
     stage: Vec<RecordInit>,
     stage2: Vec<RecordInit>,
+    /// The record delta already propagated by nested regions during the current row re-description. The row's
+    /// own run is out of the retained table during that walk; only the remainder is propagated when it ends.
+    lr_counted: i64,
     map: Vec<u32>,
     /// The mounted rows' scopes (a slab: `LRow::scope` indexes it).
     scopes: Vec<Scope>,
@@ -339,6 +339,11 @@ pub struct Lists {
     /// El rows' re-description state, indexed like `scopes`, and tapes free for reuse.
     pub(crate) elrows: Vec<ElRow>,
     pub(crate) tape_pool: Vec<Vec<u32>>,
+    /// The app's root view type (`App::new`): a route mounted with the root's class runs on it (`el/walk.rs`).
+    pub(crate) root_ty: Option<std::any::TypeId>,
+    /// The root view's own description: its top dynamic parts (what `App::new`'s mount scope held), where
+    /// `Rt::count_in_items` starts for a region the root view owns.
+    pub(crate) root_parts: Vec<u32>,
 }
 
 impl Lists {
@@ -371,12 +376,12 @@ impl Lists {
         }
     }
     fn take_scope(&mut self, i: u32) -> Scope {
-        if let Some(e) = self.elrows.get_mut(i as usize) {
-            if e.tape.capacity() != 0 {
-                let mut t = std::mem::take(&mut e.tape);
-                t.clear();
-                self.tape_pool.push(t);
-            }
+        if let Some(e) = self.elrows.get_mut(i as usize)
+            && e.tape.capacity() != 0
+        {
+            let mut t = std::mem::take(&mut e.tape);
+            t.clear();
+            self.tape_pool.push(t);
         }
         self.scope_free.push(i);
         std::mem::take(&mut self.scopes[i as usize])
@@ -603,6 +608,7 @@ impl Rt {
         };
         let walk = crate::el::Walk::enter();
         self.lists.mounting.push((reg as u32, slot));
+        self.lists.lr_counted = 0;
         let (prev, avail) = (self.lay.cur, self.lay.mount_avail);
         self.lay.cur = NONE;
         self.lay.mount_avail = (width, f32::NAN);
@@ -623,7 +629,14 @@ impl Rt {
         drop(walk);
         let nrec = end - pos;
         let d = nrec as i64 - nrec0 as i64;
-        if d != 0 {
+        // The walk that just removed or mounted nested regions already adjusted the retained enclosing items,
+        // except those of this row (out of the table while it is described). Subtract only this row's own delta;
+        // `lr_count` propagates that through enclosing regions and their retained items.
+        let inner = self.lists.lr_counted;
+        self.lists.lr_counted = 0;
+        if d != inner {
+
+            let d = d - inner;
             let r = &mut self.lists.regs[reg];
             r.rows[k].nrec = nrec as u32;
             r.recs = (r.recs as i64 + d) as usize;
@@ -718,6 +731,14 @@ impl Rt {
     /// Region `reg` inserted (`d > 0`) or removed records: the rows of the enclosing regions it is nested in
     /// count them (their runs contain it).
     fn lr_count(&mut self, reg: usize, d: i64) {
+        if d == 0 {
+            return;
+        }
+        self.lists.lr_counted += d;
+        if self.lists.mounting.is_empty() {
+            self.lr_count_items(reg, d);
+        }
+
         let mut p = self.lists.regs[reg].parent;
         while p.0 != NONE {
             let r = &mut self.lists.regs[p.0 as usize];
@@ -729,8 +750,48 @@ impl Rt {
                 None => return,
             }
             r.recs = (r.recs as i64 + d) as usize;
-            p = r.parent;
+            if self.lists.mounting.is_empty() {
+                self.lr_count_items(p.0 as usize, d);
+            }
+            p = self.lists.regs[p.0 as usize].parent;
         }
+    }
+    /// Region `reg`'s records changed by `d`: the dynamic items of its owner's description that enclose it count
+    /// them too (`Rt::count_in_items`). Its owner is the root view (its tree: `Lists::root_parts`), or a row of
+    /// an enclosing region (that row's scope); another owner's description has no dynamic part that could hold it
+    /// across a change (an entity view is not re-described).
+    fn lr_count_items(&mut self, reg: usize, d: i64) {
+        // (mutant: the items enclosing a region keep the count they made when they were last walked)
+        if cfg!(feature = "mutant_el_list_count") {
+            return;
+        }
+        let parts = {
+            let r = &self.lists.regs[reg];
+            match r.owner_kind {
+                OWNER_ROOT => self.lists.root_parts.clone(),
+                OWNER_ROW => {
+                    let (pr, slot) = r.parent;
+                    let row = self.lists.regs[pr as usize].rows.iter().find(|x| x.mounted && x.slot == slot);
+                    let Some(si) = row.map(|row| row.scope).filter(|&si| self.reg_in_scope(si, reg)) else { return };
+                    self.lists.scopes[si as usize].dyns.clone()
+                }
+                _ => return,
+            }
+        };
+        self.count_in_items(&parts, reg as u32, d);
+    }
+
+    /// Is `reg` mounted in row scope `si`, rather than in another part of the row's description? The region is
+    /// in the row's scope or in one of its dynamic items' scopes, recursively. The row that is being walked has
+    /// taken its part out of that scope (`update_dyn`), so it is absent here and is counted afresh by the walk.
+    fn reg_in_scope(&self, si: u32, reg: usize) -> bool {
+        fn in_scope(rt: &Rt, scope: &Scope, reg: usize) -> bool {
+            scope.lregs.iter().any(|&r| r as usize == reg) || scope.dyns.iter().any(|&p| in_part(rt, p, reg))
+        }
+        fn in_part(rt: &Rt, p: u32, reg: usize) -> bool {
+            rt.dyns.parts[p as usize].iter().any(|it| in_scope(rt, &it.scope, reg))
+        }
+        in_scope(self, &self.lists.scopes[si as usize], reg)
     }
     fn lr_prefix(&self, reg: usize, k: usize) -> usize {
         self.lists.regs[reg].rows[..k].iter().map(|r| r.nrec as usize).sum()
@@ -1085,15 +1146,18 @@ impl Rt {
             }
         }
         // an El list's edited rows re-describe (a plain field of the item is read by its description only)
-        if let Some(el) = self.lists.regs[reg].el {
-            if el.taped && !cfg!(feature = "mutant_el_list_edit") {
-                for op in &ops {
-                    if let Op::Edit { slot } = *op {
-                        // SAFETY: the region's live list; `redescribe` was monomorphised for it (`el/list.rs`).
-                        if unsafe { (*l).slot_live(slot) } {
-                            unsafe { (el.redescribe)(self, reg, slot) };
-                        }
-                    }
+        if let Some(el) = self.lists.regs[reg].el
+            && el.taped
+            && !cfg!(feature = "mutant_el_list_edit")
+        {
+            for op in &ops {
+                // SAFETY: the region's live list (only shared reads).
+                if let Op::Edit { slot } = *op
+                    && unsafe { (*l).slot_live(slot) }
+                {
+                    // SAFETY: `redescribe` was monomorphised for this region's list and projection (`el/list.rs`),
+                    // and `slot` is live in that list.
+                    unsafe { (el.redescribe)(self, reg, slot) };
                 }
             }
         }
@@ -2138,7 +2202,6 @@ impl<'a, S: RowSource<V>, V: 'static> Element<V> for LList<'a, S, V> {
             row_fn: src.row_fn,
             row_size: src.row_size,
             recs: 0,
-            seen: 0,
             owner_kind,
             owner_ty: std::any::TypeId::of::<V>(),
             owner_name: std::any::type_name::<V>(),
@@ -2173,9 +2236,7 @@ impl<'a, S: RowSource<V>, V: 'static> Element<V> for LList<'a, S, V> {
                 <crate::elem::ApplyBg as crate::elem::Apply>::apply(m.rt, lid, &bg);
             }
         }
-        let r = &mut m.rt.lists.regs[reg];
-        r.seen = r.recs;
-        m.pos += 1 + r.rows.iter().map(|r| r.nrec as usize).sum::<usize>();
+        m.pos += 1 + m.rt.lists.regs[reg].rows.iter().map(|r| r.nrec as usize).sum::<usize>();
         m.kid += 1;
     }
 }

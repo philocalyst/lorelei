@@ -107,24 +107,42 @@ pub(crate) type RouteFn = unsafe fn(*mut u8, &crate::rt::Recipe, &Ev);
 pub(crate) struct Route {
     f: RouteFn,
     r: crate::rt::Recipe,
-    /// The receiver (04 §2, L4): the root view (`UP_ROOT`), or the owner `up` steps up the owner chain from
-    /// the list row that mounted the act (`Act::row`; 0: that row).
-    up: u8,
 }
 
-/// `Route::up` of a route that runs on the app's root view.
+/// A route's receiver (04 §2, L4), when it is not the app's root view: the list row whose description mounted
+/// the act (region, slot, generation) and, per route slot of the act, how many owners up the chain from that
+/// row the receiver is (0: the row itself; [`UP_ROOT`]: the root view). Kept beside the act table
+/// (`Input::owners`), not in it: an act without an entry runs its routes on the root view, and the act table
+/// stays what the typed paths copy.
+#[derive(Clone, Copy)]
+pub(crate) struct ActOwner {
+    pub row: (u32, u32, u32),
+    /// By slot: click, press, hover, drag, any key (`SLOT_*`).
+    pub up: [u8; 5],
+}
+impl ActOwner {
+    pub(crate) const ROOT: ActOwner = ActOwner { row: (u32::MAX, 0, 0), up: [UP_ROOT; 5] };
+}
+/// The route slots of an act, as `ActOwner::up` indexes them.
+pub(crate) const SLOT_CLICK: usize = 0;
+pub(crate) const SLOT_PRESS: usize = 1;
+pub(crate) const SLOT_HOVER: usize = 2;
+pub(crate) const SLOT_DRAG: usize = 3;
+pub(crate) const SLOT_KEY: usize = 4;
+
+/// The receiver of a route that runs on the app's root view (`ActOwner::up`).
 pub(crate) const UP_ROOT: u8 = u8::MAX;
 
 impl Route {
-    /// A route from its parts (`el`: the trampoline is monomorphised where the route is written), run on the
-    /// root view (`UP_ROOT`) or `up` owners up the chain from the act's row.
+    /// A route from its parts (`el`: the trampoline is monomorphised where the route is written).
     ///
     /// # Safety
     /// `f` reads the owner it is later called with as the type it was monomorphised for, and `r` as the
-    /// bytes it was written with: the caller has checked that type is the type of the owner `up` names.
+    /// bytes it was written with: the caller has checked that type is the type of the owner the route will be
+    /// dispatched on (the root view, or the owner its `ActOwner::up` names).
     #[inline]
-    pub(crate) unsafe fn raw(f: RouteFn, r: crate::rt::Recipe, up: u8) -> Route {
-        Route { f, r, up }
+    pub(crate) unsafe fn raw(f: RouteFn, r: crate::rt::Recipe) -> Route {
+        Route { f, r }
     }
     /// # Safety
     /// `owner` points at the live owner the route was lowered for.
@@ -157,10 +175,10 @@ pub(crate) unsafe fn call_ev<V, F: Fn(&mut V, &Ev) + Copy>(o: *mut u8, r: &crate
 }
 
 fn route_plain<V, F: Fn(&mut V) + Copy + 'static>(f: F) -> Route {
-    Route { f: call_plain::<V, F>, r: recipe(f), up: UP_ROOT }
+    Route { f: call_plain::<V, F>, r: recipe(f) }
 }
 fn route_ev<V, F: Fn(&mut V, &Ev) + Copy + 'static>(f: F) -> Route {
-    Route { f: call_ev::<V, F>, r: recipe(f), up: UP_ROOT }
+    Route { f: call_ev::<V, F>, r: recipe(f) }
 }
 
 // =============================================================================== the act table
@@ -193,14 +211,11 @@ pub(crate) struct Act {
     pub field: u32,
     /// `Input::tips` index, or NONE.
     pub tip: u32,
-    /// The list row whose description mounted the act's routes (region, slot, generation; region `NONE`: the
-    /// root view's), where a route's owner chain starts (`Route::up`).
-    pub row: (u32, u32, u32),
 }
 
 impl Act {
     fn new(handle: Handle) -> Act {
-        Act { handle, node: NONE, inst: NONE, hover_bg: None, base: 0, bordered: false, hovered: false, click: None, press: None, hover: None, key: None, drag: None, keys: 0, scroll: NONE, field: NONE, tip: NONE, row: (NONE, 0, 0) }
+        Act { handle, node: NONE, inst: NONE, hover_bg: None, base: 0, bordered: false, hovered: false, click: None, press: None, hover: None, key: None, drag: None, keys: 0, scroll: NONE, field: NONE, tip: NONE }
     }
 }
 
@@ -281,7 +296,12 @@ pub struct Input {
     by_handle: Vec<u32>,
     /// Routes by key (`Act::keys`; entry 0 is never used) and the entries free for reuse.
     pub(crate) keymaps: Vec<Vec<(Key, Route)>>,
+    /// Per keymap, its routes' receivers (`ActOwner::up`), parallel to its entries; empty: all the root view.
+    pub(crate) keymap_ups: Vec<Vec<u8>>,
     keymap_free: Vec<u32>,
+    /// The acts whose routes run on an owner other than the root view (`ActOwner`), by act; an act past the
+    /// end, or with `ActOwner::ROOT`, runs them on the root view.
+    pub(crate) owners: Vec<ActOwner>,
     pub(crate) scrollers: Vec<Scroller>,
     pub(crate) fields: Vec<Field>,
     pub(crate) tips: Vec<Tip>,
@@ -331,7 +351,9 @@ impl Default for Input {
             acts: vec![Act::new(Handle::default())],
             by_handle: Vec::new(),
             keymaps: vec![Vec::new()],
+            keymap_ups: vec![Vec::new()],
             keymap_free: Vec::new(),
+            owners: Vec::new(),
             scrollers: Vec::new(),
             fields: Vec::new(),
             tips: Vec::new(),
@@ -398,9 +420,13 @@ impl Input {
             let keys = self.acts[stale as usize].keys;
             if keys != 0 {
                 self.keymaps[keys as usize].clear();
+                self.keymap_ups[keys as usize].clear();
                 self.keymap_free.push(keys);
             }
             self.acts[stale as usize] = Act::new(h);
+            if let Some(o) = self.owners.get_mut(stale as usize) {
+                *o = ActOwner::ROOT;
+            }
             if self.pressed == stale {
                 (self.pressed, self.dragging) = (0, false);
             }
@@ -426,13 +452,38 @@ impl Input {
         if k == 0 {
             k = self.keymap_free.pop().unwrap_or_else(|| {
                 self.keymaps.push(Vec::new());
+                self.keymap_ups.push(Vec::new());
                 (self.keymaps.len() - 1) as u32
             });
             self.acts[a as usize].keys = k;
         }
+        self.keymap_ups[k as usize].clear();
         let m = &mut self.keymaps[k as usize];
         m.clear();
         m
+    }
+    /// Where act `a`'s routes run: `ActOwner::ROOT` unless the description that mounted them is a list row's.
+    pub(crate) fn set_owner(&mut self, a: u32, o: ActOwner) {
+        let a = a as usize;
+        if o.up == [UP_ROOT; 5] && self.keymap_ups.get(self.acts[a].keys as usize).is_none_or(|u| u.iter().all(|&x| x == UP_ROOT)) {
+            if let Some(e) = self.owners.get_mut(a) {
+                *e = ActOwner::ROOT;
+            }
+            return;
+        }
+        if self.owners.len() <= a {
+            self.owners.resize(a + 1, ActOwner::ROOT);
+        }
+        self.owners[a] = o;
+    }
+    /// The row act `a`'s routes were mounted in, and the receiver of its route in `slot` (`SLOT_*`).
+    #[inline(always)]
+    fn owner_of(&self, a: u32, slot: usize) -> ((u32, u32, u32), u8) {
+        if let Some(o) = self.owners.get(a as usize) {
+            (o.row, o.up[slot])
+        } else {
+            (ActOwner::ROOT.row, UP_ROOT)
+        }
     }
     pub(crate) fn tips_of(&self, v: usize) -> &[u32] {
         &self.views[v].tips
@@ -1126,16 +1177,33 @@ impl<V: View> App<V> {
     /// Run route `r` of act `a` with event `e` on its receiver: the root view, or the owner it was resolved to
     /// at mount (a list row, reached through its list: `Rt::route_owner`). A row that is gone since the route
     /// was mounted (a late event) runs nothing.
-    #[inline]
-    fn run_route(&mut self, a: u32, r: Route, e: &Ev) {
+    #[inline(always)]
+    fn run_route(&mut self, a: u32, r: Route, slot: usize, e: &Ev) {
+        let (row, up) = self.rt.input.owner_of(a, slot);
         let o = self.owner_mut();
-        let t = if r.up == UP_ROOT {
+        let t = if up == UP_ROOT {
             o
         } else {
-            let row = self.rt.input.acts[a as usize].row;
+            // SAFETY: `o` comes from the unique borrow of the live root view, and no other reference to it or
+            // into it is live while a route is dispatched.
+            match unsafe { self.rt.route_owner(o, row, up) } {
+                Some(t) => t,
+                None => return,
+            }
+        };
+        // SAFETY: `t` is the owner the route was resolved to at mount, of the type its trampoline reads, live
+        // and uniquely reachable through `t` for the call.
+        unsafe { r.call(t, e) };
+    }
+    /// `run_route` with its receiver given (`up` owners up the chain from `row`, or the root view).
+    fn run_route_on(&mut self, row: (u32, u32, u32), up: u8, r: Route, e: &Ev) {
+        let o = self.owner_mut();
+        let t = if up == UP_ROOT {
+            o
+        } else {
             // SAFETY: `o` is derived from the unique borrow of the live root view, and no other reference to it
             // or into it is live while a route is dispatched.
-            match unsafe { self.rt.route_owner(o, row, r.up) } {
+            match unsafe { self.rt.route_owner(o, row, up) } {
                 Some(t) => t,
                 None => return,
             }
@@ -1205,7 +1273,7 @@ impl<V: View> App<V> {
                 let (x0, y0) = self.rt.input.press_at;
                 let e = Ev { dx: x - x0, dy: y - y0, ..Ev::at(x, y) };
                 self.rt.input.stats.routes += 1;
-                self.run_route(pa, r, &e);
+                self.run_route(pa, r, SLOT_DRAG, &e);
                 self.settle_input();
                 return;
             }
@@ -1318,7 +1386,7 @@ impl<V: View> App<V> {
         if let Some(r) = act.hover {
             let e = Ev { on, ..Ev::at(x, y) };
             self.rt.input.stats.routes += 1;
-            self.run_route(a, r, &e);
+            self.run_route(a, r, SLOT_HOVER, &e);
             ran = true;
         }
         ran
@@ -1357,7 +1425,7 @@ impl<V: View> App<V> {
             if let Some(r) = act.press {
                 let e = Ev { button, ..Ev::at(x, y) };
                 self.rt.input.stats.routes += 1;
-                self.run_route(a, r, &e);
+                self.run_route(a, r, SLOT_PRESS, &e);
                 break;
             }
         }
@@ -1381,7 +1449,7 @@ impl<V: View> App<V> {
             if let Some(r) = self.rt.input.acts[pa as usize].drag {
                 let (x0, y0) = self.rt.input.press_at;
                 let e = Ev { dx: x - x0, dy: y - y0, on: false, ..Ev::at(x, y) };
-                self.run_route(pa, r, &e);
+                self.run_route(pa, r, SLOT_DRAG, &e);
             }
             self.update_hover(px, py, x, y);
             self.settle_input();
@@ -1396,7 +1464,7 @@ impl<V: View> App<V> {
                     let a = self.rt.input.act_of(h);
                     if let Some(r) = self.rt.input.acts[a as usize].click {
                         self.rt.input.stats.routes += 1;
-                        self.run_route(a, r, &Ev::at(x, y));
+                        self.run_route(a, r, SLOT_CLICK, &Ev::at(x, y));
                         break;
                     }
                 }
@@ -1589,11 +1657,21 @@ impl<V: View> App<V> {
                     // a route for this key on the element, else the element's any-key route; an element with
                     // neither lets the key pass to the one above it
                     let act = &self.rt.input.acts[a as usize];
-                    let by_key = self.rt.input.keymaps[act.keys as usize].iter().find(|(k, _)| *k == key).map(|(_, r)| *r);
-                    if let Some(r) = by_key.or(act.key) {
+                    let ki = act.keys as usize;
+                    let by_key = self.rt.input.keymaps[ki].iter().position(|(k, _)| *k == key);
+                    let any = act.key;
+                    if by_key.is_some() || any.is_some() {
                         let e = Ev { key: Some(key), mods, ..Ev::at(0.0, 0.0) };
                         self.rt.input.stats.routes += 1;
-                        self.run_route(a, r, &e);
+                        match by_key {
+                            Some(i) => {
+                                let r = self.rt.input.keymaps[ki][i].1;
+                                let up = self.rt.input.keymap_ups[ki].get(i).copied().unwrap_or(UP_ROOT);
+                                let row = self.rt.input.owner_of(a, SLOT_KEY).0;
+                                self.run_route_on(row, up, r, &e);
+                            }
+                            None => self.run_route(a, any.unwrap(), SLOT_KEY, &e),
+                        }
                         break;
                     }
                 }

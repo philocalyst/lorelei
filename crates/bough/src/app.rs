@@ -400,7 +400,7 @@ impl<V: View> App<V> {
         #[cfg(all(target_os = "macos", feature = "wgpu"))]
         let _ = overlapped;
         let mut rt = Rt::new(win_w, win_h, cfg.scale, &cfg.font, region, caps);
-        rt.root_ty = Some(std::any::TypeId::of::<V>());
+        rt.lists.root_ty = Some(std::any::TypeId::of::<V>());
         // the presenter over the region's views: made now (its device was built here), or after the mount when
         // a preparation thread is building the device meanwhile (`prepare`)
         #[cfg(all(target_os = "macos", not(feature = "wgpu")))]
@@ -441,6 +441,9 @@ impl<V: View> App<V> {
             let mut m = Mounter { rt: &mut rt, owner: ptr, recs: &mut recs, scope: &mut scope, depth: 0, ox: 0.0, oy: 0.0, space: 0, clip: 0, pending_num: None, cls: 0, tape: tp, ti: 0, pos: 0, kid: 0, keep: false };
             el.mount(&mut m);
         }
+        // the root view's top dynamic parts: where a region's change of records finds the items enclosing it
+        // (`Rt::count_in_items`; rows are mounted from here on, between layout passes and in settles)
+        rt.lists.root_parts = scope.dyns.clone();
         rt.bough.insert_run(0, &recs);
         // layout groups of the first mount (list regions mount their first rows between its passes)
         rt.lay_flush();

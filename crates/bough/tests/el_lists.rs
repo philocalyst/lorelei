@@ -10,6 +10,8 @@
 //!   (`the_retained_list_equals_a_fresh_mount`).
 //! * `--features mutant_el_list_edit`: an edited row is not re-described (`an_edit_redescribes_its_row_alone`,
 //!   the oracle).
+//! * `--features mutant_el_list_count`: rows mounted outside a walk are not counted in the dynamic items
+//!   enclosing the list (`a_list_child_leaves_and_is_replaced_whole`).
 //! * `--features mutant_el_route_slot`: a row route's dispatch takes the slot id for a position
 //!   (`a_row_route_reaches_its_row_after_reorders`).
 //! * `--features mutant_el_route_far`: the farthest matching owner (`nested_owners_of_one_type_resolve_to_the_nearest`).
@@ -384,7 +386,8 @@ fn bound_routes_event_routes_and_root_routes_in_rows() {
     let x_pick = x_add + 16.0;
     click(&mut app, x_add, row_y(0));
     assert_eq!(app.owner.items.get(0).unwrap().id, 3);
-    assert_eq!(app.owner.items.get(0).unwrap().note, 3 % 7 + 10, "a bound route on the row's item");
+    // item 3's note starts at 3 (`id % 7`)
+    assert_eq!(app.owner.items.get(0).unwrap().note, 13, "a bound route on the row's item");
     // the orange box: `Board::picked.with(id)` on the root, from inside the row
     click(&mut app, x_pick, row_y(2));
     assert_eq!(app.owner.picked, [1], "a route to the root from a row");
@@ -645,5 +648,57 @@ fn a_list_child_leaves_and_is_replaced_whole() {
         });
         let p = shot(&mut app);
         assert_eq!(p, shot(&mut fresh(&app.owner)), "step {k}: show {show}, gap {gap}");
+    }
+}
+
+/// A list inside a list's row, behind a branch of that row: rows pushed into the inner list (mounted outside a
+/// walk) are counted by the row's own dynamic items, so closing the branch takes out the run it holds now.
+struct Folder {
+    id: u32,
+    open: bool,
+    files: List<Grip>,
+}
+impl View for Folder {
+    fn view(&self) -> El<'_> {
+        column((row(text(self.id).w(40)).h(18).bg(rgb(0xddeedd)), self.open.then(|| column(&self.files).gap(1)), text("·"))).p(1)
+    }
+}
+struct Folders {
+    folders: List<Folder>,
+}
+impl View for Folders {
+    fn view(&self) -> El<'_> {
+        column((text("f"), column(&self.folders).gap(2))).w_pct(1.0).h_pct(1.0).bg(rgb(0xffffff))
+    }
+}
+
+#[test]
+fn a_list_in_a_row_leaves_with_the_rows_it_mounted() {
+    let copy = |f: &Folders| Folders {
+        folders: List::from_iter_in(f.folders.iter().map(|d| Folder { id: d.id, open: d.open, files: List::from_iter_in(d.files.iter().map(|g| Grip { id: g.id, drags: 0 })) })),
+    };
+    let folder = |id: u32| Folder { id, open: true, files: List::from_iter_in([Grip { id: id * 10, drags: 0 }]) };
+    let mut app = App::new(Folders { folders: List::from_iter_in([folder(1), folder(2)]) }, cfg(), true);
+    shot(&mut app);
+    // a push into the second folder changes the outer region's total too
+    app.turn(|f| {
+        f.folders.edit(1).files.push(Grip { id: 250, drags: 0 });
+    });
+    assert_eq!(shot(&mut app), shot(&mut App::new(copy(&app.owner), cfg(), true)), "an inner list changes its enclosing row's run");
+    for (k, step) in ["push", "close", "open", "push", "push", "close", "open", "close"].into_iter().enumerate() {
+        let id = 100 + k as u32;
+        app.turn(|f| {
+            let d = f.folders.edit(0);
+            match step {
+                "push" => {
+                    d.files.push(Grip { id, drags: 0 });
+                }
+                "close" => d.open = false,
+                _ => d.open = true,
+            }
+        });
+        let p = shot(&mut app);
+        let fresh = shot(&mut App::new(copy(&app.owner), cfg(), true));
+        assert_eq!(p, fresh, "step {k} ({step})");
     }
 }

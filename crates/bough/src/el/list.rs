@@ -289,7 +289,6 @@ pub(crate) fn update<V>(m: &mut Mounter<'_, V>) {
     let reg = m.tape_next() as usize;
     let r = &mut m.rt.lists.regs[reg];
     debug_assert_eq!(r.recs, r.rows.iter().map(|x| x.nrec as usize).sum::<usize>(), "a list region's record count");
-    r.seen = r.recs;
     m.pos += 1 + r.recs;
     m.kid += 1;
 }
