@@ -76,6 +76,11 @@ pub struct Plug<T: PortValue> {
 }
 
 /// What a port of property type `T` accepts, for a description that lives `'f`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot feed this property (its port carries `{T}`)",
+    label = "a property takes a constant, a borrowed signal field (`&self.x`) or a mapped source (`self.x.map(f)`)",
+    note = "a signal is passed by reference, `&self.x`, so the port can follow it; a value of another type goes through `self.x.map(f)`"
+)]
 pub trait IntoProp<'f, T: PortValue>: Sized {
     /// `K`: the property the port writes (the wire's patch is monomorphised for it here, where both the
     /// plug's type and the port's are known).
@@ -202,7 +207,63 @@ impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> fo
     }
 }
 
+/// An integer signal field as text (`text(&self.count)`): the label follows the signal, formatted without
+/// allocating, and publishing it reruns no view.
+macro_rules! int_signal_text {
+    ($($t:ty),*) => {$(
+        impl<'f> IntoProp<'f, Text> for &'f Signal<$t> {
+            #[inline]
+            #[allow(unused_comparisons)]
+            fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
+                let v = **self;
+                Plug {
+                    v: TextVal { ptr: ptr::null(), len: v as i128 as u64, flags: F_INT | if v < 0 { F_NEG } else { 0 } },
+                    w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<$t>>(), patch: patch_int::<K, $t>, recipe: crate::rt::Recipe::NONE }),
+                }
+            }
+        }
+        impl IntSig for $t {
+            #[inline(always)]
+            fn wide(self) -> i128 {
+                self as i128
+            }
+        }
+    )*};
+}
+trait IntSig: Copy + 'static {
+    fn wide(self) -> i128;
+}
+/// # Safety
+/// Wire contract (`rt.rs`): `sig` is a live `Signal<T>`.
+unsafe fn patch_int<K: Apply<P = String>, T: IntSig>(rt: &mut crate::rt::Rt, w: &crate::rt::Wire, sig: *const u8, _owner: *const u8) {
+    // SAFETY: the function contract.
+    let s = unsafe { &*(sig as *const Signal<T>) };
+    K::apply_int(rt, w.node, (**s).wide());
+}
+int_signal_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
+
+/// A two-way port's cell (`text_input(&self.name)`): a `Signal` field of the view, which the element writes
+/// back to. Read-only sources (a `Reader`, a mapped source, a constant) are not sinks.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a writable `{T}` cell",
+    label = "a two-way port takes a borrowed `Signal<{T}>` field of the view (`&self.name`)",
+    note = "a `Reader`, a mapped source or a constant is read-only: the element has nowhere to write its edits"
+)]
+pub trait Sink<'f, T: 'static>: sealed::Sealed {
+    #[doc(hidden)]
+    #[allow(private_interfaces)]
+    fn cell(self, _: Seal) -> &'f Signal<T>;
+}
+impl<'f, T: 'static> Sink<'f, T> for &'f Signal<T> {
+    #[inline(always)]
+    #[allow(private_interfaces)]
+    fn cell(self, _: Seal) -> &'f Signal<T> {
+        self
+    }
+}
+
 /// A length in points: `f32`, or an integer (`.gap(8)`).
+#[diagnostic::on_unimplemented(message = "`{Self}` is not a length", label = "a length is points: an `f32` or an integer (`.gap(8)`, `.p(12.5)`)")]
 pub trait Len: Copy {
     fn pt(self) -> f32;
 }

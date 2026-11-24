@@ -1,0 +1,8 @@
+error[E0515]: cannot return value referencing local variable `title`
+ --> tests/ui/fail_escaped_element.rs:7:9
+  |
+7 |         text(&title)
+  |         ^^^^^------^
+  |         |    |
+  |         |    `title` is borrowed here
+  |         returns a value referencing data owned by the current function

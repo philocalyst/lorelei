@@ -69,7 +69,7 @@ pub use bough_sys as sys;
 pub mod prelude {
     pub use crate::changed::Changed;
     pub use crate::color::{rgb, Color};
-    pub use crate::el::plug::{IntoProp, Len};
+    pub use crate::el::plug::{IntoProp, Len, Sink};
     pub use crate::el::{block, button, column, div, image, para, row, text, text_input, ChildSeq, El, Hover, Map, Route, Source, View, With};
     pub use crate::elem::each;
     pub use crate::entity::{Entities, Entity};

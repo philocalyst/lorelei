@@ -1,0 +1,27 @@
+error[E0277]: `&bough::signal::Signal<bough::color::Color>` cannot feed this property (its port carries `f32`)
+ --> tests/ui/fail_prop_type.rs:6:17
+  |
+6 |         div().w(&self.tint)
+  |               - ^^^^^^^^^^ a property takes a constant, a borrowed signal field (`&self.x`) or a mapped source (`self.x.map(f)`)
+  |               |
+  |               required by a bound introduced by this call
+  |
+  = help: the trait `bough::prelude::IntoProp<'_, f32>` is not implemented for `&bough::signal::Signal<bough::color::Color>`
+  = note: a signal is passed by reference, `&self.x`, so the port can follow it; a value of another type goes through `self.x.map(f)`
+  = help: the following other types implement trait `bough::prelude::IntoProp<'f, T>`:
+            `&bough::signal::Signal<String>` implements `bough::prelude::IntoProp<'_, bough::el::plug::Text>`
+            `&bough::signal::Signal<T>` implements `bough::prelude::IntoProp<'_, T>`
+            `&bough::signal::Signal<i16>` implements `bough::prelude::IntoProp<'_, bough::el::plug::Text>`
+            `&bough::signal::Signal<i32>` implements `bough::prelude::IntoProp<'_, bough::el::plug::Text>`
+            `&bough::signal::Signal<i64>` implements `bough::prelude::IntoProp<'_, bough::el::plug::Text>`
+            `&bough::signal::Signal<i8>` implements `bough::prelude::IntoProp<'_, bough::el::plug::Text>`
+            `&bough::signal::Signal<isize>` implements `bough::prelude::IntoProp<'_, bough::el::plug::Text>`
+            `&bough::signal::Signal<u16>` implements `bough::prelude::IntoProp<'_, bough::el::plug::Text>`
+          and $N others
+note: required by a bound in `bough::el::El::<'f>::w`
+ --> src/el/mod.rs
+  |
+  | impl<'f> El<'f> {
+...
+  |     pub fn w<P: IntoProp<'f, f32>>(self, p: P) -> Self {
+  |                 ^^^^^^^^^^^^^^^^^ required by this bound in `El::<'f>::w`

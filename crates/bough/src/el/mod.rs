@@ -524,7 +524,8 @@ pub fn button<'f, P: IntoProp<'f, Text>>(label: P) -> El<'f> {
 }
 
 /// A one-line text input bound two-way to a `Signal<String>` field of the view.
-pub fn text_input<'f>(s: &'f crate::signal::Signal<String>) -> El<'f> {
+pub fn text_input<'f>(s: impl plug::Sink<'f, String>) -> El<'f> {
+    let s = s.cell(Seal);
     let e = El::new(K_INPUT, Spec::new(false, false));
     let n = e.fresh();
     (n.text, n.m) = (s as *const _ as *const u8, [240.0, 32.0]);
@@ -554,6 +555,11 @@ pub fn image<'f>(png: &'static [u8]) -> El<'f> {
 /// array, or an iterator (`.map(..)`, `.filter_map(..)`, `.chain(..)`, ...; any other through `each(iter)`).
 /// Fixed forms (an `El`, a tuple) keep their positions; `Option`, `Vec`, arrays and iterators are dynamic parts
 /// that realign by position.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a child",
+    label = "a child is an element, a tuple, an `Option`, a `Vec`, an array or an iterator of them",
+    note = "a string is a text leaf: write `text(..)` (or `para(..)`) to make it an element"
+)]
 pub trait ChildSeq<'f>: Sized {
     /// Append to `parent`'s children.
     #[doc(hidden)]
@@ -704,6 +710,40 @@ iter_children!(std::array::IntoIter<T>, const N);
 /// A route (04 §2–3): a method of the view (`Counter::inc`, `fn(&mut Self)`), one that takes the event
 /// (`fn(&mut Self, &Ev)`), a closure of either shape that captures at most 16 bytes, or a method bound to a
 /// value with [`With::with`]. The receiver type is checked against the mounting view.
+///
+/// A closure that captures more than 16 bytes is refused when the program is built (a post-monomorphisation
+/// error, so `cargo check` does not report it; `cargo build` does):
+///
+/// ```compile_fail,E0080
+/// use bough::prelude::*;
+/// struct Counter { n: u64 }
+/// impl View for Counter {
+///     fn view(&self) -> El<'_> {
+///         let (a, b, c) = (1u64, 2u64, 3u64);
+///         button("+").on_click(move |s: &mut Counter| s.n += a + b + c)
+///     }
+/// }
+/// let _ = bough::raw::App::new(Counter { n: 0 }, bough::raw::Config::new(10.0, 10.0, 1.0, Vec::new()), false);
+/// ```
+///
+/// Sixteen bytes are accepted (the same program with two captured words builds):
+///
+/// ```no_run
+/// use bough::prelude::*;
+/// struct Counter { n: u64 }
+/// impl View for Counter {
+///     fn view(&self) -> El<'_> {
+///         let (a, b) = (1u64, 2u64);
+///         button("+").on_click(move |s: &mut Counter| s.n += a + b)
+///     }
+/// }
+/// let _ = bough::raw::App::new(Counter { n: 0 }, bough::raw::Config::new(10.0, 10.0, 1.0, Vec::new()), false);
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a route",
+    label = "a route is a method of the view, `fn(&mut Self)` or `fn(&mut Self, &Ev)`, or a closure of either shape",
+    note = "a method that takes a value is bound to it: `Owner::method.with(value)`"
+)]
 pub trait Route<M>: Sized {
     #[doc(hidden)]
     #[allow(private_interfaces)]

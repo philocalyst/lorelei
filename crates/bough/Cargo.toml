@@ -99,5 +99,6 @@ mutant_cert_stale = ["bough-metal/mutant_cert_stale"]
 mutant_cert_tile = ["bough-metal/mutant_cert_tile"]
 
 [dev-dependencies]
+trybuild = "1.0"
 cephal = { path = "../../vendor/cephal", default-features = false, features = ["flex", "block", "grid"] }
 zgx-workload = { git = "https://github.com/zeronsh/zgx", rev = "06debe9df86dbcb0a82d6074d01f98ace98a65b3" }

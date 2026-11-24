@@ -163,6 +163,40 @@ fn ports_and_redescription_agree() {
     }
 }
 
+struct Tally {
+    count: Signal<u32>,
+    delta: Signal<i64>,
+}
+impl View for Tally {
+    fn view(&self) -> El<'_> {
+        column((text(&self.count), text(&self.delta))).bg(rgb(0xffffff))
+    }
+}
+
+/// `text(&self.count)`: an integer signal field is a text port (the zero-rerun counter label of the plan's
+/// deferred list): under `once` publishing it changes the pixels, and they equal a fresh mount of the same
+/// state, negative values included.
+#[test]
+fn an_integer_signal_is_a_text_port() {
+    let tally = |c: u32, d: i64| Tally { count: Signal::new(c), delta: Signal::new(d) };
+    let mut wired = App::new(tally(7, 0), cfg().once(), true);
+    let mut redescribed = App::new(tally(7, 0), cfg(), true);
+    let p0 = shot(&mut wired);
+    for (c, d) in [(8u32, -3i64), (1234567, i64::MIN), (0, 42), (u32::MAX, -1)] {
+        let f = |t: &mut Tally| {
+            t.count.set(c);
+            t.delta.set(d);
+        };
+        wired.turn(f);
+        redescribed.turn(f);
+        let p = shot(&mut wired);
+        assert_ne!(p, p0, "the label follows the signal without a re-description");
+        assert_eq!(p, shot(&mut redescribed), "port and re-description agree");
+        let mut fresh = App::new(tally(c, d), cfg(), true);
+        assert_eq!(p, shot(&mut fresh), "the patched label equals a fresh mount");
+    }
+}
+
 // ------------------------------------------------------------------------------------------- identity
 
 struct Swap {

@@ -1,0 +1,20 @@
+error[E0277]: `&bough::reader::Reader<String>` is not a writable `String` cell
+ --> tests/ui/fail_reader_two_way.rs:6:20
+  |
+6 |         text_input(&self.name)
+  |         ---------- ^^^^^^^^^^ a two-way port takes a borrowed `Signal<String>` field of the view (`&self.name`)
+  |         |
+  |         required by a bound introduced by this call
+  |
+  = help: the trait `bough::prelude::Sink<'_, String>` is not implemented for `&bough::reader::Reader<String>`
+  = note: a `Reader`, a mapped source or a constant is read-only: the element has nowhere to write its edits
+help: the trait `bough::prelude::Sink<'f, T>` is implemented for `&'f Signal<T>`
+ --> src/el/plug.rs
+  |
+  | impl<'f, T: 'static> Sink<'f, T> for &'f Signal<T> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `bough::el::text_input`
+ --> src/el/mod.rs
+  |
+  | pub fn text_input<'f>(s: impl plug::Sink<'f, String>) -> El<'f> {
+  |                               ^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `text_input`

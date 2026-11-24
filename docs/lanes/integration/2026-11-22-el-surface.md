@@ -228,3 +228,24 @@ corpus/search: same-host noise from allocator layout and page faults, made alloc
 narrowing 2.8 K -> 1.1 K), Join −40–58%, Group back; `part_mark_cell` 59 -> 64 kept (3 of 5 instructions are the
 soundness bounds check). The `_x` fixture names left over from bough-x are gone (old receipts and checkouts still
 compare and build).
+
+## Diagnostics corpus (gate D1, `final/10-quality.md` §4)
+
+`crates/bough/tests/diagnostics.rs` runs a `trybuild` corpus (`tests/ui/`) whose message text is snapshot-tested.
+The El traits carry `#[diagnostic::on_unimplemented]` text in the design's vocabulary: `IntoProp` ("cannot feed
+this property", with the feed forms and the by-reference note), `ChildSeq` ("is not a child", strings are text
+leaves), `Route` ("is not a route", `.with(value)`), `Len`, and a new sealed `Sink` for the two-way port
+(`text_input(&self.reader)` now fails as "is not a writable `String` cell" instead of a type mismatch). Cases: a
+signal by value, a string child, a method taking a value as a route, a colour signal into a width, an `f64`
+length, a `Reader` in a two-way port, an escaped borrow, a map closure capturing `&self`; one pass case.
+
+`text(&self.count)` (an integer `Signal` field as a text port, the zero-rerun spelling the plan deferred) now
+exists: `Apply::apply_int` formats into a stack buffer for the text applier, so a publish allocates nothing
+(`el_surface::an_integer_signal_is_a_text_port`: port under `once`, agrees with re-description, equals a fresh
+mount; `u32::MAX`, `i64::MIN`).
+
+Not in the trybuild corpus, recorded: a route closure over 16 bytes is a post-monomorphisation error (`cargo
+check` accepts it, `cargo build` refuses it), so it is a `compile_fail,E0080` doctest on `Route` with a passing
+16-byte twin; a container setter on a text (`text("a").gap(8)`) is a located panic at the setter, not a compile
+error, because `El` is one type (the design's "wrong layout-family method" is typed per family; here the
+element's kind is a runtime value).

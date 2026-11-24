@@ -1,0 +1,20 @@
+error[E0277]: `bough::signal::Signal<bough::color::Color>` cannot feed this property (its port carries `bough::color::Color`)
+ --> tests/ui/fail_signal_by_value.rs:6:18
+  |
+6 |         div().bg(self.tint)
+  |               -- ^^^^^^^^^ the trait `bough::prelude::IntoProp<'_, bough::color::Color>` is not implemented for `bough::signal::Signal<bough::color::Color>`
+  |               |
+  |               required by a bound introduced by this call
+  |
+  = note: the trait bound `bough::signal::Signal<bough::color::Color>: bough::prelude::IntoProp<'_, bough::color::Color>` is not satisfied
+note: required by a bound in `bough::el::El::<'f>::bg`
+ --> src/el/mod.rs
+  |
+  | impl<'f> El<'f> {
+...
+  |     pub fn bg<P: IntoProp<'f, Color>>(self, p: P) -> Self {
+  |                  ^^^^^^^^^^^^^^^^^^^ required by this bound in `El::<'f>::bg`
+help: consider borrowing here
+  |
+6 |         div().bg(&self.tint)
+  |                  +

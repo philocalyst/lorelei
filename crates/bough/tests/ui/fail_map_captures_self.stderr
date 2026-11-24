@@ -1,0 +1,22 @@
+error[E0521]: borrowed data escapes outside of method
+ --> tests/ui/fail_map_captures_self.rs:6:17
+  |
+5 |     fn view(&self) -> El<'_> {
+  |             -----
+  |             |
+  |             `self` is only valid in the method body
+  |             let's call the lifetime of this reference `'1`
+6 |         div().w(self.level.map(|l| l * self.scale))
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |                 |
+  |                 `self` escapes the method body here
+  |                 argument requires that `'1` must outlive `'static`
+  |
+note: `'static` lifetime requirement from `<&'f bough::signal::Signal<S> as bough::el::Source<'f>>::map` introduced here
+ --> src/el/plug.rs
+  |
+  | impl<'f, S: 'static> Source<'f> for &'f Signal<S> {
+  |             ^^^^^^^ lifetime requirement introduced here
+...
+  |     fn map<T, F: Fn(&S) -> T + Copy + 'static>(self, f: F) -> Map<'f, S, F> {
+  |                                       ^^^^^^^ lifetime requirement introduced here

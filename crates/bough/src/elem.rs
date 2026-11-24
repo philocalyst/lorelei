@@ -265,6 +265,16 @@ where
 pub trait Apply {
     type P: 'static;
     fn apply(rt: &mut Rt, node: u32, v: &Self::P);
+    /// A text property's value given as an integer (an integer signal port, `text(&self.count)`). The default
+    /// formats it into a `String`; an applier that takes text by reference overrides it to allocate nothing.
+    #[inline]
+    fn apply_int(rt: &mut Rt, node: u32, v: i128)
+    where
+        Self: Apply<P = String>,
+    {
+        let mut buf = [0u8; 40];
+        Self::apply(rt, node, &decimal(v, &mut buf).to_owned())
+    }
 }
 
 /// An operand of property type `P` for owner `V`: a constant, or a wired signal (`sig!`) / projection.
@@ -769,6 +779,11 @@ impl Apply for ApplyText {
     #[inline]
     fn apply(rt: &mut Rt, node: u32, v: &String) {
         set_node_text(rt, node, v);
+    }
+    #[inline]
+    fn apply_int(rt: &mut Rt, node: u32, v: i128) {
+        let mut buf = [0u8; 40];
+        set_node_text(rt, node, decimal(v, &mut buf));
     }
 }
 
