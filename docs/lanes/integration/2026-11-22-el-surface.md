@@ -331,7 +331,7 @@ at one box (the El walk and seal of the owner, as for any El view: the redescrib
 1.31–1.50), and a spring retarget costs 3.3x a typed eased retarget (it samples the spring's value and velocity
 in closed form and re-solves its initial conditions per box).
 
-**Correctness.** `tests/el_motion.rs`, 13 tests, pass in debug and `--release`. Mutants (each a cargo feature),
+**Correctness.** `tests/el_motion.rs`, 13 tests (15 after the review fixes below), pass in debug and `--release`. Mutants (each a cargo feature),
 every one fails its tests:
 
 | mutant | what it breaks | fails |
@@ -341,6 +341,8 @@ every one fails its tests:
 | `mutant_motion_keep_track` | a cut wire keeps its motion (02 §6) | `a_branch_flip_drops_the_track` |
 | `mutant_el_recipe` | an updated map's wire keeps its mount's captures | `a_map_whose_captures_changed_is_right_at_once`, `…_on_the_same_frame`, `…_past_many_ports` |
 | `mutant_el_hover` | a hover colour re-described while hovered waits for the next entry | `a_hover_colour_changed_while_hovered_shows_at_once` |
+| `mutant_row_keep_track` | a released virtual-list row keeps its motions (review fix) | `rows::a_scrolled_out_row_drops_its_track` (also fails under `mutant_motion_keep_track`) |
+| `mutant_opacity_hover` | an opacity write over a hovered box paints its base colour (review fix) | `an_animated_opacity_keeps_the_hover_colour` |
 
 B1 (a map's captured recipe): the recipe is sealed, so a changed capture (`self.n.map(move |n| n * k)`, another
 `k`) fails the seal fast check and the item is updated; the update gives each installed wire the description's
@@ -352,8 +354,11 @@ hovered (`input::show_hover_bg`, over the element's opacity, as `hover_set` does
 The seal fast check (`check_at`) is unchanged for nodes without `Ext`; motion timings are checked only under
 `X_MOTION` in the cold `check_progs`.
 
-**Suite.** `cargo test -p bough` green in debug and `--release` (47 result blocks each, 0 failures);
-`cargo build --workspace --all-targets` ok. `cargo clippy -p bough --all-targets --no-deps`: no finding on a line
+**Suite (rechecked at `e3fcde8e35`, after the review fixes).** `cargo test -p bough` green in debug and
+`--release`: 47 result blocks each, 185 passed, 0 failed, 12 ignored. The first release build was killed by
+macOS during compilation (exit 137, no test failure); rerun with `CARGO_BUILD_JOBS=1` and `nice -n 15`, green.
+`cargo build --workspace --all-targets` ok with the same one-job limit. `cargo clippy -p bough --all-targets
+--no-deps`: no finding on a line
 this branch wrote (its findings are older lines; the one error is in the untouched `tests/typed_words.rs`, and
 without `--no-deps` clippy stops on deny lints in `bough-core`, `bough-metal` and `bough-fused`'s build script).
 
@@ -380,3 +385,58 @@ without `--no-deps` clippy stops on deny lints in `bough-core`, `bough-metal` an
   1.13–1.29x typed (the El walk); neither is a kill line, both are recorded.
 * The "Open" entries "A map's recipe is not part of `shape()` …" and "A hover colour changed while hovered shows
   on the next hover" above are closed by this branch.
+
+### Review fixes (DeepSeek Flash review, `review-el-motion-flash.md`)
+
+**HIGH: a released list row kept its motions.** `lr_release_row` (listview.rs) marked its row's wires dead and
+cleared the scope's list itself, so `cut_scope` (then the only caller of `Transitions::retire`) never retired a
+virtual-list row's motion: scrolled-out rows left running tracks that painted their value onto the node ids the
+rows scrolling in recycle, and the table grew. Both paths now cut through one `Rt::cut_wire` (dead + retire), and
+`Transitions::retire` frees an id once when it is retired twice (`Running::retire` returns `None` for a motion
+already retired: the review's `run_head` note, a wire index recycled while an old scope still lists it).
+Test `rows::a_scrolled_out_row_drops_its_track`: 200 `List<Row>` rows with `animate(&fade).over(400)`, all fades
+published, scrolled out mid-flight, then every frame against a fresh mount at the scroll position (pixels), no
+motion running, as many live motions as the same scroll with nothing in flight, and scrolled back = a fresh mount.
+Without the fix it fails at the first frame after scroll-out (pixels). `transition::retire_tests` covers the
+double retire. (The review's probe compared against a run whose fades were never published, so its 72,000
+differing bytes mix state and leak; the leak itself, 7 orphans stepped each tick, was real.)
+
+**MED: an opacity write wiped the hover colour.** `ApplyOpacity::apply` repainted the fill from the described
+colour while `NK_HOVERED`, so every motion frame of a hovered box showed its base. The applier's body is base's;
+after it, a hovered box (one test of the kind already loaded) takes a cold fix-up that repaints the act's hover
+colour through the new opacity (`opacity_hovered`). Test `an_animated_opacity_keeps_the_hover_colour`: hovered,
+opacity in flight, hover colour changed while hovered at frame 6, 30 frames each against a fresh hovered mount at
+that frame's presented opacity, settled, then left = the base. A first version that routed every non-plain quad
+through a cold function (one test on the hot path) cost dash steady redescribe +1.1% (5 runs; codegen around the
+inlined applier, 330–680 calls a step), so it was replaced.
+
+**Measured after the fixes** (head `e3fcde8e35`, same session as base). `EL=1 redescribe_cost 1000 10000`, two runs,
+every cell within ±0.11% of base (largest: 1000 static El +0.10%), allocator calls 0.00 per turn everywhere, `HEAP=1`
+tables identical. Workload scenes (median of 3, both modes): every cell within ±1% except `first_frame` (the layout
+cell above), `ide steady once` (+2.06% in the table run) and `gbcanvas steady once` (−8.2%); both are bimodal in
+every binary, base included: over five runs base gives ide 38,786 / 39,815 and gbcanvas 6,199–6,715, head 38,795 /
+39,819 and 6,035–6,040, base built with v0 mangling 38,791–39,815 and 6,041–6,337. Dash steady redescribe
+3,914,722 vs 3,920,813 (−0.16%). `el_motion_cost` after the fixes (allocator calls 0.00 everywhere):
+
+| boxes | spelling | tick | retarget | tick, re-describing |
+|---:|---|---:|---:|---:|
+| 1 | typed | 2,384 | 2,222 | 3,371 |
+| 1 | El eased | 2,374 | 2,258 | 4,348 |
+| 1 | El spring | 2,543 | 2,534 | 4,516 |
+| 1000 | typed | 321,635 | 135,089 | 798,192 |
+| 1000 | El eased | 311,635 | 171,089 | 898,982 |
+| 1000 | El spring | 480,635 | 447,059 | 1,068,154 |
+
+The hovered test costs every opacity write 3 instructions: a 1000-box tick +3,000 (+0.94%) for typed and El alike
+(this applier is the kernel's, so typed `sig!(..).transition(..)` opacity pays it too); no workload anim cell moved
+(dash anim −0.2%). Recorded, not hidden: it is the one cost of the fix.
+
+Open from the review: a wire index that `run_head` recycles while an old scope still lists it can still be cut by
+that scope after a new motion took it, retiring the new motion (the guard stops the double free, not the
+misattribution; it needs a moved `Signal` head). `Transitions::retire` acts on motions only (`State`, the typed
+`.transition(..)`'s, returns `None`); whether a typed transition on a released virtual-list row is dropped some
+other way was not checked here.
+
+The suite recheck above used two build jobs for debug (green) and one for release and the workspace build. The
+initial two-job release build was killed during compilation, before any test ran; no source change was made for
+the successful one-job rerun, and the resulting code head is `e3fcde8e35`.
