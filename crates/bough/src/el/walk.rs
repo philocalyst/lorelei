@@ -146,7 +146,8 @@ fn resolve_ports<V>(m: &mut Mounter<'_, V>, n: &DNode) {
             let iw = &mut m.rt.wires[wi as usize];
             if iw.recipe.bytes() == w.recipe.bytes() {
                 w.state = P_KEEP;
-            } else {
+            } else if !cfg!(feature = "mutant_el_recipe") {
+                // (mutant: the wire keeps the captures it was mounted with)
                 iw.recipe = w.recipe;
             }
         }
@@ -1887,6 +1888,95 @@ mod tests {
             }
             drop(Walk::enter());
         }
+    }
+
+    /// Map closures whose captures have padding (which `reflect` cannot prove absent for any closure) are
+    /// sealed by their frozen bytes: two different values never seal alike, the fast check agrees with the
+    /// streaming one, and padding-free captures always seal alike. (Equal padded values may differ in their
+    /// padding bytes and then only miss a seal: not asserted.)
+    #[test]
+    #[cfg_attr(miri, ignore = "the recipe freeze is inline asm, which Miri cannot execute (its argument: an asm block's outputs are initialised, rt.rs)")]
+    fn padded_captures_seal_by_value() {
+        #[derive(Clone, Copy)]
+        struct Pad {
+            a: u8,
+            b: u32,
+        }
+        assert!(!crate::reflect::padding_free::<Pad>(), "the test's capture has padding");
+        let f = crate::signal::Signal::new(0.5f32);
+        let padded = |v: u32| -> super::super::El<'_> {
+            let p = Pad { a: (v % 3) as u8, b: v / 3 };
+            let q = ((v % 2) as u8, 7u32);
+            div().size(4, 4).opacity(f.map(move |x| x * p.b as f32 + p.a as f32 + q.0 as f32 + q.1 as f32))
+        };
+        let plain = |v: u32| -> super::super::El<'_> {
+            let p = (v % 3, v / 3);
+            div().size(4, 4).opacity(f.map(move |x| x * p.1 as f32 + p.0 as f32))
+        };
+        fn sweep<'a>(name: &str, make: impl Fn(u32) -> super::super::El<'a>) -> u32 {
+            let mut descs = crate::layout::SpecTable::default();
+            let mut hits = 0;
+            for a in 0..9 {
+                let mut bytes = Vec::new();
+                let ea = make(a);
+                let mut w = SealWrite { out: &mut bytes, descs: &mut descs, ok: true };
+                seal_node(Item(ea.raw()).n(), &mut w);
+                assert!(w.ok, "{name}: a map over a capturing closure seals (not refused)");
+                for b in 0..9 {
+                    let nb = Item(make(b).raw());
+                    let mut sc = SealCheck::new(&bytes, &descs);
+                    seal_node(nb.n(), &mut sc);
+                    assert_eq!(seal_eq_node(nb.n(), &bytes), sc.equal(), "{name} {a} {b}: fast check = streaming check");
+                    if a != b {
+                        assert!(!sc.equal(), "{name} {a} {b}: different captures seal apart");
+                    } else {
+                        hits += sc.equal() as u32;
+                    }
+                }
+                drop(Walk::enter());
+            }
+            hits
+        }
+        assert_eq!(sweep("plain", plain), 9, "equal padding-free captures seal alike");
+        let hits = sweep("padded", padded);
+        eprintln!("padded: {hits}/9 equal descriptions sealed alike");
+    }
+
+    /// An installed motion port is described by its wire, not its value (the lazy rule): publishing the
+    /// animated signal leaves the element's seal unchanged, so the item is stepped over, not re-described.
+    #[test]
+    fn an_installed_motion_ports_new_value_seals_alike() {
+        use crate::el::animate;
+        struct Owner {
+            fade: crate::signal::Signal<f32>,
+            tint: crate::signal::Signal<crate::color::Color>,
+        }
+        let mut o = Owner { fade: crate::signal::Signal::new(0.25), tint: crate::signal::Signal::new(crate::color::rgb(0x102030)) };
+        let make = |o: &Owner| -> super::super::El<'static> {
+            // SAFETY (test): the description is sealed and dropped before `o` changes.
+            let o: &'static Owner = unsafe { &*(o as *const Owner) };
+            column((div().size(4, 4).bg(animate(&o.tint).over(200)).opacity(animate(&o.fade)), text("t").fg(animate(&o.tint))))
+        };
+        let mut descs = crate::layout::SpecTable::default();
+        let mut bytes = Vec::new();
+        {
+            let _scope = OwnerScope::raw(&o);
+            let e = make(&o);
+            seal_node(Item(e.raw()).n(), &mut SealWrite { out: &mut bytes, descs: &mut descs, ok: true });
+        }
+        drop(Walk::enter());
+        o.fade.set(0.75);
+        o.tint.set(crate::color::rgb(0xabcdef));
+        {
+            let _scope = OwnerScope::raw(&o);
+            let e = make(&o);
+            let n = Item(e.raw());
+            let mut sc = SealCheck::new(&bytes, &descs);
+            seal_node(n.n(), &mut sc);
+            assert_eq!(seal_eq_node(n.n(), &bytes), sc.equal(), "fast check = streaming check");
+            assert!(sc.equal() || cfg!(miri), "a field's new value does not enter an installed motion port's seal");
+        }
+        drop(Walk::enter());
     }
 
     /// The same value written to any two different fields of a node's block (spec, metrics, flags) never

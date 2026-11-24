@@ -232,7 +232,8 @@ unsafe fn eval_motion<T: Animatable>(cell: usize, r: &Recipe) -> u32 {
 impl<'f, T: Animatable> IntoProp<'f, T> for Motion<'f, T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        let v = (**self.sig).affine(self.m, self.c);
+        // lazy, as every port (`plug.rs`): the target is evaluated where it is read (`eval_motion`)
+        let v = <T as Scalar>::PLACEHOLDER;
         let motion = arena::put(MotionReq { prog: self.prog, add: add_motion::<K, T>, sync: sync_motion::<T> });
         let recipe = Recipe::of(Steer { id: 0, m: self.m, c: self.c });
         Plug { v, w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<T>>(), patch: patch_motion::<T>, recipe, motion, eval: eval_motion::<T> as *const (), state: arena::P_EVAL }) }

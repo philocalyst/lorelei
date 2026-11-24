@@ -768,7 +768,7 @@ is met. In once mode every cell is ≤ 1.01x typed and allocations are equal.
     every new value on re-description;
   * el-motion's capture tests without motion: `a_map_whose_captures_changed_is_right_on_the_same_frame` and
     `..._past_many_ports` (80 wired ports of one item, each its own capture).
-* `walk::tests::ports_seal_by_the_field_rule` (new): a field's new value seals alike, a value behind a `Vec`
+* `walk::tests::the_fast_check_agrees_with_the_seal` (extended; the name `ports_seal_by_the_field_rule` in an earlier draft of this list was never a test): a field's new value seals alike, a value behind a `Vec`
   seals apart, another capture seals apart, and the fast check (trusting `WIRED`) agrees with the streaming
   check (asking the rule again).
 * `walk::tests::the_fast_check_agrees_with_the_seal` now includes a field text/fill map and a non-field map.
