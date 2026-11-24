@@ -34,7 +34,8 @@ pub struct ApplyOpacity;
 impl Apply for ApplyOpacity {
     type P = f32;
     fn apply(rt: &mut Rt, node: u32, v: &f32) {
-        let bordered = rt.hot[node as usize].kind & !NK_HOVERED == NK_BORDER;
+        let kind = rt.hot[node as usize].kind;
+        let bordered = kind & !NK_HOVERED == NK_BORDER;
         let (h, inst) = (rt.handle(node), rt.inst_of(node));
         // an opacity makes the drawn colour differ from the described one: the cold record holds the latter
         let n = rt.mod_of(node);
@@ -51,6 +52,28 @@ impl Apply for ApplyOpacity {
             p.color = mul_alpha(base, *v);
         }
         rt.paint_write(h, paint_state(base, old_a), paint_state(base, *v));
+        if kind & NK_HOVERED != 0 && !cfg!(feature = "mutant_opacity_hover") {
+            opacity_hovered(rt, h, inst, bordered, *v);
+        }
+    }
+}
+/// `ApplyOpacity` on a hovered box: its hover colour shows (input.rs `hover_set`), through the new opacity; the
+/// described colour, kept in the cold record, returns on leave.
+#[cold]
+#[inline(never)]
+fn opacity_hovered(rt: &mut Rt, h: bough_core::Handle, inst: u32, bordered: bool, v: f32) {
+    let a = rt.input.act_of_handle(h);
+    let Some(c) = (a != 0).then(|| rt.input.acts[a as usize].hover_bg).flatten() else { return };
+    let p = rt.inst_mut(inst);
+    let old = crate::input::pair(p.color, p.color2);
+    if bordered {
+        p.color2 = mul_alpha(c, v);
+    } else {
+        p.color = mul_alpha(c, v);
+    }
+    let now = crate::input::pair(p.color, p.color2);
+    if old != now {
+        rt.paint_write(h, old, now);
     }
 }
 /// A bordered box keeps its border colour's rgb; its alpha follows the box's opacity.

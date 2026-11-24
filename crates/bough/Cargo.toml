@@ -85,6 +85,20 @@ mutant_radius_grid = []
 # (tests/el_fuzz.rs, bough-text tests/pool.rs) an all-digit label patch keeps the pens even where the face kerns a
 # digit pair (Arial's "11")
 mutant_digit_class = ["bough-text/mutant_digit_class"]
+# (tests/el_motion.rs: a motion retargets from its old target, not from what it presents)
+mutant_motion_from_target = []
+# (tests/el_motion.rs: a re-description applies a motion port's target over what it presents)
+mutant_motion_snap = []
+# (tests/el_motion.rs: an unmounted motion keeps stepping)
+mutant_motion_keep_track = []
+# (tests/el_motion.rs: a re-described map's wire keeps the captures it was mounted with)
+mutant_el_recipe = []
+# (tests/el_motion.rs: a hover colour re-described while hovered waits for the next hover)
+mutant_el_hover = []
+# (tests/el_motion.rs: a virtual-list row released on scroll-out keeps its motions running)
+mutant_row_keep_track = []
+# (tests/el_motion.rs: an opacity write over a hovered box paints its base colour, not the hover colour)
+mutant_opacity_hover = []
 # (bough-dataflow/mutant_rigid: rows kept across an insert or a remove keep their old rects)
 mutant_rigid = ["bough-dataflow/mutant_rigid"]
 # The presenter on the vendored wgpu-hal with wgsl-rs kernels (crates/bough-gpu) instead of direct Metal.

@@ -117,19 +117,27 @@ impl<V> Mounter<'_, V> {
     /// `head` is the head of a live cell of the type `ty` names (`reflect::cell_id`), and `patch` reads
     /// exactly that cell type with the recipe given.
     pub(crate) unsafe fn wire_field(&mut self, head: &std::cell::Cell<u32>, ty: std::any::TypeId, patch: PatchFn, node: u32, recipe: crate::rt::Recipe) -> bool {
+        let Some(off) = self.field_off(head, ty) else { return false };
+        // SAFETY: `off` is the offset of a field of the cell type holding `head` (`field_off`); `patch` reads
+        // that type (the contract).
+        unsafe { self.wire_cell(head, off, patch, node, recipe) };
+        true
+    }
+    /// The offset in this owner of the cell of type `ty` (`reflect::cell_id`) whose head is `head`, when that
+    /// cell is a field of the owner: the owner type has a field of the cell type at that offset (the table lists
+    /// only cells reached through struct, tuple and array fields), and a live object of that type at that
+    /// address inside the owner is that field. This is the offset `sig!` proves.
+    #[inline(always)]
+    pub(crate) fn field_off(&self, head: &std::cell::Cell<u32>, ty: std::any::TypeId) -> Option<u32> {
         let (at, base) = (head as *const _ as usize, self.owner as usize);
         if at < base || at - base >= size_of::<V>() {
-            return false;
+            return None;
         }
         let off = at - base;
         if off % 4 != 0 || off > u32::MAX as usize || !crate::reflect::cells::<V>().has(off, ty) {
-            return false;
+            return None;
         }
-        // SAFETY: the owner type has a field of the cell type at `off` (the table lists only cells reached
-        // through struct, tuple and array fields), and a live object of that type at that address inside the
-        // owner is that field: this is the offset `sig!` proves. `patch` reads that type (the contract).
-        unsafe { self.wire_cell(head, off as u32, patch, node, recipe) };
-        true
+        Some(off as u32)
     }
 }
 

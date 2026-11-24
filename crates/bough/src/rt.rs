@@ -427,6 +427,9 @@ pub struct Wire {
     pub cls: u32,
     pub patch: PatchFn,
     pub recipe: Recipe,
+    /// The wire drives a motion (`el/motion.rs`) whose transition id is the recipe's first word: cutting the
+    /// wire retires the motion with it.
+    pub motion: bool,
 }
 
 impl Drop for Rt {
@@ -769,7 +772,7 @@ impl Rt {
         let mut cold: Col<Node> = store.carve("element cold", sc.ids);
         cold.push(Node::blank());
         let mut wires: Col<Wire> = store.carve("wires", sc.wires);
-        wires.push(Wire { next: 0, dead: true, latest: false, node: 0, head: 0, cls: 0, patch: nop, recipe: Recipe::NONE });
+        wires.push(Wire { next: 0, dead: true, latest: false, node: 0, head: 0, cls: 0, patch: nop, recipe: Recipe::NONE, motion: false });
         let texts = store.carve("texts", sc.texts);
         let spans = crate::store::Spans::new(store.carve("spans", sc.spans));
         let lay = crate::layout::Lay::new(scale, &mut store, &sc);
@@ -1370,7 +1373,7 @@ impl Rt {
             after = p;
             p = self.wires[p as usize].next;
         }
-        let w = Wire { next: if after == 0 { first } else { p }, dead: false, latest: false, node, head: addr, cls, patch, recipe };
+        let w = Wire { next: if after == 0 { first } else { p }, dead: false, latest: false, node, head: addr, cls, patch, recipe, motion: false };
         let idx = if let Some(i) = self.wire_free.pop() {
             self.wires[i as usize] = w;
             i
@@ -1684,9 +1687,22 @@ impl Rt {
         }
     }
 
+    /// Wire `w` is cut: dead, and a motion it drives retired with it (02 §6: a track drops with its position).
+    /// Every path that releases a scope's wires goes through here (`cut_scope`, `lr_release_row`).
+    #[inline]
+    pub(crate) fn cut_wire(&mut self, w: u32) {
+        let w = &mut self.wires[w as usize];
+        w.dead = true;
+        if w.motion {
+            // SAFETY: a motion wire's recipe starts with its transition id (`el/motion.rs`).
+            let id = unsafe { w.recipe.read_at::<u32>(0) };
+            self.transitions.retire(id);
+        }
+    }
+
     fn cut_scope(&mut self, s: &mut Scope) {
         for w in s.wires.drain(..) {
-            self.wires[w as usize].dead = true;
+            self.cut_wire(w);
         }
         for r in s.lroots.drain(..) {
             self.lay_remove_root(r);

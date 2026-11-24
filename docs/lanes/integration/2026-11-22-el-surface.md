@@ -266,3 +266,214 @@ function cast to a pointer twice has one address (Miri gives a fresh one each ti
 seal apart there. A seal holds patch and trampoline addresses, so this is a missed skip, never a wrong one: two
 functions can share an address only when their code is identical. `the_fast_check_agrees_with_the_seal` asserts
 the weaker law under Miri.
+## Motion as a plug, map recipes, hover colours (card frozen 2026-11-24, before building)
+
+Branch `lane/reactivity/el-motion` from `1a090b8b7f`. Items: (A) `animate(&self.x).spring(..)` / `.over(ms)` /
+`.curve(..)` / `.delay(ms)` as a plug of the f32 and `Color` ports (`opacity`, `translate_x/y`, `w`, `h`, `bg`,
+`fg`), lowered onto the kernel's wire transitions (`transition.rs`); (B1) a change of a map's captured recipe
+reaches the installed wire on the turn it is described; (B2) a hover colour changed while hovered shows at once;
+(C) theme tokens only if the kernel has a mechanism to lower onto.
+
+**Question.** Does a view that uses none of this pay anything, and what does an El motion port cost per frame and
+per retarget against the typed `sig!(..).transition(..)` it lowers onto?
+
+**Measure.** (1) `EL=1 redescribe_cost 1000 10000` (instructions per turn and allocator calls per steady turn,
+typed and El twins), base `1a090b8b7f` against head, same host, same session. (2) The six workload scenes
+(`comparisons/bough-workloads`, `MODE=once` and `MODE=redescribe`, `RENDER=0`, median of 3), base against head,
+because the change touches the kernel's `Wire`, `cut_scope` and `Transitions` that their transitions use. (3) A new
+example `el_motion_cost`: N animated boxes (N = 1, 1000) in one binary, El `animate(..).curve(c)` against typed
+`sig!(..).transition(c)` on the same curve, plus El `animate(..).spring(..)`; instructions per `App::tick` with every
+box in flight, instructions per retarget turn (`Config::once`, one signal published), and `HEAP=1` allocator calls
+per tick and per retarget.
+
+**Prediction.** (1) and (2): every cell within ±1% of base, zero allocator calls per steady turn. (3) The El eased
+port runs the kernel's own transition state, so per tick it is within ±2% of typed; a retarget costs at most 1.3x
+typed (an affine map and an equality cut in the patch); a spring tick costs at most 2.5x an eased tick (one `exp` and
+one `sin_cos` per box); zero allocator calls per tick and per retarget once warm, for all three.
+
+**Kill line.** Any allocator call in a steady tick or retarget; El eased tick above 1.1x typed; any redescribe_cost
+cell or workload cell outside ±1% that is not shown to be code-layout noise by a no-op rebuild. Past any, the motion
+port does not land in this form.
+
+**Correctness gates** (each with a mutant feature that must fail it): retarget mid-flight is continuous (C0; C1 for
+springs and `Curve::smooth`), mutant retargets from the target instead of the presented value; one timestamp gives
+one value at 64 Hz, 128 Hz and an irregular cadence; the settled frame equals a fresh mount at the target (pixels);
+a motion port reruns no `view`; idle after settle steps nothing and requests no frame; a branch flip mid-flight
+remounts per 02 §6 (the old track is dropped, the new position equals a fresh mount), mutant keeps the old track; a
+view with no motion makes no transition state; B1 and B2 each against a fresh mount, each with a mutant.
+
+**Not claimed.** Frame time; the lowered runtime (`lower`) presents a motion port's target (no motion lanes there).
+
+### Results: motion as a plug, map recipes, hover colours (2026-11-24)
+
+Commits on `lane/reactivity/el-motion`: `afbfd79b5f` (motion plug, B1, B2), `cd2ee2f654` (two more B1 oracles),
+this section. Built: `animate(&sig)` with `.spring(..)`, `.over(ms)`, `.ease(..)`, `.curve(..)`, `.delay(ms)`, and
+on `f32` `.reverse()` / `.scale(k)`, accepted by the `f32` ports (`opacity`, `translate_x/y`, `w`, `h`) and the
+`Color` ports (`bg`, `fg`). A motion is a transition in the kernel's own table (`transition.rs`: `Anim<T>`, eased as
+`State` is, a closed-form damped spring, a Hermite `Curve::smooth`), stepped by `App::tick`, retargeted by its wire's
+patch from the presented value and velocity, and retired when its wire is cut (`Wire::motion`). Timings are sealed
+in the `Ext` part (`X_MOTION`), so a node without motion checks nothing more.
+
+**(1) Zero tax: `EL=1 redescribe_cost 1000 10000`**, instructions per turn, base `1a090b8b7f` against head, same
+session, two runs each (run 2 shown; run 1 agrees within 0.2%). Allocator calls per steady turn: 0.00 in every
+cell, base and head (`HEAP=1` tables are identical byte for byte).
+
+| rows | shape | typed base | typed head | Δ | El base | El head | Δ |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1000 | owned | 296,413 | 296,412 | −0.00% | 428,599 | 429,049 | +0.10% |
+| 1000 | static | 291,619 | 291,618 | −0.00% | 437,660 | 438,100 | +0.10% |
+| 1000 | bare | 125,231 | 125,230 | −0.00% | 166,573 | 166,625 | +0.03% |
+| 10000 | owned | 2,915,679 | 2,915,412 | −0.01% | 4,182,698 | 4,182,801 | +0.00% |
+| 10000 | static | 2,865,618 | 2,866,058 | +0.02% | 4,272,670 | 4,272,260 | −0.01% |
+| 10000 | bare | 1,232,059 | 1,232,055 | −0.00% | 1,615,724 | 1,615,600 | −0.01% |
+
+**(2) The six workload scenes** (`RENDER=0`, median of 3, base and head interleaved, instructions per step). Built
+from `git archive` exports of base and head with `comparisons/bough-workloads` added to the workspace members and
+the `gui-bench-scenes` / `bough-guibench-scenes` sources copied in (identical for both). Every cell, both modes, is
+within ±1% (largest: redescribe chat steady −0.37%, gbcanvas steady once +0.41%) except `first_frame`. Steady,
+redescribe:
+
+| scene | base | head | Δ |
+|---|---:|---:|---:|
+| sheet | 43,262,957 | 43,262,830 | −0.00% |
+| ide | 23,332,722 | 23,331,521 | −0.01% |
+| dash | 3,908,065 | 3,914,662 | +0.17% |
+| canvas | 635,752 | 635,774 | +0.00% |
+| chat | 18,024,199 | 17,956,720 | −0.37% |
+| gbcanvas | 5,768,450 | 5,766,647 | −0.03% |
+
+Mount cells are within ±0.17%; hover, theme, resize, resize_anim, anim and idle within ±0.25%. `first_frame` is
+code-layout noise, shown by a no-op rebuild: base built again with only `-C symbol-mangling-version=v0` gives
+sheet 13,366 -> 55,204 (+313%), with the other scenes taking the same two values (≈13.4 K or ≈19.2 K) as the
+base and head binaries, in a different arrangement (base: sheet 13,366, ide 13,450, dash 19,184, canvas 19,129,
+chat 13,333, gbcanvas 19,203; head: 19,173, 13,355, 13,366, 13,388, 14,127, 14,127). This is the boundary
+effect recorded in "The measured scenes" above.
+
+**(3) `el_motion_cost`** (instructions; `HEAP=1` allocator calls per tick, per retarget and per re-describing
+tick are 0.00 in every cell):
+
+| boxes | spelling | tick | ×typed | retarget | ×typed | tick, re-describing | ×typed |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1 | typed `sig!(..).transition(c)` | 2,381 | 1 | 2,222 | 1 | 3,365 | 1 |
+| 1 | El `animate(..).curve(c)` | 2,371 | 0.996 | 2,258 | 1.016 | 4,345 | 1.29 |
+| 1 | El `animate(..).spring(..)` | 2,540 | 1.07 | 2,534 | 1.14 | 4,513 | 1.34 |
+| 1000 | typed | 318,635 | 1 | 135,089 | 1 | 792,192 | 1 |
+| 1000 | El eased | 308,635 | 0.969 | 171,089 | 1.27 | 895,982 | 1.13 |
+| 1000 | El spring | 477,635 | 1.50 | 447,265 | 3.31 | 1,065,154 | 1.34 |
+
+Against the prediction: El eased tick 0.97x typed (outside the predicted ±2%, on the cheap side; kill line 1.1x
+not reached); retarget 1.27x at 1000 boxes (predicted ≤ 1.3x); spring tick 1.55x the eased tick (predicted ≤
+2.5x); zero allocations everywhere. Not predicted: the re-describing tick is 1.13x typed at 1000 boxes and 1.29x
+at one box (the El walk and seal of the owner, as for any El view: the redescribe_cost El/typed ratios are
+1.31–1.50), and a spring retarget costs 3.3x a typed eased retarget (it samples the spring's value and velocity
+in closed form and re-solves its initial conditions per box).
+
+**Correctness.** `tests/el_motion.rs`, 13 tests (15 after the review fixes below), pass in debug and `--release`. Mutants (each a cargo feature),
+every one fails its tests:
+
+| mutant | what it breaks | fails |
+|---|---|---|
+| `mutant_motion_from_target` | a retarget starts from the target, not the presented value | `a_retarget_mid_flight_is_continuous`, `an_eased_motion_presents_what_the_typed_transition_does` |
+| `mutant_motion_snap` | an update does not show the motion's presented value | `a_motion_port_reruns_no_view`, `the_settled_frame_equals_a_fresh_mount_at_the_target` |
+| `mutant_motion_keep_track` | a cut wire keeps its motion (02 §6) | `a_branch_flip_drops_the_track` |
+| `mutant_el_recipe` | an updated map's wire keeps its mount's captures | `a_map_whose_captures_changed_is_right_at_once`, `…_on_the_same_frame`, `…_past_many_ports` |
+| `mutant_el_hover` | a hover colour re-described while hovered waits for the next entry | `a_hover_colour_changed_while_hovered_shows_at_once` |
+| `mutant_row_keep_track` | a released virtual-list row keeps its motions (review fix) | `rows::a_scrolled_out_row_drops_its_track` (also fails under `mutant_motion_keep_track`) |
+| `mutant_opacity_hover` | an opacity write over a hovered box paints its base colour (review fix) | `an_animated_opacity_keeps_the_hover_colour` |
+
+B1 (a map's captured recipe): the recipe is sealed, so a changed capture (`self.n.map(move |n| n * k)`, another
+`k`) fails the seal fast check and the item is updated; the update gives each installed wire the description's
+recipe (`motion::sync_ports`, matched by cell and patch in install order within the element's own scope; one
+element has at most six wired ports), so the frame of that very turn equals a fresh mount (tested with and
+without motion in the scene, and with 80 ports of one list item each capturing its own factor). Not tested: a
+later publish that runs the wires alone (`Config::once`) after a capture change. B2 (hover colour): `set_routes` paints the new hover colour at once when the act is
+hovered (`input::show_hover_bg`, over the element's opacity, as `hover_set` does); leaving shows the base.
+The seal fast check (`check_at`) is unchanged for nodes without `Ext`; motion timings are checked only under
+`X_MOTION` in the cold `check_progs`.
+
+**Suite (rechecked at `e3fcde8e35`, after the review fixes).** `cargo test -p bough` green in debug and
+`--release`: 47 result blocks each, 185 passed, 0 failed, 12 ignored. The first release build was killed by
+macOS during compilation (exit 137, no test failure); rerun with `CARGO_BUILD_JOBS=1` and `nice -n 15`, green.
+`cargo build --workspace --all-targets` ok with the same one-job limit. `cargo clippy -p bough --all-targets
+--no-deps`: no finding on a line
+this branch wrote (its findings are older lines; the one error is in the untouched `tests/typed_words.rs`, and
+without `--no-deps` clippy stops on deny lints in `bough-core`, `bough-metal` and `bough-fused`'s build script).
+
+**Deviations from `designs/reactivity/final/03-ports.md` §4.**
+* Durations are `u32` milliseconds (`.over(300)`, `.delay(100)`), not `2.s()` unit values: the tree has no
+  duration type yet.
+* Motions live in the kernel's transition table (`Transitions`), one per port, stepped by `App::tick`, and not
+  in kind-segregated lanes. `reverse()` / `scale(k)` make their own motion per port (a spring is linear, so the
+  mapped motion is the motion of the mapped value). A view without motion makes no motion state (tested).
+* Only `f32` and `Color` (per channel) interpolate; no lengths, angles, transforms, brushes, paths or shader
+  fields, and no `Interpolatable` for user types.
+* A delay holds the presented value, so a delayed motion retargeted mid-flight is continuous in value only (C0,
+  not C1).
+* Every spring keeps velocity on retarget; `preserve_velocity()` is accepted and does nothing.
+* The lowered runtime (`lower`) presents a motion port's target (no motion there).
+
+**Open.**
+* (C) Theme tokens: not started (skipped by the task); no token plug.
+* From 03 §4: keyframes, sequence / parallel / race, repeat (the `rotate(repeat(..))` of the example), gesture
+  handoff and the scroll / media / demo timelines, `jump(target)`, playback control (pause, seek, rate, fill),
+  composition other than replace, reduced motion, completion as a queued output, structural enter/exit/hero.
+* Motion on the lowered runtime.
+* A spring retarget costs 3.3x a typed eased retarget, and the re-describing tick of an El motion view is
+  1.13–1.29x typed (the El walk); neither is a kill line, both are recorded.
+* The "Open" entries "A map's recipe is not part of `shape()` …" and "A hover colour changed while hovered shows
+  on the next hover" above are closed by this branch.
+
+### Review fixes (DeepSeek Flash review, `review-el-motion-flash.md`)
+
+**HIGH: a released list row kept its motions.** `lr_release_row` (listview.rs) marked its row's wires dead and
+cleared the scope's list itself, so `cut_scope` (then the only caller of `Transitions::retire`) never retired a
+virtual-list row's motion: scrolled-out rows left running tracks that painted their value onto the node ids the
+rows scrolling in recycle, and the table grew. Both paths now cut through one `Rt::cut_wire` (dead + retire), and
+`Transitions::retire` frees an id once when it is retired twice (`Running::retire` returns `None` for a motion
+already retired: the review's `run_head` note, a wire index recycled while an old scope still lists it).
+Test `rows::a_scrolled_out_row_drops_its_track`: 200 `List<Row>` rows with `animate(&fade).over(400)`, all fades
+published, scrolled out mid-flight, then every frame against a fresh mount at the scroll position (pixels), no
+motion running, as many live motions as the same scroll with nothing in flight, and scrolled back = a fresh mount.
+Without the fix it fails at the first frame after scroll-out (pixels). `transition::retire_tests` covers the
+double retire. (The review's probe compared against a run whose fades were never published, so its 72,000
+differing bytes mix state and leak; the leak itself, 7 orphans stepped each tick, was real.)
+
+**MED: an opacity write wiped the hover colour.** `ApplyOpacity::apply` repainted the fill from the described
+colour while `NK_HOVERED`, so every motion frame of a hovered box showed its base. The applier's body is base's;
+after it, a hovered box (one test of the kind already loaded) takes a cold fix-up that repaints the act's hover
+colour through the new opacity (`opacity_hovered`). Test `an_animated_opacity_keeps_the_hover_colour`: hovered,
+opacity in flight, hover colour changed while hovered at frame 6, 30 frames each against a fresh hovered mount at
+that frame's presented opacity, settled, then left = the base. A first version that routed every non-plain quad
+through a cold function (one test on the hot path) cost dash steady redescribe +1.1% (5 runs; codegen around the
+inlined applier, 330–680 calls a step), so it was replaced.
+
+**Measured after the fixes** (head `e3fcde8e35`, same session as base). `EL=1 redescribe_cost 1000 10000`, two runs,
+every cell within ±0.11% of base (largest: 1000 static El +0.10%), allocator calls 0.00 per turn everywhere, `HEAP=1`
+tables identical. Workload scenes (median of 3, both modes): every cell within ±1% except `first_frame` (the layout
+cell above), `ide steady once` (+2.06% in the table run) and `gbcanvas steady once` (−8.2%); both are bimodal in
+every binary, base included: over five runs base gives ide 38,786 / 39,815 and gbcanvas 6,199–6,715, head 38,795 /
+39,819 and 6,035–6,040, base built with v0 mangling 38,791–39,815 and 6,041–6,337. Dash steady redescribe
+3,914,722 vs 3,920,813 (−0.16%). `el_motion_cost` after the fixes (allocator calls 0.00 everywhere):
+
+| boxes | spelling | tick | retarget | tick, re-describing |
+|---:|---|---:|---:|---:|
+| 1 | typed | 2,384 | 2,222 | 3,371 |
+| 1 | El eased | 2,374 | 2,258 | 4,348 |
+| 1 | El spring | 2,543 | 2,534 | 4,516 |
+| 1000 | typed | 321,635 | 135,089 | 798,192 |
+| 1000 | El eased | 311,635 | 171,089 | 898,982 |
+| 1000 | El spring | 480,635 | 447,059 | 1,068,154 |
+
+The hovered test costs every opacity write 3 instructions: a 1000-box tick +3,000 (+0.94%) for typed and El alike
+(this applier is the kernel's, so typed `sig!(..).transition(..)` opacity pays it too); no workload anim cell moved
+(dash anim −0.2%). Recorded, not hidden: it is the one cost of the fix.
+
+Open from the review: a wire index that `run_head` recycles while an old scope still lists it can still be cut by
+that scope after a new motion took it, retiring the new motion (the guard stops the double free, not the
+misattribution; it needs a moved `Signal` head). `Transitions::retire` acts on motions only (`State`, the typed
+`.transition(..)`'s, returns `None`); whether a typed transition on a released virtual-list row is dropped some
+other way was not checked here.
+
+The suite recheck above used two build jobs for debug (green) and one for release and the workspace build. The
+initial two-job release build was killed during compilation, before any test ran; no source change was made for
+the successful one-job rerun, and the resulting code head is `e3fcde8e35`.
