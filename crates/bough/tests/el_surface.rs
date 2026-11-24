@@ -382,3 +382,54 @@ fn rows_take_bound_routes() {
     let mut fresh = App::new(Board { rows: (0..3).map(|i| Row { label: if i == 0 { "a".into() } else { format!("row {i}") }, count: (i == 2) as u32 }).collect() }, cfg(), true);
     assert_eq!(p, shot(&mut fresh), "the re-described board matches a fresh mount");
 }
+
+// ------------------------------------------------------------------------------------------- drag vs click
+
+struct Draggable {
+    clicks: u32,
+    inner: u32,
+    dragged: f32,
+    drags: u32,
+}
+impl Draggable {
+    fn click(&mut self) {
+        self.clicks += 1;
+    }
+    fn inner(&mut self) {
+        self.inner += 1;
+    }
+    fn drag(&mut self, e: &Ev) {
+        self.drags += 1;
+        self.dragged = e.dx;
+    }
+}
+impl View for Draggable {
+    fn view(&self) -> El<'_> {
+        column(row((text("row").w(80), div().size(20, 20).bg(rgb(0x2266aa)).on_click(Draggable::inner))).h(30).bg(rgb(0xddeeff)).on_click(Draggable::click).on_drag(Draggable::drag))
+            .bg(rgb(0xffffff))
+            .w_pct(1.0)
+            .h_pct(1.0)
+    }
+}
+
+/// A drag route arms at the press and starts after `DRAG_SLOP` points of travel: a press released in place on a
+/// draggable element (or on a button inside it) is a click, and a real drag is a drag and no click.
+/// Negative control: `--features mutant_drag_eager` (the drag captured the press at once) fails it.
+#[test]
+fn a_press_in_place_on_a_draggable_element_is_a_click() {
+    let mut app = App::new(Draggable { clicks: 0, inner: 0, dragged: 0.0, drags: 0 }, cfg(), true);
+    shot(&mut app);
+    click(&mut app, 20.0, 15.0);
+    assert_eq!((app.owner.clicks, app.owner.drags), (1, 0), "a press released in place is a click");
+    click(&mut app, 90.0, 10.0);
+    assert_eq!((app.owner.inner, app.owner.clicks), (1, 1), "a button inside a draggable row takes its click");
+    app.pointer_move(20.0, 15.0);
+    app.pointer_down(20.0, 15.0, Button::Primary);
+    app.pointer_move(21.0, 15.0);
+    assert_eq!(app.owner.drags, 0, "under the slop the press is not a drag yet");
+    app.pointer_move(30.0, 15.0);
+    app.pointer_up(30.0, 15.0, Button::Primary);
+    assert!(app.owner.drags >= 2 && app.owner.dragged == 10.0, "a real drag runs the drag route with the travel since the press");
+    assert_eq!(app.owner.clicks, 1, "a drag is no click");
+    shot(&mut app);
+}

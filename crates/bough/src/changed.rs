@@ -62,21 +62,77 @@ impl<V> Changed<'_, V> {
     pub fn any(&self) -> bool {
         !self.pubs.is_empty() || !self.readers.is_empty()
     }
-    /// The list's delta log this turn (splices, moves, permutations, edits), if it changed.
-    pub fn list<T>(&self, l: LWired<'_, T, V>) -> Option<&[Op]> {
-        let a = l.list as *const _ as usize;
+    /// The list's delta log this turn (splices, moves, permutations, edits), if it changed:
+    /// `d.list(&self.rows)`.
+    pub fn list<T>(&self, l: impl ListRef<T>) -> Option<&[Op]> {
+        let a = l.addr();
         let &(_, s, n) = self.pubs.lists.iter().find(|x| x.0 == a)?;
         Some(&self.pubs.ops[s as usize..(s + n) as usize])
     }
-    /// The slab indices of the entities edited this turn.
-    pub fn entities<T>(&self, e: EWired<'_, T, V>) -> Option<&[u32]> {
-        let a = e.ents as *const _ as usize;
+    /// The slab indices of the entities edited this turn: `d.entities(&self.docs)`.
+    pub fn entities<T>(&self, e: impl EntitiesRef<T>) -> Option<&[u32]> {
+        let a = e.addr();
         let &(_, s, n) = self.pubs.ents.iter().find(|x| x.0 == a)?;
         Some(&self.pubs.idx[s as usize..(s + n) as usize])
     }
-    /// Did this reader's cohort commit (a new value is shown) this turn?
-    pub fn reader<T>(&self, r: RWired<'_, T, V>) -> bool {
-        self.readers.contains(&(r.r as *const _ as usize))
+    /// Did this reader's cohort commit (a new value is shown) this turn? `d.reader(&self.results)`.
+    pub fn reader<T>(&self, r: impl ReaderRef<T>) -> bool {
+        self.readers.contains(&r.addr())
+    }
+}
+
+mod sealed {
+    pub trait Sealed {}
+}
+/// A list as `Changed::list` names it: a borrowed `List` field (`&self.rows`), or a typed builder's wired list.
+pub trait ListRef<T>: sealed::Sealed {
+    #[doc(hidden)]
+    fn addr(&self) -> usize;
+}
+/// Entities as `Changed::entities` names them: `&self.docs`, or a typed builder's wired entities.
+pub trait EntitiesRef<T>: sealed::Sealed {
+    #[doc(hidden)]
+    fn addr(&self) -> usize;
+}
+/// A reader as `Changed::reader` names it: `&self.results`, or a typed builder's wired reader.
+pub trait ReaderRef<T>: sealed::Sealed {
+    #[doc(hidden)]
+    fn addr(&self) -> usize;
+}
+impl<T> sealed::Sealed for &crate::list::List<T> {}
+impl<T> ListRef<T> for &crate::list::List<T> {
+    fn addr(&self) -> usize {
+        *self as *const _ as usize
+    }
+}
+impl<T, W> sealed::Sealed for LWired<'_, T, W> {}
+impl<T, W> ListRef<T> for LWired<'_, T, W> {
+    fn addr(&self) -> usize {
+        self.list as *const _ as usize
+    }
+}
+impl<T> sealed::Sealed for &crate::entity::Entities<T> {}
+impl<T> EntitiesRef<T> for &crate::entity::Entities<T> {
+    fn addr(&self) -> usize {
+        *self as *const _ as usize
+    }
+}
+impl<T, W> sealed::Sealed for EWired<'_, T, W> {}
+impl<T, W> EntitiesRef<T> for EWired<'_, T, W> {
+    fn addr(&self) -> usize {
+        self.ents as *const _ as usize
+    }
+}
+impl<T> sealed::Sealed for &crate::reader::Reader<T> {}
+impl<T> ReaderRef<T> for &crate::reader::Reader<T> {
+    fn addr(&self) -> usize {
+        *self as *const _ as usize
+    }
+}
+impl<T, W> sealed::Sealed for RWired<'_, T, W> {}
+impl<T, W> ReaderRef<T> for RWired<'_, T, W> {
+    fn addr(&self) -> usize {
+        self.r as *const _ as usize
     }
 }
 

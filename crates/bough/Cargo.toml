@@ -119,6 +119,8 @@ mutant_el_route_slot = []
 mutant_el_route_far = []
 # (bough-dataflow/mutant_rigid: rows kept across an insert or a remove keep their old rects)
 mutant_rigid = ["bough-dataflow/mutant_rigid"]
+# (tests/el_surface.rs) a drag route captures the press at once: a press released in place under it is no click
+mutant_drag_eager = []
 # The presenter on the vendored wgpu-hal with wgsl-rs kernels (crates/bough-gpu) instead of direct Metal.
 wgpu = ["dep:bough-gpu"]
 # Gate sabotage (RESULTS §15): the scroll copy reads one pixel off; every scroll pixel gate must fail with it.

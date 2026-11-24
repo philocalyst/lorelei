@@ -76,6 +76,10 @@ pub struct Mods {
     pub cmd: bool,
 }
 
+/// How far (points) the pointer moves from a press before an armed drag starts; less, and the release is a
+/// click.
+pub const DRAG_SLOP: f32 = 3.0;
+
 /// What a route receives. Positions in points, window coordinates.
 #[derive(Clone, Copy, Debug)]
 pub struct Ev {
@@ -327,6 +331,9 @@ pub struct Input {
     pressed: u32,
     press_at: (f32, f32),
     dragging: bool,
+    /// The act whose drag route a press armed: the drag starts once the pointer has moved [`DRAG_SLOP`]
+    /// points from the press (until then the press may still be a click).
+    drag_armed: u32,
     pub focus: Option<Handle>,
     focus_act: u32,
     /// Keyboard focus shows the ring (`:focus-visible`); pointer focus does not.
@@ -371,6 +378,7 @@ impl Default for Input {
             pressed: 0,
             press_at: (0.0, 0.0),
             dragging: false,
+            drag_armed: 0,
             focus: None,
             focus_act: 0,
             focus_visible: false,
@@ -1287,6 +1295,14 @@ impl<V: View> App<V> {
         self.sync_pub();
         let (px, py) = self.dev(x, y);
         self.rt.input.pointer = Some((px, py));
+        let armed = self.rt.input.drag_armed;
+        if armed != 0 && !self.rt.input.dragging {
+            let (x0, y0) = self.rt.input.press_at;
+            if (x - x0).hypot(y - y0) >= DRAG_SLOP {
+                self.rt.input.pressed = armed;
+                self.rt.input.dragging = true;
+            }
+        }
         let pa = self.rt.input.pressed;
         if pa != 0 && self.rt.input.dragging {
             if let Some(r) = self.rt.input.acts[pa as usize].drag {
@@ -1449,8 +1465,11 @@ impl<V: View> App<V> {
                 break;
             }
         }
-        if let Some(a) = chain.iter().map(|&h| self.rt.input.act_of(h)).find(|&a| self.rt.input.acts[a as usize].drag.is_some()) {
-            self.rt.input.pressed = a;
+        // a drag route arms; the drag starts when the pointer moves (`pointer_move`), so a press released in place
+        // is still a click of the element (and of a button inside a draggable row)
+        self.rt.input.drag_armed = chain.iter().map(|&h| self.rt.input.act_of(h)).find(|&a| self.rt.input.acts[a as usize].drag.is_some()).unwrap_or(0);
+        if cfg!(feature = "mutant_drag_eager") && self.rt.input.drag_armed != 0 {
+            self.rt.input.pressed = self.rt.input.drag_armed;
             self.rt.input.dragging = true;
         }
         self.settle_input();
@@ -1463,6 +1482,7 @@ impl<V: View> App<V> {
         self.sync_pub();
         let pa = std::mem::replace(&mut self.rt.input.pressed, 0);
         let dragging = std::mem::replace(&mut self.rt.input.dragging, false);
+        self.rt.input.drag_armed = 0;
         let (px, py) = self.dev(x, y);
         self.rt.input.pointer = Some((px, py));
         if dragging {
