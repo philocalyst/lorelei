@@ -247,7 +247,7 @@ int_signal_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a writable `{T}` cell",
     label = "a two-way port takes a borrowed `Signal<{T}>` field of the view (`&self.name`)",
-    note = "a `Reader`, a mapped source or a constant is read-only: the element has nowhere to write its edits"
+    note = "a `Reader`, a mapped source or a constant is read-only, and a signal of another type holds no text: the element needs a `Signal<{T}>` to write its edits to"
 )]
 pub trait Sink<'f, T: 'static>: sealed::Sealed {
     #[doc(hidden)]
