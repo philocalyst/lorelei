@@ -24,6 +24,7 @@
 //! changes at its position is remounted there, and only there; an iterator's items keep their position.
 mod arena;
 pub mod motion;
+mod list;
 pub mod plug;
 mod walk;
 
@@ -45,6 +46,7 @@ pub fn rewind_for_bench() {
     drop(Walk::enter());
 }
 pub use motion::{animate, Animatable, Motion, Spring};
+pub use list::{ListEach, Project};
 pub use plug::{Latest, Map, Pending, Source, is_pending, latest};
 
 /// The element currency: a cursor to one element of the description being written. Move-only, `!Send`,
@@ -426,7 +428,7 @@ impl<'f> El<'f> {
     #[track_caller]
     pub fn focusable(self) -> Self {
         let k = self.n().kind;
-        if matches!(k, K_GROUP | K_FRAG | K_PROD | K_BOUND) {
+        if matches!(k, K_GROUP | K_FRAG | K_PROD | K_BOUND | K_LIST) {
             wrong_kind("focus", k, K_BOX)
         }
         self.ext().flags |= X_FOCUS;
@@ -435,7 +437,7 @@ impl<'f> El<'f> {
     #[track_caller]
     fn route<M>(self, kind: u8, key: Key, r: impl Route<M>) -> Self {
         let k = self.n().kind;
-        if matches!(k, K_GROUP | K_FRAG | K_PROD | K_BOUND) {
+        if matches!(k, K_GROUP | K_FRAG | K_PROD | K_BOUND | K_LIST) {
             wrong_kind("a route", k, K_BOX)
         }
         let RouteParts { tramp, recipe, recv, recv_name } = r.lower(Seal);
@@ -460,6 +462,7 @@ fn kind_name(kind: u8) -> &'static str {
         K_IMAGE => "an image",
         K_PROD => "a producer",
         K_BOUND => "a boundary",
+        K_LIST => "a list",
         _ => "a group",
     }
 }

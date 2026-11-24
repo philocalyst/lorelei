@@ -36,6 +36,9 @@ pub(crate) const K_PROD: u8 = 7;
 /// A boundary (`boundary().loading(..).failed(..).child(..)`): three children, the arms, in that order;
 /// `text` holds its [`BoundReq`].
 pub(crate) const K_BOUND: u8 = 8;
+/// A keyed list's rows (`&List<T>`, `list.each(f)`: `text` holds its [`ListReq`](super::list::ListReq) in the
+/// bump store): a list region of the kernel's (`listview.rs`).
+pub(crate) const K_LIST: u8 = 9;
 
 /// The box is painted (`bg`, `rounded`, `border`).
 pub(crate) const F_DRAW: u8 = 1;

@@ -474,6 +474,10 @@ pub struct Scope {
 }
 
 impl Scope {
+    /// Everything the scope held is released (`Rt::release_scope`, `Rt::reclaim`): it may be reused.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.wires.is_empty() && self.texts.is_empty() && self.insts.is_empty() && self.runs.is_empty() && self.series.is_empty() && self.lroots.is_empty() && self.dyns.is_empty() && self.lregs.is_empty() && self.prods.is_empty()
+    }
     /// Heap bytes of the scope's lists (memory ledger).
     pub fn heap_bytes(&self) -> usize {
         (self.wires.capacity() + self.texts.capacity() + self.insts.capacity() + self.runs.capacity() + self.lroots.capacity() + self.dyns.capacity() + self.lregs.capacity() + self.prods.capacity()) * 4 + self.series.capacity() * 8

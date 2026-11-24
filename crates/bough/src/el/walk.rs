@@ -11,8 +11,8 @@ use super::arena::*;
 use crate::boxops::{ApplyBoxH, ApplyBoxW, ApplyOpacity, ApplyTx, ApplyTy, BoxLow, BoxOps};
 use crate::color::Color;
 use crate::describe::{mount_dyn_as, update_dyn, update_opaque};
-use crate::elem::{Apply, Element, IntoProp, Mounter, TextSrc, decimal};
-use crate::input::{Ev, Key, Route};
+use crate::elem::{decimal, Apply, Element, IntoProp, Mounter, TextSrc};
+use crate::input::{ActOwner, Ev, Key, Route, UP_ROOT};
 use crate::layout::{Dim, LBox, Para, Spec};
 use crate::rt::*;
 use crate::seal::Sealer;
@@ -794,26 +794,120 @@ fn key_code(k: Key) -> u32 {
     }
 }
 
-/// Install (or, on a re-description, rewrite) the routes of act `a` from the description.
-fn set_routes<V: 'static>(m: &mut Mounter<'_, V>, a: u32, x: &Ext) {
-    if !x.acts.is_null() {
-        crate::input::root_owner_only(m, "a route");
+/// Where the owner chain of a mount starts: the list row whose description is being walked (region, slot,
+/// generation), `NONE` for the root view's. Another owner (an entity view) refuses routes, as before routes had
+/// an owner chain.
+fn chain_row<V>(m: &Mounter<'_, V>) -> (u32, u32, u32) {
+    if m.cls == 0 {
+        return (NONE, 0, 0);
     }
-    let input = &mut m.rt.input;
+    let lists = &m.rt.lists;
+    match lists.mounting.last() {
+        Some(&(reg, slot)) if lists.regs[reg as usize].cls == m.cls => {
+            let r = &lists.regs[reg as usize];
+            // SAFETY: the region's live source, and the slot of the row being described (live).
+            (reg, slot, unsafe { (r.gen_of)(r.list, slot) })
+        }
+        _ => {
+            crate::input::root_owner_only(m, "a route");
+            unreachable!()
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn not_on_chain<V>(lists: &crate::listview::Lists, r: &ActReq, row: (u32, u32, u32)) -> ! {
+    let mut chain = vec![format!("`{}`", std::any::type_name::<V>())];
+    let mut reg = row.0;
+    loop {
+        let g = &lists.regs[reg as usize];
+        match g.owner_kind {
+            crate::listview::OWNER_ROW => {
+                reg = g.parent.0;
+                chain.push(format!("`{}`", lists.regs[reg as usize].item_name));
+            }
+            crate::listview::OWNER_ROOT => {
+                chain.push(format!("`{}`", g.owner_name));
+                break;
+            }
+            _ => break,
+        }
+    }
+    panic!(
+        "a route taking `&mut {}` is mounted in a view of `{}`, whose owner chain is {}: a route's receiver is the view that describes it or an owner enclosing it",
+        r.recv_name,
+        std::any::type_name::<V>(),
+        chain.join(" < ")
+    )
+}
+
+/// The receiver of route `r` mounted at `row` (04 §2, L4): the nearest owner on the chain (the row, the rows of
+/// enclosing lists, the root view) whose type is the route's receiver type, as `Route::up`; none is a located
+/// panic naming both. This match is what makes the trampoline's cast of its owner sound.
+fn resolve<V: 'static>(lists: &crate::listview::Lists, root: Option<TypeId>, r: &ActReq, row: (u32, u32, u32)) -> u8 {
+    use crate::listview::{MAX_CHAIN, OWNER_ROOT, OWNER_ROW};
+    if row.0 == NONE {
+        check::<V>(r);
+        // the root's class is dispatched on the root view: a view of another type mounted with it (an index
+        // list's rows inside a list row) cannot take routes
+        assert!(root.is_none_or(|t| t == TypeId::of::<V>()), "a route in a view of `{}` mounted as the root view's own rows (an index list inside another owner): its routes would run on the root view", std::any::type_name::<V>());
+        return UP_ROOT;
+    }
+    let regs = &lists.regs;
+    debug_assert_eq!(regs[row.0 as usize].item_ty, TypeId::of::<V>(), "the row's owner is the mounting view");
+    let mut found = None;
+    let (mut reg, mut up) = (row.0, 0u8);
+    loop {
+        let g = &regs[reg as usize];
+        if g.item_ty == r.recv {
+            found = Some(up);
+            if !cfg!(feature = "mutant_el_route_far") {
+                break;
+            }
+        }
+        match g.owner_kind {
+            OWNER_ROOT => {
+                if g.owner_ty == r.recv && (found.is_none() || cfg!(feature = "mutant_el_route_far")) {
+                    found = Some(UP_ROOT);
+                }
+                break;
+            }
+            OWNER_ROW => {
+                reg = g.parent.0;
+                up += 1;
+                assert!((up as usize) < MAX_CHAIN, "a route mounted {up} list rows deep: owner chains reach {MAX_CHAIN} owners");
+            }
+            _ => break,
+        }
+    }
+    match found {
+        Some(u) => u,
+        None => not_on_chain::<V>(lists, r, row),
+    }
+}
+
+/// Install (or, on a re-description, rewrite) the routes of act `a` from the description, each resolved against
+/// the owner chain of the mount.
+fn set_routes<V: 'static>(m: &mut Mounter<'_, V>, a: u32, x: &Ext) {
+    let row = if x.acts.is_null() { (NONE, 0, 0) } else { chain_row(m) };
+    let rt = &mut *m.rt;
+    let (lists, input, root) = (&rt.lists, &mut rt.input, rt.lists.root_ty);
     let act = &mut input.acts[a as usize];
     (act.click, act.press, act.hover, act.drag, act.key) = (None, None, None, None, None);
+    let mut owner = ActOwner { row, up: [UP_ROOT; 5] };
     let mut keys = 0;
     for r in acts(x) {
-        check::<V>(r);
-        // SAFETY: `check` proved the trampoline's receiver type is the dispatching owner's.
+        let up = resolve::<V>(lists, root, r, row);
+        // SAFETY: `resolve` proved the trampoline's receiver type is the type of the owner `up` names.
         let route = Some(unsafe { Route::raw(r.tramp, r.recipe) });
         // the list is most recent first: the last description of a slot wins
-        let slot = match r.kind {
-            A_CLICK => &mut act.click,
-            A_PRESS => &mut act.press,
-            A_HOVER => &mut act.hover,
-            A_DRAG => &mut act.drag,
-            A_ANY_KEY => &mut act.key,
+        let (slot, i) = match r.kind {
+            A_CLICK => (&mut act.click, 0),
+            A_PRESS => (&mut act.press, 1),
+            A_HOVER => (&mut act.hover, 2),
+            A_DRAG => (&mut act.drag, 3),
+            A_ANY_KEY => (&mut act.key, 4),
             _ => {
                 keys += 1;
                 continue;
@@ -821,15 +915,21 @@ fn set_routes<V: 'static>(m: &mut Mounter<'_, V>, a: u32, x: &Ext) {
         };
         if slot.is_none() {
             *slot = route;
+            owner.up[i] = up;
         }
     }
     if keys != 0 || act.keys != 0 {
-        let map = input.keymap(a);
+        input.keymap(a);
         for r in acts(x).filter(|r| r.kind == A_KEY) {
-            // SAFETY: as above.
-            map.push((r.key, unsafe { Route::raw(r.tramp, r.recipe) }));
+            let up = resolve::<V>(lists, root, r, row);
+            // SAFETY: as above (the receiver is recorded in step: `Input::keymap_ups`).
+            let route = unsafe { Route::raw(r.tramp, r.recipe) };
+            let k = input.acts[a as usize].keys as usize;
+            input.keymaps[k].push((r.key, route));
+            input.keymap_ups[k].push(up);
         }
     }
+    input.set_owner(a, owner);
     let act = &mut input.acts[a as usize];
     if x.flags & X_HOVER != 0 {
         let was = act.hover_bg.replace(x.hover);
@@ -893,6 +993,7 @@ fn shape(n: &DNode) -> u64 {
                 h = mix(h, g.reader as u64);
             }
         }
+        K_LIST => h = super::list::shape(h, n, mix),
         K_IMAGE => {
             // SAFETY: as `image`.
             let b = unsafe { &*(n.text as *const crate::ui::ImageBox) };
@@ -1049,6 +1150,7 @@ impl<V: 'static> Element<V> for Item {
             K_FRAG => mount_dyn_as(m, Items(n.first), false),
             K_PROD => mount_prod(m, n),
             K_BOUND => mount_bound(m, n),
+            K_LIST => super::list::mount(m, n),
             K_INPUT => {
                 let before = m.recs.len();
                 let sig = input_signal::<V>(m, n);
@@ -1075,6 +1177,7 @@ impl<V: 'static> Element<V> for Item {
         let n = self.n();
         match n.kind {
             K_GROUP | K_FRAG => update_dyn(m, Items(n.first)),
+            K_LIST => super::list::update(m),
             _ => {
                 if n.has & (H_INK | H_TW) != 0 || n.ops != 0 {
                     resolve_ports(m, n);
@@ -1134,6 +1237,7 @@ impl<V: 'static> Element<V> for Item {
             K_INPUT => l.refuse("text_input"),
             K_PROD => l.refuse("produce"),
             K_BOUND => l.refuse("boundary"),
+            K_LIST => l.refuse("a List as El children"),
             _ => {
                 let at = l.core.next();
                 image(n).lower(l);

@@ -798,3 +798,183 @@ mounted boundary). Re-description of the El boundary is 1.63–1.70x typed and i
 instructions of typed; El describes and checks about ten nodes). The card predicted ≤ 1.3x. The two slow
 debug-only `pages` transition tests were not completed in the time available; they are unrelated to this
 branch's changed files and pass in release.
+## Keyed collections as El children, and routes on the owner chain (B3) — card (frozen 2026-11-24, before building)
+
+Branch `lane/reactivity/el-lists` at base `1a090b8b7f`. Design: 02 §4 / §4.1 (L8), 01 §4, 04 §2–3 (L4).
+
+**What is built.** `&List<T: View>` and `list.each(f)` (`f: fn(&T) -> El` or `fn(&T, Slot<T>) -> El`) as El
+children, lowered onto the kernel's list region (`listview.rs`: one region per list, per-row owner class, the
+delta log replayed, per-slot splice / move / edit) with an El row mounter of its own; `&Vec<T: View>` as an
+ordinal child form; a route's receiver resolved at mount against the owner chain (row owner, enclosing rows,
+the root view) by its `TypeId`, nearest first, a row receiver reached at dispatch through its list
+(`List::edit_slot`, so the edit is logged and published).
+
+**Question.** What does an El list region cost over the typed `list(sig!(..))` region, per operation, and does
+it keep the kernel's per-slot deltas (an edit re-describes one row, a move remounts nothing, a splice mounts one
+row, a parent re-description with an unchanged list does not visit its rows)?
+
+**Measure.** A new example `crates/bough/examples/el_list_cost.rs`: one binary, El and typed twins
+interleaved, N = 1000 and 10000 rows of the same shape (a painted 960x32 row holding an integer text and a
+`Signal<String>` label), default config (the root re-describes). Instructions per `App::turn` on the calling
+thread by slope over two repeat counts (`bough_sys::perf::tinstr`, as `redescribe_cost`), allocator calls per
+turn (the counting allocator, as `redescribe_cost`'s `HEAP`). Cells:
+* `mount`: `App::new` + first turn with N rows minus the same with 0 rows, per row;
+* `edit`: one row's label signal set through `List::edit`;
+* `move`: one row moved (`move_to`, alternating there and back);
+* `splice`: one row inserted in the middle, then removed (per pair, as `redescribe_cost`'s `churn`);
+* `parent`: a plain field of the root that the root's own view reads changes; the list does not.
+Counters: rows described per turn (El: projections run; new `LStats` counter), rows mounted / unmounted.
+Existing cells: `EL=1 redescribe_cost 1000 10000` (and its `HEAP` allocation columns) and the six workload
+scenes (`chat` uses a typed list region; `MODE=once` and `MODE=redescribe`, `RENDER=0`, median of 3), base
+binary (`1a090b8b7f`) against head, same host, same session.
+
+**Prediction.** El ≤ 1.5x typed instructions on every operation cell at both N. `edit` describes exactly one
+row, `move` and `parent` describe zero, `splice` mounts exactly one. `parent` is O(1) in rows for El: its
+10000-row cell is within 1.2x of its 1000-row cell (typed's `LList::update` sums its rows' record counts and is
+expected to grow with N). Allocator calls per turn: El ≤ typed in every steady cell, and zero in `edit` and
+`parent`. Existing cells within ±1%, steady allocations unchanged (zero).
+
+**Kill line.** Any operation cell above 2.0x typed; any allocation in an El `edit` or `parent` turn, or El
+above typed in any steady cell; El `parent` at 10000 rows above 1.5x its 1000-row cell; any existing
+`redescribe_cost` or workload cell moved by more than ±1% (outside the code-layout cells already documented
+above: `first_frame`, `canvas`/`gbcanvas` steady once, `idle` once). Past a kill line, the change does not
+land in this form.
+
+**Correctness gates** (each with a cargo-feature mutant that must fail it), `crates/bough/tests/el_lists.rs`:
+* Oracle: seeded random scripts of push / insert / remove / move / swap / sort / edit (plain field and signal
+  field) / retain; after every step the presented pixels equal a fresh mount of the same items, and the repaired
+  frame equals a full redraw. Mutant `mutant_el_list_slot` (the El row mounter takes the slot for a position).
+* Edits re-describe: an edit of a plain field shows (the row re-describes); exactly one row described per
+  edit. Mutant `mutant_el_list_edit` (edited rows are not re-described).
+* Identity: a row's focus and hover stay with the item across permutations; a `Vec` child keeps them with the
+  position (ordinal).
+* Routes: a route on a row mutates that row after reorders, splices and sorts; a route to the root from inside a
+  row; `.with(..)` and `fn(&mut T, &Ev)` routes in rows; keys in rows; nested same-type owners resolve to the
+  nearest; a late event for a removed row does nothing; a receiver not on the chain panics at mount naming both
+  types (the existing test kept). Mutants `mutant_el_route_slot` (dispatch resolves the position recorded at
+  mount instead of the slot) and `mutant_el_route_far` (the farthest matching owner instead of the nearest).
+* `each` with both function shapes; a list that is not a field of the describing owner panics at mount naming
+  the list and owner types (decision: a located panic, not an ordinal fallback — a borrowed list elsewhere has
+  no wire, and an ordinal fallback would silently lose the identity the author asked for).
+
+**Not claimed.** Frame time; horizontal list regions (the kernel's region stacks rows top to bottom); lowering
+(`bough::lower`) of El lists; typed builders' routes in rows (they keep `root_owner_only`).
+
+### B3 results (2026-11-24)
+
+Branch `lane/reactivity/el-lists`; base `1a090b8b7f`; implementation `6e4a36a87b`, cleanup `df958ca332`
+(the earlier `662a82184f` is the stopped agent's checkpoint). Host: the owner's Mac, nightly
+2026-10-17, release (`opt-level=3`, thin LTO), `RENDER=0`. Instruction cells are calling-thread
+`tinstr` slopes; workload cells are the harness's median of three. No claim here is for another host or
+binary.
+
+**What landed.** `&List<T: View>` and both `each` shapes use the kernel's region, delta log, slots,
+layout spaces and act table. Rows have their own owner class and tape. A route records its receiver as
+`(row region, slot, generation)` plus an owner-chain distance in side tables, leaving the hot `Act`
+layout unchanged. Row dispatch goes through `List::edit_slot`, so it logs and publishes; a removed
+generation is a no-op. `&Vec<T: View>` stays ordinal. Nested regions propagate their record-count
+deltas through enclosing rows and retained dynamic items; a row being re-described accounts for its
+own delta when its walk ends (`Lists::lr_counted`), so inner-list growth and branch removal leave the
+same records as a fresh mount. Released dynamic tapes and list-row tapes are reused after warm-up.
+
+**El-list cost.** `el_list_cost 1000 10000`, three runs; steady cells were identical in all three. The
+mount row reports the observed range across the three runs (first mount includes page faults and table
+growth). Steady cells were identical in all three. `splice` is one insert/remove pair; its allocation
+slope is per pair, not per individual turn.
+
+| rows | operation | typed instr | El instr | El / typed | typed allocs | El allocs | rows described (typed / El) |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1,000 | mount | 601,992–674,481 | 767,785–818,350 | 1.14–1.36x | 363 | 623 | — |
+| 1,000 | edit | 11,809 | 15,150 | 1.28x | 0 | 0 | 0 / 1 |
+| 1,000 | move | 76,671 | 78,747 | 1.03x | 9 | 9 | 0 / 0 |
+| 1,000 | splice pair | 138,423 | 183,735 | 1.33x | 22 | 42 | 0 / 2 |
+| 1,000 | parent | 1,664 | 3,102 | 1.86x | 0 | 0 | 0 / 0 |
+| 10,000 | mount | 895,366–953,256 | 1,094,846–1,109,823 | 1.15–1.24x | 377 | 637 | — |
+| 10,000 | edit | 11,938 | 16,029 | 1.34x | 0 | 0 | 0 / 1 |
+| 10,000 | move | 263,636 | 265,340 | 1.01x | 9 | 9 | 0 / 0 |
+| 10,000 | splice pair | 500,053 | 545,794 | 1.09x | 24 | 44 | 0 / 2 |
+| 10,000 | parent | 1,323 | 2,761 | 2.09x | 0 | 0 | 0 / 0 |
+
+The edit/move/parent/splice projection counts meet the card. The parent cell is O(1) in N (2.09x at
+10,000 rows), but the absolute parent ratio misses the 1.5x prediction at both sizes: **prediction
+miss**. The splice pair allocates 42 / 44 in El against 22 / 24 in typed: **kill-line miss**. Those
+are the retained-row tape/scope growth costs of mounting a new El row; edit and parent allocate zero,
+and the steady-state allocation gate passes after warm-up. This result is not a zero-slip pass for
+splice allocation.
+
+**Existing `redescribe_cost` cells.** Three base/head pairs, same session; the table uses each cell's
+median (all six steady allocation columns are 0.00 in every binary).
+
+| rows | shape | base instr median | head instr median | head / base | base El / typed | head El / typed |
+|---:|---|---:|---:|---:|---:|---:|
+| 1,000 | owned typed | 296,413 | 296,566 | +0.05% | — | — |
+| 1,000 | owned El | 428,716 | 428,582 | −0.03% | 1.45x | 1.45x |
+| 1,000 | static typed | 291,715 | 291,579 | −0.05% | — | — |
+| 1,000 | static El | 437,813 | 437,644 | −0.04% | 1.50x | 1.50x |
+| 1,000 | bare typed | 125,231 | 125,203 | −0.02% | — | — |
+| 1,000 | bare El | 166,573 | 166,551 | −0.01% | 1.33x | 1.33x |
+| 10,000 | owned typed | 2,915,413 | 2,915,386 | −0.00% | — | — |
+| 10,000 | owned El | 4,182,196 | 4,183,484 | +0.03% | 1.44x | 1.43x |
+| 10,000 | static typed | 2,865,952 | 2,865,581 | −0.01% | — | — |
+| 10,000 | static El | 4,272,194 | 4,273,655 | +0.03% | 1.49x | 1.49x |
+| 10,000 | bare typed | 1,232,058 | 1,232,565 | +0.04% | — | — |
+| 10,000 | bare El | 1,616,714 | 1,618,756 | +0.13% | 1.31x | 1.31x |
+
+Every `redescribe_cost` cell is within ±1%, with zero steady allocations. The one-off 1,000-row
+`owned` first pair was +0.42%; repeating the pair returned +0.05%, so it is not a stable regression.
+
+**Six workload scenes.** Median of three per mode. These are typed scenes (`chat` contains the typed
+list region), not El-list workloads. The card exempts code-layout-sensitive `first_frame`, `idle`, and
+`canvas`/`gbcanvas` steady-once cells; all other observed movements are inside ±1%. The exempt cells
+are still reported here rather than hidden:
+
+| mode | scene | phase | base instr | head instr | change |
+|---|---|---|---:|---:|---:|
+| once | sheet | first_frame | 19,148 | 24,916 | +30.12% |
+| once | sheet | steady | 1,922 | 1,894 | −1.46% |
+| once | sheet | anim | 1,544 | 1,513 | −2.01% |
+| once | sheet | idle | 702 | 674 | −3.99% |
+| once | ide | first_frame | 6,636 | 7,350 | +10.76% |
+| once | ide | idle | 922 | 894 | −3.04% |
+| once | dash | idle | 557 | 529 | −5.03% |
+| once | canvas | first_frame | 6,554 | 7,430 | +13.37% |
+| once | canvas | idle | 552 | 524 | −5.07% |
+| once | chat | idle | 603 | 575 | −4.64% |
+| once | gbcanvas | mount | 41,644,067 | 41,106,284 | −1.29% |
+| once | gbcanvas | first_frame | 7,353 | 7,435 | +1.12% |
+| once | gbcanvas | idle | 579 | 551 | −4.84% |
+| redescribe | sheet | first_frame | 19,149 | 24,768 | +29.34% |
+| redescribe | dash | first_frame | 7,375 | 7,278 | −1.32% |
+| redescribe | canvas | first_frame | 6,625 | 7,353 | +10.99% |
+| redescribe | canvas | steady | 584,802 | 574,364 | −1.78% |
+| redescribe | canvas | hover | 804,864 | 795,453 | −1.17% |
+
+**Correctness and negative controls.** `crates/bough/tests/el_lists.rs` has 15 tests: the seeded
+six-seed / 36-step pixel oracle and full-redraw repair check, a signal-only list with `Config::once`,
+one-row edit accounting, keyed focus across permutations, ordinal `Vec` behaviour, row/root/bound/event
+routes, a removed row's late drag, nested same-type owner resolution, both `each` shapes, three located
+misuse panics, conditional list replacement, and a nested list changing its enclosing row's run. Every
+cargo-feature mutant failed in release:
+
+| feature | failing tests |
+|---|---|
+| `mutant_el_list_count` | `a_list_child_leaves_and_is_replaced_whole`, `a_list_in_a_row_leaves_with_the_rows_it_mounted` |
+| `mutant_el_list_slot` | signal-only list, conditional replacement, row-route reorder, seeded oracle (4) |
+| `mutant_el_list_edit` | one-row edit, bound/root/event routes, row-route reorder, nested list, seeded oracle (5) |
+| `mutant_el_route_slot` | both `each` shapes, keyed focus, row routes, nested owners, bound/event/root routes, late drag (6) |
+| `mutant_el_route_far` | `nested_owners_of_one_type_resolve_to_the_nearest` (1) |
+
+**Build/test gates.** `cargo test -p bough` debug and release: 181 passed, 0 failed in each (47 test
+binaries; 11 ignored and 2 filtered are the two long Metal page-transition tests, run separately).
+`cargo test -p bough --test pages -- --test-threads=1`: 6 passed in debug and release. The first
+three-job debug attempt was OOM-killed while those tests ran concurrently; the two-job rerun and the
+isolated page binary passed. `cargo build --workspace --all-targets`: passed. Clippy on the library,
+new example and new test passed after allowing two pre-existing deny-by-default dependency lints
+(`mut_from_ref`, `approx_constant`); remaining warnings in touched files are pre-existing style lints.
+No Miri, Loom or sanitizer run is claimed.
+
+**Deviations and open items.** A list must be a field of the view describing it, and must be in a column;
+both refusals are located and name the list/owner or the required orientation. Typed builders' routes
+in rows still use `root_owner_only`. Horizontal regions, lowering El lists, and the Entity stretch goal
+were not attempted. The frozen parent-cost prediction and splice-allocation kill line above are missed;
+integration needs an owner decision on those measured costs rather than a claim of zero slip.
