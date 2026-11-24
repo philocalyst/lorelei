@@ -670,7 +670,7 @@ impl<V> ActOp<V> for Scrolls<'_, V> {
 
 /// The paint state of an instance as one hash word (content addressing: one convention per record).
 #[inline]
-fn pair(color: u32, color2: u32) -> u64 {
+pub(crate) fn pair(color: u32, color2: u32) -> u64 {
     (color as u64) << 32 | color2 as u64
 }
 

@@ -35,6 +35,7 @@ impl Apply for ApplyOpacity {
     type P = f32;
     fn apply(rt: &mut Rt, node: u32, v: &f32) {
         let kind = rt.hot[node as usize].kind;
+        let bordered = kind & !NK_HOVERED == NK_BORDER;
         let (h, inst) = (rt.handle(node), rt.inst_of(node));
         // an opacity makes the drawn colour differ from the described one: the cold record holds the latter
         let n = rt.mod_of(node);
@@ -43,41 +44,37 @@ impl Apply for ApplyOpacity {
         }
         let old_a = std::mem::replace(&mut n.alpha, *v);
         let base = n.color;
-        if kind != NK_QUAD {
-            // bordered or hovered (one test, as the plain quad's)
-            return opacity_other(rt, kind, h, inst, base, old_a, *v);
+        let p = rt.inst_mut(inst);
+        if bordered {
+            p.color2 = mul_alpha(base, *v);
+            p.color = mul_alpha(n_border(p.color, base), *v);
+        } else {
+            p.color = mul_alpha(base, *v);
         }
-        rt.inst_mut(inst).color = mul_alpha(base, *v);
         rt.paint_write(h, paint_state(base, old_a), paint_state(base, *v));
+        if kind & NK_HOVERED != 0 && !cfg!(feature = "mutant_opacity_hover") {
+            opacity_hovered(rt, h, inst, bordered, *v);
+        }
     }
 }
-/// `ApplyOpacity` on a box that is not a plain unhovered quad: a bordered box keeps its border's rgb, and a
-/// hovered one shows its hover colour (input.rs `hover_set`) through the opacity; the described colour, kept in
-/// the cold record, returns on leave.
+/// `ApplyOpacity` on a hovered box: its hover colour shows (input.rs `hover_set`), through the new opacity; the
+/// described colour, kept in the cold record, returns on leave.
 #[cold]
 #[inline(never)]
-fn opacity_other(rt: &mut Rt, kind: u8, h: bough_core::Handle, inst: u32, base: u32, old_a: f32, v: f32) {
-    let mut base = base;
-    if kind & NK_HOVERED != 0 && !cfg!(feature = "mutant_opacity_hover") {
-        base = hover_fill(rt, h, base);
-    }
-    let p = rt.inst_mut(inst);
-    if kind & !NK_HOVERED == NK_BORDER {
-        p.color2 = mul_alpha(base, v);
-        p.color = mul_alpha(n_border(p.color, base), v);
-    } else {
-        p.color = mul_alpha(base, v);
-    }
-    rt.paint_write(h, paint_state(base, old_a), paint_state(base, v));
-}
-/// The hover colour of the act of the hovered element `h` (else `base`).
-#[cold]
-fn hover_fill(rt: &Rt, h: bough_core::Handle, base: u32) -> u32 {
+fn opacity_hovered(rt: &mut Rt, h: bough_core::Handle, inst: u32, bordered: bool, v: f32) {
     let a = rt.input.act_of_handle(h);
-    if a == 0 {
-        return base;
+    let Some(c) = (a != 0).then(|| rt.input.acts[a as usize].hover_bg).flatten() else { return };
+    let p = rt.inst_mut(inst);
+    let old = crate::input::pair(p.color, p.color2);
+    if bordered {
+        p.color2 = mul_alpha(c, v);
+    } else {
+        p.color = mul_alpha(c, v);
     }
-    rt.input.acts[a as usize].hover_bg.unwrap_or(base)
+    let now = crate::input::pair(p.color, p.color2);
+    if old != now {
+        rt.paint_write(h, old, now);
+    }
 }
 /// A bordered box keeps its border colour's rgb; its alpha follows the box's opacity.
 #[inline]
