@@ -1606,7 +1606,7 @@ where
         }
         if self.draw {
             let node = lid;
-            let bg = self.bg.value();
+            let bg = if self.bg.keep() { crate::elem::applied_bg(m.rt, node) } else { self.bg.value() };
             let s = m.rt.scale;
             let (ins, _kind, margin) = quad_instance(bg, self.radius * s, self.border, s, m.space);
             let _ = margin;
@@ -1835,14 +1835,18 @@ impl<V: 'static, S: TextSrc<V>, C: IntoProp<Color, V>> Element<V> for Para<S, C>
             m.rt.bough.set_clip_run(m.pos, 1, m.clip);
             m.rt.lay.info[lid as usize].clip = m.clip;
         }
-        // compared in place: a source that is already a string allocates nothing
-        self.s.with_str(|text| {
-            // a label holds its own bytes
-            if m.rt.texts[ti as usize].bytes() != text.as_bytes() {
-                m.rt.lay_text_changed(node, text);
-            }
-        });
-        <crate::boxops::ApplyTextColor as crate::elem::Apply>::apply(m.rt, node, &self.color.value());
+        // compared in place: a source that is already a string allocates nothing (a kept one is not read)
+        if !self.s.keep() {
+            self.s.with_str(|text| {
+                // a label holds its own bytes
+                if m.rt.texts[ti as usize].bytes() != text.as_bytes() {
+                    m.rt.lay_text_changed(node, text);
+                }
+            });
+        }
+        if !self.color.keep() {
+            <crate::boxops::ApplyTextColor as crate::elem::Apply>::apply(m.rt, node, &self.color.value());
+        }
         m.pos += 1;
         m.kid += 1;
     }

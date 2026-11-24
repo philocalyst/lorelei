@@ -33,20 +33,108 @@ pub trait PortValue: sealed::Sealed + 'static {
 }
 
 /// Property types whose description value is the value itself.
-pub trait Scalar: PortValue<Wire = Self, Held = Self> + Copy {}
+pub trait Scalar: PortValue<Wire = Self, Held = Self> + Copy {
+    /// The value as one word (what a scalar port's eval returns, `arena::ScalarEval`).
+    #[doc(hidden)]
+    fn bits(self) -> u32;
+    /// What a port with a wire request holds in its node: a fixed placeholder (its value is evaluated).
+    #[doc(hidden)]
+    const PLACEHOLDER: Self;
+}
 
 impl sealed::Sealed for f32 {}
 impl PortValue for f32 {
     type Wire = f32;
     type Held = f32;
 }
-impl Scalar for f32 {}
+impl Scalar for f32 {
+    #[inline(always)]
+    fn bits(self) -> u32 {
+        self.to_bits()
+    }
+    const PLACEHOLDER: f32 = 0.0;
+}
 impl sealed::Sealed for Color {}
 impl PortValue for Color {
     type Wire = Color;
     type Held = Color;
 }
-impl Scalar for Color {}
+impl Scalar for Color {
+    #[inline(always)]
+    fn bits(self) -> u32 {
+        self.0
+    }
+    const PLACEHOLDER: Color = Color(0);
+}
+
+// ------------------------------------------------------------------------------- lazy values
+//
+// A plug with a wire request does not run its closure (or read its cell) when the description is built: the
+// request carries an eval, monomorphised here with the patch, that the walk calls where a value is needed
+// (`walk.rs`, "Lazy port values"). These are those evals, one per source kind and value kind.
+
+/// A plug with a wire request: the node holds the placeholder, the request the eval.
+#[inline(always)]
+fn ported<T: PortValue>(v: T::Held, head: *const std::cell::Cell<u32>, ty: std::any::TypeId, patch: crate::rt::PatchFn, recipe: crate::rt::Recipe, eval: *const ()) -> Plug<T> {
+    Plug { v, w: arena::put(WireReq { head, ty, patch, recipe, eval, state: arena::P_EVAL }) }
+}
+/// The node's text for a port with a request: empty (its value is evaluated).
+const NO_TEXT: TextVal = TextVal { ptr: ptr::NonNull::<u8>::dangling().as_ptr(), len: 0, flags: 0 };
+
+/// # Safety
+/// `ScalarEval`'s contract, for a `Signal<T>`.
+unsafe fn eval_sig<T: Scalar>(cell: usize, _: &crate::rt::Recipe) -> u32 {
+    // SAFETY: the contract.
+    unsafe { **(cell as *const Signal<T>) }.bits()
+}
+/// # Safety
+/// `ScalarEval`'s contract, for a `Signal<S>`; the recipe holds an `F`.
+unsafe fn eval_map<S: 'static, T: Scalar, F: Fn(&S) -> T + Copy>(cell: usize, r: &crate::rt::Recipe) -> u32 {
+    // SAFETY: the contract.
+    let (s, f) = unsafe { (&*(cell as *const Signal<S>), r.read_at::<F>(0)) };
+    f(s).bits()
+}
+/// # Safety
+/// `ScalarEval`'s contract, for a `Reader<T>`; the recipe holds an `F`.
+unsafe fn eval_rmap<T: 'static, P: Scalar, F: Fn(Option<&T>) -> P + Copy>(cell: usize, r: &crate::rt::Recipe) -> u32 {
+    // SAFETY: the contract.
+    let (s, f) = unsafe { (&*(cell as *const Reader<T>), r.read_at::<F>(0)) };
+    f(s.latest()).bits()
+}
+/// # Safety
+/// `ScalarEval`'s contract, for a `Reader<T>`; the recipe holds an `F`.
+unsafe fn eval_rpmap<T: 'static, P: Scalar, F: Fn(bool) -> P + Copy>(cell: usize, r: &crate::rt::Recipe) -> u32 {
+    // SAFETY: the contract.
+    let (s, f) = unsafe { (&*(cell as *const Reader<T>), r.read_at::<F>(0)) };
+    f(s.is_pending()).bits()
+}
+/// # Safety
+/// `TextEval`'s contract, for a `Signal<String>`.
+unsafe fn eval_sig_text(cell: usize, _: &crate::rt::Recipe, k: &mut dyn FnMut(&str)) {
+    // SAFETY: the contract.
+    k(unsafe { &*(cell as *const Signal<String>) })
+}
+/// # Safety
+/// `TextEval`'s contract, for a `Signal<S>`; the recipe holds an `F`.
+unsafe fn eval_map_text<S: 'static, F: Fn(&S) -> String + Copy>(cell: usize, r: &crate::rt::Recipe, k: &mut dyn FnMut(&str)) {
+    // SAFETY: the contract.
+    let (s, f) = unsafe { (&*(cell as *const Signal<S>), r.read_at::<F>(0)) };
+    k(&f(s))
+}
+/// # Safety
+/// `TextEval`'s contract, for a `Reader<T>`; the recipe holds an `F`.
+unsafe fn eval_rmap_text<T: 'static, F: Fn(Option<&T>) -> String + Copy>(cell: usize, r: &crate::rt::Recipe, k: &mut dyn FnMut(&str)) {
+    // SAFETY: the contract.
+    let (s, f) = unsafe { (&*(cell as *const Reader<T>), r.read_at::<F>(0)) };
+    k(&f(s.latest()))
+}
+/// # Safety
+/// `TextEval`'s contract, for a `Reader<T>`; the recipe holds an `F`.
+unsafe fn eval_rpmap_text<T: 'static, F: Fn(bool) -> String + Copy>(cell: usize, r: &crate::rt::Recipe, k: &mut dyn FnMut(&str)) {
+    // SAFETY: the contract.
+    let (s, f) = unsafe { (&*(cell as *const Reader<T>), r.read_at::<F>(0)) };
+    k(&f(s.is_pending()))
+}
 
 /// The content of a text element: any string, an integer (formatted without allocating), a
 /// `Signal<String>` field, or a signal mapped to a `String`.
@@ -108,7 +196,7 @@ number_plugs!(f32, i32, u32);
 impl<'f, T: Scalar> IntoProp<'f, T> for &'f Signal<T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE }) }
+        ported(T::PLACEHOLDER, self.head(), cell_id::<Signal<T>>(), patch_sig::<K, T>, crate::rt::Recipe::NONE, eval_sig::<T> as *const ())
     }
 }
 
@@ -145,7 +233,7 @@ fn recipe<F: Copy>(f: F) -> crate::rt::Recipe {
 impl<'f, S: 'static, T: Scalar, F: Fn(&S) -> T + Copy + 'static> IntoProp<'f, T> for Map<&'f Signal<S>, F> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: (self.f)(self.src), w: arena::put(WireReq { head: self.src.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        ported(T::PLACEHOLDER, self.src.head(), cell_id::<Signal<S>>(), patch_map::<K, S, F>, recipe(self.f), eval_map::<S, T, F> as *const ())
     }
 }
 
@@ -193,22 +281,18 @@ int_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 impl<'f> IntoProp<'f, Text> for &'f Signal<String> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE }) }
+        ported(NO_TEXT, self.head(), cell_id::<Signal<String>>(), patch_sig::<K, String>, crate::rt::Recipe::NONE, eval_sig_text as *const ())
     }
 }
 
-/// A signal mapped to its text (`self.count.map(|n| format!("Count: {n}"))`): the text follows the signal.
+/// A signal mapped to its text (`self.count.map(|n| format!("Count: {n}"))`): the text follows the signal. The
+/// closure runs where its text is needed (mount, or a description of a signal that is not a field), not each
+/// time the view is described.
 impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> for Map<&'f Signal<S>, F> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        let s = (self.f)(self.src);
-        Plug { v: owned_text(&s), w: arena::put(WireReq { head: self.src.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        ported(NO_TEXT, self.src.head(), cell_id::<Signal<S>>(), patch_map::<K, S, F>, recipe(self.f), eval_map_text::<S, F> as *const ())
     }
-}
-
-#[inline]
-fn owned_text(s: &str) -> TextVal {
-    TextVal { ptr: arena::bytes(s.as_bytes()), len: s.len() as u64, flags: 0 }
 }
 
 // ------------------------------------------------------------------------------- readers (05 §3, §5)
@@ -253,56 +337,50 @@ impl<'f, S: 'static> Source<'f> for Latest<'f, S> {
 impl<'f, T: Scalar> IntoProp<'f, T> for Latest<'f, T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: **self.0, w: arena::put(WireReq { head: tagged(self.0.head(), W_LATEST), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE }) }
+        ported(T::PLACEHOLDER, tagged(self.0.head(), W_LATEST), cell_id::<Signal<T>>(), patch_sig::<K, T>, crate::rt::Recipe::NONE, eval_sig::<T> as *const ())
     }
 }
 impl<'f> IntoProp<'f, Text> for Latest<'f, String> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        Plug { v: borrowed(self.0), w: arena::put(WireReq { head: tagged(self.0.head(), W_LATEST), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE }) }
+        ported(NO_TEXT, tagged(self.0.head(), W_LATEST), cell_id::<Signal<String>>(), patch_sig::<K, String>, crate::rt::Recipe::NONE, eval_sig_text as *const ())
     }
 }
 
 impl<'f, S: 'static, P: Scalar, F: Fn(&S) -> P + Copy + 'static> IntoProp<'f, P> for Map<Latest<'f, S>, F> {
     #[inline]
     fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
-        let s = self.src.0;
-        Plug { v: (self.f)(s), w: arena::put(WireReq { head: tagged(s.head(), W_LATEST), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        ported(P::PLACEHOLDER, tagged(self.src.0.head(), W_LATEST), cell_id::<Signal<S>>(), patch_map::<K, S, F>, recipe(self.f), eval_map::<S, P, F> as *const ())
     }
 }
 impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> for Map<Latest<'f, S>, F> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        let s = self.src.0;
-        Plug { v: owned_text(&(self.f)(s)), w: arena::put(WireReq { head: tagged(s.head(), W_LATEST), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        ported(NO_TEXT, tagged(self.src.0.head(), W_LATEST), cell_id::<Signal<S>>(), patch_map::<K, S, F>, recipe(self.f), eval_map_text::<S, F> as *const ())
     }
 }
 impl<'f, T: 'static, P: Scalar, F: Fn(Option<&T>) -> P + Copy + 'static> IntoProp<'f, P> for Map<&'f Reader<T>, F> {
     #[inline]
     fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
-        let r = self.src;
-        Plug { v: (self.f)(r.latest()), w: arena::put(WireReq { head: tagged(r.head_cell(), W_GUARD), ty: cell_id::<Reader<T>>(), patch: patch_rmap::<K, T, F>, recipe: recipe(self.f) }) }
+        ported(P::PLACEHOLDER, tagged(self.src.head_cell(), W_GUARD), cell_id::<Reader<T>>(), patch_rmap::<K, T, F>, recipe(self.f), eval_rmap::<T, P, F> as *const ())
     }
 }
 impl<'f, T: 'static, F: Fn(Option<&T>) -> String + Copy + 'static> IntoProp<'f, Text> for Map<&'f Reader<T>, F> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        let r = self.src;
-        Plug { v: owned_text(&(self.f)(r.latest())), w: arena::put(WireReq { head: tagged(r.head_cell(), W_GUARD), ty: cell_id::<Reader<T>>(), patch: patch_rmap::<K, T, F>, recipe: recipe(self.f) }) }
+        ported(NO_TEXT, tagged(self.src.head_cell(), W_GUARD), cell_id::<Reader<T>>(), patch_rmap::<K, T, F>, recipe(self.f), eval_rmap_text::<T, F> as *const ())
     }
 }
 impl<'f, T: 'static, P: Scalar, F: Fn(bool) -> P + Copy + 'static> IntoProp<'f, P> for Map<Pending<'f, T>, F> {
     #[inline]
     fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
-        let r = self.src.0;
-        Plug { v: (self.f)(r.is_pending()), w: arena::put(WireReq { head: tagged(r.phead_cell(), W_PHEAD), ty: cell_id::<Reader<T>>(), patch: patch_rpmap::<K, T, F>, recipe: recipe(self.f) }) }
+        ported(P::PLACEHOLDER, tagged(self.src.0.phead_cell(), W_PHEAD), cell_id::<Reader<T>>(), patch_rpmap::<K, T, F>, recipe(self.f), eval_rpmap::<T, P, F> as *const ())
     }
 }
 impl<'f, T: 'static, F: Fn(bool) -> String + Copy + 'static> IntoProp<'f, Text> for Map<Pending<'f, T>, F> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        let r = self.src.0;
-        Plug { v: owned_text(&(self.f)(r.is_pending())), w: arena::put(WireReq { head: tagged(r.phead_cell(), W_PHEAD), ty: cell_id::<Reader<T>>(), patch: patch_rpmap::<K, T, F>, recipe: recipe(self.f) }) }
+        ported(NO_TEXT, tagged(self.src.0.phead_cell(), W_PHEAD), cell_id::<Reader<T>>(), patch_rpmap::<K, T, F>, recipe(self.f), eval_rpmap_text::<T, F> as *const ())
     }
 }
 

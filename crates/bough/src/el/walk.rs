@@ -20,10 +20,154 @@ use bough_core::bough::hit::{KF_FOCUS, KF_INTERACT};
 use std::any::TypeId;
 use std::ptr::{self, NonNull};
 
+// =============================================================================== lazy port values
+//
+// A port with a wire request (`.bg(&self.tint)`, `.opacity(self.n.map(f))`, `text(self.r.map(f))`, ...) carries no
+// value in its node: building the description runs no closure and reads no cell (`plug.rs`). Its value is the
+// request's `eval` of the cell and the recipe, computed only where it is needed:
+//
+// * at mount, for the record's first value (`EOp::lower`, `EText::lower`);
+// * at an update, when the port's wire is not installed (its cell is not a field of the owner, so the
+//   description is the only way a new value reaches the record), or when it is installed but the recipe
+//   changed (a map whose captures changed: the installed wire takes the new recipe and the value is applied on
+//   this turn's frame) (`resolve_ports`);
+// * when lowering (`Item::lower`), and in a seal, for a port whose wire is not installed.
+//
+// A port whose wire is installed is described by its identity alone (cell, patch, recipe): its value is the
+// wire's to keep current, so neither its seal nor its update looks at it, and its builder neither computes nor
+// applies it (`P_KEEP`, `IntoProp::keep`).
+//
+// Where field-ness is decided. A wire is installed exactly when `elem::field_offset::<V>(owner, cell, ty)` says
+// the cell is a field of the mounting owner (`Mounter::wire_field`). That is a pure function of the owner's
+// address and type and the cell's address and type. The seal asks the same function (`installed`, through
+// `WalkOwner`, which every walk sets from its `Mounter` before it seals or updates anything: the root `El`'s
+// `Element` impl), and writes which it found into the seal (`WIRED` or `CONST` as the port's first word). A
+// retained seal is only ever checked by updates of the owner that wrote it: a dynamic part belongs to its
+// owner's tape, and an owner does not move while mounted (the runtime's wires hold the absolute addresses of
+// its cells' heads). So a retained `WIRED` port whose identity (cell address, patch, recipe) matches the
+// description's is still a field, and the fast check trusts the word instead of asking again; a `CONST` port
+// compares its evaluated value. The update asks the runtime directly: the item's scope holds the wires its
+// mount installed, and a port is kept only if one of them is its own (`find_wire`), so a port that was not
+// installed is never kept, whatever the seal said.
+
+/// The seal's first word of a port whose wire is installed (its value is not part of the seal).
+const WIRED: u32 = 0x5749_5245;
+/// The seal's first word of a port whose cell is not a field: a constant of this description, its value follows.
+const CONST: u32 = 0x434e_5354;
+
+/// The owner a walk describes for: what `installed` asks the field rule about.
+#[derive(Clone, Copy)]
+struct WalkOwner {
+    base: usize,
+    /// `elem::field_offset::<V>(base, at, ty).is_some()` for the owner's type `V`.
+    field: fn(usize, usize, TypeId) -> bool,
+}
+fn no_field(_: usize, _: usize, _: TypeId) -> bool {
+    false
+}
+fn field_of_owner<V>(base: usize, at: usize, ty: TypeId) -> bool {
+    crate::elem::field_offset::<V>(base, at, ty).is_some()
+}
+thread_local! {
+    /// The owner of the walk in progress (none: nothing is a field, as for a description sealed outside a walk).
+    static OWNER: std::cell::Cell<WalkOwner> = const { std::cell::Cell::new(WalkOwner { base: 0, field: no_field }) };
+}
+/// Sets the walk's owner for its lifetime (walks nest: an entity's view inside a view restores the outer one).
+pub(crate) struct OwnerScope(WalkOwner);
+impl OwnerScope {
+    #[inline]
+    pub(crate) fn of<V>(m: &Mounter<'_, V>) -> OwnerScope {
+        OwnerScope(OWNER.replace(WalkOwner { base: m.owner as usize, field: field_of_owner::<V> }))
+    }
+    /// `owner` as the walk's owner (tests: a seal written outside a mount).
+    #[cfg(test)]
+    fn raw<V>(owner: &V) -> OwnerScope {
+        OwnerScope(OWNER.replace(WalkOwner { base: owner as *const V as usize, field: field_of_owner::<V> }))
+    }
+}
+impl Drop for OwnerScope {
+    #[inline]
+    fn drop(&mut self) {
+        OWNER.set(self.0);
+    }
+}
+
+/// Is `w`'s cell a field of the walk's owner (so its wire is, or will be, installed)?
+#[inline]
+#[allow(dead_code, reason = "the fast check trusts the retained field verdict; the eager mutant uses this to write constants")]
+fn installed(w: &WireReq) -> bool {
+    // (mutant: every port is a constant of its description: its value enters the seal)
+    if cfg!(feature = "mutant_el_eager_port") {
+        return false;
+    }
+    let o = OWNER.get();
+    (o.field)(o.base, w.cell(), w.ty)
+}
+
+/// The installed wire of the item being updated that `req` asked for: same head, same patch, the first not
+/// matched yet (`used`: the item's wires already matched, by their place in its scope).
+#[inline]
+fn find_wire<V>(m: &Mounter<'_, V>, used: &mut u64, req: &WireReq) -> Option<u32> {
+    let head = req.wire_head() as usize;
+    for (j, &wi) in m.scope.wires.iter().enumerate().take(64) {
+        if *used & 1 << j != 0 {
+            continue;
+        }
+        let w = &m.rt.wires[wi as usize];
+        if !w.dead && w.head == head && w.patch as usize == req.patch as usize {
+            *used |= 1 << j;
+            return Some(wi);
+        }
+    }
+    None
+}
+
+/// Before a node's builder updates it: each of its ports is kept (`P_KEEP`: installed, same recipe) or
+/// evaluated where the builder reads it. An installed port whose recipe changed takes the description's recipe
+/// (a capture changed: the wire computes with it from now on) and is evaluated and applied now.
+#[inline(never)]
+fn resolve_ports<V>(m: &mut Mounter<'_, V>, n: &DNode) {
+    let mut used = 0u64;
+    let mut one = |m: &mut Mounter<'_, V>, w: *const WireReq| {
+        // SAFETY: a request of this description; the walk holds no other reference to it.
+        let Some(w) = (unsafe { (w as *mut WireReq).as_mut() }) else { return };
+        // No match (and every port under the eager mutant) is a constant of this description: mark it so the
+        // fast check knows to compare the evaluated value, as the streaming seal wrote it.
+        w.state = P_CONST;
+        if let Some(wi) = find_wire(m, &mut used, w) {
+            let iw = &mut m.rt.wires[wi as usize];
+            if iw.recipe.bytes() == w.recipe.bytes() {
+                w.state = P_KEEP;
+            } else {
+                iw.recipe = w.recipe;
+            }
+        }
+    };
+    // in the order the mount installed them (a box: fill, then opacity, translations, width, height; a text:
+    // content, then ink), so two ports on one cell through one patch match their own wires
+    match n.kind {
+        K_BOX => {
+            one(m, n.ink);
+            if let Some(x) = ext(n) {
+                for (bit, w) in [(OP_ALPHA, x.wa), (OP_TX, x.wtx), (OP_TY, x.wty), (OP_W, x.ww), (OP_H, x.wh)] {
+                    if n.ops & bit != 0 {
+                        one(m, w);
+                    }
+                }
+            }
+        }
+        K_TEXT => {
+            one(m, n.tw);
+            one(m, n.ink);
+        }
+        _ => {}
+    }
+}
+
 // =============================================================================== erased operands
 
-/// A port's operand as the walk hands it to a kernel builder: the described value and the wire the setter
-/// asked for (installed when its cell is a field of the mounting view).
+/// A port's operand as the walk hands it to a kernel builder: the described value (a constant), or the wire
+/// request whose eval gives it (a port: "Lazy port values").
 pub(crate) struct EOp<P> {
     v: P,
     w: *const WireReq,
@@ -53,16 +197,33 @@ fn wire<V>(m: &mut Mounter<'_, V>, w: *const WireReq, node: u32) {
     }
 }
 
-/// A wire's identity in a seal: the cell's address, the patch and its recipe.
+/// A port's identity in a seal: `WIRED` or `CONST`, the cell's address, the patch and its recipe; a `CONST`
+/// port's value after them (`paint`: a colour, sealed as paint).
 #[inline(always)]
-fn seal_req<S: Sealer>(s: &mut S, w: *const WireReq) {
-    if w.is_null() {
+fn seal_port<S: Sealer>(s: &mut S, w: *const WireReq, paint: bool) {
+    // SAFETY: as `wire`.
+    let Some(w) = (unsafe { w.as_ref() }) else {
         s.word(0);
         return;
+    };
+    let wired = seal_ident(s, w);
+    if !wired {
+        let b = w.scalar();
+        if paint { s.paint(b) } else { s.word(b) }
     }
-    // SAFETY: as `wire`.
-    let w = unsafe { &*w };
-    s.word(0x5749_5245);
+}
+/// `seal_port` for a text port: a `CONST` one's text after its identity.
+#[inline(always)]
+fn seal_text_port<S: Sealer>(s: &mut S, w: &WireReq) {
+    if !seal_ident(s, w) {
+        w.text(|t| s.bytes(t.as_bytes()));
+    }
+}
+/// The identity words of a port (whether its wire is installed).
+#[inline]
+fn seal_ident<S: Sealer>(s: &mut S, w: &WireReq) -> bool {
+    let wired = installed(w);
+    s.word(if wired { WIRED } else { CONST });
     let (a, p) = (w.head as usize as u64, w.patch as usize as u64);
     s.word(a as u32);
     s.word((a >> 32) as u32);
@@ -71,22 +232,53 @@ fn seal_req<S: Sealer>(s: &mut S, w: *const WireReq) {
     for c in w.recipe.bytes().chunks_exact(4) {
         s.word(u32::from_ne_bytes([c[0], c[1], c[2], c[3]]));
     }
+    wired
 }
 
-/// How a scalar operand's value enters a seal.
+/// How a scalar operand's value enters a seal, and is read back from a port's eval.
 pub(crate) trait SealVal: Copy + 'static {
+    /// A colour (sealed as paint).
+    const PAINT: bool;
     fn seal_val<S: Sealer>(self, s: &mut S);
+    fn from_bits(b: u32) -> Self;
 }
 impl SealVal for Color {
+    const PAINT: bool = true;
     #[inline(always)]
     fn seal_val<S: Sealer>(self, s: &mut S) {
         s.paint(self.0)
     }
+    #[inline(always)]
+    fn from_bits(b: u32) -> Self {
+        Color(b)
+    }
 }
 impl SealVal for f32 {
+    const PAINT: bool = false;
     #[inline(always)]
     fn seal_val<S: Sealer>(self, s: &mut S) {
         s.f32(self)
+    }
+    #[inline(always)]
+    fn from_bits(b: u32) -> Self {
+        f32::from_bits(b)
+    }
+}
+
+impl<P: SealVal> EOp<P> {
+    /// The operand's value now: the constant, or the port's eval.
+    #[inline]
+    fn now(&self) -> P {
+        // SAFETY: as `wire`.
+        match unsafe { self.w.as_ref() } {
+            None => self.v,
+            Some(w) => P::from_bits(w.scalar()),
+        }
+    }
+    #[inline(always)]
+    fn kept(&self) -> bool {
+        // SAFETY: as `wire`.
+        unsafe { self.w.as_ref() }.is_some_and(WireReq::keep)
     }
 }
 
@@ -94,22 +286,27 @@ impl<P: SealVal, V> IntoProp<P, V> for EOp<P> {
     #[inline]
     fn lower<K: Apply<P = P>>(self, m: &mut Mounter<'_, V>, node: u32) -> P {
         wire(m, self.w, node);
-        self.v
+        self.now()
     }
     #[inline(always)]
     fn value(self) -> P {
-        self.v
+        self.now()
+    }
+    #[inline(always)]
+    fn keep(&self) -> bool {
+        self.kept()
     }
     #[inline(always)]
     fn seal<S: Sealer>(&self, s: &mut S) {
-        // the value too: a wire whose cell is not a field of the view was not installed, and the value then
-        // reaches the record only through a re-description
+        // the node's value (a constant's; a port's placeholder), then the port: a port that is not a field seals
+        // its value there (its wire is not installed, so the value reaches the record only through a
+        // re-description)
         self.v.seal_val(s);
-        seal_req(s, self.w);
+        seal_port(s, self.w, P::PAINT);
     }
 }
 
-/// A text operand: borrowed or copied bytes, or an integer, and its wire request.
+/// A text operand: borrowed or copied bytes, or an integer (a constant), or a port's request.
 pub(crate) struct EText {
     ptr: *const u8,
     len: u64,
@@ -120,6 +317,10 @@ pub(crate) struct EText {
 impl EText {
     #[inline(always)]
     fn with<R>(&self, f: impl FnOnce(&str) -> R) -> R {
+        // SAFETY: as `wire`.
+        if let Some(w) = unsafe { self.w.as_ref() } {
+            return w.text(f);
+        }
         if self.flags & F_INT != 0 {
             let v = if self.flags & F_NEG != 0 { self.len as i64 as i128 } else { self.len as i128 };
             let mut buf = [0u8; 40];
@@ -142,6 +343,11 @@ impl<V> TextSrc<V> for EText {
     fn value(self) -> String {
         self.with(str::to_owned)
     }
+    #[inline(always)]
+    fn keep(&self) -> bool {
+        // SAFETY: as `wire`.
+        unsafe { self.w.as_ref() }.is_some_and(WireReq::keep)
+    }
     #[inline]
     fn with_str<R>(self, f: impl FnOnce(&str) -> R) -> R {
         self.with(f)
@@ -155,14 +361,16 @@ impl<V> TextSrc<V> for EText {
 impl EText {
     #[inline(always)]
     fn seal_text<S: Sealer>(&self, s: &mut S) {
+        // the node's text (a port's: the empty placeholder), then a port's identity and a constant port's text
         if self.flags & F_INT != 0 {
             s.int(self.len);
         } else {
             // SAFETY: as `with`.
             s.bytes(unsafe { std::slice::from_raw_parts(self.ptr, self.len as usize) });
         }
-        if !self.w.is_null() {
-            seal_req(s, self.w);
+        // SAFETY: as `wire`.
+        if let Some(w) = unsafe { self.w.as_ref() } {
+            seal_text_port(s, w);
         }
     }
 }
@@ -232,20 +440,22 @@ impl<V> BoxOps<V> for EOps {
             return;
         }
         let x = self.x();
-        if self.ops & OP_ALPHA != 0 {
-            ApplyOpacity::apply(rt, node, &x.alpha);
+        // a kept port (its wire installed and current) is neither evaluated nor applied
+        let now = |bit: u8, w: *const WireReq, v: f32| (self.ops & bit != 0).then(|| self.op(w, v)).filter(|o| !o.kept()).map(|o| o.now());
+        if let Some(v) = now(OP_ALPHA, x.wa, x.alpha) {
+            ApplyOpacity::apply(rt, node, &v);
         }
-        if self.ops & OP_TX != 0 {
-            ApplyTx::apply(rt, node, &x.tx);
+        if let Some(v) = now(OP_TX, x.wtx, x.tx) {
+            ApplyTx::apply(rt, node, &v);
         }
-        if self.ops & OP_TY != 0 {
-            ApplyTy::apply(rt, node, &x.ty);
+        if let Some(v) = now(OP_TY, x.wty, x.ty) {
+            ApplyTy::apply(rt, node, &v);
         }
-        if self.ops & OP_W != 0 {
-            ApplyBoxW::apply(rt, lid, &x.w);
+        if let Some(v) = now(OP_W, x.ww, x.w) {
+            ApplyBoxW::apply(rt, lid, &v);
         }
-        if self.ops & OP_H != 0 {
-            ApplyBoxH::apply(rt, lid, &x.h);
+        if let Some(v) = now(OP_H, x.wh, x.h) {
+            ApplyBoxH::apply(rt, lid, &v);
         }
     }
     fn lower_ops(self, spec: &mut Spec, o: &mut BoxLow) {
@@ -254,19 +464,19 @@ impl<V> BoxOps<V> for EOps {
         }
         let x = self.x();
         if self.ops & OP_ALPHA != 0 {
-            o.alpha = x.alpha;
+            o.alpha = self.op(x.wa, x.alpha).now();
         }
         if self.ops & OP_TX != 0 {
-            o.shift.0 = x.tx;
+            o.shift.0 = self.op(x.wtx, x.tx).now();
         }
         if self.ops & OP_TY != 0 {
-            o.shift.1 = x.ty;
+            o.shift.1 = self.op(x.wty, x.ty).now();
         }
         if self.ops & OP_W != 0 {
-            spec.w = Dim::Pt(x.w);
+            spec.w = Dim::Pt(self.op(x.ww, x.w).now());
         }
         if self.ops & OP_H != 0 {
-            spec.h = Dim::Pt(x.h);
+            spec.h = Dim::Pt(self.op(x.wh, x.h).now());
         }
     }
     #[inline(always)]
@@ -286,7 +496,7 @@ impl EOps {
         for (bit, v, w) in [(OP_ALPHA, x.alpha, x.wa), (OP_TX, x.tx, x.wtx), (OP_TY, x.ty, x.wty), (OP_W, x.w, x.ww), (OP_H, x.h, x.wh)] {
             if self.ops & bit != 0 {
                 s.f32(v);
-                seal_req(s, w);
+                seal_port(s, w, false);
             }
         }
     }
@@ -442,11 +652,17 @@ fn guards(b: &BoundReq) -> impl Iterator<Item = &GuardReq> {
     })
 }
 
+/// A boundary's identity in its seal: its policy and guard count, then each guard reader's address.
+#[inline]
+fn bound_words(n: &DNode) -> impl Iterator<Item = u32> + '_ {
+    let b = bound(n);
+    let count = guards(b).count() as u32;
+    std::iter::once(0x4247_0000 | (b.policy as u32) << 8 | count.min(255)).chain(guards(b).flat_map(|g| [g.reader as u32, (g.reader as u64 >> 32) as u32]))
+}
+
 /// The offset of a cell of type `ty` at `at` in the mounting view, if it is one of its fields (the cell table).
 fn field_of<V>(m: &Mounter<'_, V>, at: usize, ty: TypeId) -> Option<u32> {
-    let base = m.owner as usize;
-    let off = at.wrapping_sub(base);
-    (at >= base && off < size_of::<V>() && off % 4 == 0 && crate::reflect::cells::<V>().has(off, ty)).then_some(off as u32)
+    crate::elem::field_offset::<V>(m.owner as usize, at, ty)
 }
 
 #[cold]
@@ -466,8 +682,9 @@ fn mount_prod<V: 'static>(m: &mut Mounter<'_, V>, n: &DNode) {
 }
 
 /// A boundary: its guards that are fields of the view (wired: a reader elsewhere is a constant of the
-/// description), three clips, and each arm mounted under its own as a dynamic part (an arm's kind change
-/// remounts it there). The tape holds the boundary's index, then the arms' parts.
+/// description), three clips, and each arm mounted under its own as a sealed dynamic part of one item (an arm
+/// described as before is stepped over; a kind change remounts it there). The tape holds the boundary's index,
+/// then the arms' parts.
 fn mount_bound<V: 'static>(m: &mut Mounter<'_, V>, n: &DNode) {
     let b = bound(n);
     let field: Vec<(usize, u32)> = guards(b).filter_map(|g| field_of(m, g.reader, g.ty).map(|o| (g.reader, o))).collect();
@@ -482,7 +699,7 @@ fn mount_bound<V: 'static>(m: &mut Mounter<'_, V>, n: &DNode) {
     let prev = m.clip;
     for (i, a) in Items(n.first).enumerate() {
         m.clip = clips[i];
-        mount_dyn_as(m, std::iter::once(a), false);
+        mount_dyn_as(m, std::iter::once(a), true);
     }
     m.clip = prev;
 }
@@ -716,7 +933,7 @@ fn seal_at<S: Sealer, const LEAF: bool>(n: &DNode, s: &mut S) {
     match n.kind {
         K_BOX => {
             if !n.ink.is_null() {
-                seal_req(s, n.ink);
+                seal_port(s, n.ink, true);
             }
             if n.ops != 0 {
                 EOps { x: n.ext, ops: n.ops }.seal_ops(s);
@@ -732,7 +949,7 @@ fn seal_at<S: Sealer, const LEAF: bool>(n: &DNode, s: &mut S) {
         }
         K_TEXT => {
             if !n.ink.is_null() {
-                seal_req(s, n.ink);
+                seal_port(s, n.ink, true);
             }
             EText { ptr: n.text, len: n.len, flags: n.flags, w: n.tw }.seal_text(s);
         }
@@ -747,7 +964,20 @@ fn seal_at<S: Sealer, const LEAF: bool>(n: &DNode, s: &mut S) {
             s.word(0x4752_0000 | k);
         }
         K_PROD => seal_prod(n, s),
-        // a boundary's shown arm is state the description does not determine: never stepped over
+        K_BOUND => {
+            // the guards and the policy (what its wires and verdict were made for), then its three arms. Which
+            // arm shows is the guards' state, kept by the boundary's wires, not the description's: a boundary
+            // described as before is stepped over, its verdict still current
+            for w in bound_words(n) {
+                s.word(w);
+            }
+            let mut k = 0u32;
+            for c in Items(n.first) {
+                seal_child(c.n(), s);
+                k += 1;
+            }
+            s.word(0x4244_0000 | k);
+        }
         _ => s.refuse(),
     }
     if let Some(x) = x {
@@ -814,6 +1044,9 @@ impl<V: 'static> Element<V> for Item {
         match n.kind {
             K_GROUP | K_FRAG => update_dyn(m, Items(n.first)),
             _ => {
+                if n.has & (H_INK | H_TW) != 0 || n.ops != 0 {
+                    resolve_ports(m, n);
+                }
                 // the element's first record carries its act (`input::act_for`)
                 let act = interactive(n).map(|x| (x, m.rt.bough.handle_at(m.pos)));
                 match n.kind {
@@ -935,11 +1168,14 @@ impl<V: 'static> Element<V> for super::El<'_> {
     fn mount(self, m: &mut Mounter<'_, V>) {
         let root = Item(self.raw());
         let _w = Walk::hold();
+        let _o = OwnerScope::of(m);
         mount_dyn_as(m, std::iter::once(root), false);
     }
     fn update(self, m: &mut Mounter<'_, V>) {
         let root = Item(self.raw());
         let _w = Walk::hold();
+        // the field rule the seals of this walk ask (`installed`): this owner's
+        let _o = OwnerScope::of(m);
         update_dyn(m, std::iter::once(root));
     }
     #[inline]
@@ -995,24 +1231,66 @@ fn left(p: At, end: At) -> usize {
     end as usize - p as usize
 }
 
-/// `seal_req(w)` at `p`: the wire's identity, or the one zero word of no wire.
+/// `seal_port(w)` at `p` (a scalar port, or the one zero word of no port): then the position after it, else null.
+/// The identity is compared inline; only a constant port's value (an eval: a call) is out of line.
 #[inline(always)]
-fn check_req(w: *const WireReq, p: At, end: At) -> At {
+fn check_port(w: *const WireReq, p: At, end: At) -> At {
     if w.is_null() {
         // SAFETY: four bytes are left (checked).
         return if left(p, end) >= 4 && unsafe { rd32(p, 0) } == 0 { unsafe { p.add(4) } } else { ptr::null() };
     }
+    // SAFETY: as `wire`.
+    let w = unsafe { &*w };
+    let (q, constant) = check_ident(w, p, end);
+    if q.is_null() || !constant && !w.constant() { q } else { check_const_value(w, q, end) }
+}
+/// A constant scalar port's value now against the sealed one.
+#[cold]
+#[inline(never)]
+fn check_const_value(w: *const WireReq, q: At, end: At) -> At {
+    // SAFETY: as `wire`; four bytes are left (checked).
+    if left(q, end) >= 4 && unsafe { rd32(q, 0) == (*w).scalar() } { unsafe { q.add(4) } } else { ptr::null() }
+}
+
+/// `seal_text_port(w)` at `p`.
+#[inline(always)]
+fn check_text_port(w: *const WireReq, p: At, end: At) -> At {
+    // SAFETY: as `wire` (a text port's request is never null here).
+    let w = unsafe { &*w };
+    let (q, constant) = check_ident(w, p, end);
+    if q.is_null() || !constant && !w.constant() { q } else { check_const_text(w, q, end) }
+}
+/// A constant text port's text now against the sealed one.
+#[cold]
+#[inline(never)]
+fn check_const_text(w: *const WireReq, q: At, end: At) -> At {
+    // SAFETY: as `wire`.
+    unsafe { &*w }.text(|t| {
+        let n = t.len();
+        // SAFETY: `4 + n` bytes are left (checked).
+        if left(q, end) >= 4 + n && unsafe { rd32(q, 0) } == n as u32 && unsafe { eq_n(q.add(4), t.as_ptr(), n) } { unsafe { q.add(4 + n) } } else { ptr::null() }
+    })
+}
+
+/// A port's identity words at `p` (`seal_ident`): the position after them (null: they differ), and whether the
+/// retained seal says the port is a constant (`CONST`: its value follows). A retained `WIRED` is trusted as a
+/// field verdict (see "Lazy port values"); whether that port now needs a value is the update's `P_*` state.
+#[inline(always)]
+fn check_ident(w: &WireReq, p: At, end: At) -> (At, bool) {
     if left(p, end) < 36 {
-        return ptr::null();
+        return (ptr::null(), false);
     }
-    // SAFETY: as `wire`; 36 bytes are left (checked); a recipe is all initialised (`Recipe::with_at`).
+    // SAFETY: 36 bytes are left (checked); a recipe is all initialised (`Recipe::with_at`).
     unsafe {
-        let w = &*w;
         let (a, f) = (w.head as usize as u64, w.patch as usize as u64);
-        let words = (rd32(p, 0) ^ 0x5749_5245) | (rd32(p, 4) ^ a as u32) | (rd32(p, 8) ^ (a >> 32) as u32) | (rd32(p, 12) ^ f as u32) | (rd32(p, 16) ^ (f >> 32) as u32);
+        let magic = rd32(p, 0);
+        let words = (rd32(p, 4) ^ a as u32) | (rd32(p, 8) ^ (a >> 32) as u32) | (rd32(p, 12) ^ f as u32) | (rd32(p, 16) ^ (f >> 32) as u32);
         let r = w.recipe.as_ptr();
         let recipe = (rd64(p, 20) ^ rd64(r, 0)) | (rd64(p, 28) ^ rd64(r, 8));
-        if words == 0 && recipe == 0 { p.add(36) } else { ptr::null() }
+        if words != 0 || recipe != 0 || (magic != WIRED && magic != CONST) {
+            return (ptr::null(), false);
+        }
+        (p.add(36), magic == CONST)
     }
 }
 
@@ -1063,11 +1341,29 @@ fn check_at<const LEAF: bool>(n: &DNode, p: At, end: At) -> At {
     if left(p, end) < BLOCK || !unsafe { eq_block(n, p) } {
         return ptr::null();
     }
-    let mut p = unsafe { p.add(BLOCK) };
+    let p = unsafe { p.add(BLOCK) };
+    // a node with a fill, ink or text port is checked out of line: a list's plain rows have none, and their
+    // check carries no port code (whose evals are calls)
+    if n.has & (H_INK | H_TW) != 0 {
+        return check_ported::<LEAF>(n, p, end);
+    }
+    check_body::<LEAF, false>(n, p, end)
+}
+
+#[inline(never)]
+fn check_ported<const LEAF: bool>(n: &DNode, p: At, end: At) -> At {
+    check_body::<LEAF, true>(n, p, end)
+}
+
+/// `check_at` after the block. `PORTS`: the node may have a fill, ink or text port (else its `ink` and `tw` are
+/// null, `DNode::has`).
+#[inline(always)]
+fn check_body<const LEAF: bool, const PORTS: bool>(n: &DNode, p: At, end: At) -> At {
+    let mut p = p;
     match n.kind {
         K_BOX => {
-            if !n.ink.is_null() {
-                p = check_req(n.ink, p, end);
+            if PORTS && !n.ink.is_null() {
+                p = check_port(n.ink, p, end);
                 if p.is_null() {
                     return p;
                 }
@@ -1081,8 +1377,8 @@ fn check_at<const LEAF: bool>(n: &DNode, p: At, end: At) -> At {
             p = check_kids::<LEAF>(n, p, end, 0x4b49_0000);
         }
         K_TEXT => {
-            if !n.ink.is_null() {
-                p = check_req(n.ink, p, end);
+            if PORTS && !n.ink.is_null() {
+                p = check_port(n.ink, p, end);
                 if p.is_null() {
                     return p;
                 }
@@ -1101,12 +1397,14 @@ fn check_at<const LEAF: bool>(n: &DNode, p: At, end: At) -> At {
                 }
                 p = unsafe { p.add(4 + len) };
             }
-            if !n.tw.is_null() {
-                p = check_req(n.tw, p, end);
+            if PORTS && !n.tw.is_null() {
+                // a text port (its node's text is the empty placeholder): its identity, and a constant's text
+                p = check_text_port(n.tw, p, end);
             }
         }
         K_GROUP | K_FRAG => p = check_kids::<LEAF>(n, p, end, 0x4752_0000),
         K_PROD => p = check_prod(n, p, end),
+        K_BOUND => p = check_bound(n, p, end),
         _ => return ptr::null(),
     }
     if p.is_null() || n.ext.is_null() {
@@ -1134,6 +1432,31 @@ fn check_kids<const LEAF: bool>(n: &DNode, p: At, end: At, tag: u32) -> At {
     if left(p, end) >= 4 && unsafe { rd32(p, 0) } == tag | k { unsafe { p.add(4) } } else { ptr::null() }
 }
 
+/// `seal_at`'s words of a boundary after its block: its identity, then its arms.
+#[cold]
+#[inline(never)]
+fn check_bound(n: &DNode, p: At, end: At) -> At {
+    let mut p = p;
+    for w in bound_words(n) {
+        // SAFETY: four bytes are left (checked).
+        if left(p, end) < 4 || unsafe { rd32(p, 0) } != w {
+            return ptr::null();
+        }
+        p = unsafe { p.add(4) };
+    }
+    let mut k = 0u32;
+    for it in Items(n.first) {
+        let ch = it.n();
+        p = if ch.first.is_null() { check_at::<true>(ch, p, end) } else { check_deep(ch, p, end) };
+        if p.is_null() {
+            return p;
+        }
+        k += 1;
+    }
+    // SAFETY: four bytes are left (checked).
+    if left(p, end) >= 4 && unsafe { rd32(p, 0) } == 0x4244_0000 | k { unsafe { p.add(4) } } else { ptr::null() }
+}
+
 #[inline(never)]
 fn check_deep(n: &DNode, p: At, end: At) -> At {
     check_at::<false>(n, p, end)
@@ -1150,7 +1473,7 @@ fn check_ops(n: &DNode, p: At, end: At) -> At {
             if left(p, end) < 4 || unsafe { rd32(p, 0) } != v.to_bits() {
                 return ptr::null();
             }
-            p = check_req(w, unsafe { p.add(4) }, end);
+            p = check_port(w, unsafe { p.add(4) }, end);
             if p.is_null() {
                 return p;
             }
@@ -1204,96 +1527,144 @@ fn seal_eq_node(n: &DNode, retained: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::el::{Source, column, div, row, text};
+    use crate::el::{El, Source, column, div, row, text};
     use crate::seal::{SealCheck, SealWrite};
 
     /// The fast check accepts exactly what the streaming checker calls equal, on descriptions that differ by
-    /// one operand each.
+    /// one operand each, including a field port and a non-field port.
     #[test]
     fn the_fast_check_agrees_with_the_seal() {
         let sig = crate::signal::Signal::new(crate::color::rgb(0x123456));
         let f = crate::signal::Signal::new(0.5f32);
-        let make = |v: u32| -> super::super::El<'_> {
+        struct Owner {
+            field: crate::signal::Signal<u32>,
+            far: Vec<crate::signal::Signal<u32>>,
+        }
+        let mut o = Owner { field: crate::signal::Signal::new(0), far: vec![crate::signal::Signal::new(0)] };
+        fn describe<'a>(o: &'a Owner, v: u32, sig: &'a crate::signal::Signal<Color>, f: &'a crate::signal::Signal<f32>) -> El<'a> {
             let t = |s: &'static str| text(s).fg(crate::color::rgb(0x010203 * (v & 1)));
+            let field = column((text(o.field.map(|n| format!("field {n}"))).w(80), div().size(8, 8).bg(o.field.map(|n| crate::color::rgb(*n))).w(80)));
             column((
                 row((t("a"), text(v % 3), text(format!("n{}", v % 2)))).gap((v % 4) as f32),
-                if v % 5 == 0 { div().size(10, 10).bg(&sig) } else { div().size(10 + v % 2, 10).bg(crate::color::rgb(v % 7)).rounded(v % 3) },
-                div().size(4, 4).bg(&sig).opacity(f.map(|x| x * 2.0)),
+                if v % 5 == 0 { div().size(10, 10).bg(sig) } else { div().size(10 + v % 2, 10).bg(crate::color::rgb(v % 7)).rounded(v % 3) },
+                div().size(4, 4).bg(sig).opacity(f.map(|x| x * 2.0)),
                 (v % 2 == 0).then(|| text("maybe")),
                 (0..v % 4).map(|i| div().size(i + 1, 2).bg(crate::color::rgb(i))),
                 text("t").font(12 + v % 2, 18),
                 // texts of 8..=16 and of more than 16 bytes, differing in their last byte
                 text(format!("Row label {}", v % 2)),
                 text(format!("a label of more than sixteen bytes {}", v % 3)),
+                // a field signal's value changes without changing its description; a value behind a Vec changes
+                // its description. Both are a map's source (and both seal their recipe). The field ports are
+                // nested so only a leaf fast-check can miss one of their values.
+                field,
+                text(o.far[0].map(|n| format!("far {n}"))).w(80),
+                div().size(8, 8).bg(sig).opacity(f.map(move |x| x * (v % 3) as f32)),
             ))
             .p(v % 2)
-        };
-        let mut descs = crate::layout::SpecTable::default();
-        for a in 0..24 {
-            let mut bytes = Vec::new();
-            let ea = make(a);
-            seal_node(Item(ea.raw()).n(), &mut SealWrite { out: &mut bytes, descs: &mut descs, ok: true });
-            for b in 0..24 {
-                let eb = make(b);
-                let nb = Item(eb.raw());
-                let mut sc = SealCheck::new(&bytes, &descs);
-                seal_node(nb.n(), &mut sc);
-                assert_eq!(seal_eq_node(nb.n(), &bytes), sc.equal(), "descriptions {a} and {b}");
-                assert_eq!(sc.equal(), a == b, "descriptions {a} and {b} (no two are alike)");
+        }
+        fn with_state(item: Item, state: u8) {
+            let n = item.n();
+            if !n.ink.is_null() {
+                // SAFETY: the test owns this description and has no other reference to its request.
+                unsafe { (*(n.ink as *mut WireReq)).state = state };
             }
-            drop(Walk::enter());
+            with_state_inner(n, state);
+        }
+        fn with_state_inner(n: &DNode, state: u8) {
+            for c in Items(n.first) {
+                let c = c.n();
+                if !c.ink.is_null() {
+                    // SAFETY: as `with_state`.
+                    unsafe { (*(c.ink as *mut WireReq)).state = state };
+                }
+                if !c.tw.is_null() {
+                    // SAFETY: as `with_state`.
+                    unsafe { (*(c.tw as *mut WireReq)).state = state };
+                }
+                with_state_inner(c, state);
+            }
+        }
+        let mut descs = crate::layout::SpecTable::default();
+        for a in 0..24u32 {
+            for far in 0..3u32 {
+                o.field.set(a % 7);
+                o.far[0].set(far);
+                let mut bytes = Vec::new();
+                {
+                    let _scope = OwnerScope::raw(&o);
+                    let ea = describe(&o, a, &sig, &f);
+                    seal_node(Item(ea.raw()).n(), &mut SealWrite { out: &mut bytes, descs: &mut descs, ok: true });
+                }
+                // The same field port described with a new field value: the streaming seal and the fast check
+                // agree in the normal build (the wire owns it) and in the eager mutant (the value participates).
+                assert_ne!((a + 1) % 7, a % 7, "the field's new value is different");
+                o.field.set((a + 1) % 7);
+                {
+                    let _scope = OwnerScope::raw(&o);
+                    let eb = describe(&o, a, &sig, &f);
+                    let root = eb.raw();
+                    let nb = Item(root);
+                    let mut sc = SealCheck::new(&bytes, &descs);
+                    seal_node(nb.n(), &mut sc);
+                    assert_eq!(seal_eq_node(nb.n(), &bytes), sc.equal(), "new field value");
+                    if !cfg!(feature = "mutant_el_eager_port") {
+                        assert!(sc.equal(), "new field value: the wire owns it");
+                    }
+                    // An update resolves each port before its item's fast check. For a field port that is
+                    // `P_KEEP`; for a non-field (and every port in the eager mutant) it is `P_CONST`.
+                    let state = if cfg!(feature = "mutant_el_eager_port") { P_CONST } else { P_KEEP };
+                    with_state(Item(root), state);
+                    let mut resolved = SealCheck::new(&bytes, &descs);
+                    seal_node(nb.n(), &mut resolved);
+                    assert_eq!(seal_eq_node(nb.n(), &bytes), resolved.equal(), "new field value, after port resolution");
+                    if cfg!(feature = "mutant_el_eager_port") {
+                        assert!(!resolved.equal(), "the eager mutant makes the field's value part of its seal");
+                    }
+                }
+                for b in 0..24u32 {
+                    for new_far in 0..3u32 {
+                        o.field.set(b % 7);
+                        o.far[0].set(new_far);
+                        let _scope = OwnerScope::raw(&o);
+                        let eb = describe(&o, b, &sig, &f);
+                        let nb = Item(eb.raw());
+                        let mut sc = SealCheck::new(&bytes, &descs);
+                        seal_node(nb.n(), &mut sc);
+                        assert_eq!(seal_eq_node(nb.n(), &bytes), sc.equal(), "descriptions {a}/{b}, far {far}/{new_far}");
+                        assert_eq!(sc.equal(), a == b && far == new_far, "descriptions {a}/{b}, far {far}/{new_far}");
+                    }
+                }
+                o.far[0].set(far);
+            }
         }
     }
 
-    /// Map closures whose captures have padding (which `reflect` cannot prove absent for any closure) are
-    /// sealed by their frozen bytes: two different values never seal alike, the fast check agrees with the
-    /// streaming one, and padding-free captures always seal alike. (Equal padded values may differ in their
-    /// padding bytes and then only miss a seal: not asserted.)
+    /// The eager mutant's oracle: after an update has resolved the same request as a constant, the fast check
+    /// sees the field's new value and the streaming seal agrees. The mutant's regression is proved by el_lazy.
+    #[cfg(feature = "mutant_el_eager_port")]
     #[test]
-    fn padded_captures_seal_by_value() {
-        #[derive(Clone, Copy)]
-        struct Pad {
-            a: u8,
-            b: u32,
+    fn the_eager_mutant_makes_a_fields_new_value_part_of_its_seal() {
+        struct Owner {
+            field: crate::signal::Signal<u32>,
         }
-        assert!(!crate::reflect::padding_free::<Pad>(), "the test's capture has padding");
-        let f = crate::signal::Signal::new(0.5f32);
-        let padded = |v: u32| -> super::super::El<'_> {
-            let p = Pad { a: (v % 3) as u8, b: v / 3 };
-            let q = ((v % 2) as u8, 7u32);
-            div().size(4, 4).opacity(f.map(move |x| x * p.b as f32 + p.a as f32 + q.0 as f32 + q.1 as f32))
+        let mut o = Owner { field: crate::signal::Signal::new(1) };
+        let mut descs = crate::layout::SpecTable::default();
+        let mut bytes = Vec::new();
+        let item = {
+            let _scope = OwnerScope::raw(&o);
+            let e = div().size(8, 8).bg(o.field.map(|n| crate::color::rgb(*n)));
+            let item = Item(e.raw());
+            seal_node(item.n(), &mut SealWrite { out: &mut bytes, descs: &mut descs, ok: true });
+            item
         };
-        let plain = |v: u32| -> super::super::El<'_> {
-            let p = (v % 3, v / 3);
-            div().size(4, 4).opacity(f.map(move |x| x * p.1 as f32 + p.0 as f32))
-        };
-        fn sweep<'a>(name: &str, make: impl Fn(u32) -> super::super::El<'a>) -> u32 {
-            let mut descs = crate::layout::SpecTable::default();
-            let mut hits = 0;
-            for a in 0..9 {
-                let mut bytes = Vec::new();
-                let ea = make(a);
-                let mut w = SealWrite { out: &mut bytes, descs: &mut descs, ok: true };
-                seal_node(Item(ea.raw()).n(), &mut w);
-                assert!(w.ok, "{name}: a map over a capturing closure seals (not refused)");
-                for b in 0..9 {
-                    let nb = Item(make(b).raw());
-                    let mut sc = SealCheck::new(&bytes, &descs);
-                    seal_node(nb.n(), &mut sc);
-                    assert_eq!(seal_eq_node(nb.n(), &bytes), sc.equal(), "{name} {a} {b}: fast check = streaming check");
-                    if a != b {
-                        assert!(!sc.equal(), "{name} {a} {b}: different captures seal apart");
-                    } else {
-                        hits += sc.equal() as u32;
-                    }
-                }
-                drop(Walk::enter());
-            }
-            hits
-        }
-        assert_eq!(sweep("plain", plain), 9, "equal padding-free captures seal alike");
-        let hits = sweep("padded", padded);
-        eprintln!("padded: {hits}/9 equal descriptions sealed alike");
+        o.field.set(2);
+        // SAFETY: this test owns the description's request and has no other reference to it.
+        unsafe { (*(item.n().ink as *mut WireReq)).state = P_CONST };
+        let mut sc = SealCheck::new(&bytes, &descs);
+        seal_node(item.n(), &mut sc);
+        assert!(!sc.equal(), "the eager mutant seals the field's value");
+        assert_eq!(seal_eq_node(item.n(), &bytes), sc.equal(), "the fast check agrees with the streaming seal");
     }
 
     /// The same value written to any two different fields of a node's block (spec, metrics, flags) never

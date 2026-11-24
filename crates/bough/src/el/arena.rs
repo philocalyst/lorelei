@@ -151,6 +151,10 @@ impl Ext {
 
 /// A port asked to be wired: the cell it reads, and the patch that writes the node from it. The walk
 /// installs it when the cell is a field of the mounting owner (`Mounter::wire_field`).
+///
+/// A port with a request carries no value in its node (the node's value fields hold a fixed placeholder): its
+/// value is `eval` of the cell and the recipe, computed only where the walk needs it (`walk.rs`, "Lazy port
+/// values").
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct WireReq {
@@ -162,7 +166,32 @@ pub(crate) struct WireReq {
     pub ty: TypeId,
     pub patch: PatchFn,
     pub recipe: crate::rt::Recipe,
+    /// The port's value from the cell at [`cell`](Self::cell) and `recipe`: a [`ScalarEval`] (scalar ports) or a
+    /// [`TextEval`] (text ports), as a pointer. Monomorphised with `patch`, so equal patches mean equal evals.
+    pub eval: *const (),
+    /// What the walk decided for this port at an update (`P_*`): written by `Item::update` before the node's
+    /// builder runs (the description's seal was written before, and is not read again this turn).
+    pub state: u8,
 }
+
+/// A scalar port's value (`f32` or `Color`, as bits) from its cell and recipe.
+///
+/// # Safety
+/// `cell` is a live cell of the type the request's `ty` names; the recipe is the request's.
+pub(crate) type ScalarEval = unsafe fn(usize, &crate::rt::Recipe) -> u32;
+/// A text port's value, lent to `k`.
+///
+/// # Safety
+/// As [`ScalarEval`].
+pub(crate) type TextEval = unsafe fn(usize, &crate::rt::Recipe, &mut dyn FnMut(&str));
+
+/// `WireReq::state`: not resolved (mount, lowering): the value is evaluated where it is read.
+pub(crate) const P_EVAL: u8 = 0;
+/// The port's wire is installed and computes with these captures: the retained value is current, nothing is
+/// evaluated or applied.
+pub(crate) const P_KEEP: u8 = 1;
+/// The port is constant in this description: its value is evaluated where it is read.
+pub(crate) const P_CONST: u8 = 2;
 
 /// `WireReq::head` tags: a `latest(..)` port (it runs while a cohort holds its signal).
 pub(crate) const W_LATEST: usize = 1;
@@ -197,6 +226,32 @@ impl WireReq {
     #[inline(always)]
     pub(crate) fn cell(&self) -> usize {
         self.wire_head() as usize - self.sub()
+    }
+    /// A scalar port's value now (its bits).
+    #[inline]
+    pub(crate) fn scalar(&self) -> u32 {
+        // SAFETY: a scalar port's request holds a `ScalarEval` for its cell type (`plug.rs`), and the cell is live
+        // for the description's lifetime (it is borrowed by the description, `El<'f>`).
+        unsafe { std::mem::transmute::<*const (), ScalarEval>(self.eval)(self.cell(), &self.recipe) }
+    }
+    /// A text port's value now, lent to `k`.
+    #[inline]
+    pub(crate) fn text<R>(&self, k: impl FnOnce(&str) -> R) -> R {
+        let mut k = Some(k);
+        let mut out = None;
+        // SAFETY: a text port's request holds a `TextEval` (`plug.rs`); the cell as in `scalar`.
+        unsafe { std::mem::transmute::<*const (), TextEval>(self.eval)(self.cell(), &self.recipe, &mut |s| out = Some((k.take().unwrap())(s))) };
+        out.expect("a text eval lends its text once")
+    }
+    /// The walk resolved this port as installed and current (`P_KEEP`).
+    #[inline(always)]
+    pub(crate) fn keep(&self) -> bool {
+        self.state == P_KEEP && !cfg!(feature = "mutant_el_eager_port")
+    }
+    /// The constant form, including the eager mutant (whose every port is evaluated at its builder).
+    #[inline(always)]
+    pub(crate) fn constant(&self) -> bool {
+        self.state == P_CONST || cfg!(feature = "mutant_el_eager_port")
     }
 }
 

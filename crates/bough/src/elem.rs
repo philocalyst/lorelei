@@ -119,21 +119,29 @@ impl<V> Mounter<'_, V> {
     /// `head` is a head `sub` bytes into a live cell of the type `ty` names (`reflect::cell_id`), and `patch`
     /// reads exactly that cell type with the recipe given.
     pub(crate) unsafe fn wire_field(&mut self, head: &std::cell::Cell<u32>, sub: u32, ty: std::any::TypeId, patch: PatchFn, node: u32, recipe: crate::rt::Recipe) -> bool {
-        let (at, base) = ((head as *const _ as usize).wrapping_sub(sub as usize), self.owner as usize);
-        if at < base || at - base >= size_of::<V>() {
-            return false;
-        }
-        let off = at - base;
-        if off % 4 != 0 || off > u32::MAX as usize || !crate::reflect::cells::<V>().has(off, ty) {
-            return false;
-        }
-        // SAFETY: the owner type has a field of the cell type at `off` (the table lists only cells reached
-        // through struct, tuple and array fields), and a live object of that type at that address inside the
-        // owner is that field: this is the offset `sig!` proves. `patch` reads that type (the contract), from
-        // the head `sub` bytes into it.
-        unsafe { self.wire_cell(head, off as u32 + sub, patch, node, recipe) };
+        let Some(off) = field_offset::<V>(self.owner as usize, (head as *const _ as usize).wrapping_sub(sub as usize), ty) else { return false };
+        // SAFETY: the owner type has a field of the cell type at `off` (`field_offset`), and `patch` reads that
+        // type (the contract), from the head `sub` bytes into it.
+        unsafe { self.wire_cell(head, off + sub, patch, node, recipe) };
         true
     }
+}
+
+/// The field rule: the offset of the cell of type `ty` (`reflect::cell_id`) at address `at` in an owner of type
+/// `V` at `base`, when that cell is a field of the owner. The owner type has a field of the cell type at that
+/// offset (the table lists only cells reached through struct, tuple and array fields), and a live object of that
+/// type at that address inside the owner is that field: this is the offset `sig!` proves. A pure function of
+/// (`base`, `at`, `ty`, `V`): `wire_field` installs by it, and the El walk seals by it (`el/walk.rs`).
+#[inline]
+pub(crate) fn field_offset<V>(base: usize, at: usize, ty: std::any::TypeId) -> Option<u32> {
+    if at < base || at - base >= size_of::<V>() {
+        return None;
+    }
+    let off = at - base;
+    if off % 4 != 0 || off > u32::MAX as usize || !crate::reflect::cells::<V>().has(off, ty) {
+        return None;
+    }
+    Some(off as u32)
 }
 
 pub trait Element<V>: Sized {
@@ -277,6 +285,12 @@ pub trait IntoProp<P: 'static, V>: Sized {
     /// The current value, at a re-description (a wired operand keeps its wire; applying its current value
     /// is a no-op through the property's equality cut-off).
     fn value(self) -> P;
+    /// At a re-description: the operand's installed wire keeps the property current, so its value is neither
+    /// computed nor applied (an El port resolved by the walk, `el/walk.rs`). Always `false` for typed operands.
+    #[inline(always)]
+    fn keep(&self) -> bool {
+        false
+    }
     /// The operand's part of its element's seal (`seal.rs`); refuses by default.
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
@@ -416,6 +430,17 @@ impl Apply for ApplyBg {
         // the colour word is the record's whole paint state: logged as is (content addressing)
         rt.paint_write(rt.handle(node), old as u64, v.0 as u64);
     }
+}
+
+/// The fill `ApplyBg` last wrote to quad `node` (its base colour under an opacity operand): what a box whose bg
+/// port is kept (`IntoProp::keep`) re-describes with.
+pub(crate) fn applied_bg(rt: &mut Rt, node: u32) -> Color {
+    let hot = rt.hot[node as usize];
+    if hot.flags & HF_MOD != 0 {
+        return Color(rt.cold_mut(node).color);
+    }
+    let p = &rt.inst[(rt.ibase + node) as usize];
+    Color(if hot.kind & !NK_HOVERED == NK_BORDER { p.color2 } else { p.color })
 }
 
 /// `ApplyBg` for a quad whose drawn colour is not its described one (`HF_MOD`: under an opacity operand, or
@@ -647,6 +672,11 @@ pub trait TextSrc<V>: Sized {
     fn lower(self, m: &mut Mounter<'_, V>, node: u32) -> String;
     /// The current text, at a re-description.
     fn value(self) -> String;
+    /// As `IntoProp::keep`: the installed wire keeps the text current (an El port, `el/walk.rs`).
+    #[inline(always)]
+    fn keep(&self) -> bool {
+        false
+    }
     /// `value` lent to `f` without building a `String` where the source already is one.
     #[inline]
     fn with_str<R>(self, f: impl FnOnce(&str) -> R) -> R {

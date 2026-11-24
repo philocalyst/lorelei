@@ -11,7 +11,8 @@
 //!   guard is pending): `loading_then_content_then_revalidation_keeps_content`. (The fresh-mount oracle does
 //!   not see it: a fresh mount computes the same wrong verdict; the lifecycle test asserts the policy.)
 //! * `--features mutant_el_bound_wire`: a guard's transition does not reach its boundary: the fresh-mount
-//!   oracle fails (`random_scripts_match_a_fresh_mount_at_every_step`, under `once`, and the lifecycle test).
+//!   oracle fails (`random_scripts_match_a_fresh_mount_at_every_step`, under `once`, and the lifecycle test), and
+//!   a boundary stepped over in a list never switches (`a_listed_boundary_is_stepped_over_and_switched_by_its_wires`).
 use bough::prelude::*;
 use bough::raw::{App, Config};
 use std::cell::Cell;
@@ -290,6 +291,57 @@ fn unmounting_a_branch_cancels_its_pending_work() {
     assert_eq!(a.owner.r.latest().map(String::as_str), Some("story 3"));
     assert_eq!(arms(&a), [2, 2]);
     assert_eq!(shot(&mut a), shot(&mut a.owner.fresh(false)));
+}
+
+/// Boundaries as items of a list (a sealed part): described as before, a boundary is stepped over whole (its
+/// arms are not entered), and its verdict is its wires' to keep. Under `mutant_el_bound_wire` (the wires do
+/// nothing) its arm then never changes, re-described or not, which is what this test sees.
+struct Listed {
+    q: Signal<u32>,
+    r: Reader<String>,
+    oracle: bool,
+}
+impl View for Listed {
+    fn view(&self) -> El<'_> {
+        column((
+            (!self.oracle).then(|| produce(&self.q, &self.r, req)),
+            (0..2).map(move |i| {
+                let b = boundary().loading(skeleton).failed(text("failed"));
+                // the second replaces its content with the failed arm on a failure (it switches twice more)
+                let b = if i == 1 { b.replace_on_failure() } else { b };
+                b.child(column((text(self.r.map(label)), div().size(20 + i * 10, 8).bg(rgb(0x3060c0)))))
+            }),
+        ))
+        .bg(rgb(0xffffff))
+        .w_pct(1.0)
+        .h_pct(1.0)
+    }
+}
+
+#[test]
+fn a_listed_boundary_is_stepped_over_and_switched_by_its_wires() {
+    let fresh = |a: &App<Listed>| App::new(Listed { q: Signal::new(*a.owner.q), r: a.owner.r.snapshot(), oracle: true }, cfg(false), true);
+    let mut a = App::new(Listed { q: Signal::new(1), r: Reader::new(), oracle: false }, cfg(false), true);
+    assert_eq!(shot(&mut a), shot(&mut fresh(&a)), "mount");
+    assert_eq!(arms(&a), [0, 0], "loading");
+    // two re-descriptions with nothing to admit: the first seals the list's items, the second steps over them,
+    // so every switch below is the boundaries' wires' alone
+    a.poll();
+    a.poll();
+    let mut seen = Vec::new();
+    for (step, q) in [(0, None), (1, Some(2)), (2, None), (3, Some(4)), (4, None), (5, Some(6)), (6, None)] {
+        if let Some(q) = q {
+            a.turn(|v| *v.q = q);
+        } else {
+            a.run_jobs(8);
+            a.poll();
+        }
+        assert_eq!(shot(&mut a), shot(&mut fresh(&a)), "step {step}: retained = fresh mount");
+        seen.push(arms(&a));
+    }
+    assert_eq!(seen[0], [2, 2], "first readiness: content");
+    assert_eq!(seen[4], [2, 1], "a failure: stale content, and the replacing one's failed arm");
+    assert_eq!(seen[6], [2, 2], "healed");
 }
 
 // ------------------------------------------------------------------------------------------- scripts

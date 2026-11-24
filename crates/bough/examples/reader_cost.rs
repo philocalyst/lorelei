@@ -218,7 +218,7 @@ fn first<T: Make>(once: bool) -> (u64, usize) {
             let (t0, c0) = (tinstr(), CALLS.load(Relaxed));
             a.poll();
             let r = (tinstr() - t0, CALLS.load(Relaxed) - c0);
-            std::mem::forget(a);
+            drop(a);
             r
         })
         .collect();
