@@ -266,3 +266,117 @@ remounts per 02 §6 (the old track is dropped, the new position equals a fresh m
 view with no motion makes no transition state; B1 and B2 each against a fresh mount, each with a mutant.
 
 **Not claimed.** Frame time; the lowered runtime (`lower`) presents a motion port's target (no motion lanes there).
+
+### Results: motion as a plug, map recipes, hover colours (2026-11-24)
+
+Commits on `lane/reactivity/el-motion`: `afbfd79b5f` (motion plug, B1, B2), `cd2ee2f654` (two more B1 oracles),
+this section. Built: `animate(&sig)` with `.spring(..)`, `.over(ms)`, `.ease(..)`, `.curve(..)`, `.delay(ms)`, and
+on `f32` `.reverse()` / `.scale(k)`, accepted by the `f32` ports (`opacity`, `translate_x/y`, `w`, `h`) and the
+`Color` ports (`bg`, `fg`). A motion is a transition in the kernel's own table (`transition.rs`: `Anim<T>`, eased as
+`State` is, a closed-form damped spring, a Hermite `Curve::smooth`), stepped by `App::tick`, retargeted by its wire's
+patch from the presented value and velocity, and retired when its wire is cut (`Wire::motion`). Timings are sealed
+in the `Ext` part (`X_MOTION`), so a node without motion checks nothing more.
+
+**(1) Zero tax: `EL=1 redescribe_cost 1000 10000`**, instructions per turn, base `1a090b8b7f` against head, same
+session, two runs each (run 2 shown; run 1 agrees within 0.2%). Allocator calls per steady turn: 0.00 in every
+cell, base and head (`HEAP=1` tables are identical byte for byte).
+
+| rows | shape | typed base | typed head | Δ | El base | El head | Δ |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1000 | owned | 296,413 | 296,412 | −0.00% | 428,599 | 429,049 | +0.10% |
+| 1000 | static | 291,619 | 291,618 | −0.00% | 437,660 | 438,100 | +0.10% |
+| 1000 | bare | 125,231 | 125,230 | −0.00% | 166,573 | 166,625 | +0.03% |
+| 10000 | owned | 2,915,679 | 2,915,412 | −0.01% | 4,182,698 | 4,182,801 | +0.00% |
+| 10000 | static | 2,865,618 | 2,866,058 | +0.02% | 4,272,670 | 4,272,260 | −0.01% |
+| 10000 | bare | 1,232,059 | 1,232,055 | −0.00% | 1,615,724 | 1,615,600 | −0.01% |
+
+**(2) The six workload scenes** (`RENDER=0`, median of 3, base and head interleaved, instructions per step). Built
+from `git archive` exports of base and head with `comparisons/bough-workloads` added to the workspace members and
+the `gui-bench-scenes` / `bough-guibench-scenes` sources copied in (identical for both). Every cell, both modes, is
+within ±1% (largest: redescribe chat steady −0.37%, gbcanvas steady once +0.41%) except `first_frame`. Steady,
+redescribe:
+
+| scene | base | head | Δ |
+|---|---:|---:|---:|
+| sheet | 43,262,957 | 43,262,830 | −0.00% |
+| ide | 23,332,722 | 23,331,521 | −0.01% |
+| dash | 3,908,065 | 3,914,662 | +0.17% |
+| canvas | 635,752 | 635,774 | +0.00% |
+| chat | 18,024,199 | 17,956,720 | −0.37% |
+| gbcanvas | 5,768,450 | 5,766,647 | −0.03% |
+
+Mount cells are within ±0.17%; hover, theme, resize, resize_anim, anim and idle within ±0.25%. `first_frame` is
+code-layout noise, shown by a no-op rebuild: base built again with only `-C symbol-mangling-version=v0` gives
+sheet 13,366 -> 55,204 (+313%), with the other scenes taking the same two values (≈13.4 K or ≈19.2 K) as the
+base and head binaries, in a different arrangement (base: sheet 13,366, ide 13,450, dash 19,184, canvas 19,129,
+chat 13,333, gbcanvas 19,203; head: 19,173, 13,355, 13,366, 13,388, 14,127, 14,127). This is the boundary
+effect recorded in "The measured scenes" above.
+
+**(3) `el_motion_cost`** (instructions; `HEAP=1` allocator calls per tick, per retarget and per re-describing
+tick are 0.00 in every cell):
+
+| boxes | spelling | tick | ×typed | retarget | ×typed | tick, re-describing | ×typed |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 1 | typed `sig!(..).transition(c)` | 2,381 | 1 | 2,222 | 1 | 3,365 | 1 |
+| 1 | El `animate(..).curve(c)` | 2,371 | 0.996 | 2,258 | 1.016 | 4,345 | 1.29 |
+| 1 | El `animate(..).spring(..)` | 2,540 | 1.07 | 2,534 | 1.14 | 4,513 | 1.34 |
+| 1000 | typed | 318,635 | 1 | 135,089 | 1 | 792,192 | 1 |
+| 1000 | El eased | 308,635 | 0.969 | 171,089 | 1.27 | 895,982 | 1.13 |
+| 1000 | El spring | 477,635 | 1.50 | 447,265 | 3.31 | 1,065,154 | 1.34 |
+
+Against the prediction: El eased tick 0.97x typed (outside the predicted ±2%, on the cheap side; kill line 1.1x
+not reached); retarget 1.27x at 1000 boxes (predicted ≤ 1.3x); spring tick 1.55x the eased tick (predicted ≤
+2.5x); zero allocations everywhere. Not predicted: the re-describing tick is 1.13x typed at 1000 boxes and 1.29x
+at one box (the El walk and seal of the owner, as for any El view: the redescribe_cost El/typed ratios are
+1.31–1.50), and a spring retarget costs 3.3x a typed eased retarget (it samples the spring's value and velocity
+in closed form and re-solves its initial conditions per box).
+
+**Correctness.** `tests/el_motion.rs`, 13 tests, pass in debug and `--release`. Mutants (each a cargo feature),
+every one fails its tests:
+
+| mutant | what it breaks | fails |
+|---|---|---|
+| `mutant_motion_from_target` | a retarget starts from the target, not the presented value | `a_retarget_mid_flight_is_continuous`, `an_eased_motion_presents_what_the_typed_transition_does` |
+| `mutant_motion_snap` | an update does not show the motion's presented value | `a_motion_port_reruns_no_view`, `the_settled_frame_equals_a_fresh_mount_at_the_target` |
+| `mutant_motion_keep_track` | a cut wire keeps its motion (02 §6) | `a_branch_flip_drops_the_track` |
+| `mutant_el_recipe` | an updated map's wire keeps its mount's captures | `a_map_whose_captures_changed_is_right_at_once`, `…_on_the_same_frame`, `…_past_many_ports` |
+| `mutant_el_hover` | a hover colour re-described while hovered waits for the next entry | `a_hover_colour_changed_while_hovered_shows_at_once` |
+
+B1 (a map's captured recipe): the recipe is sealed, so a changed capture (`self.n.map(move |n| n * k)`, another
+`k`) fails the seal fast check and the item is updated; the update gives each installed wire the description's
+recipe (`motion::sync_ports`, matched by cell and patch in install order within the element's own scope; one
+element has at most six wired ports), so the frame of that very turn equals a fresh mount (tested with and
+without motion in the scene, and with 80 ports of one list item each capturing its own factor). Not tested: a
+later publish that runs the wires alone (`Config::once`) after a capture change. B2 (hover colour): `set_routes` paints the new hover colour at once when the act is
+hovered (`input::show_hover_bg`, over the element's opacity, as `hover_set` does); leaving shows the base.
+The seal fast check (`check_at`) is unchanged for nodes without `Ext`; motion timings are checked only under
+`X_MOTION` in the cold `check_progs`.
+
+**Suite.** `cargo test -p bough` green in debug and `--release` (47 result blocks each, 0 failures);
+`cargo build --workspace --all-targets` ok. `cargo clippy -p bough --all-targets --no-deps`: no finding on a line
+this branch wrote (its findings are older lines; the one error is in the untouched `tests/typed_words.rs`, and
+without `--no-deps` clippy stops on deny lints in `bough-core`, `bough-metal` and `bough-fused`'s build script).
+
+**Deviations from `designs/reactivity/final/03-ports.md` §4.**
+* Durations are `u32` milliseconds (`.over(300)`, `.delay(100)`), not `2.s()` unit values: the tree has no
+  duration type yet.
+* Motions live in the kernel's transition table (`Transitions`), one per port, stepped by `App::tick`, and not
+  in kind-segregated lanes. `reverse()` / `scale(k)` make their own motion per port (a spring is linear, so the
+  mapped motion is the motion of the mapped value). A view without motion makes no motion state (tested).
+* Only `f32` and `Color` (per channel) interpolate; no lengths, angles, transforms, brushes, paths or shader
+  fields, and no `Interpolatable` for user types.
+* A delay holds the presented value, so a delayed motion retargeted mid-flight is continuous in value only (C0,
+  not C1).
+* Every spring keeps velocity on retarget; `preserve_velocity()` is accepted and does nothing.
+* The lowered runtime (`lower`) presents a motion port's target (no motion there).
+
+**Open.**
+* (C) Theme tokens: not started (skipped by the task); no token plug.
+* From 03 §4: keyframes, sequence / parallel / race, repeat (the `rotate(repeat(..))` of the example), gesture
+  handoff and the scroll / media / demo timelines, `jump(target)`, playback control (pause, seek, rate, fill),
+  composition other than replace, reduced motion, completion as a queued output, structural enter/exit/hero.
+* Motion on the lowered runtime.
+* A spring retarget costs 3.3x a typed eased retarget, and the re-describing tick of an El motion view is
+  1.13–1.29x typed (the El walk); neither is a kill line, both are recorded.
+* The "Open" entries "A map's recipe is not part of `shape()` …" and "A hover colour changed while hovered shows
+  on the next hover" above are closed by this branch.
