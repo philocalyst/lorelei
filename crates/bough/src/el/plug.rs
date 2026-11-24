@@ -6,9 +6,11 @@
 //! implemented outside this crate), and every plug costs the same at every port: a constant is a store; a
 //! signal or a map is a store plus a wire request the walk installs when the signal is a field of the view
 //! that describes it. Publishing a wired signal then patches the element without rerunning `view`.
-use super::arena::{self, WireReq, F_INT, F_NEG};
+use super::arena::{self, F_INT, F_NEG, WireReq};
+use super::arena::{W_GUARD, W_LATEST, W_PHEAD};
 use crate::color::Color;
-use crate::elem::{patch_map, patch_sig, Apply};
+use crate::elem::{Apply, patch_map, patch_sig};
+use crate::reader::{Reader, patch_rmap, patch_rpmap};
 use crate::reflect::cell_id;
 use crate::signal::Signal;
 use std::ptr;
@@ -106,30 +108,32 @@ number_plugs!(f32, i32, u32);
 impl<'f, T: Scalar> IntoProp<'f, T> for &'f Signal<T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE }) }
+        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE, flags: 0 }) }
     }
 }
 
-/// A source: what `map` is closed over. Implemented for a borrowed `Signal`.
+/// A source (03 §1): what `map` is closed over. A borrowed `Signal` (the closure sees `&T`), a borrowed
+/// `Reader` (it sees `Option<&T>`: `None` before first readiness), `is_pending(&reader)` (a `bool`) and
+/// `latest(&signal)` (`&T`, tracking current intent while a cohort holds the signal).
 pub trait Source<'f>: sealed::Sealed + Sized {
-    type Value: 'static;
+    /// What `map`'s closure is given.
+    type Ready<'a>;
     /// The source seen through `f`. `f` may capture at most 16 bytes, by copy: what else it depends on
     /// belongs in a signal.
-    fn map<T, F: Fn(&Self::Value) -> T + Copy + 'static>(self, f: F) -> Map<'f, Self::Value, F>;
+    #[inline(always)]
+    fn map<T, F: for<'a> Fn(Self::Ready<'a>) -> T + Copy + 'static>(self, f: F) -> Map<Self, F> {
+        Map { src: self, f }
+    }
 }
 impl<S> sealed::Sealed for &Signal<S> {}
 impl<'f, S: 'static> Source<'f> for &'f Signal<S> {
-    type Value = S;
-    #[inline(always)]
-    fn map<T, F: Fn(&S) -> T + Copy + 'static>(self, f: F) -> Map<'f, S, F> {
-        Map { sig: self, f }
-    }
+    type Ready<'a> = &'a S;
 }
 
-/// A signal mapped through a closure (`Source::map`).
+/// A source mapped through a closure (`Source::map`).
 #[must_use = "a mapped source does nothing until it is plugged into a port"]
-pub struct Map<'f, S, F> {
-    sig: &'f Signal<S>,
+pub struct Map<S, F> {
+    src: S,
     f: F,
 }
 
@@ -138,10 +142,10 @@ fn recipe<F: Copy>(f: F) -> crate::rt::Recipe {
     crate::rt::Recipe::of(f)
 }
 
-impl<'f, S: 'static, T: Scalar, F: Fn(&S) -> T + Copy + 'static> IntoProp<'f, T> for Map<'f, S, F> {
+impl<'f, S: 'static, T: Scalar, F: Fn(&S) -> T + Copy + 'static> IntoProp<'f, T> for Map<&'f Signal<S>, F> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: (self.f)(self.sig), w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        Plug { v: (self.f)(self.src), w: arena::put(WireReq { head: self.src.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), flags: 0 }) }
     }
 }
 
@@ -189,16 +193,116 @@ int_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 impl<'f> IntoProp<'f, Text> for &'f Signal<String> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE }) }
+        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE, flags: 0 }) }
     }
 }
 
 /// A signal mapped to its text (`self.count.map(|n| format!("Count: {n}"))`): the text follows the signal.
-impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> for Map<'f, S, F> {
+impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> for Map<&'f Signal<S>, F> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        let s = (self.f)(self.sig);
-        Plug { v: TextVal { ptr: arena::bytes(s.as_bytes()), len: s.len() as u64, flags: 0 }, w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        let s = (self.f)(self.src);
+        Plug { v: owned_text(&s), w: arena::put(WireReq { head: self.src.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), flags: 0 }) }
+    }
+}
+
+#[inline]
+fn owned_text(s: &str) -> TextVal {
+    TextVal { ptr: arena::bytes(s.as_bytes()), len: s.len() as u64, flags: 0 }
+}
+
+// ------------------------------------------------------------------------------- readers (05 §3, §5)
+
+/// A `Reader` field: `self.story.map(|s: Option<&Story>| ..)` is a direct port. A completion the cohort
+/// commits patches the element without rerunning `view`; inside a `boundary`, the boundary guards the reader.
+/// A reader that is not a field of the view (behind a `Vec`, in another object) is a constant of the
+/// description, as a signal is.
+impl<T> sealed::Sealed for &Reader<T> {}
+impl<'f, T: 'static> Source<'f> for &'f Reader<T> {
+    type Ready<'a> = Option<&'a T>;
+}
+
+/// `is_pending(&self.results)` (05 §5): does the next visible answer of this reader still wait on a request?
+/// A source of `bool`: `.opacity(is_pending(&self.results).map(|p| if p { 0.65 } else { 1.0 }))`.
+pub fn is_pending<T>(r: &Reader<T>) -> Pending<'_, T> {
+    Pending(r)
+}
+/// `is_pending(..)`: see [`is_pending`].
+#[derive(Clone, Copy)]
+pub struct Pending<'f, T>(&'f Reader<T>);
+impl<T> sealed::Sealed for Pending<'_, T> {}
+impl<'f, T: 'static> Source<'f> for Pending<'f, T> {
+    type Ready<'a> = bool;
+}
+
+/// `latest(&self.selected_id)` (05 §5): bind a port to current model intent, not to its cohort's retained
+/// operand. A port of a signal a pending producer holds keeps its pre-write value until the cohort commits;
+/// through `latest` it follows every write at once. Plugs as the signal does (`.bg(latest(&self.tint))`,
+/// `latest(&self.id).map(f)`).
+pub fn latest<S>(s: &Signal<S>) -> Latest<'_, S> {
+    Latest(s)
+}
+/// `latest(..)`: see [`latest`].
+#[derive(Clone, Copy)]
+pub struct Latest<'f, S>(&'f Signal<S>);
+impl<S> sealed::Sealed for Latest<'_, S> {}
+impl<'f, S: 'static> Source<'f> for Latest<'f, S> {
+    type Ready<'a> = &'a S;
+}
+
+impl<'f, T: Scalar> IntoProp<'f, T> for Latest<'f, T> {
+    #[inline]
+    fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
+        Plug { v: **self.0, w: arena::put(WireReq { head: self.0.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE, flags: W_LATEST }) }
+    }
+}
+impl<'f> IntoProp<'f, Text> for Latest<'f, String> {
+    #[inline]
+    fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
+        Plug { v: borrowed(self.0), w: arena::put(WireReq { head: self.0.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE, flags: W_LATEST }) }
+    }
+}
+
+impl<'f, S: 'static, P: Scalar, F: Fn(&S) -> P + Copy + 'static> IntoProp<'f, P> for Map<Latest<'f, S>, F> {
+    #[inline]
+    fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
+        let s = self.src.0;
+        Plug { v: (self.f)(s), w: arena::put(WireReq { head: s.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), flags: W_LATEST }) }
+    }
+}
+impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> for Map<Latest<'f, S>, F> {
+    #[inline]
+    fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
+        let s = self.src.0;
+        Plug { v: owned_text(&(self.f)(s)), w: arena::put(WireReq { head: s.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), flags: W_LATEST }) }
+    }
+}
+impl<'f, T: 'static, P: Scalar, F: Fn(Option<&T>) -> P + Copy + 'static> IntoProp<'f, P> for Map<&'f Reader<T>, F> {
+    #[inline]
+    fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
+        let r = self.src;
+        Plug { v: (self.f)(r.latest()), w: arena::put(WireReq { head: r.head_cell(), ty: cell_id::<Reader<T>>(), patch: patch_rmap::<K, T, F>, recipe: recipe(self.f), flags: W_GUARD }) }
+    }
+}
+impl<'f, T: 'static, F: Fn(Option<&T>) -> String + Copy + 'static> IntoProp<'f, Text> for Map<&'f Reader<T>, F> {
+    #[inline]
+    fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
+        let r = self.src;
+        Plug { v: owned_text(&(self.f)(r.latest())), w: arena::put(WireReq { head: r.head_cell(), ty: cell_id::<Reader<T>>(), patch: patch_rmap::<K, T, F>, recipe: recipe(self.f), flags: W_GUARD }) }
+    }
+}
+impl<'f, T: 'static, P: Scalar, F: Fn(bool) -> P + Copy + 'static> IntoProp<'f, P> for Map<Pending<'f, T>, F> {
+    #[inline]
+    fn plug<K: Apply<P = P>>(self, _: Seal) -> Plug<P> {
+        let r = self.src.0;
+        Plug { v: (self.f)(r.is_pending()), w: arena::put(WireReq { head: r.phead_cell(), ty: cell_id::<Reader<T>>(), patch: patch_rpmap::<K, T, F>, recipe: recipe(self.f), flags: W_PHEAD }) }
+    }
+}
+impl<'f, T: 'static, F: Fn(bool) -> String + Copy + 'static> IntoProp<'f, Text> for Map<Pending<'f, T>, F> {
+    #[inline]
+    fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
+        let r = self.src.0;
+        Plug { v: owned_text(&(self.f)(r.is_pending())), w: arena::put(WireReq { head: r.phead_cell(), ty: cell_id::<Reader<T>>(), patch: patch_rpmap::<K, T, F>, recipe: recipe(self.f), flags: W_PHEAD }) }
     }
 }
 

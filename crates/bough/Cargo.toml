@@ -80,6 +80,12 @@ mutant_typed_skip = []
 mutant_cell_offset = []
 # (tests/el_surface.rs) El items keyed by nothing: a box swapped for a text is updated in place as if it were one
 mutant_el_shape = []
+# (tests/el_reader.rs) every async completion passes admission, whatever its ticket: a superseded request lands
+mutant_reader_stamp = []
+# (tests/el_reader.rs) an El boundary ignores first readiness: any outstanding request shows its loading arm
+mutant_el_boundary_ready = []
+# (tests/el_reader.rs) an El boundary's wires do nothing: its arm changes only when the view is described again
+mutant_el_bound_wire = []
 # (bough-dataflow/mutant_rigid: rows kept across an insert or a remove keep their old rects)
 mutant_rigid = ["bough-dataflow/mutant_rigid"]
 # The presenter on the vendored wgpu-hal with wgsl-rs kernels (crates/bough-gpu) instead of direct Metal.

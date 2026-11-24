@@ -11,7 +11,7 @@ use super::arena::*;
 use crate::boxops::{ApplyBoxH, ApplyBoxW, ApplyOpacity, ApplyTx, ApplyTy, BoxLow, BoxOps};
 use crate::color::Color;
 use crate::describe::{mount_dyn_as, update_dyn, update_opaque};
-use crate::elem::{decimal, Apply, Element, IntoProp, Mounter, TextSrc};
+use crate::elem::{Apply, Element, IntoProp, Mounter, TextSrc, decimal};
 use crate::input::{Ev, Key, Route};
 use crate::layout::{Dim, LBox, Para, Spec};
 use crate::rt::*;
@@ -33,13 +33,30 @@ pub(crate) struct EOp<P> {
 #[inline]
 fn wire<V>(m: &mut Mounter<'_, V>, w: *const WireReq, node: u32) {
     if !w.is_null() {
-        // SAFETY: `w` was written this description by a setter: `head` is the head of a live cell of the type
-        // `ty` names, and `patch` reads that cell type with this recipe (`plug.rs`).
+        // SAFETY: `w` was written this description by a setter: `head` is a head `sub()` bytes into a live cell
+        // of the type `ty` names, and `patch` reads that cell type with this recipe (`plug.rs`).
         unsafe {
             let w = &*w;
-            m.wire_field(&*w.head, w.ty, w.patch, node, w.recipe);
+            if m.wire_field(&*w.head, w.sub() as u32, w.ty, w.patch, node, w.recipe) {
+                if w.flags & W_LATEST != 0 {
+                    let i = *m.scope.wires.last().unwrap();
+                    m.rt.make_latest(i);
+                }
+                if w.flags & W_PHEAD != 0 {
+                    // the pending flag was read when `view` ran, and a producer mounted since (its first request)
+                    // may have moved it: the port is settled once more from the reader's state now
+                    crate::signal::queue(&*w.head);
+                    m.rt.asy.rescan = true;
+                }
+            }
         }
     }
+}
+
+/// The first word of a wire's seal: what kind of wire it is (a `latest` one is not the plain one).
+#[inline(always)]
+fn req_tag(w: &WireReq) -> u32 {
+    0x5749_5245 ^ (w.flags & W_LATEST) << 24
 }
 
 /// A wire's identity in a seal: the cell's address, the patch and its recipe.
@@ -51,7 +68,7 @@ fn seal_req<S: Sealer>(s: &mut S, w: *const WireReq) {
     }
     // SAFETY: as `wire`.
     let w = unsafe { &*w };
-    s.word(0x5749_5245);
+    s.word(req_tag(w));
     let (a, p) = (w.head as usize as u64, w.patch as usize as u64);
     s.word(a as u32);
     s.word((a >> 32) as u32);
@@ -339,27 +356,12 @@ impl<V: 'static> Element<V> for EKids {
 
 #[inline(always)]
 fn lbox(n: &DNode) -> LBox<EOp<Color>, EKids, EOps> {
-    LBox {
-        spec: n.spec,
-        draw: n.flags & F_DRAW != 0,
-        bg: EOp { v: Color(n.paint), w: n.ink },
-        radius: n.m[0],
-        border: if n.flags & F_BORDER != 0 { Some((n.m[1], Color(n.bc))) } else { None },
-        ch: EKids(n.first),
-        x: EOps { x: n.ext, ops: n.ops },
-    }
+    LBox { spec: n.spec, draw: n.flags & F_DRAW != 0, bg: EOp { v: Color(n.paint), w: n.ink }, radius: n.m[0], border: if n.flags & F_BORDER != 0 { Some((n.m[1], Color(n.bc))) } else { None }, ch: EKids(n.first), x: EOps { x: n.ext, ops: n.ops } }
 }
 
 #[inline(always)]
 fn para(n: &DNode) -> Para<EText, EOp<Color>> {
-    Para {
-        s: EText { ptr: n.text, len: n.len, flags: n.flags, w: n.tw },
-        spec: n.spec,
-        size: n.m[0],
-        lh: n.m[1],
-        color: EOp { v: Color(n.paint), w: n.ink },
-        wrap: n.flags & F_WRAP != 0,
-    }
+    Para { s: EText { ptr: n.text, len: n.len, flags: n.flags, w: n.tw }, spec: n.spec, size: n.m[0], lh: n.m[1], color: EOp { v: Color(n.paint), w: n.ink }, wrap: n.flags & F_WRAP != 0 }
 }
 
 #[inline(always)]
@@ -399,6 +401,89 @@ fn input_signal<'a, V: 'static>(m: &Mounter<'_, V>, n: &DNode) -> crate::signal:
     // SAFETY: the owner type has a `Signal<String>` field at `off` (the cell table), and the signal lives at
     // that address inside the live owner, so it is that field; it outlives the mount.
     unsafe { crate::signal::Wired::at(&*sig, off as u32) }
+}
+
+#[inline(always)]
+fn prod(n: &DNode) -> &ProdReq {
+    // SAFETY: a producer node's `text` is the `ProdReq` its builder put in the bump store.
+    unsafe { &*(n.text as *const ProdReq) }
+}
+/// A producer's identity: its source, its reader, its request function.
+#[inline(always)]
+fn prod_words(p: &ProdReq) -> [u64; 3] {
+    [p.src as usize as u64, p.dst as usize as u64, p.f as u64]
+}
+#[inline(always)]
+fn bound(n: &DNode) -> &BoundReq {
+    // SAFETY: a boundary node's `text` is the `BoundReq` its builder put in the bump store.
+    unsafe { &*(n.text as *const BoundReq) }
+}
+fn guards(b: &BoundReq) -> impl Iterator<Item = &GuardReq> {
+    let mut g = b.guards;
+    std::iter::from_fn(move || {
+        // SAFETY: the guard list of a node of this description.
+        let r = unsafe { g.as_ref()? };
+        g = r.next;
+        Some(r)
+    })
+}
+
+/// The offset of a cell of type `ty` at `at` in the mounting view, if it is one of its fields (the cell table).
+fn field_of<V>(m: &Mounter<'_, V>, at: usize, ty: TypeId) -> Option<u32> {
+    let base = m.owner as usize;
+    let off = at.wrapping_sub(base);
+    (at >= base && off < size_of::<V>() && off % 4 == 0 && crate::reflect::cells::<V>().has(off, ty)).then_some(off as u32)
+}
+
+#[cold]
+#[inline(never)]
+fn not_fields<V>(p: &ProdReq) -> ! {
+    let (s, t) = (p.names)();
+    panic!("{}: `produce` takes a `Signal<{s}>` field and a `Reader<{t}>` field of the view `{}` (a producer writes its reader after the description is gone)", p.at, std::any::type_name::<V>())
+}
+
+/// A producer: both cells proven fields of the view, then the kernel's own producer mount.
+fn mount_prod<V: 'static>(m: &mut Mounter<'_, V>, n: &DNode) {
+    let p = prod(n);
+    let (Some(src), Some(dst)) = (field_of(m, p.src as usize, p.src_ty), field_of(m, p.dst as usize, p.dst_ty)) else { not_fields::<V>(p) };
+    // SAFETY: the cell table proved a `Signal<S>` at `src` and a `Reader<T>` at `dst` of the live owner `V`
+    // (the types `mount` was monomorphised for, `produce`), and `f` is that producer's request function.
+    unsafe { (p.mount)(m.rt, m.scope, m.owner as *const u8, m.cls, src, dst, p.f) };
+}
+
+/// A boundary: its guards that are fields of the view (wired: a reader elsewhere is a constant of the
+/// description), three clips, and each arm mounted under its own as a dynamic part (an arm's kind change
+/// remounts it there). The tape holds the boundary's index, then the arms' parts.
+fn mount_bound<V: 'static>(m: &mut Mounter<'_, V>, n: &DNode) {
+    let b = bound(n);
+    let field: Vec<(usize, u32)> = guards(b).filter_map(|g| field_of(m, g.reader, g.ty).map(|o| (g.reader, o))).collect();
+    let rect = if m.clip == 0 { m.rt.bough.window() } else { m.rt.bough.clip_rect(m.clip) };
+    let (bi, clips) = m.rt.el_bound(rect, field.iter().map(|g| g.0).collect(), b.policy);
+    for &(r, off) in &field {
+        // SAFETY: a `Reader<_>` field at `off` (the cell table); its pending head is 4 bytes in; the patch reads
+        // the boundary, not the cell.
+        unsafe { m.wire_cell(&*((r + 4) as *const std::cell::Cell<u32>), off + 4, crate::reader::patch_el_bound, bi, crate::rt::Recipe::NONE) };
+    }
+    m.tape_push(bi);
+    let prev = m.clip;
+    for (i, a) in Items(n.first).enumerate() {
+        m.clip = clips[i];
+        mount_dyn_as(m, std::iter::once(a), false);
+    }
+    m.clip = prev;
+}
+
+fn update_bound<V: 'static>(m: &mut Mounter<'_, V>, n: &DNode) {
+    let bi = m.tape_next();
+    // SAFETY: the boundary's guards are reader fields of the live owner (`mount_bound`).
+    unsafe { m.rt.el_bound_refresh(bi) };
+    let clips = m.rt.el_bound_clips(bi);
+    let prev = m.clip;
+    for (i, a) in Items(n.first).enumerate() {
+        m.clip = clips[i];
+        update_dyn(m, std::iter::once(a));
+    }
+    m.clip = prev;
 }
 
 #[inline(always)]
@@ -524,7 +609,7 @@ fn mix_req(h: u64, w: *const WireReq) -> u64 {
     }
     // SAFETY: as `wire`.
     let w = unsafe { &*w };
-    mix(mix(h, w.head as usize as u64), w.patch as usize as u64)
+    mix(mix(h, w.head as usize as u64 ^ ((w.flags & W_LATEST) as u64) << 56), w.patch as usize as u64)
 }
 
 /// What a re-description cannot change in place: the node's kind, paint, text metrics, reactive operations,
@@ -538,6 +623,18 @@ fn shape(n: &DNode) -> u64 {
         K_BOX => h = mix_req(h, n.ink),
         K_TEXT => h = mix_req(mix_req(mix(h, n.m[0].to_bits() as u64 | (n.m[1].to_bits() as u64) << 32), n.ink), n.tw),
         K_INPUT => h = mix(mix(h, n.text as usize as u64), n.m[0].to_bits() as u64 | (n.m[1].to_bits() as u64) << 32),
+        K_PROD => {
+            let p = prod(n);
+            h = mix(mix(mix(h, p.src as usize as u64), p.dst as usize as u64), p.f as u64);
+        }
+        K_BOUND => {
+            // the guard set and the policy: what the boundary's wires and clips were made for
+            let b = bound(n);
+            h = mix(h, b.policy as u64);
+            for g in guards(b) {
+                h = mix(h, g.reader as u64);
+            }
+        }
         K_IMAGE => {
             // SAFETY: as `image`.
             let b = unsafe { &*(n.text as *const crate::ui::ImageBox) };
@@ -579,11 +676,7 @@ fn seal_deep<S: Sealer>(n: &DNode, s: &mut S) {
 /// `seal_node` for a child: a leaf inline, anything with children through `seal_deep`.
 #[inline(always)]
 fn seal_child<S: Sealer>(n: &DNode, s: &mut S) {
-    if n.first.is_null() {
-        seal_at::<S, true>(n, s)
-    } else {
-        seal_deep(n, s)
-    }
+    if n.first.is_null() { seal_at::<S, true>(n, s) } else { seal_deep(n, s) }
 }
 
 /// `LEAF`: `n` has no children (so the checker stays in registers through a whole row).
@@ -639,6 +732,13 @@ fn seal_at<S: Sealer, const LEAF: bool>(n: &DNode, s: &mut S) {
             }
             s.word(0x4752_0000 | k);
         }
+        K_PROD => {
+            for w in prod_words(prod(n)) {
+                s.word(w as u32);
+                s.word((w >> 32) as u32);
+            }
+        }
+        // a boundary's shown arm is state the description does not determine: never stepped over
         _ => s.refuse(),
     }
     if let Some(x) = x {
@@ -676,6 +776,8 @@ impl<V: 'static> Element<V> for Item {
             }
             K_GROUP => mount_dyn_as(m, Items(n.first), true),
             K_FRAG => mount_dyn_as(m, Items(n.first), false),
+            K_PROD => mount_prod(m, n),
+            K_BOUND => mount_bound(m, n),
             K_INPUT => {
                 let before = m.recs.len();
                 let sig = input_signal::<V>(m, n);
@@ -702,6 +804,9 @@ impl<V: 'static> Element<V> for Item {
         let n = self.n();
         match n.kind {
             K_GROUP | K_FRAG => update_dyn(m, Items(n.first)),
+            // a producer keeps its wire and its last input; its identity is its shape
+            K_PROD => {}
+            K_BOUND => update_bound(m, n),
             _ => {
                 // the element's first record carries its act (`input::act_for`)
                 let act = interactive(n).map(|x| (x, m.rt.bough.handle_at(m.pos)));
@@ -753,6 +858,8 @@ impl<V: 'static> Element<V> for Item {
             }
             K_GROUP | K_FRAG => Items(n.first).for_each(|c| c.lower(l)),
             K_INPUT => l.refuse("text_input"),
+            K_PROD => l.refuse("produce"),
+            K_BOUND => l.refuse("boundary"),
             _ => {
                 let at = l.core.next();
                 image(n).lower(l);
@@ -893,7 +1000,7 @@ fn check_req(w: *const WireReq, p: At, end: At) -> At {
     unsafe {
         let w = &*w;
         let (a, f) = (w.head as usize as u64, w.patch as usize as u64);
-        let words = (rd32(p, 0) ^ 0x5749_5245) | (rd32(p, 4) ^ a as u32) | (rd32(p, 8) ^ (a >> 32) as u32) | (rd32(p, 12) ^ f as u32) | (rd32(p, 16) ^ (f >> 32) as u32);
+        let words = (rd32(p, 0) ^ req_tag(w)) | (rd32(p, 4) ^ a as u32) | (rd32(p, 8) ^ (a >> 32) as u32) | (rd32(p, 12) ^ f as u32) | (rd32(p, 16) ^ (f >> 32) as u32);
         let r = w.recipe.as_ptr();
         let recipe = (rd64(p, 20) ^ rd64(r, 0)) | (rd64(p, 28) ^ rd64(r, 8));
         if words == 0 && recipe == 0 { p.add(36) } else { ptr::null() }
@@ -990,6 +1097,18 @@ fn check_at<const LEAF: bool>(n: &DNode, p: At, end: At) -> At {
             }
         }
         K_GROUP | K_FRAG => p = check_kids::<LEAF>(n, p, end, 0x4752_0000),
+        K_PROD => {
+            if left(p, end) < 24 {
+                return ptr::null();
+            }
+            let [a, b, c] = prod_words(prod(n));
+            // SAFETY: 24 bytes are left (checked).
+            let d = unsafe { (rd32(p, 0) ^ a as u32) | (rd32(p, 4) ^ (a >> 32) as u32) | (rd32(p, 8) ^ b as u32) | (rd32(p, 12) ^ (b >> 32) as u32) | (rd32(p, 16) ^ c as u32) | (rd32(p, 20) ^ (c >> 32) as u32) };
+            if d != 0 {
+                return ptr::null();
+            }
+            p = unsafe { p.add(24) };
+        }
         _ => return ptr::null(),
     }
     if p.is_null() || n.ext.is_null() {
@@ -1087,7 +1206,7 @@ fn seal_eq_node(n: &DNode, retained: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::el::{column, div, row, text, Source};
+    use crate::el::{Source, column, div, row, text};
     use crate::seal::{SealCheck, SealWrite};
 
     /// The fast check accepts exactly what the streaming checker calls equal, on descriptions that differ by

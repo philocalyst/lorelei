@@ -31,6 +31,11 @@ pub(crate) const K_FRAG: u8 = 4;
 pub(crate) const K_INPUT: u8 = 5;
 /// A raster image (`text` holds its `ImageBox` in the bump store).
 pub(crate) const K_IMAGE: u8 = 6;
+/// A producer (`produce(&self.src, &self.reader, request)`): no records; `text` holds its [`ProdReq`].
+pub(crate) const K_PROD: u8 = 7;
+/// A boundary (`boundary().loading(..).failed(..).child(..)`): three children, the arms, in that order;
+/// `text` holds its [`BoundReq`].
+pub(crate) const K_BOUND: u8 = 8;
 
 /// The box is painted (`bg`, `rounded`, `border`).
 pub(crate) const F_DRAW: u8 = 1;
@@ -149,11 +154,67 @@ impl Ext {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct WireReq {
+    /// The head the wire hangs on: the cell's own (its first field), or a second head inside it (`W_PHEAD`).
     pub head: *const Cell<u32>,
     /// `reflect::cell_id` of the cell type `patch` reads.
     pub ty: TypeId,
     pub patch: PatchFn,
     pub recipe: crate::rt::Recipe,
+    /// `W_*`.
+    pub flags: u32,
+}
+
+/// `WireReq::flags`: the wire hangs on a reader's pending head (`phead`, 4 bytes into the cell).
+pub(crate) const W_PHEAD: u32 = 1;
+/// The wire runs while its source is held by a pending cohort (`latest(..)`).
+pub(crate) const W_LATEST: u32 = 2;
+/// The port reads a reader's value: a boundary around it guards that reader (`El::child` of a boundary).
+pub(crate) const W_GUARD: u32 = 4;
+
+impl WireReq {
+    /// Bytes from the cell's start to the head the wire hangs on.
+    #[inline(always)]
+    pub(crate) fn sub(&self) -> usize {
+        if self.flags & W_PHEAD != 0 { 4 } else { 0 }
+    }
+    /// The cell's address.
+    #[inline(always)]
+    pub(crate) fn cell(&self) -> usize {
+        self.head as usize - self.sub()
+    }
+}
+
+/// A producer as described: its source signal and its reader (proven fields of the view at mount), the
+/// request function, and the kernel's mount for this source and reader type.
+#[derive(Clone, Copy)]
+pub(crate) struct ProdReq {
+    pub src: *const u8,
+    pub src_ty: TypeId,
+    pub dst: *const u8,
+    pub dst_ty: TypeId,
+    /// The `fn(&S) -> Request<T>`.
+    pub f: usize,
+    pub mount: crate::reader::MountProducer,
+    /// (source type, reader type) names, for a located refusal.
+    pub names: fn() -> (&'static str, &'static str),
+    pub at: &'static std::panic::Location<'static>,
+}
+
+/// A reader a boundary guards: one of the readers its child arm reads (`W_GUARD` ports), once each.
+#[derive(Clone, Copy)]
+pub(crate) struct GuardReq {
+    pub next: *const GuardReq,
+    /// The reader's address.
+    pub reader: usize,
+    pub ty: TypeId,
+}
+
+/// A boundary as described: its guards and its failure policy.
+#[derive(Clone, Copy)]
+pub(crate) struct BoundReq {
+    pub guards: *const GuardReq,
+    /// `crate::reader::BP_*`.
+    pub policy: u8,
 }
 
 /// A route asked for: the trampoline monomorphised where the route was written, the route's bytes, and the
@@ -217,7 +278,25 @@ impl Arena {
         let p = self.cur;
         // SAFETY: `cur < end`, both in one chunk of `CHUNK` slots.
         self.cur = unsafe { p.add(1) };
-        let n = DNode { turn: self.turn, next: ptr::null_mut(), first: ptr::null_mut(), last: ptr::null_mut(), ext: ptr::null_mut(), ink: ptr::null(), tw: ptr::null(), text: ptr::null(), len: 0, paint: 0, bc: 0, spec, m: [0.0; 2], kind, flags: 0, ops: 0, has: 0 };
+        let n = DNode {
+            turn: self.turn,
+            next: ptr::null_mut(),
+            first: ptr::null_mut(),
+            last: ptr::null_mut(),
+            ext: ptr::null_mut(),
+            ink: ptr::null(),
+            tw: ptr::null(),
+            text: ptr::null(),
+            len: 0,
+            paint: 0,
+            bc: 0,
+            spec,
+            m: [0.0; 2],
+            kind,
+            flags: 0,
+            ops: 0,
+            has: 0,
+        };
         // SAFETY: `p` is a valid, aligned, unaliased slot (no handle of this turn names it yet).
         unsafe { p.write(n) };
         // SAFETY: `p` is in a chunk, never null.
