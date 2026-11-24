@@ -29,15 +29,20 @@ pub(crate) struct EOp<P> {
     w: *const WireReq,
 }
 
-/// Installs `w` on `node` if its cell is a field of the mounting view.
+/// Installs `w` on `node` if its cell is a field of the mounting view (a motion port: its motion too, resting at
+/// `init`, the value's bits).
 #[inline]
-fn wire<V>(m: &mut Mounter<'_, V>, w: *const WireReq, node: u32) {
+fn wire<V>(m: &mut Mounter<'_, V>, w: *const WireReq, node: u32, init: u32) {
     if !w.is_null() {
         // SAFETY: `w` was written this description by a setter: `head` is the head of a live cell of the type
-        // `ty` names, and `patch` reads that cell type with this recipe (`plug.rs`).
+        // `ty` names, and `patch` reads that cell type with this recipe (`plug.rs`; a motion's, `motion.rs`).
         unsafe {
             let w = &*w;
-            m.wire_field(&*w.head, w.ty, w.patch, node, w.recipe);
+            if w.motion.is_null() {
+                m.wire_field(&*w.head, w.ty, w.patch, node, w.recipe);
+            } else {
+                super::motion::install(m, w, node, init);
+            }
         }
     }
 }
@@ -65,11 +70,17 @@ fn seal_req<S: Sealer>(s: &mut S, w: *const WireReq) {
 /// How a scalar operand's value enters a seal.
 pub(crate) trait SealVal: Copy + 'static {
     fn seal_val<S: Sealer>(self, s: &mut S);
+    /// The value as one word (a motion's initial value, `motion::install`).
+    fn bits(self) -> u32;
 }
 impl SealVal for Color {
     #[inline(always)]
     fn seal_val<S: Sealer>(self, s: &mut S) {
         s.paint(self.0)
+    }
+    #[inline(always)]
+    fn bits(self) -> u32 {
+        self.0
     }
 }
 impl SealVal for f32 {
@@ -77,12 +88,16 @@ impl SealVal for f32 {
     fn seal_val<S: Sealer>(self, s: &mut S) {
         s.f32(self)
     }
+    #[inline(always)]
+    fn bits(self) -> u32 {
+        self.to_bits()
+    }
 }
 
 impl<P: SealVal, V> IntoProp<P, V> for EOp<P> {
     #[inline]
     fn lower<K: Apply<P = P>>(self, m: &mut Mounter<'_, V>, node: u32) -> P {
-        wire(m, self.w, node);
+        wire(m, self.w, node, self.v.bits());
         self.v
     }
     #[inline(always)]
@@ -124,7 +139,7 @@ impl EText {
 impl<V> TextSrc<V> for EText {
     #[inline]
     fn lower(self, m: &mut Mounter<'_, V>, node: u32) -> String {
-        wire(m, self.w, node);
+        wire(m, self.w, node, 0);
         self.with(str::to_owned)
     }
     #[inline]
@@ -493,7 +508,11 @@ fn set_routes<V: 'static>(m: &mut Mounter<'_, V>, a: u32, x: &Ext) {
     }
     let act = &mut input.acts[a as usize];
     if x.flags & X_HOVER != 0 {
-        act.hover_bg = Some(x.hover);
+        let was = act.hover_bg.replace(x.hover);
+        // a colour re-described while the pointer is over the element shows now, not at the next entry
+        if act.hovered && was != Some(x.hover) && !cfg!(feature = "mutant_el_hover") {
+            crate::input::show_hover_bg(m.rt, a);
+        }
     }
 }
 
@@ -646,6 +665,11 @@ fn seal_at<S: Sealer, const LEAF: bool>(n: &DNode, s: &mut S) {
         if x.flags & X_HOVER != 0 {
             s.paint(x.hover);
         }
+        if x.flags & X_MOTION != 0 {
+            for g in motion_progs(n) {
+                g.into_iter().for_each(|w| s.word(w));
+            }
+        }
         for r in acts(x) {
             s.word(r.kind as u32 | key_code(r.key) << 8);
             let t = r.tramp as usize as u64;
@@ -703,6 +727,10 @@ impl<V: 'static> Element<V> for Item {
         match n.kind {
             K_GROUP | K_FRAG => update_dyn(m, Items(n.first)),
             _ => {
+                if n.has & (H_INK | H_TW) != 0 || n.ops != 0 {
+                    sync_node(m, self.0);
+                }
+                let n = self.n();
                 // the element's first record carries its act (`input::act_for`)
                 let act = interactive(n).map(|x| (x, m.rt.bough.handle_at(m.pos)));
                 match n.kind {
@@ -762,6 +790,34 @@ impl<V: 'static> Element<V> for Item {
             }
         }
     }
+}
+
+/// `motion::sync_ports` for a node about to be updated: its wired ports in the order its mount installed them
+/// (a box: fill, then opacity, translations, width, height; a text: content, then ink).
+#[inline(never)]
+fn sync_node<V>(m: &mut Mounter<'_, V>, node: NonNull<DNode>) {
+    // SAFETY: a node of the description being walked (as `Item::n`); the walk holds no other reference to it
+    // while it is updated, and its seal (which reads these fields) was written before the update.
+    let n = unsafe { &mut *node.as_ptr() };
+    let mut paint = n.paint;
+    match n.kind {
+        K_BOX if n.ops == 0 => super::motion::sync_ports(m, &mut [(n.ink, &mut paint)]),
+        K_BOX => {
+            // SAFETY: `ops != 0` only with an `Ext`, this node's own.
+            let x = unsafe { &mut *n.ext };
+            let on = |bit: u8, w: *const WireReq| if n.ops & bit != 0 { w } else { ptr::null() };
+            let mut v = [x.alpha, x.tx, x.ty, x.w, x.h].map(f32::to_bits);
+            let [a, tx, ty, w, h] = &mut v;
+            super::motion::sync_ports(m, &mut [(n.ink, &mut paint), (on(OP_ALPHA, x.wa), a), (on(OP_TX, x.wtx), tx), (on(OP_TY, x.wty), ty), (on(OP_W, x.ww), w), (on(OP_H, x.wh), h)]);
+            [x.alpha, x.tx, x.ty, x.w, x.h] = v.map(f32::from_bits);
+        }
+        K_TEXT => {
+            let mut t = 0;
+            super::motion::sync_ports(m, &mut [(n.tw, &mut t), (n.ink, &mut paint)]);
+        }
+        _ => {}
+    }
+    n.paint = paint;
 }
 
 fn lower_acts<V: 'static>(l: &mut crate::lower::Lower<'_, '_, V>, at: usize, x: &Ext) {
@@ -900,6 +956,40 @@ fn check_req(w: *const WireReq, p: At, end: At) -> At {
     }
 }
 
+/// The timings of a node's motion ports (`X_MOTION`), in port order: what `seal_at` writes after the hover
+/// colour. (In the `Ext` part, so a node without one, a list's plain row, checks nothing more.)
+#[inline]
+fn motion_progs(n: &DNode) -> impl Iterator<Item = [u32; 4]> {
+    let x = ext(n);
+    let on = |bit: u8, w: Option<*const WireReq>| w.filter(|_| n.ops & bit != 0);
+    let reqs = [Some(n.ink), on(OP_ALPHA, x.map(|x| x.wa)), on(OP_TX, x.map(|x| x.wtx)), on(OP_TY, x.map(|x| x.wty)), on(OP_W, x.map(|x| x.ww)), on(OP_H, x.map(|x| x.wh))];
+    reqs.into_iter().flatten().filter_map(|w| {
+        // SAFETY: requests of this description (`plug.rs`, `motion.rs`).
+        let w = unsafe { w.as_ref()? };
+        // SAFETY: as above.
+        let g = unsafe { w.motion.as_ref()? }.prog;
+        Some([g.kind, g.a.to_bits(), g.b.to_bits(), g.delay.to_bits()])
+    })
+}
+
+#[cold]
+fn check_progs(n: &DNode, p: At, end: At) -> At {
+    let mut p = p;
+    for g in motion_progs(n) {
+        if left(p, end) < 16 {
+            return ptr::null();
+        }
+        // SAFETY: 16 bytes are left (checked).
+        let d = unsafe { (rd32(p, 0) ^ g[0]) | (rd32(p, 4) ^ g[1]) | (rd32(p, 8) ^ g[2]) | (rd32(p, 12) ^ g[3]) };
+        if d != 0 {
+            return ptr::null();
+        }
+        // SAFETY: as above.
+        p = unsafe { p.add(16) };
+    }
+    p
+}
+
 /// `n`'s block against the `BLOCK` bytes at `p` (in bounds: checked by the caller).
 #[inline(always)]
 unsafe fn eq_block(n: &DNode, p: At) -> bool {
@@ -996,7 +1086,7 @@ fn check_at<const LEAF: bool>(n: &DNode, p: At, end: At) -> At {
         return p;
     }
     // SAFETY: a node's `ext` is its own (as `ext`).
-    check_ext(unsafe { &*n.ext }, p, end)
+    check_ext(n, unsafe { &*n.ext }, p, end)
 }
 
 #[inline(always)]
@@ -1043,7 +1133,7 @@ fn check_ops(n: &DNode, p: At, end: At) -> At {
 }
 
 #[inline(never)]
-fn check_ext(x: &Ext, p: At, end: At) -> At {
+fn check_ext(n: &DNode, x: &Ext, p: At, end: At) -> At {
     let mut p = p;
     let word = |p: At, w: u32| -> At {
         // SAFETY: four bytes are left (checked).
@@ -1055,6 +1145,12 @@ fn check_ext(x: &Ext, p: At, end: At) -> At {
     }
     if x.flags & X_HOVER != 0 {
         p = word(p, x.hover);
+        if p.is_null() {
+            return p;
+        }
+    }
+    if x.flags & X_MOTION != 0 {
+        p = check_progs(n, p, end);
         if p.is_null() {
             return p;
         }
@@ -1177,6 +1273,51 @@ mod tests {
         assert_eq!(sweep("plain", plain), 9, "equal padding-free captures seal alike");
         let hits = sweep("padded", padded);
         eprintln!("padded: {hits}/9 equal descriptions sealed alike");
+    }
+
+    /// Motion ports seal by their signal, timing and map: descriptions that differ in any of them never seal
+    /// alike, and the fast check agrees with the streaming one.
+    #[test]
+    fn motions_seal_by_timing_and_map() {
+        use crate::el::{animate, Spring};
+        use crate::transition::{Curve, Ease};
+        let (a, b) = (crate::signal::Signal::new(0.5f32), crate::signal::Signal::new(crate::color::rgb(0x102030)));
+        let make = |v: u32| -> super::super::El<'_> {
+            let m = animate(&a);
+            let e = div().size(4, 4).bg(crate::color::rgb(0x010101));
+            match v {
+                0 => e.opacity(m),
+                1 => e.opacity(m.spring(Spring::bouncy())),
+                2 => e.opacity(m.over(200)),
+                3 => e.opacity(m.over(300)),
+                4 => e.opacity(m.over(200).ease(Ease::Linear)),
+                5 => e.opacity(m.over(200).delay(50)),
+                6 => e.opacity(m.reverse()),
+                7 => e.opacity(m.scale(2)),
+                8 => e.translate_y(m),
+                9 => e.opacity(m).translate_y(m.curve(Curve::smooth(0.2))),
+                10 => e.opacity(m).translate_y(m.curve(Curve::smooth(0.3))),
+                11 => e.opacity(&a),
+                12 => div().size(4, 4).bg(animate(&b)),
+                13 => div().size(4, 4).bg(animate(&b).over(100)),
+                _ => column(text("t").fg(animate(&b).delay(10))),
+            }
+        };
+        let mut descs = crate::layout::SpecTable::default();
+        for x in 0..15 {
+            let mut bytes = Vec::new();
+            let ex = make(x);
+            seal_node(Item(ex.raw()).n(), &mut SealWrite { out: &mut bytes, descs: &mut descs, ok: true });
+            for y in 0..15 {
+                let ey = make(y);
+                let ny = Item(ey.raw());
+                let mut sc = SealCheck::new(&bytes, &descs);
+                seal_node(ny.n(), &mut sc);
+                assert_eq!(seal_eq_node(ny.n(), &bytes), sc.equal(), "descriptions {x} and {y}");
+                assert_eq!(sc.equal(), x == y, "descriptions {x} and {y}");
+            }
+            drop(Walk::enter());
+        }
     }
 
     /// The same value written to any two different fields of a node's block (spec, metrics, flags) never

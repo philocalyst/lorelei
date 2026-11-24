@@ -52,6 +52,8 @@ pub(crate) const OP_H: u8 = 16;
 /// `Ext::flags`.
 pub(crate) const X_HOVER: u8 = 1;
 pub(crate) const X_FOCUS: u8 = 2;
+/// A port of the element takes a motion (`motion.rs`): its timings are part of the element's seal.
+pub(crate) const X_MOTION: u8 = 4;
 
 /// Route kinds (`ActReq::kind`).
 pub(crate) const A_CLICK: u8 = 0;
@@ -154,6 +156,9 @@ pub(crate) struct WireReq {
     pub ty: TypeId,
     pub patch: PatchFn,
     pub recipe: crate::rt::Recipe,
+    /// A motion port (`motion.rs`): its program and the functions that make and steer its transition; null
+    /// for every other port.
+    pub motion: *const super::motion::MotionReq,
 }
 
 /// A route asked for: the trampoline monomorphised where the route was written, the route's bytes, and the

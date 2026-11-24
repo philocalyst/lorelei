@@ -726,6 +726,26 @@ unsafe fn patch_paint2<T: 'static, F: Fn(&T) -> (Color, Color) + Copy>(rt: &mut 
     }
 }
 
+/// Act `a` is hovered and its hover colour was re-described: paint the new one now, as `hover_set` paints it
+/// when the pointer enters (over the element's own opacity).
+pub(crate) fn show_hover_bg(rt: &mut Rt, a: u32) {
+    let act = rt.input.acts[a as usize];
+    let Some(c) = act.hover_bg else { return };
+    let opacity = if act.node != NONE { rt.mod_of(act.node).alpha } else { 1.0 };
+    let new = crate::boxops::mul_alpha(c, opacity);
+    let p = rt.inst_mut(act.inst);
+    let old = pair(p.color, p.color2);
+    if act.bordered {
+        p.color2 = new;
+    } else {
+        p.color = new;
+    }
+    let now = pair(p.color, p.color2);
+    if old != now {
+        rt.paint_write(act.handle, old, now);
+    }
+}
+
 /// Interaction ops on any element (they apply to its first record). The owner type is inferred from
 /// where the element is mounted (and from the closures' argument types).
 pub trait Interact: Sized {

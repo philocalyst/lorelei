@@ -23,6 +23,7 @@
 //! it into the retained records (`walk.rs`). Identity is parent × ordinal × kind (L3): a child whose kind
 //! changes at its position is remounted there, and only there; an iterator's items keep their position.
 mod arena;
+pub mod motion;
 pub mod plug;
 mod walk;
 
@@ -43,6 +44,7 @@ pub(crate) use arena::Walk;
 pub fn rewind_for_bench() {
     drop(Walk::enter());
 }
+pub use motion::{animate, Animatable, Motion, Spring};
 pub use plug::{Map, Source};
 
 /// The element currency: a cursor to one element of the description being written. Move-only, `!Send`,
@@ -124,6 +126,16 @@ impl<'f> El<'f> {
         // SAFETY: `ext` points into this turn's bump store and belongs to this node.
         unsafe { &mut *n.ext }
     }
+    /// A port took `w`: a motion's timing becomes part of the element's seal (`X_MOTION`). (A constant's `w`
+    /// is null where the setter is inlined, so this folds away.)
+    #[inline(always)]
+    #[track_caller]
+    fn motion_port(&self, w: *const WireReq) {
+        // SAFETY: a non-null `w` is the request the plug just wrote in this description's arena.
+        if !w.is_null() && !unsafe { (*w).motion }.is_null() {
+            self.ext().flags |= X_MOTION;
+        }
+    }
     /// The node, for the walk; checked.
     #[inline]
     #[track_caller]
@@ -145,6 +157,7 @@ impl<'f> El<'f> {
             n.ops &= !OP_W;
         } else {
             self.kind_is(K_BOX, "a width source").ops |= OP_W;
+            self.motion_port(pl.w);
             let x = self.ext();
             (x.w, x.ww) = (pl.v, pl.w);
         }
@@ -160,6 +173,7 @@ impl<'f> El<'f> {
             n.ops &= !OP_H;
         } else {
             self.kind_is(K_BOX, "a height source").ops |= OP_H;
+            self.motion_port(pl.w);
             let x = self.ext();
             (x.h, x.wh) = (pl.v, pl.w);
         }
@@ -295,6 +309,7 @@ impl<'f> El<'f> {
         (n.paint, n.ink) = (pl.v.0, pl.w);
         n.has = n.has & !H_INK | if pl.w.is_null() { 0 } else { H_INK };
         n.flags |= F_DRAW;
+        self.motion_port(pl.w);
         self
     }
     #[track_caller]
@@ -316,6 +331,7 @@ impl<'f> El<'f> {
     pub fn opacity<P: IntoProp<'f, f32>>(self, p: P) -> Self {
         let pl = p.plug::<crate::boxops::ApplyOpacity>(Seal);
         self.kind_is(K_BOX, "an opacity").ops |= OP_ALPHA;
+        self.motion_port(pl.w);
         let x = self.ext();
         (x.alpha, x.wa) = (pl.v, pl.w);
         self
@@ -325,6 +341,7 @@ impl<'f> El<'f> {
     pub fn translate_x<P: IntoProp<'f, f32>>(self, p: P) -> Self {
         let pl = p.plug::<crate::boxops::ApplyTx>(Seal);
         self.kind_is(K_BOX, "a translation").ops |= OP_TX;
+        self.motion_port(pl.w);
         let x = self.ext();
         (x.tx, x.wtx) = (pl.v, pl.w);
         self
@@ -334,6 +351,7 @@ impl<'f> El<'f> {
     pub fn translate_y<P: IntoProp<'f, f32>>(self, p: P) -> Self {
         let pl = p.plug::<crate::boxops::ApplyTy>(Seal);
         self.kind_is(K_BOX, "a translation").ops |= OP_TY;
+        self.motion_port(pl.w);
         let x = self.ext();
         (x.ty, x.wty) = (pl.v, pl.w);
         self
@@ -367,6 +385,7 @@ impl<'f> El<'f> {
         let n = self.kind_is(K_TEXT, "an ink colour");
         (n.paint, n.ink) = (pl.v.0, pl.w);
         n.has = n.has & !H_INK | if pl.w.is_null() { 0 } else { H_INK };
+        self.motion_port(pl.w);
         self
     }
     /// Font size and line height, points.

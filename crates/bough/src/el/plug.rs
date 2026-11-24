@@ -106,7 +106,7 @@ number_plugs!(f32, i32, u32);
 impl<'f, T: Scalar> IntoProp<'f, T> for &'f Signal<T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE }) }
+        Plug { v: **self, w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<T>>(), patch: patch_sig::<K, T>, recipe: crate::rt::Recipe::NONE, motion: ptr::null() }) }
     }
 }
 
@@ -141,7 +141,7 @@ fn recipe<F: Copy>(f: F) -> crate::rt::Recipe {
 impl<'f, S: 'static, T: Scalar, F: Fn(&S) -> T + Copy + 'static> IntoProp<'f, T> for Map<'f, S, F> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
-        Plug { v: (self.f)(self.sig), w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        Plug { v: (self.f)(self.sig), w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), motion: ptr::null() }) }
     }
 }
 
@@ -189,7 +189,7 @@ int_text!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
 impl<'f> IntoProp<'f, Text> for &'f Signal<String> {
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
-        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE }) }
+        Plug { v: borrowed(self), w: arena::put(WireReq { head: self.head(), ty: cell_id::<Signal<String>>(), patch: patch_sig::<K, String>, recipe: crate::rt::Recipe::NONE, motion: ptr::null() }) }
     }
 }
 
@@ -198,7 +198,7 @@ impl<'f, S: 'static, F: Fn(&S) -> String + Copy + 'static> IntoProp<'f, Text> fo
     #[inline]
     fn plug<K: Apply<P = String>>(self, _: Seal) -> Plug<Text> {
         let s = (self.f)(self.sig);
-        Plug { v: TextVal { ptr: arena::bytes(s.as_bytes()), len: s.len() as u64, flags: 0 }, w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f) }) }
+        Plug { v: TextVal { ptr: arena::bytes(s.as_bytes()), len: s.len() as u64, flags: 0 }, w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<S>>(), patch: patch_map::<K, S, F>, recipe: recipe(self.f), motion: ptr::null() }) }
     }
 }
 
