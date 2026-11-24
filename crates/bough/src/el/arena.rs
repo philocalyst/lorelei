@@ -116,7 +116,10 @@ impl DNode {
     /// head, is below `1 << 27` (`H_*` < 8).
     #[inline(always)]
     pub(crate) fn block(&self) -> *const u8 {
-        &self.kind as *const u8
+        // From the whole node, not `&self.kind`: a pointer made from a field reference may only read that
+        // field (Miri, Stacked Borrows: reading the block through `&self.kind` was undefined behaviour).
+        // SAFETY: `kind` is in bounds of `*self` (offset_of).
+        unsafe { (self as *const DNode as *const u8).add(std::mem::offset_of!(DNode, kind)) }
     }
 }
 

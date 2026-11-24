@@ -1122,7 +1122,15 @@ mod tests {
                 let mut sc = SealCheck::new(&bytes, &descs);
                 seal_node(nb.n(), &mut sc);
                 assert_eq!(seal_eq_node(nb.n(), &bytes), sc.equal(), "descriptions {a} and {b}");
-                assert_eq!(sc.equal(), a == b, "descriptions {a} and {b} (no two are alike)");
+                if cfg!(miri) {
+                    // Rust does not promise that one function cast to a pointer twice gives one address, and
+                    // Miri gives a fresh one each time: a seal holds patch and trampoline addresses, so equal
+                    // descriptions may seal apart (a missed skip, never a wrong one). Different ones never
+                    // seal alike.
+                    assert!(a == b || !sc.equal(), "descriptions {a} and {b} (no two are alike)");
+                } else {
+                    assert_eq!(sc.equal(), a == b, "descriptions {a} and {b} (no two are alike)");
+                }
             }
             drop(Walk::enter());
         }
@@ -1133,6 +1141,7 @@ mod tests {
     /// streaming one, and padding-free captures always seal alike. (Equal padded values may differ in their
     /// padding bytes and then only miss a seal: not asserted.)
     #[test]
+    #[cfg_attr(miri, ignore = "the recipe freeze is inline asm, which Miri cannot execute (its argument: an asm block's outputs are initialised, rt.rs)")]
     fn padded_captures_seal_by_value() {
         #[derive(Clone, Copy)]
         struct Pad {

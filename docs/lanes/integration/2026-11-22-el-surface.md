@@ -249,3 +249,20 @@ check` accepts it, `cargo build` refuses it), so it is a `compile_fail,E0080` do
 16-byte twin; a container setter on a text (`text("a").gap(8)`) is a located panic at the setter, not a compile
 error, because `El` is one type (the design's "wrong layout-family method" is typed per family; here the
 element's kind is a runtime value).
+
+## Miri (gate 13, first run)
+
+`MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test -p bough --lib -- el:: rt:: seal:: reflect:: signal:: list:: describe::
+changed:: store:: ledger:: mlist:: entity::` (nightly-2026-10-17, Stacked Borrows): 10 passed, 1 ignored, 473 s.
+`-Zmiri-ignore-leaks` because the El arena's chunks are never freed by design (`arena.rs`: a stale handle must
+always read a turn word). Integration tests (`tests/*.rs`) drive `App`, which calls the platform's frameworks, and
+cannot run under Miri.
+
+Found and fixed: **`DNode::block` was undefined behaviour under Stacked Borrows.** The seal's 104-byte head block
+was read through a pointer made from `&self.kind`, whose provenance covers one byte; it is now derived from the
+whole node (same address, same code). Recorded, not changed: the recipe freeze is inline asm, which Miri cannot
+execute (`padded_captures_seal_by_value` is ignored under Miri with that reason); and Rust does not promise that a
+function cast to a pointer twice has one address (Miri gives a fresh one each time), so equal descriptions may
+seal apart there. A seal holds patch and trampoline addresses, so this is a missed skip, never a wrong one: two
+functions can share an address only when their code is identical. `the_fast_check_agrees_with_the_seal` asserts
+the weaker law under Miri.
