@@ -7,7 +7,8 @@ import tempfile
 import unittest
 
 from operations import (FLAT_CELLS, FLAT_EXECUTORS, FLAT_HEADER, FX_EXECUTORS, FX_HEADER, FX_METRICS, FX_PHASES,
-                        PBENCH_EXECUTORS, REQUIRED, flatbench, guibench, pbench, staged_paint, table)
+                        PBENCH_EXECUTORS, REDESCRIBE_HEADER, REQUIRED, flatbench, guibench, pbench, redescribe,
+                        staged_paint, table)
 from run import binary_spec, cells, core_package, summary, summarize
 
 
@@ -132,6 +133,42 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(binary_spec("flatbench", Path("."))[1][-3:], ["bough-paint", "--example", "flatbench"])
         self.assertNotIn("flatbench", unavailable)
 
+    @staticmethod
+    def redescribe_output(rows=("1000", "10000"), typed=296413, el=428596):
+        lines = [",".join(REDESCRIBE_HEADER)]
+        for n in rows:
+            for shape in ("owned", "static", "bare"):
+                t, e = (typed, el) if shape != "bare" else (125231, 166573)
+                lines.append(f"{n},{shape},{t},{e},{e / t:.2f},0.00,0.00")
+        return "\n".join(lines)
+
+    def test_redescribe_reads_typed_and_el_counters(self):
+        operations = redescribe(self.redescribe_output(), ("1000", "10000"), {"EL": "1"})
+        self.assertEqual(len(operations), 6)
+        self.assertEqual(operations["1000/owned"], {
+            "instr_p50": 428596, "typed_instr": 296413, "el_over_typed": 1.45,
+            "typed_allocs_per_turn": 0.0, "el_allocs_per_turn": 0.0,
+        })
+        self.assertEqual(operations["1000/bare"]["instr_p50"], 166573)
+        self.assertIn("10000/owned", operations)
+        for bad in (self.redescribe_output(rows=("1000",)),
+                    self.redescribe_output().replace(",bare,", ",weird,", 1),
+                    self.redescribe_output().replace(",428596,", ",0,", 1),
+                    self.redescribe_output().replace("1.45", "-1.00", 1),
+                    self.redescribe_output() + "\n1000,owned,1,2,1.00,0.00,0.00"):
+            with self.assertRaises(ValueError):
+                redescribe(bad, ("1000", "10000"), {"EL": "1"})
+
+    def test_the_matrix_holds_the_redescribe_cell(self):
+        matrix, unavailable = cells(Path(__file__).resolve().parents[2])
+        names = {cell.name: cell for cell in matrix}
+        self.assertIn("redescribe/rows", names)
+        self.assertEqual(names["redescribe/rows"].env, {"EL": "1"})
+        self.assertEqual(names["redescribe/rows"].argv, ("1000", "10000"))
+        self.assertEqual(names["redescribe/rows"].parser, "redescribe")
+        self.assertEqual(binary_spec("redescribe", Path("."))[1][-3:], ["bough", "--example", "redescribe_cost"])
+        self.assertNotIn("redescribe", unavailable)
+
     def test_changed_operation_set_refused(self):
         a = {"process": {"instructions": 2000000}, "operations": {"hover": {"instr_p50": 13504}}}
         b = {"process": a["process"], "operations": {}}
@@ -184,6 +221,34 @@ class CompareTests(unittest.TestCase):
         changed = self.compare(base, head, "--require-same-cells")
         self.assertEqual(changed.returncode, 1, changed.stderr)
         self.assertIn("REGRESSED", changed.stdout)
+
+    def test_redescribe_allocation_count_gated_at_zero(self):
+        cell = {
+            "valid": True, "load": [1.0] * 3, "binary": "redescribe", "argv": ["1000", "10000"],
+            "env": {"EL": "1"}, "parser": "redescribe", "counter_scope": "thread", "check": [],
+            "operations": {"1000/owned": {
+                "instr_p50": summary([428596] * 3), "typed_instr": summary([296413] * 3),
+                "el_over_typed": summary([1.45] * 3), "typed_allocs_per_turn": summary([0.0] * 3),
+                "el_allocs_per_turn": summary([0.0] * 3),
+            }},
+            "process": {k: summary([99999] * 3) for k in ("instructions", "wall_ms", "rss_bytes")},
+        }
+        base = copy.deepcopy(self.doc)
+        base["cells"] = {"redescribe/rows": cell}
+        base["binaries"] = {"redescribe": {"cargo_args": ["--profile", "dist", "-p", "bough",
+                                                          "--example", "redescribe_cost"]}}
+        self.assertEqual(self.compare(base, base).returncode, 0)
+        head = copy.deepcopy(base)
+        head["cells"]["redescribe/rows"]["operations"]["1000/owned"]["el_allocs_per_turn"] = summary([1.0] * 3)
+        alloc = self.compare(base, head, "--require-same-cells")
+        self.assertEqual(alloc.returncode, 1, alloc.stderr)
+        self.assertIn("REGRESSED", alloc.stdout)
+        # the typed twin is gated like a primary instruction counter
+        head = copy.deepcopy(base)
+        head["cells"]["redescribe/rows"]["operations"]["1000/owned"]["typed_instr"] = summary([999999] * 3)
+        typed = self.compare(base, head, "--require-same-cells")
+        self.assertEqual(typed.returncode, 1, typed.stderr)
+        self.assertIn("REGRESSED", typed.stdout)
 
     def test_integration_gate_checks_added_operations(self):
         head = copy.deepcopy(self.doc)
