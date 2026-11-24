@@ -254,6 +254,8 @@ fn main() {
         row("port", mode, "completion", t.1, e.1, t.2, e.2);
         let (t, e) = (first::<typed::Port<false>>(once), first::<el::Port<false>>(once));
         row("port", mode, "first", t.0, e.0, t.1 as f64, e.1 as f64);
+        let (t, e) = (idle::<typed::Port<false>>(once), idle::<el::Port<false>>(once));
+        row("port", mode, "idle", t.0, e.0, t.1, e.1);
         let (t, e) = (cycle::<typed::Port<true>>(once), cycle::<el::Port<true>>(once));
         row("boundary", mode, "request", t.0, e.0, t.2, e.2);
         row("boundary", mode, "completion", t.1, e.1, t.2, e.2);
