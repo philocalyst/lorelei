@@ -228,3 +228,65 @@ corpus/search: same-host noise from allocator layout and page faults, made alloc
 narrowing 2.8 K -> 1.1 K), Join −40–58%, Group back; `part_mark_cell` 59 -> 64 kept (3 of 5 instructions are the
 soundness bounds check). The `_x` fixture names left over from bough-x are gone (old receipts and checkouts still
 compare and build).
+
+## Keyed collections as El children, and routes on the owner chain (B3) — card (frozen 2026-11-24, before building)
+
+Branch `lane/reactivity/el-lists` at base `1a090b8b7f`. Design: 02 §4 / §4.1 (L8), 01 §4, 04 §2–3 (L4).
+
+**What is built.** `&List<T: View>` and `list.each(f)` (`f: fn(&T) -> El` or `fn(&T, Slot<T>) -> El`) as El
+children, lowered onto the kernel's list region (`listview.rs`: one region per list, per-row owner class, the
+delta log replayed, per-slot splice / move / edit) with an El row mounter of its own; `&Vec<T: View>` as an
+ordinal child form; a route's receiver resolved at mount against the owner chain (row owner, enclosing rows,
+the root view) by its `TypeId`, nearest first, a row receiver reached at dispatch through its list
+(`List::edit_slot`, so the edit is logged and published).
+
+**Question.** What does an El list region cost over the typed `list(sig!(..))` region, per operation, and does
+it keep the kernel's per-slot deltas (an edit re-describes one row, a move remounts nothing, a splice mounts one
+row, a parent re-description with an unchanged list does not visit its rows)?
+
+**Measure.** A new example `crates/bough/examples/el_list_cost.rs`: one binary, El and typed twins
+interleaved, N = 1000 and 10000 rows of the same shape (a painted 960x32 row holding an integer text and a
+`Signal<String>` label), default config (the root re-describes). Instructions per `App::turn` on the calling
+thread by slope over two repeat counts (`bough_sys::perf::tinstr`, as `redescribe_cost`), allocator calls per
+turn (the counting allocator, as `redescribe_cost`'s `HEAP`). Cells:
+* `mount`: `App::new` + first turn with N rows minus the same with 0 rows, per row;
+* `edit`: one row's label signal set through `List::edit`;
+* `move`: one row moved (`move_to`, alternating there and back);
+* `splice`: one row inserted in the middle, then removed (per pair, as `redescribe_cost`'s `churn`);
+* `parent`: a plain field of the root that the root's own view reads changes; the list does not.
+Counters: rows described per turn (El: projections run; new `LStats` counter), rows mounted / unmounted.
+Existing cells: `EL=1 redescribe_cost 1000 10000` (and its `HEAP` allocation columns) and the six workload
+scenes (`chat` uses a typed list region; `MODE=once` and `MODE=redescribe`, `RENDER=0`, median of 3), base
+binary (`1a090b8b7f`) against head, same host, same session.
+
+**Prediction.** El ≤ 1.5x typed instructions on every operation cell at both N. `edit` describes exactly one
+row, `move` and `parent` describe zero, `splice` mounts exactly one. `parent` is O(1) in rows for El: its
+10000-row cell is within 1.2x of its 1000-row cell (typed's `LList::update` sums its rows' record counts and is
+expected to grow with N). Allocator calls per turn: El ≤ typed in every steady cell, and zero in `edit` and
+`parent`. Existing cells within ±1%, steady allocations unchanged (zero).
+
+**Kill line.** Any operation cell above 2.0x typed; any allocation in an El `edit` or `parent` turn, or El
+above typed in any steady cell; El `parent` at 10000 rows above 1.5x its 1000-row cell; any existing
+`redescribe_cost` or workload cell moved by more than ±1% (outside the code-layout cells already documented
+above: `first_frame`, `canvas`/`gbcanvas` steady once, `idle` once). Past a kill line, the change does not
+land in this form.
+
+**Correctness gates** (each with a cargo-feature mutant that must fail it), `crates/bough/tests/el_lists.rs`:
+* Oracle: seeded random scripts of push / insert / remove / move / swap / sort / edit (plain field and signal
+  field) / retain; after every step the presented pixels equal a fresh mount of the same items, and the repaired
+  frame equals a full redraw. Mutant `mutant_el_list_slot` (the El row mounter takes the slot for a position).
+* Edits re-describe: an edit of a plain field shows (the row re-describes); exactly one row described per
+  edit. Mutant `mutant_el_list_edit` (edited rows are not re-described).
+* Identity: a row's focus and hover stay with the item across permutations; a `Vec` child keeps them with the
+  position (ordinal).
+* Routes: a route on a row mutates that row after reorders, splices and sorts; a route to the root from inside a
+  row; `.with(..)` and `fn(&mut T, &Ev)` routes in rows; keys in rows; nested same-type owners resolve to the
+  nearest; a late event for a removed row does nothing; a receiver not on the chain panics at mount naming both
+  types (the existing test kept). Mutants `mutant_el_route_slot` (dispatch resolves the position recorded at
+  mount instead of the slot) and `mutant_el_route_far` (the farthest matching owner instead of the nearest).
+* `each` with both function shapes; a list that is not a field of the describing owner panics at mount naming
+  the list and owner types (decision: a located panic, not an ordinal fallback — a borrowed list elsewhere has
+  no wire, and an ordinal fallback would silently lose the identity the author asked for).
+
+**Not claimed.** Frame time; horizontal list regions (the kernel's region stacks rows top to bottom); lowering
+(`bough::lower`) of El lists; typed builders' routes in rows (they keep `root_owner_only`).
