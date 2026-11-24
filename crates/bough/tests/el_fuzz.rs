@@ -7,9 +7,12 @@
 //! against a model computed directly from the event sequence, and the misuse panics (stale handle, wrong
 //! kind) are located by message.
 //!
-//! Negative control: `--features mutant_el_shape` keys every El item alike, so a box swapped for a text at a
+//! Negative controls: `--features mutant_el_shape` keys every El item alike, so a box swapped for a text at a
 //! fixed position is updated in place as if it were the same element; `a_kind_change_remounts_its_position`
-//! and the differential loop fail.
+//! and the differential loop fail. `--features mutant_radius_grid` writes a re-described box's corner radius
+//! off the geometry grid its mount snapped it to (`a_fractional_radius_redescribes_pixel_identical` and the
+//! loop fail); `--features mutant_digit_class` lets the glyph pool's all-digit label patch keep its pens where
+//! the face kerns a digit pair (Arial's "11": `a_text_change_redescribes_pixel_identical` fails).
 use bough::prelude::*;
 use bough::raw::{App, Button, Config};
 
@@ -108,6 +111,7 @@ struct State {
     kind_flip: bool,
     label: String,
     idx: u32,
+    radius: f32,
 }
 
 impl State {
@@ -133,6 +137,7 @@ impl State {
             kind_flip: self.kind_flip,
             label: self.label.clone(),
             idx: self.idx,
+            radius: self.radius,
         }
     }
     fn random(rng: &mut Rng) -> State {
@@ -142,23 +147,24 @@ impl State {
             fade: Signal::new(rng.unit()),
             name: Signal::new(format!("s{}", rng.below(1000))),
             count: Signal::new(rng.below(1000) as u32),
-            // sizes and translations are whole points: fractional geometry (a fractional width, height,
-            // translation or corner radius) anti-aliases a re-described/wired frame one LSB away from a fresh
-            // mount (see the `#[ignore]` test below); opacity (`fade`) stays fractional, which is deterministic
-            bw: Signal::new((20 + rng.below(7) * 10) as f32),
-            bh: Signal::new((10 + rng.below(4) * 10) as f32),
-            txx: Signal::new(rng.below(9) as f32),
-            tyy: Signal::new(rng.below(9) as f32),
+            // geometry is fractional: sizes, translations and the corner radius below take tenths of a
+            // point (off the 1/256 px grid), as does opacity (`fade`)
+            bw: Signal::new((20 + rng.below(7) * 10) as f32 + rng.below(10) as f32 / 10.0),
+            bh: Signal::new((10 + rng.below(4) * 10) as f32 + rng.below(10) as f32 / 10.0),
+            txx: Signal::new(rng.below(90) as f32 / 10.0),
+            tyy: Signal::new(rng.below(90) as f32 / 10.0),
             far: vec![Signal::new(rng.color())],
-            box_w: (30 + rng.below(5) * 10) as f32,
-            box_h: (10 + rng.below(4) * 10) as f32,
-            tx: rng.below(7) as f32,
-            ty: rng.below(7) as f32,
+            box_w: (30 + rng.below(5) * 10) as f32 + rng.below(10) as f32 / 10.0,
+            box_h: (10 + rng.below(4) * 10) as f32 + rng.below(10) as f32 / 10.0,
+            tx: rng.below(70) as f32 / 10.0,
+            ty: rng.below(70) as f32 / 10.0,
             n: rng.below(5) as usize,
             show_opt: rng.chance(2),
             kind_flip: rng.chance(2),
             label: format!("L{}", rng.below(1000)),
             idx: rng.below(1000) as u32,
+            // a fractional corner radius (tenths of a point, off the 1/256 px grid)
+            radius: rng.below(80) as f32 / 10.0,
         }
     }
 }
@@ -172,16 +178,15 @@ impl View for State {
             div().size(60, 14).bg(&self.tint)
         };
         column((
-            // texts: a signal field, an integer, a borrowed str, an owned string, and two mapped signals
-            // each text has a fixed width, so a content change re-shapes the glyphs at the same position
-            // instead of shifting the sibling texts (a shifted text anti-aliases one LSB differently: the
-            // `#[ignore]` test below)
+            // texts: a signal field, an integer, a borrowed str, an owned string, and two mapped signals.
+            // The first three size to their content, so a content change that changes a width shifts every
+            // sibling after it (fractional pen origins); the last three have a fixed width (re-shaped in place)
             Some(
                 row((
                     first,
-                    text(&self.name).w(48),
-                    text(self.idx).w(48),
-                    text(self.label.as_str()).w(48),
+                    text(&self.name),
+                    text(self.idx),
+                    text(self.label.as_str()),
                     text(self.label.clone()).w(48),
                     text(self.count.map(|n| format!("n={n}"))).w(48),
                     text(self.name.map(|s| format!("{s}!"))).w(48),
@@ -218,7 +223,8 @@ impl View for State {
                         .size(self.box_w, self.box_h)
                         .bg(rgb(0x885500))
                         .translate_x(self.tx)
-                        .translate_y(self.ty),
+                        .translate_y(self.ty)
+                        .rounded(self.radius),
                 ))
                 .gap(2),
             ),
@@ -237,12 +243,16 @@ impl View for State {
     }
 }
 
-/// One random re-description turn: mutate plain fields and signals. Text content is deliberately left alone
-/// here: a text whose rendered width changes shifts its siblings, and the shifted text anti-aliases one LSB
-/// away from a fresh mount (the `#[ignore]` test `a_text_change_redescribes_pixel_identical` documents it).
-/// The text ports are still exercised by the `#[ignore]` test and by the routes/seal tests.
+/// A text value whose rendered width varies with it (one to five digits).
+fn digits(rng: &mut Rng) -> u64 {
+    let len = 1 + rng.below(5) as u32;
+    rng.below(10u64.pow(len))
+}
+
+/// One random re-description turn: mutate plain fields and signals, text content (and so text widths and the
+/// positions of the texts after it) included.
 fn mutate_any(s: &mut State, rng: &mut Rng) {
-    match rng.below(10) {
+    match rng.below(14) {
         0 => {
             s.tint.set(rng.color());
         }
@@ -253,28 +263,41 @@ fn mutate_any(s: &mut State, rng: &mut Rng) {
             s.fade.set(rng.unit());
         }
         3 => {
-            s.bw.set((20 + rng.below(7) * 10) as f32);
-            s.bh.set((10 + rng.below(4) * 10) as f32);
+            s.bw.set((20 + rng.below(7) * 10) as f32 + rng.below(10) as f32 / 10.0);
+            s.bh.set((10 + rng.below(4) * 10) as f32 + rng.below(10) as f32 / 10.0);
         }
         4 => {
-            s.txx.set(rng.below(9) as f32);
-            s.tyy.set(rng.below(9) as f32);
+            s.txx.set(rng.below(90) as f32 / 10.0);
+            s.tyy.set(rng.below(90) as f32 / 10.0);
         }
         5 => {
             s.show_opt = !s.show_opt;
         }
         6 => {
-            s.box_w = (30 + rng.below(5) * 10) as f32;
-            s.box_h = (10 + rng.below(4) * 10) as f32;
+            s.box_w = (30 + rng.below(5) * 10) as f32 + rng.below(10) as f32 / 10.0;
+            s.box_h = (10 + rng.below(4) * 10) as f32 + rng.below(10) as f32 / 10.0;
         }
         7 => {
-            s.tx = rng.below(7) as f32;
-            s.ty = rng.below(7) as f32;
+            s.tx = rng.below(70) as f32 / 10.0;
+            s.ty = rng.below(70) as f32 / 10.0;
         }
         8 => {
             s.n = rng.below(5) as usize;
             s.show_opt = rng.chance(2);
             s.kind_flip = rng.chance(2);
+        }
+        9 => {
+            s.name.set(format!("s{}", digits(rng)));
+        }
+        10 => {
+            s.count.set(digits(rng) as u32);
+        }
+        11 => {
+            s.idx = digits(rng) as u32;
+            s.label = format!("L{}", digits(rng));
+        }
+        12 => {
+            s.radius = rng.below(80) as f32 / 10.0;
         }
         _ => {
             s.far[0].set(rng.color());
@@ -283,10 +306,9 @@ fn mutate_any(s: &mut State, rng: &mut Rng) {
 }
 
 /// One random signal-only turn: only the direct signal fields publish (nothing a `Config::once()` view
-/// cannot show through its wires). The text signal `name` and the mapped `count` are exercised by the
-/// `#[ignore]` text regression instead (their re-shaped glyphs are not bit-stable under `once` at this base).
+/// cannot show through its wires), the text signal `name` and the mapped `count` included.
 fn mutate_signals(s: &mut State, rng: &mut Rng) {
-    match rng.below(6) {
+    match rng.below(8) {
         0 => {
             s.tint.set(rng.color());
         }
@@ -297,14 +319,20 @@ fn mutate_signals(s: &mut State, rng: &mut Rng) {
             s.fade.set(rng.unit());
         }
         3 => {
-            s.bw.set((20 + rng.below(7) * 10) as f32);
-            s.bh.set((10 + rng.below(4) * 10) as f32);
+            s.bw.set((20 + rng.below(7) * 10) as f32 + rng.below(10) as f32 / 10.0);
+            s.bh.set((10 + rng.below(4) * 10) as f32 + rng.below(10) as f32 / 10.0);
         }
         4 => {
-            s.txx.set(rng.below(9) as f32);
+            s.txx.set(rng.below(90) as f32 / 10.0);
+        }
+        5 => {
+            s.name.set(format!("s{}", digits(rng)));
+        }
+        6 => {
+            s.count.set(digits(rng) as u32);
         }
         _ => {
-            s.tyy.set(rng.below(9) as f32);
+            s.tyy.set(rng.below(90) as f32 / 10.0);
         }
     }
 }
@@ -433,8 +461,7 @@ fn an_identical_redescription_patches_nothing_and_moves_no_pixels() {
     );
 }
 
-/// A minimal rounded-box view for the two anti-aliasing regressions below (the differential view above
-/// deliberately has no rounded corners, whose anti-aliased arcs are not bit-stable under incremental update).
+/// A minimal rounded-box view for the fractional-radius regression below.
 struct Rounded {
     kind_flip: bool,
     radius: f32,
@@ -460,11 +487,12 @@ impl View for Rounded {
     }
 }
 
-/// A non-integer corner radius makes a re-described frame differ from a fresh mount of the same state: the
-/// sibling kind change shifts the rounded box, and its anti-aliased arc lands one LSB away (a single byte in
-/// the blue channel differs). Quantising the radius to an even integer removes it. Kept, not run: it is the bug.
+/// Regression (docs/lanes/integration/el-tests-findings.md, finding 1): a non-integer corner radius made a
+/// re-described frame differ from a fresh mount by one LSB. The mount put the radius on the 1/256 px
+/// geometry grid (5.6 -> 5.6015625) and the re-description did not (`LBox::update` passed `radius * scale`
+/// unsnapped), so every re-description saw a changed radius and rewrote the instance off the grid; the
+/// rounded arc then anti-aliased differently. `quad_instance` now snaps the radius for every caller.
 #[test]
-#[ignore = "BUG: a non-integer corner radius anti-aliases one LSB differently after a re-description than on a fresh mount"]
 fn a_fractional_radius_redescribes_pixel_identical() {
     let mut app = App::new(
         Rounded {
@@ -494,17 +522,20 @@ fn a_fractional_radius_redescribes_pixel_identical() {
     );
 }
 
-/// A text whose rendered width changes shifts the sibling texts after it, and those shifted glyphs anti-alias
-/// one LSB away from a fresh mount of the same state (the differential loop above therefore keeps text content
-/// fixed, while still rendering every text type). The re-description of `text(self.idx)` from a one-digit to a
-/// three-digit value, one turn after a kind change and a fade write, diverges by ~200 bytes at glyph edges.
-/// Kept, not run: it is the bug.
+/// Regression (docs/lanes/integration/el-tests-findings.md, finding 2): re-texting a label `119` -> `777`
+/// (same length, all digits) took the glyph pool's all-digit patch, which keeps every pen on the premise that
+/// the ten digits are one position class. In Arial they are not (it kerns "11": `1` is its own class), so the
+/// retained `777` kept `119`'s kerned pens and drew one pixel left of a fresh mount's (~200 bytes). The patch
+/// now compares the lanes' digit classes when the face's digits are not one class.
 #[test]
-#[ignore = "BUG: a text whose width changes shifts its siblings, and the shifted glyphs anti-alias away from a fresh mount"]
 fn a_text_change_redescribes_pixel_identical() {
     let mut rng =
         Rng::new(0x0123_4567_89AB_CDEF ^ (12u64.wrapping_mul(0x1000_0000_1)) ^ (1u64 << 32));
-    let state = State::random(&mut rng);
+    // the digits that kern (the regression needs a `1` pair in the old value)
+    let state = State {
+        idx: 119,
+        ..State::random(&mut rng)
+    };
     let _turns = 1 + rng.below(5); // consumed for the same RNG state the fuzz loop had
     let mut app = App::new(state, cfg(), true);
     shot(&mut app);

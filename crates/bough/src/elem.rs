@@ -527,7 +527,9 @@ impl<Bg, Wd, Sp, Ch> Quad<Bg, Wd, Sp, Ch> {
     }
 }
 
-/// The 48-byte instance of a quad (kind from the radius/border).
+/// The 48-byte instance of a quad (kind from the radius/border). The radius is put on the geometry grid
+/// (`snap`) here, for every caller: a mount and each later re-description of the same box then compute
+/// the same radius bits, so a re-description neither rewrites it nor draws an arc a fresh mount would not.
 pub(crate) fn quad_instance(bg: Color, radius_px: f32, border: Option<(f32, Color)>, scale: f32, space: u16) -> (Instance, u8, f32) {
     let kind = match (border.is_some(), radius_px > 0.0) {
         (true, _) => KIND_BORDER,
@@ -535,7 +537,7 @@ pub(crate) fn quad_instance(bg: Color, radius_px: f32, border: Option<(f32, Colo
         _ => KIND_SOLID,
     };
     let margin = if kind == KIND_SOLID { 0.0 } else { 1.0 };
-    let mut ins = Instance { color: bg.0, radius: radius_px, space, kind, ..Default::default() };
+    let mut ins = Instance { color: bg.0, radius: snap(radius_px), space, kind, ..Default::default() };
     if let Some((bw, bc)) = border {
         ins.color = bc.0;
         ins.color2 = bg.0;
@@ -561,7 +563,7 @@ where
         // on the geometry grid from the start (`snap`): every later edge comparison is exact
         let (x_px, y0_px) = (snap((m.ox + self.x) * s), m.oy * s);
         let (y_px, h_px, w_px) = (snap(y0_px + y * s), snap(h * s), snap(w * s));
-        let (mut ins, _kind, margin) = quad_instance(bg, snap(self.radius * s), self.border, s, m.space);
+        let (mut ins, _kind, margin) = quad_instance(bg, self.radius * s, self.border, s, m.space);
         ins.pos = [x_px, y_px];
         ins.size = [w_px, h_px];
         let ink = m.rt.ink_rect(m.space, x_px, y_px, w_px, h_px, margin);
@@ -603,8 +605,9 @@ where
         let w = self.wd.value();
         let (y, h) = self.sp.value();
         let s = m.rt.scale;
-        let (x_px, y0_px) = ((m.ox + self.x) * s, m.oy * s);
-        let (y_px, h_px, w_px) = (y0_px + y * s, h * s, w * s);
+        // on the grid exactly as `mount` puts it: an unchanged box compares equal and is not rewritten
+        let (x_px, y0_px) = (snap((m.ox + self.x) * s), m.oy * s);
+        let (y_px, h_px, w_px) = (snap(y0_px + y * s), snap(h * s), snap(w * s));
         let (mut ins, _kind, margin) = quad_instance(bg, self.radius * s, self.border, s, m.space);
         ins.pos = [x_px, y_px];
         ins.size = [w_px, h_px];

@@ -16,6 +16,11 @@ swash = "0.2"
 # platform lane). The tests' twin layouts still use the system collection (dev-dependencies below).
 parley = { path = "../../vendor/parley", default-features = false, features = ["std"] }
 
+[features]
+# Gate mutant: the glyph pool's all-digit patch admits any digit -> digit change as pen-preserving, even in a
+# face that kerns a digit pair (Arial's "11"); crates/bough/tests/el_fuzz.rs and tests/pool.rs must fail.
+mutant_digit_class = []
+
 [dev-dependencies]
 parley = { path = "../../vendor/parley", default-features = false, features = ["std", "system"] }
 # Linux instruction counter for the examples (perf_event_open; macOS uses proc_pid_rusage directly).

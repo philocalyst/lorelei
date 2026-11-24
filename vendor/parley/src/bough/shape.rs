@@ -98,6 +98,12 @@ pub struct Shaper {
     /// positions, width and eligibility are unchanged; only glyph ids differ. In DejaVu Sans
     /// the ten digits are one class.
     pub pos_class: [u8; 128],
+    /// The ten ASCII digits share one `pos_class` (true in DejaVu Sans; false where the face kerns a
+    /// digit pair, e.g. Arial's "11"): the glyph pool's digit patch needs no class lookup then.
+    pub digits_one_class: bool,
+    /// `pos_class` of the digits, indexed by `byte - b'0'` (lanes 10..16 unused): the glyph pool's
+    /// vector class test for a face whose digits are not one class.
+    pub digit_class: [u8; 16],
 }
 
 impl Shaper {
@@ -153,7 +159,12 @@ impl Shaper {
                 }
             };
         }
-        Shaper { script, t, cp_recs, narrow_gid, dense, gid128, simd_min_len: 16, pos_class }
+        let mut digit_class = [0u8; 16];
+        for d in 0..10 {
+            digit_class[d] = pos_class[b'0' as usize + d];
+        }
+        let digits_one_class = digit_class[1..10].iter().all(|&c| c == digit_class[0]);
+        Shaper { script, t, cp_recs, narrow_gid, dense, gid128, simd_min_len: 16, pos_class, digits_one_class, digit_class }
     }
 
     /// The dense ASCII step table (`dense[a << 7 | b]`), for the glyph pool.
