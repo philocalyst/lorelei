@@ -1687,15 +1687,22 @@ impl Rt {
         }
     }
 
+    /// Wire `w` is cut: dead, and a motion it drives retired with it (02 §6: a track drops with its position).
+    /// Every path that releases a scope's wires goes through here (`cut_scope`, `lr_release_row`).
+    #[inline]
+    pub(crate) fn cut_wire(&mut self, w: u32) {
+        let w = &mut self.wires[w as usize];
+        w.dead = true;
+        if w.motion {
+            // SAFETY: a motion wire's recipe starts with its transition id (`el/motion.rs`).
+            let id = unsafe { w.recipe.read_at::<u32>(0) };
+            self.transitions.retire(id);
+        }
+    }
+
     fn cut_scope(&mut self, s: &mut Scope) {
         for w in s.wires.drain(..) {
-            let w = &mut self.wires[w as usize];
-            w.dead = true;
-            if w.motion {
-                // SAFETY: a motion wire's recipe starts with its transition id (`el/motion.rs`).
-                let id = unsafe { w.recipe.read_at::<u32>(0) };
-                self.transitions.retire(id);
-            }
+            self.cut_wire(w);
         }
         for r in s.lroots.drain(..) {
             self.lay_remove_root(r);

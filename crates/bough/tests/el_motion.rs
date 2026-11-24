@@ -12,6 +12,10 @@
 //!   (`a_map_whose_captures_changed_is_right_at_once`).
 //! * `--features mutant_el_hover`: a hover colour changed while hovered waits for the next hover
 //!   (`a_hover_colour_changed_while_hovered_shows_at_once`).
+//! * `--features mutant_row_keep_track`: a virtual-list row released on scroll-out keeps its motions running
+//!   (`a_scrolled_out_row_drops_its_track`).
+//! * `--features mutant_opacity_hover`: an opacity write over a hovered box paints its base colour
+//!   (`an_animated_opacity_keeps_the_hover_colour`).
 use bough::prelude::*;
 use bough::raw::{App, Config};
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -588,4 +592,129 @@ fn a_map_whose_captures_changed_is_right_past_many_ports() {
         });
         assert_eq!(shot(&mut app), shot(&mut App::new(ManyScaled { n: Signal::new(n), k }, cfg(), true)), "n {n}, k {k}: = a fresh mount");
     }
+}
+
+/// A virtual list whose rows animate their opacity (`list(sig!(..))` rows are typed views: `List<T>` is not an
+/// `El` child yet). A row released on scroll-out drops its track (02 §6), so nothing paints onto the node and
+/// instance ids that the rows scrolling in recycle.
+mod rows {
+    use super::{font, DT};
+    use bough::layout::{column, Styled};
+    use bough::prelude::{animate, div, rgb, List, Signal};
+    use bough::raw::{list, sig, App, Config, Element, View};
+
+    pub struct Row {
+        fade: Signal<f32>,
+    }
+    impl View for Row {
+        fn view(&self) -> impl Element<Self> + '_ {
+            div().size(180.0, 20.0).bg(rgb(0x305070)).opacity(animate(&self.fade).over(400))
+        }
+    }
+    pub struct Root {
+        items: List<Row>,
+        scroll: Signal<f32>,
+    }
+    impl View for Root {
+        fn view(&self) -> impl Element<Self> + '_ {
+            column((list(sig!(self.items)).w(180.0).h(100.0).scroll(sig!(self.scroll)).estimate(22.0),)).w(200.0).bg(rgb(0xffffff))
+        }
+    }
+    fn app(fade: impl Fn(usize) -> f32, scroll: f32) -> App<Root> {
+        let items = List::from_iter_in((0..200).map(|i| Row { fade: Signal::new(fade(i)) }));
+        App::new(Root { items, scroll: Signal::new(scroll) }, Config::new(240.0, 200.0, 1.0, font()), true)
+    }
+    fn shot(a: &mut App<Root>) -> Vec<u8> {
+        a.frame();
+        let p = a.presented_pixels();
+        assert_eq!(p, a.reference_pixels(), "the repaired frame equals a full redraw");
+        p
+    }
+    fn base(i: usize) -> f32 {
+        0.2 + (i % 5) as f32 * 0.1
+    }
+
+    #[test]
+    fn a_scrolled_out_row_drops_its_track() {
+        let mut a = app(base, 0.0);
+        shot(&mut a);
+        // every row's fade goes to 1: the mounted rows' motions are in flight
+        a.turn(|x| {
+            for k in 0..x.items.len() {
+                x.items.edit(k).fade.set(1.0);
+            }
+        });
+        a.tick(DT);
+        shot(&mut a);
+        assert!(a.animating());
+        // scrolled out mid-flight: the rows that scroll in mount at rest at 1 (on recycled ids)
+        a.turn(|x| {
+            x.scroll.set(2000.0);
+        });
+        for k in 0..4 {
+            a.tick(DT);
+            let want = shot(&mut app(|_| 1.0, 2000.0));
+            assert_eq!(shot(&mut a), want, "frame {k} after scroll-out = a fresh mount");
+        }
+        assert!(!a.animating(), "nothing on screen moves: no track may run");
+        // the same scroll with nothing in flight mounts the same rows (the window knows the measured heights of
+        // the rows it has seen, so a fresh mount at 2000 may mount one row fewer): as many motions live
+        let mut same = app(|_| 1.0, 0.0);
+        shot(&mut same);
+        same.turn(|x| {
+            x.scroll.set(2000.0);
+        });
+        shot(&mut same);
+        assert_eq!(a.rt.transitions.live(), same.rt.transitions.live(), "the released rows' motions are free");
+        // and back: the rows mount again at rest
+        a.turn(|x| {
+            x.scroll.set(0.0);
+        });
+        a.tick(DT);
+        assert_eq!(shot(&mut a), shot(&mut app(|_| 1.0, 0.0)), "scrolled back = a fresh mount");
+        assert!(!a.animating());
+    }
+}
+
+struct HoverFade {
+    o: Signal<f32>,
+    alt: bool,
+}
+impl View for HoverFade {
+    fn view(&self) -> El<'_> {
+        let h = if self.alt { rgb(0xc03030) } else { rgb(0x3030c0) };
+        column(div().size(100, 60).bg(rgb(0x808080)).opacity(animate(&self.o).over(300)).hover(move |s| s.bg(h))).bg(rgb(0xffffff)).w_pct(1.0).h_pct(1.0)
+    }
+}
+
+/// Hovered, with an opacity motion in flight: every motion frame keeps the hover colour (at that frame's
+/// opacity), including after the hover colour is changed while hovered; leaving shows the base.
+#[test]
+fn an_animated_opacity_keeps_the_hover_colour() {
+    let fresh = |o: f32, alt: bool, hovered: bool| {
+        let mut a = App::new(HoverFade { o: Signal::new(o), alt }, cfg(), true);
+        if hovered {
+            a.pointer_move(50.0, 30.0);
+        }
+        shot(&mut a)
+    };
+    let mut app = App::new(HoverFade { o: Signal::new(0.4), alt: false }, cfg(), true);
+    app.pointer_move(50.0, 30.0);
+    assert_eq!(shot(&mut app), fresh(0.4, false, true));
+    app.turn(|s| {
+        s.o.set(1.0);
+    });
+    for k in 0..30 {
+        if k == 6 {
+            app.turn(|s| s.alt = true);
+        }
+        tick(&mut app, DT);
+        // the value the motion presents this frame, read back as the fresh mount's resting value
+        let o = app.rt.transitions.motion_shown::<f32>(0).expect("the opacity motion");
+        assert_eq!(shot(&mut app), fresh(o, k >= 6, true), "frame {k}: the hover colour at opacity {o}");
+    }
+    settle(&mut app, DT, 2.0);
+    assert_eq!(shot(&mut app), fresh(1.0, true, true));
+    app.pointer_leave();
+    assert_eq!(shot(&mut app), fresh(1.0, true, false), "the base returns on leave");
 }

@@ -484,13 +484,14 @@ impl Rt {
         self.free_space(row.space);
         let mut scope = self.lists.take_scope(row.scope);
         for &w in &scope.wires {
+            if !cfg!(feature = "mutant_row_keep_track") {
+                self.cut_wire(w);
+            }
             let wr = &mut self.wires[w as usize];
+            wr.dead = true;
             if wr.head >= lo && wr.head < hi {
-                wr.dead = true;
                 wr.head = 0;
                 self.wire_free.push(w);
-            } else {
-                wr.dead = true;
             }
         }
         scope.wires.clear();

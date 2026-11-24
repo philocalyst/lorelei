@@ -203,9 +203,10 @@ trait Running {
     fn apply_shown(&self, rt: &mut Rt);
     fn is_active(&self) -> bool;
     fn as_any(&mut self) -> &mut dyn std::any::Any;
-    /// Stop for good (its element was unmounted): whether it was running.
-    fn retire(&mut self) -> bool {
-        false
+    /// Stop for good (its element was unmounted): `None` when there is nothing to retire (not a motion, or
+    /// one retired already), else whether it was running.
+    fn retire(&mut self) -> Option<bool> {
+        None
     }
 }
 
@@ -667,10 +668,13 @@ impl<T: Lerp> Running for Anim<T> {
     fn as_any(&mut self) -> &mut dyn std::any::Any {
         self
     }
-    fn retire(&mut self) -> bool {
+    fn retire(&mut self) -> Option<bool> {
+        if self.retired {
+            return None;
+        }
         let was = self.active;
         (self.active, self.retired) = (false, true);
-        was
+        Some(was)
     }
 }
 
@@ -746,13 +750,15 @@ impl Transitions {
     }
 
     /// Transition `id` stops for good (the element it drives was unmounted: 02 §6, a track drops with its
-    /// position) and its id is free for the next motion.
+    /// position) and its id is free for the next motion. Retiring an id twice (a wire cut twice: `run_head`
+    /// recycles the index of a wire that is no longer its head's while a scope still lists it) frees it once.
     pub(crate) fn retire(&mut self, id: u32) {
         if cfg!(feature = "mutant_motion_keep_track") {
             return;
         }
         let Some(it) = self.items.get_mut(id as usize) else { return };
-        if it.retire() {
+        let Some(was) = it.retire() else { return };
+        if was {
             self.running_ids.retain(|&i| i != id);
             self.active -= 1;
         }
@@ -792,5 +798,33 @@ impl From<Curve> for crate::motion::AnimSpec {
             Ease::Smooth => crate::motion::AnimSpec::response((c.dur * 0.6).max(0.01), 1.0),
             e => crate::motion::AnimSpec::ease((c.dur * 1000.0).round().max(0.0) as u32, bough_paint::motion::Ease::Bezier(e.bezier())),
         }
+    }
+}
+
+#[cfg(test)]
+mod retire_tests {
+    use super::*;
+
+    /// A motion id retired twice (a wire cut twice) is freed once: the next two motions get two ids, and the
+    /// count of motions in use never goes below what is mounted.
+    #[test]
+    fn retiring_an_id_twice_frees_it_once() {
+        fn nop(_: &mut Rt, _: u32, _: &f32) {}
+        let mut t = Transitions::default();
+        let a = t.add_anim(1, nop, 0.0f32, Program::spring(10.0, 1.0));
+        let b = t.add_anim(2, nop, 0.0f32, Program::spring(10.0, 1.0));
+        assert_eq!(t.live(), 2);
+        t.retire(a);
+        t.retire(a);
+        assert_eq!(t.live(), 1, "a retired once and once more is one free id");
+        let c = t.add_anim(3, nop, 0.0f32, Program::spring(10.0, 1.0));
+        let d = t.add_anim(4, nop, 0.0f32, Program::spring(10.0, 1.0));
+        assert_eq!(c, a, "the freed id is reused");
+        assert!(d != a && d != b, "and only once: {d} is a new id");
+        assert_eq!(t.live(), 3);
+        // a retire of a reused id retires the new motion once, and a stale second retire leaves it be
+        t.retire(c);
+        t.retire(c);
+        assert_eq!(t.live(), 2);
     }
 }
