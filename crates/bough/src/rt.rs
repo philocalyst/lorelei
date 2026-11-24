@@ -1685,8 +1685,6 @@ impl Rt {
         self.cut_scope(&mut s);
         if !(s.texts.is_empty() && s.insts.is_empty() && s.series.is_empty() && s.runs.is_empty() && s.dyns.is_empty()) {
             self.reclaim_q.push(s);
-        } else {
-
         }
     }
 
@@ -1736,8 +1734,6 @@ impl Rt {
             }
             if !(s.texts.is_empty() && s.insts.is_empty() && s.series.is_empty() && s.runs.is_empty() && s.dyns.is_empty()) {
                 self.reclaim_q.push(s);
-            } else {
-
             }
         }
         // layout leaves' glyph blocks; their states are kept for reuse

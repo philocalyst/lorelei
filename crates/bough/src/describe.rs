@@ -138,10 +138,9 @@ impl Rt {
         fn part(rt: &mut Rt, p: u32, reg: u32, d: i64) -> bool {
             let mut found = false;
             let mut items = std::mem::take(&mut rt.dyns.parts[p as usize]);
-            for i in 0..items.len() {
-                let hit = walk(rt, &items[i].scope, reg, d);
-                if hit {
-                    items[i].nrec = (items[i].nrec as i64 + d) as u32;
+            for it in &mut items {
+                if walk(rt, &it.scope, reg, d) {
+                    it.nrec = (it.nrec as i64 + d) as u32;
                     found = true;
                 }
             }
