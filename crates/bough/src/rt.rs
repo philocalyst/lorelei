@@ -644,6 +644,8 @@ pub struct Rt {
     pub lay: crate::layout::Lay,
     /// List regions (`listview.rs`).
     pub lists: crate::listview::Lists,
+    /// The app's root view type (`App::new`): a route mounted with the root's class runs on it (`el/walk.rs`).
+    pub(crate) root_ty: Option<std::any::TypeId>,
     /// Reflection (`reflect.rs`): wired fields' descriptors, element type names by record handle.
     pub reflect: crate::reflect::Reflect,
     /// Released subtrees whose resources return to the free lists at the next frames (`reclaim`).
@@ -827,6 +829,7 @@ impl Rt {
             ctr: Counters::default(),
             lay,
             lists: Default::default(),
+            root_ty: None,
             reclaim_q: Vec::new(),
             reflect,
             dyns: Default::default(),

@@ -80,6 +80,14 @@ mutant_typed_skip = []
 mutant_cell_offset = []
 # (tests/el_surface.rs) El items keyed by nothing: a box swapped for a text is updated in place as if it were one
 mutant_el_shape = []
+# (El lists, tests/el_lists.rs: the El row mounter takes the slot id for a position)
+mutant_el_list_slot = []
+# (El lists: an edited row is not re-described)
+mutant_el_list_edit = []
+# (El routes: a row route's dispatch takes the slot id for a position)
+mutant_el_route_slot = []
+# (El routes: the farthest matching owner of the chain, not the nearest)
+mutant_el_route_far = []
 # (bough-dataflow/mutant_rigid: rows kept across an insert or a remove keep their old rects)
 mutant_rigid = ["bough-dataflow/mutant_rigid"]
 # The presenter on the vendored wgpu-hal with wgsl-rs kernels (crates/bough-gpu) instead of direct Metal.

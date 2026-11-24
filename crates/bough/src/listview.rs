@@ -80,6 +80,36 @@ pub struct LStats {
     pub rows_mounted: u64,
     pub rows_unmounted: u64,
     pub height_changes: u64,
+    /// El rows described (`el/list.rs`): a row's projection ran, to mount it or to re-describe it after an edit.
+    pub rows_described: u64,
+}
+
+/// What a region's owner is, for a route resolved against the owner chain (`el/walk.rs`): the app's root view,
+/// a row of an enclosing region (`LRegion::parent`), or another owner (an entity view: not reachable).
+pub(crate) const OWNER_ROOT: u8 = 0;
+pub(crate) const OWNER_ROW: u8 = 1;
+pub(crate) const OWNER_OTHER: u8 = 2;
+/// The deepest owner chain a route resolves along (rows of lists nested in rows).
+pub(crate) const MAX_CHAIN: usize = 8;
+
+/// An El list region (`el/list.rs`): the projection its rows are described by, and how an edited row is
+/// re-described.
+#[derive(Clone, Copy)]
+pub(crate) struct ElReg {
+    /// The projection (`T::view`, or the function given to `List::each`), as the row mounter reads it.
+    pub recipe: Recipe,
+    /// Re-describe the row of `slot` of region `reg` (monomorphised for the list's item and the projection).
+    pub redescribe: unsafe fn(&mut Rt, usize, u32),
+    /// The rows re-describe (the region was mounted by a re-describing owner); else they are wired only.
+    pub taped: bool,
+}
+
+/// An El row's own re-description state, beside its scope (`Lists::elrows`, indexed like `Lists::scopes`).
+#[derive(Default)]
+pub(crate) struct ElRow {
+    pub tape: Vec<u32>,
+    /// The row's first record (its position at a re-description, in O(1)).
+    pub first: Handle,
 }
 
 /// A damped spring solved in closed form (anime.js `createSpring`, zgx `anime::ease::Spring`); its settling
@@ -240,6 +270,32 @@ pub struct LRegion {
     /// The row function `fn(&T, &mut Mounter<T>)`, type-erased (transmuted back by `mount`).
     pub(crate) row_fn: usize,
     pub(crate) row_size: usize,
+    /// The mounted rows' records (the sum of their `nrec`): an El list's re-description steps over them in O(1).
+    pub(crate) recs: usize,
+    /// `recs` when the owner's description last walked the region: the records the enclosing dynamic items
+    /// counted then (`describe::live_nrec` adds what changed since).
+    pub(crate) seen: usize,
+    /// The owner the region was mounted in (`OWNER_*`), its type, and for a row owner its slot's generation.
+    pub(crate) owner_kind: u8,
+    pub(crate) owner_ty: std::any::TypeId,
+    pub(crate) owner_name: &'static str,
+    pub(crate) parent_gen: u32,
+    /// The list's byte offset in its owner (a list source), proven at mount.
+    pub(crate) list_off: u32,
+    /// The rows' owner type (the list's item type).
+    pub(crate) item_ty: std::any::TypeId,
+    pub(crate) item_name: &'static str,
+    /// `List::edit_slot` of the item type: `(list, slot, generation)` -> the item, or null (a removed one).
+    pub(crate) edit: unsafe fn(*mut u8, u32, u32) -> *mut u8,
+    /// The generation of a live slot.
+    pub(crate) gen_of: unsafe fn(*const u8, u32) -> u32,
+    /// An El list's rows (`el/list.rs`), and per slot the window index its row was last seen at.
+    pub(crate) el: Option<ElReg>,
+    pub(crate) khint: Vec<u32>,
+    /// The list's log (epoch, length) when the region was mounted: the ops before it are already in the rows the
+    /// region was made with, so its first replay skips them while the log is still that one (a log no live
+    /// region replayed stays open: its wires were all released).
+    pub(crate) log_at: (u32, u32),
 }
 
 impl LRegion {
@@ -280,6 +336,9 @@ pub struct Lists {
     scope_free: Vec<u32>,
     /// The rows being mounted (region, slot), innermost last: a region mounted inside one is nested in it.
     pub(crate) mounting: Vec<(u32, u32)>,
+    /// El rows' re-description state, indexed like `scopes`, and tapes free for reuse.
+    pub(crate) elrows: Vec<ElRow>,
+    pub(crate) tape_pool: Vec<Vec<u32>>,
 }
 
 impl Lists {
@@ -290,6 +349,8 @@ impl Lists {
         l.many("lists", format!("list regions ({})", self.regs.len()), Content, regs, regs);
         let scopes: usize = self.scopes.capacity() * size_of::<Scope>() + self.scopes.iter().map(Scope::heap_bytes).sum::<usize>() + self.scope_free.capacity() * 4;
         l.many("lists", "list row scopes", Content, scopes, scopes);
+        let el: usize = self.elrows.capacity() * size_of::<ElRow>() + self.elrows.iter().map(|e| e.tape.capacity() * 4).sum::<usize>() + self.tape_pool.iter().map(|t| t.capacity() * 4 + 24).sum::<usize>();
+        l.many("lists", "El rows' tapes", Content, el, el);
         let misc = self.ends.capacity() * 16 + (self.root_reg.capacity() + self.root_h.capacity() + self.perm.capacity() + self.map.capacity()) * 4 + (self.stage.capacity() + self.stage2.capacity()) * size_of::<RecordInit>() + self.ops.capacity() * size_of::<Op>() + self.mounting.capacity() * 8;
         l.many("lists", "list tables and scratch", Content, misc, misc);
     }
@@ -310,6 +371,13 @@ impl Lists {
         }
     }
     fn take_scope(&mut self, i: u32) -> Scope {
+        if let Some(e) = self.elrows.get_mut(i as usize) {
+            if e.tape.capacity() != 0 {
+                let mut t = std::mem::take(&mut e.tape);
+                t.clear();
+                self.tape_pool.push(t);
+            }
+        }
         self.scope_free.push(i);
         std::mem::take(&mut self.scopes[i as usize])
     }
@@ -328,7 +396,7 @@ unsafe fn end_list<T>(l: *const u8) {
 
 /// # Safety
 /// `l` points at a live `List<T>` with more than `p` items.
-unsafe fn list_slot_at<T>(l: *const u8, p: usize) -> u32 {
+pub(crate) unsafe fn list_slot_at<T>(l: *const u8, p: usize) -> u32 {
     // SAFETY: the function contract.
     unsafe { (&(*(l as *const List<T>)).order_slots())[p] }
 }
@@ -348,19 +416,48 @@ unsafe fn index_set_wired(_: *const u8, _: &[u32]) {}
 /// # Safety
 /// `l` points at a live `List<T>` and `s` is one of its slot ids (a removed item's address is computed,
 /// not read).
-unsafe fn list_item<T>(l: *const u8, s: u32) -> *const u8 {
+pub(crate) unsafe fn list_item<T>(l: *const u8, s: u32) -> *const u8 {
     // SAFETY: the function contract.
     unsafe { (*(l as *const List<T>)).slot_ptr(s) as *const u8 }
 }
 
 /// # Safety
 /// `l` points at a live `List<T>`; `c` holds `offset_of!`-proven headed fields of `T`.
-unsafe fn list_set_wired<T>(l: *const u8, c: &[u32]) {
+pub(crate) unsafe fn list_set_wired<T>(l: *const u8, c: &[u32]) {
     // SAFETY: the function contract; `wired` is a RefCell (shared access).
     let w = unsafe { &(*(l as *const List<T>)).wired };
     if w.borrow().len() != c.len() {
         *w.borrow_mut() = c.to_vec();
     }
+}
+
+/// `List::edit_slot`: the item of `slot` if it still holds the item of generation `generation` (its edit logged and
+/// the list's head queued, as any edit), else null.
+///
+/// # Safety
+/// `l` is a unique (`&mut`-derived) pointer to a live `List<T>`, borrowed for this call only.
+pub(crate) unsafe fn list_edit<T>(l: *mut u8, slot: u32, generation: u32) -> *mut u8 {
+    // SAFETY: the function contract.
+    let l = unsafe { &mut *(l as *mut List<T>) };
+    // (mutant: the slot id is taken for a position, so after a reorder a route reaches another row)
+    let s = if cfg!(feature = "mutant_el_route_slot") { l.slot(slot as usize) } else { Some(crate::list::Slot::raw(slot, generation)) };
+    match s.and_then(|s| l.edit_slot(s)) {
+        Some(t) => t as *mut T as *mut u8,
+        None => std::ptr::null_mut(),
+    }
+}
+/// # Safety
+/// `l` points at a live `List<T>` and `slot` is one of its slot ids.
+pub(crate) unsafe fn list_gen<T>(l: *const u8, slot: u32) -> u32 {
+    // SAFETY: the function contract.
+    unsafe { (*(l as *const List<T>)).slot_of(slot).generation() }
+}
+/// An index source's rows have no item of their own (their owner is the source's: class 0).
+unsafe fn index_edit(_: *mut u8, _: u32, _: u32) -> *mut u8 {
+    std::ptr::null_mut()
+}
+unsafe fn index_gen(_: *const u8, _: u32) -> u32 {
+    0
 }
 
 /// # Safety
@@ -375,7 +472,7 @@ unsafe fn mount_lrow<T: 'static>(rt: &mut Rt, reg: u32, l: *const u8, slot: u32,
     // SAFETY: the region was created by `LList::mount` from a `fn(&T, &mut Mounter<T>)`.
     let f: fn(&T, &mut Mounter<'_, T>) = unsafe { std::mem::transmute::<usize, fn(&T, &mut Mounter<'_, T>)>(f) };
     // SAFETY: a live slot holds an initialised `T`, the row's owner (class `cls`).
-    unsafe { mount_row(rt, reg, row as *const T, cls, recs, |m| f(&*(row as *const T), m)) }
+    unsafe { mount_row(rt, reg, row as *const T, cls, recs, std::ptr::null_mut(), |m| f(&*(row as *const T), m)) }
 }
 
 /// # Safety
@@ -386,14 +483,16 @@ unsafe fn mount_irow<V: 'static>(rt: &mut Rt, reg: u32, o: *const u8, i: u32, re
     let f: fn(&V, usize, &mut Mounter<'_, V>) = unsafe { std::mem::transmute::<usize, fn(&V, usize, &mut Mounter<'_, V>)>(f) };
     // the rows' operands are the owner's own fields: its class (0, the root's) settles them
     // SAFETY: the function contract.
-    unsafe { mount_row(rt, reg, o as *const V, 0, recs, |m| f(&*(o as *const V), i as usize, m)) }
+    unsafe { mount_row(rt, reg, o as *const V, 0, recs, std::ptr::null_mut(), |m| f(&*(o as *const V), i as usize, m)) }
 }
 
-/// Mount one row of region `reg`: its own space and layout group, owner `owner` of class `cls`.
+/// Mount one row of region `reg`: its own space and layout group, owner `owner` of class `cls`. `tape`: the row
+/// re-describes (an El row, `el/list.rs`): its tape is recorded there; null: a fixed row.
 ///
 /// # Safety
-/// `owner` is the live owner `body` mounts for, of class `cls`.
-unsafe fn mount_row<O>(rt: &mut Rt, reg: u32, owner: *const O, cls: u32, recs: &mut Vec<RecordInit>, body: impl FnOnce(&mut Mounter<'_, O>)) -> LRow {
+/// `owner` is the live owner `body` mounts for, of class `cls`; `tape` is null or a tape the caller owns for the
+/// mount's duration.
+pub(crate) unsafe fn mount_row<O>(rt: &mut Rt, reg: u32, owner: *const O, cls: u32, recs: &mut Vec<RecordInit>, tape: *mut Vec<u32>, body: impl FnOnce(&mut Mounter<'_, O>)) -> LRow {
     // a row may be mounted outside any description (a push settled in a turn): its `El`s live until it is done
     let _walk = crate::el::Walk::enter();
     let (depth, clip, width, cspace) = {
@@ -409,12 +508,16 @@ unsafe fn mount_row<O>(rt: &mut Rt, reg: u32, owner: *const O, cls: u32, recs: &
     rt.lay.mount_avail = (width, f32::NAN);
     let mut scope = Scope::default();
     {
-        let mut m = Mounter { rt, owner, recs, scope: &mut scope, depth, ox: 0.0, oy: 0.0, space, clip, pending_num: None, cls, tape: std::ptr::null_mut(), ti: 0, pos: 0, kid: 0, keep: false };
+        let mut m = Mounter { rt, owner, recs, scope: &mut scope, depth, ox: 0.0, oy: 0.0, space, clip, pending_num: None, cls, tape, ti: 0, pos: 0, kid: 0, keep: false };
         body(&mut m);
     }
     rt.lay.cur = prev;
     rt.lay.mount_avail = avail;
-    let root = scope.lroots.first().copied().unwrap_or(NONE);
+    let mut root = scope.lroots.first().copied().unwrap_or(NONE);
+    if root == NONE && !tape.is_null() {
+        // SAFETY: the caller's tape, just recorded.
+        root = rt.tape_root(unsafe { &*tape });
+    }
     if root != NONE {
         let rr = &mut rt.lists.root_reg;
         if rr.len() <= root as usize {
@@ -442,6 +545,173 @@ fn view_row<T: crate::app::View>(v: &T, m: &mut Mounter<'_, T>) {
 }
 
 impl Rt {
+    /// The layout group of a re-describing row: its root element is the one item of the dynamic part its tape
+    /// starts with (`El::mount`), and that item's scope holds the group.
+    pub(crate) fn tape_root(&self, tape: &[u32]) -> u32 {
+        let Some(&d) = tape.first() else { return NONE };
+        self.dyns.parts.get(d as usize).and_then(|p| p.first()).and_then(|it| it.scope.lroots.first().copied()).unwrap_or(NONE)
+    }
+
+    /// The window index of the mounted row of `slot` in El region `reg`, searched outward from where it was
+    /// last seen (a splice shifts rows by little; a sort may make this a scan).
+    fn lr_row_of(&mut self, reg: usize, slot: u32, hint: usize) -> Option<usize> {
+        let rows = &self.lists.regs[reg].rows;
+        let n = rows.len();
+        let hit = |k: usize| rows[k].mounted && rows[k].slot == slot;
+        let h = hint.min(n.saturating_sub(1));
+        for d in 0..n {
+            if h + d < n && hit(h + d) {
+                return Some(h + d);
+            }
+            if d > 0 && d <= h && hit(h - d) {
+                return Some(h - d);
+            }
+            if h + d >= n && d > h {
+                break;
+            }
+        }
+        None
+    }
+
+    /// Re-describe the mounted row of `slot` of El region `reg` (its item was edited): `body` walks the row's
+    /// new description against its tape, at the row's records. Its record count, the enclosing rows' counts, its
+    /// layout group and its first record's handle follow. A row not mounted (a hole, outside the window) is left:
+    /// it is described when it mounts.
+    ///
+    /// # Safety
+    /// `l` is the region's live `List<T>` and `slot` a live slot of it; the region's rows were mounted by the El
+    /// row mounter for `T` (`el/list.rs`), so each has an `ElRow` with its tape.
+    pub(crate) unsafe fn lr_redescribe<T: 'static>(&mut self, reg: usize, l: *const u8, slot: u32, body: impl FnOnce(&T, &mut Mounter<'_, T>)) {
+        let hint = self.lists.regs[reg].khint.get(slot as usize).copied().unwrap_or(0) as usize;
+        let Some(k) = self.lr_row_of(reg, slot, hint) else { return };
+        let (si, space, nrec0, root0) = {
+            let r = &mut self.lists.regs[reg];
+            r.khint[slot as usize] = k as u32;
+            let x = &r.rows[k];
+            (x.scope as usize, x.space, x.nrec as usize, x.root)
+        };
+        let first = self.lists.elrows[si].first;
+        let pos = match self.bough.pos_of(first) {
+            Some(p) if nrec0 > 0 => p,
+            _ => self.lr_base(reg) + self.lr_prefix(reg, k),
+        };
+        let mut tape = std::mem::take(&mut self.lists.elrows[si].tape);
+        let mut scope = std::mem::take(&mut self.lists.scopes[si]);
+        let (depth, clip, width, cls) = {
+            let r = &self.lists.regs[reg];
+            (r.depth, r.clip, r.width, r.cls)
+        };
+        let walk = crate::el::Walk::enter();
+        self.lists.mounting.push((reg as u32, slot));
+        let (prev, avail) = (self.lay.cur, self.lay.mount_avail);
+        self.lay.cur = NONE;
+        self.lay.mount_avail = (width, f32::NAN);
+        // SAFETY: the function contract: a live slot of the live list holds an initialised `T`, the row's owner.
+        let row = unsafe { list_item::<T>(l, slot) } as *const T;
+        let mut recs = Vec::new();
+        let end = {
+            let mut m = Mounter { rt: self, owner: row, recs: &mut recs, scope: &mut scope, depth, ox: 0.0, oy: 0.0, space, clip, pending_num: None, cls, tape: &mut tape as *mut Vec<u32>, ti: 0, pos, kid: 0, keep: false };
+            // SAFETY: as above; only shared reads of the item while its row is described.
+            body(unsafe { &*row }, &mut m);
+            debug_assert_eq!(m.ti, tape.len(), "a row's re-description walked a different shape than its tape");
+            m.pos
+        };
+        debug_assert!(recs.is_empty(), "a re-description inserts its records itself");
+        self.lay.cur = prev;
+        self.lay.mount_avail = avail;
+        self.lists.mounting.pop();
+        drop(walk);
+        let nrec = end - pos;
+        let d = nrec as i64 - nrec0 as i64;
+        if d != 0 {
+            let r = &mut self.lists.regs[reg];
+            r.rows[k].nrec = nrec as u32;
+            r.recs = (r.recs as i64 + d) as usize;
+            self.lr_count(reg, d);
+        }
+        // the first record may be a new one (the row's root changed kind)
+        self.lists.elrows[si].first = if nrec == 0 {
+            Handle::default()
+        } else {
+            match self.bough.handle_at(pos) {
+                Some(h) => h,
+                None => self.bough.attach_handle(pos),
+            }
+        };
+        let root = self.tape_root(&tape);
+        if root != root0 {
+            if root0 != NONE {
+                self.lists.root_reg[root0 as usize] = 0;
+            }
+            if root != NONE {
+                let rr = &mut self.lists.root_reg;
+                if rr.len() <= root as usize {
+                    rr.resize(root as usize + 1, 0);
+                    self.lists.root_h.resize(root as usize + 1, f32::NAN);
+                }
+                rr[root as usize] = reg as u32 + 1;
+                self.lists.root_h[root as usize] = f32::NAN;
+            }
+            let r = &mut self.lists.regs[reg];
+            r.rows[k].root = root;
+            r.remeasure = true;
+            r.dirty = true;
+        }
+        self.lists.scopes[si] = scope;
+        self.lists.elrows[si].tape = tape;
+        self.lists.regs[reg].stats.rows_described += 1;
+    }
+
+    /// The owner a row route runs on: `up` owners up the chain from row `row` (region, slot, generation) of
+    /// the act, reached from the root view `root` down through each region's list (`List::edit_slot`: every
+    /// row on the way is reached as an edit of its list, logged and published like any edit, never by an
+    /// alias of its slab slot). `None`: a row on the way is gone (removed, or its region released), or the
+    /// chain leaves the lists (an owner that is not a row nor the root).
+    ///
+    /// # Safety
+    /// `root` is a unique pointer to the live root view (derived from its `&mut`), and nothing else borrows it
+    /// or anything in it for the call; `row` is an act's row as `el/walk.rs` recorded it.
+    pub(crate) unsafe fn route_owner(&self, root: *mut u8, row: (u32, u32, u32), up: u8) -> Option<*mut u8> {
+        const DEPTH: usize = MAX_CHAIN;
+        let regs = &self.lists.regs;
+        let mut cur = row;
+        for _ in 0..up {
+            let r = regs.get(cur.0 as usize)?;
+            if r.dead || r.owner_kind != OWNER_ROW {
+                return None;
+            }
+            cur = (r.parent.0, r.parent.1, r.parent_gen);
+        }
+        // the rows from the receiver up to the root's region
+        let mut path = [(0u32, 0u32, 0u32); DEPTH];
+        let mut n = 0;
+        loop {
+            let r = regs.get(cur.0 as usize)?;
+            if r.dead || n == DEPTH {
+                return None;
+            }
+            path[n] = cur;
+            n += 1;
+            match r.owner_kind {
+                OWNER_ROOT => break,
+                OWNER_ROW => cur = (r.parent.0, r.parent.1, r.parent_gen),
+                _ => return None,
+            }
+        }
+        let mut p = root;
+        for &(reg, slot, generation) in path[..n].iter().rev() {
+            let r = &regs[reg as usize];
+            // SAFETY: `p` is the region's owner (the root, or the row item reached the step before), uniquely
+            // reached; `list_off` is the offset of the region's `List` field in that owner type, proven at mount
+            // (the owner type's cell table, or `sig!`'s `offset_of!`), and `edit` is `list_edit` of its item type.
+            p = unsafe { (r.edit)(p.add(r.list_off as usize), slot, generation) };
+            if p.is_null() {
+                return None;
+            }
+        }
+        Some(p)
+    }
+
     fn lr_base(&self, reg: usize) -> usize {
         self.bough.pos_of(self.lists.regs[reg].anchor).expect("list container is in the Bough") + 1
     }
@@ -458,6 +728,7 @@ impl Rt {
                 Some(row) => row.nrec = (row.nrec as i64 + d) as u32,
                 None => return,
             }
+            r.recs = (r.recs as i64 + d) as usize;
             p = r.parent;
         }
     }
@@ -516,6 +787,7 @@ impl Rt {
         r.dirty = false;
         r.dead = true;
         r.motion = None;
+        r.recs = 0;
         let cs = r.cspace;
         self.space_reg(cs, reg as u32, false);
     }
@@ -531,6 +803,7 @@ impl Rt {
         if nrec > 0 {
             let at = self.lr_base(reg) + self.lr_prefix(reg, k);
             self.bough.remove_run(at, nrec);
+            self.lists.regs[reg].recs -= nrec;
             self.lr_count(reg, -(nrec as i64));
         }
         let (cls, size, item) = {
@@ -654,6 +927,7 @@ impl Rt {
         for k in (0..len).rev() {
             if !used[k] && rows[k].nrec > 0 {
                 self.bough.remove_run(base + roff[k], rows[k].nrec as usize);
+                self.lists.regs[reg].recs -= rows[k].nrec as usize;
                 self.lr_count(reg, -(rows[k].nrec as i64));
             }
         }
@@ -723,7 +997,10 @@ impl Rt {
         {
             // SAFETY: the list is live; only shared reads here.
             let (o, p) = unsafe { (*l).log() };
-            ops.extend_from_slice(o);
+            let at = &mut self.lists.regs[reg].log_at;
+            let skip = if at.0 == unsafe { (*l).epoch.get() } { (at.1 as usize).min(o.len()) } else { 0 };
+            *at = (at.0.wrapping_sub(1), 0);
+            ops.extend_from_slice(&o[skip..]);
             perm.extend_from_slice(p);
         }
         let mut low = usize::MAX;
@@ -804,6 +1081,19 @@ impl Rt {
                 if unsafe { (*l).slot_live(slot) } {
                     let p = unsafe { (*l).slot_ptr(slot) } as *const u8;
                     unsafe { self.settle_cls(p, cls) };
+                }
+            }
+        }
+        // an El list's edited rows re-describe (a plain field of the item is read by its description only)
+        if let Some(el) = self.lists.regs[reg].el {
+            if el.taped && !cfg!(feature = "mutant_el_list_edit") {
+                for op in &ops {
+                    if let Op::Edit { slot } = *op {
+                        // SAFETY: the region's live list; `redescribe` was monomorphised for it (`el/list.rs`).
+                        if unsafe { (*l).slot_live(slot) } {
+                            unsafe { (el.redescribe)(self, reg, slot) };
+                        }
+                    }
                 }
             }
         }
@@ -1077,10 +1367,18 @@ impl Rt {
                 let mut row = unsafe { mount(self, reg as u32, list, slot, &mut recs) };
                 self.lists.mounting.pop();
                 row.slot = slot;
+                if self.lists.regs[reg].el.is_some() {
+                    let kh = &mut self.lists.regs[reg].khint;
+                    if kh.len() <= slot as usize {
+                        kh.resize(slot as usize + 1, 0);
+                    }
+                    kh[slot as usize] = k as u32;
+                }
                 self.lists.regs[reg].rows[k] = row;
                 k += 1;
             }
             self.bough.insert_run(pos, &recs);
+            self.lists.regs[reg].recs += recs.len();
             self.lr_count(reg, recs.len() as i64);
             pos += recs.len();
         }
@@ -1480,7 +1778,7 @@ impl Rt {
 /// # Safety
 /// Wire contract: `sig` is a `List<T>` field of the live owner (derived from a unique borrow), `w.node` its
 /// region.
-unsafe fn patch_list<T: 'static>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
+pub(crate) unsafe fn patch_list<T: 'static>(rt: &mut Rt, w: &Wire, sig: *const u8, _owner: *const u8) {
     let l = sig as *const List<T>;
     // SAFETY: the contract.
     let reg = unsafe { &*l };
@@ -1531,16 +1829,25 @@ mod sealed {
     pub trait Sealed {}
 }
 #[doc(hidden)]
+#[derive(Clone, Copy)]
 pub struct SrcParts {
-    list: *const u8,
-    n: usize,
-    slots: usize,
-    mount: LRowMountFn,
-    slot_at: unsafe fn(*const u8, usize) -> u32,
-    item: unsafe fn(*const u8, u32) -> *const u8,
-    set_wired: unsafe fn(*const u8, &[u32]),
-    row_fn: usize,
-    row_size: usize,
+    pub(crate) list: *const u8,
+    pub(crate) n: usize,
+    pub(crate) slots: usize,
+    pub(crate) mount: LRowMountFn,
+    pub(crate) slot_at: unsafe fn(*const u8, usize) -> u32,
+    pub(crate) item: unsafe fn(*const u8, u32) -> *const u8,
+    pub(crate) set_wired: unsafe fn(*const u8, &[u32]),
+    pub(crate) row_fn: usize,
+    pub(crate) row_size: usize,
+    pub(crate) item_ty: std::any::TypeId,
+    pub(crate) item_name: &'static str,
+    pub(crate) edit: unsafe fn(*mut u8, u32, u32) -> *mut u8,
+    pub(crate) gen_of: unsafe fn(*const u8, u32) -> u32,
+    /// An El list's projection and re-description (`el/list.rs`).
+    pub(crate) el: Option<ElReg>,
+    /// The list's log when the region was mounted (epoch, ops): see `LRegion::log_at`.
+    pub(crate) log_at: (u32, u32),
 }
 
 /// A `List<T>` field and its row function.
@@ -1575,11 +1882,36 @@ impl<T: 'static, V: 'static> RowSource<V> for ListRows<'_, T, V> {
             set_wired: list_set_wired::<T>,
             row_fn: self.row as usize,
             row_size: size_of::<T>(),
+            item_ty: std::any::TypeId::of::<T>(),
+            item_name: std::any::type_name::<T>(),
+            edit: list_edit::<T>,
+            gen_of: list_gen::<T>,
+            el: None,
+            log_at: (l.epoch.get(), l.log().0.len() as u32),
         }
     }
     fn wire(&self, m: &mut Mounter<'_, V>, reg: u32) {
         // SAFETY: `self.list` is an `offset_of!`-proven `List<T>` field of `V`; `patch_list::<T>` reads one.
         unsafe { m.wire_cell(self.list.list.head(), self.list.off, patch_list::<T>, reg, crate::rt::Recipe::NONE) };
+    }
+}
+
+/// An El list's rows (`el/list.rs`): the source's parts, and its head wired at the offset proven at mount.
+pub(crate) struct ElRows {
+    pub parts: SrcParts,
+    pub head: *const std::cell::Cell<u32>,
+    pub off: u32,
+    pub patch: PatchFn,
+}
+impl sealed::Sealed for ElRows {}
+impl<V: 'static> RowSource<V> for ElRows {
+    fn parts(&self) -> SrcParts {
+        self.parts
+    }
+    fn wire(&self, m: &mut Mounter<'_, V>, reg: u32) {
+        // SAFETY: `off` is the offset of the list (whose head is `head`) in the owner type, proven by its cell
+        // table when the El node was mounted (`el/list.rs`), and `patch` is `patch_list` of the list's item type.
+        unsafe { m.wire_cell(&*self.head, self.off, self.patch, reg, crate::rt::Recipe::NONE) };
     }
 }
 
@@ -1591,7 +1923,23 @@ pub struct IndexRows<V> {
 impl<V> sealed::Sealed for IndexRows<V> {}
 impl<V: 'static> RowSource<V> for IndexRows<V> {
     fn parts(&self) -> SrcParts {
-        SrcParts { list: std::ptr::null(), n: self.n, slots: 0, mount: mount_irow::<V>, slot_at: index_slot_at, item: index_item, set_wired: index_set_wired, row_fn: self.row as usize, row_size: 0 }
+        SrcParts {
+            list: std::ptr::null(),
+            n: self.n,
+            slots: 0,
+            mount: mount_irow::<V>,
+            slot_at: index_slot_at,
+            item: index_item,
+            set_wired: index_set_wired,
+            row_fn: self.row as usize,
+            row_size: 0,
+            item_ty: std::any::TypeId::of::<V>(),
+            item_name: std::any::type_name::<V>(),
+            edit: index_edit,
+            gen_of: index_gen,
+            el: None,
+            log_at: (0, 0),
+        }
     }
     fn wire(&self, _: &mut Mounter<'_, V>, _: u32) {}
 }
@@ -1629,7 +1977,7 @@ impl<S, V> Styled for LList<'_, S, V> {
     }
 }
 impl<'a, S, V> LList<'a, S, V> {
-    fn new(src: S) -> Self {
+    pub(crate) fn new(src: S) -> Self {
         LList { src, spec: Spec::new(false, true), bg: None, radius: 0.0, virt: false, scroll: None, estimate: 0.0, overscan: 2, animate: None }
     }
     pub fn bg(mut self, c: Color) -> Self {
@@ -1729,6 +2077,19 @@ impl<'a, S: RowSource<V>, V: 'static> Element<V> for LList<'a, S, V> {
         let src = self.src.parts();
         let est = (self.estimate * s).round() as i32 + gap;
         let req = self.scroll.map_or(0, |w| (*w.get() * s).round() as i64);
+        // the owner the region is mounted in: the root view, a row of an enclosing region (the innermost row being
+        // mounted, when the mounter is that row's owner), or another owner
+        let row_of = m.rt.lists.mounting.last().copied().filter(|&(r, _)| m.cls != 0 && m.rt.lists.regs[r as usize].cls == m.cls);
+        let (owner_kind, parent_gen) = match row_of {
+            _ if m.cls == 0 => (OWNER_ROOT, 0),
+            Some((r, sl)) => {
+                let p = &m.rt.lists.regs[r as usize];
+                // SAFETY: the enclosing region's live source, and a slot of it being mounted (live).
+                (OWNER_ROW, unsafe { (p.gen_of)(p.list, sl) })
+            }
+            None => (OWNER_OTHER, 0),
+        };
+        let list_off = if src.list.is_null() { 0 } else { (src.list as usize).wrapping_sub(m.owner as usize) as u32 };
         m.rt.lists.regs.push(LRegion {
             cls,
             anchor: hd,
@@ -1776,6 +2137,20 @@ impl<'a, S: RowSource<V>, V: 'static> Element<V> for LList<'a, S, V> {
             set_wired: src.set_wired,
             row_fn: src.row_fn,
             row_size: src.row_size,
+            recs: 0,
+            seen: 0,
+            owner_kind,
+            owner_ty: std::any::TypeId::of::<V>(),
+            owner_name: std::any::type_name::<V>(),
+            parent_gen,
+            list_off,
+            item_ty: src.item_ty,
+            item_name: src.item_name,
+            edit: src.edit,
+            gen_of: src.gen_of,
+            el: src.el,
+            khint: Vec::new(),
+            log_at: src.log_at,
         });
         m.rt.space_reg(m.space, reg as u32, true);
         self.src.wire(m, reg as u32);
@@ -1798,7 +2173,9 @@ impl<'a, S: RowSource<V>, V: 'static> Element<V> for LList<'a, S, V> {
                 <crate::elem::ApplyBg as crate::elem::Apply>::apply(m.rt, lid, &bg);
             }
         }
-        m.pos += 1 + m.rt.lists.regs[reg].rows.iter().map(|r| r.nrec as usize).sum::<usize>();
+        let r = &mut m.rt.lists.regs[reg];
+        r.seen = r.recs;
+        m.pos += 1 + r.rows.iter().map(|r| r.nrec as usize).sum::<usize>();
         m.kid += 1;
     }
 }

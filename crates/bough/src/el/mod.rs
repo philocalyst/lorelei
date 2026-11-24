@@ -23,6 +23,7 @@
 //! it into the retained records (`walk.rs`). Identity is parent × ordinal × kind (L3): a child whose kind
 //! changes at its position is remounted there, and only there; an iterator's items keep their position.
 mod arena;
+mod list;
 pub mod plug;
 mod walk;
 
@@ -43,6 +44,7 @@ pub(crate) use arena::Walk;
 pub fn rewind_for_bench() {
     drop(Walk::enter());
 }
+pub use list::{ListEach, Project};
 pub use plug::{Map, Source};
 
 /// The element currency: a cursor to one element of the description being written. Move-only, `!Send`,
@@ -407,7 +409,7 @@ impl<'f> El<'f> {
     #[track_caller]
     pub fn focusable(self) -> Self {
         let k = self.n().kind;
-        if matches!(k, K_GROUP | K_FRAG) {
+        if matches!(k, K_GROUP | K_FRAG | K_LIST) {
             wrong_kind("focus", k, K_BOX)
         }
         self.ext().flags |= X_FOCUS;
@@ -416,7 +418,7 @@ impl<'f> El<'f> {
     #[track_caller]
     fn route<M>(self, kind: u8, key: Key, r: impl Route<M>) -> Self {
         let k = self.n().kind;
-        if matches!(k, K_GROUP | K_FRAG) {
+        if matches!(k, K_GROUP | K_FRAG | K_LIST) {
             wrong_kind("a route", k, K_BOX)
         }
         let RouteParts { tramp, recipe, recv, recv_name } = r.lower(Seal);
@@ -439,6 +441,7 @@ fn kind_name(kind: u8) -> &'static str {
         K_TEXT => "a text",
         K_INPUT => "a text input",
         K_IMAGE => "an image",
+        K_LIST => "a list",
         _ => "a group",
     }
 }

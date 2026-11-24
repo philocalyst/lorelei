@@ -400,6 +400,7 @@ impl<V: View> App<V> {
         #[cfg(all(target_os = "macos", feature = "wgpu"))]
         let _ = overlapped;
         let mut rt = Rt::new(win_w, win_h, cfg.scale, &cfg.font, region, caps);
+        rt.root_ty = Some(std::any::TypeId::of::<V>());
         // the presenter over the region's views: made now (its device was built here), or after the mount when
         // a preparation thread is building the device meanwhile (`prepare`)
         #[cfg(all(target_os = "macos", not(feature = "wgpu")))]

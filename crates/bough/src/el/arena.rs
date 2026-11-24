@@ -31,6 +31,9 @@ pub(crate) const K_FRAG: u8 = 4;
 pub(crate) const K_INPUT: u8 = 5;
 /// A raster image (`text` holds its `ImageBox` in the bump store).
 pub(crate) const K_IMAGE: u8 = 6;
+/// A keyed list's rows (`&List<T>`, `list.each(f)`: `text` holds its [`ListReq`](super::list::ListReq) in the
+/// bump store): a list region of the kernel's (`listview.rs`).
+pub(crate) const K_LIST: u8 = 7;
 
 /// The box is painted (`bg`, `rounded`, `border`).
 pub(crate) const F_DRAW: u8 = 1;

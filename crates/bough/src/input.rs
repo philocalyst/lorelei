@@ -107,17 +107,24 @@ pub(crate) type RouteFn = unsafe fn(*mut u8, &crate::rt::Recipe, &Ev);
 pub(crate) struct Route {
     f: RouteFn,
     r: crate::rt::Recipe,
+    /// The receiver (04 §2, L4): the root view (`UP_ROOT`), or the owner `up` steps up the owner chain from
+    /// the list row that mounted the act (`Act::row`; 0: that row).
+    up: u8,
 }
 
+/// `Route::up` of a route that runs on the app's root view.
+pub(crate) const UP_ROOT: u8 = u8::MAX;
+
 impl Route {
-    /// A route from its parts (`el`: the trampoline is monomorphised where the route is written).
+    /// A route from its parts (`el`: the trampoline is monomorphised where the route is written), run on the
+    /// root view (`UP_ROOT`) or `up` owners up the chain from the act's row.
     ///
     /// # Safety
     /// `f` reads the owner it is later called with as the type it was monomorphised for, and `r` as the
-    /// bytes it was written with: the caller has checked that type is the dispatching owner's.
+    /// bytes it was written with: the caller has checked that type is the type of the owner `up` names.
     #[inline]
-    pub(crate) unsafe fn raw(f: RouteFn, r: crate::rt::Recipe) -> Route {
-        Route { f, r }
+    pub(crate) unsafe fn raw(f: RouteFn, r: crate::rt::Recipe, up: u8) -> Route {
+        Route { f, r, up }
     }
     /// # Safety
     /// `owner` points at the live owner the route was lowered for.
@@ -150,10 +157,10 @@ pub(crate) unsafe fn call_ev<V, F: Fn(&mut V, &Ev) + Copy>(o: *mut u8, r: &crate
 }
 
 fn route_plain<V, F: Fn(&mut V) + Copy + 'static>(f: F) -> Route {
-    Route { f: call_plain::<V, F>, r: recipe(f) }
+    Route { f: call_plain::<V, F>, r: recipe(f), up: UP_ROOT }
 }
 fn route_ev<V, F: Fn(&mut V, &Ev) + Copy + 'static>(f: F) -> Route {
-    Route { f: call_ev::<V, F>, r: recipe(f) }
+    Route { f: call_ev::<V, F>, r: recipe(f), up: UP_ROOT }
 }
 
 // =============================================================================== the act table
@@ -186,11 +193,14 @@ pub(crate) struct Act {
     pub field: u32,
     /// `Input::tips` index, or NONE.
     pub tip: u32,
+    /// The list row whose description mounted the act's routes (region, slot, generation; region `NONE`: the
+    /// root view's), where a route's owner chain starts (`Route::up`).
+    pub row: (u32, u32, u32),
 }
 
 impl Act {
     fn new(handle: Handle) -> Act {
-        Act { handle, node: NONE, inst: NONE, hover_bg: None, base: 0, bordered: false, hovered: false, click: None, press: None, hover: None, key: None, drag: None, keys: 0, scroll: NONE, field: NONE, tip: NONE }
+        Act { handle, node: NONE, inst: NONE, hover_bg: None, base: 0, bordered: false, hovered: false, click: None, press: None, hover: None, key: None, drag: None, keys: 0, scroll: NONE, field: NONE, tip: NONE, row: (NONE, 0, 0) }
     }
 }
 
@@ -1113,6 +1123,29 @@ impl<V: View> App<V> {
         &mut *self.owner as *mut V as *mut u8
     }
 
+    /// Run route `r` of act `a` with event `e` on its receiver: the root view, or the owner it was resolved to
+    /// at mount (a list row, reached through its list: `Rt::route_owner`). A row that is gone since the route
+    /// was mounted (a late event) runs nothing.
+    #[inline]
+    fn run_route(&mut self, a: u32, r: Route, e: &Ev) {
+        let o = self.owner_mut();
+        let t = if r.up == UP_ROOT {
+            o
+        } else {
+            let row = self.rt.input.acts[a as usize].row;
+            // SAFETY: `o` is derived from the unique borrow of the live root view, and no other reference to it
+            // or into it is live while a route is dispatched.
+            match unsafe { self.rt.route_owner(o, row, r.up) } {
+                Some(t) => t,
+                None => return,
+            }
+        };
+        // SAFETY: `t` is the owner the route was resolved to at mount, of the type its trampoline reads
+        // (`el/walk.rs`, `set_routes`: the receiver's `TypeId` against the owner chain's), live and uniquely
+        // reachable through `t` for the call.
+        unsafe { r.call(t, e) };
+    }
+
     /// Settle what routes queued and lay out what changed (the end of an input turn).
     fn settle_input(&mut self) {
         crate::lower::provenance::count(|c| c.rt_settle += 1);
@@ -1171,10 +1204,8 @@ impl<V: View> App<V> {
             if let Some(r) = self.rt.input.acts[pa as usize].drag {
                 let (x0, y0) = self.rt.input.press_at;
                 let e = Ev { dx: x - x0, dy: y - y0, ..Ev::at(x, y) };
-                let o = self.owner_mut();
                 self.rt.input.stats.routes += 1;
-                // SAFETY: the route was lowered for this owner type.
-                unsafe { r.call(o, &e) };
+                self.run_route(pa, r, &e);
                 self.settle_input();
                 return;
             }
@@ -1286,10 +1317,8 @@ impl<V: View> App<V> {
         }
         if let Some(r) = act.hover {
             let e = Ev { on, ..Ev::at(x, y) };
-            let o = self.owner_mut();
             self.rt.input.stats.routes += 1;
-            // SAFETY: the route was lowered for this owner type.
-            unsafe { r.call(o, &e) };
+            self.run_route(a, r, &e);
             ran = true;
         }
         ran
@@ -1327,10 +1356,8 @@ impl<V: View> App<V> {
             let act = self.rt.input.acts[a as usize];
             if let Some(r) = act.press {
                 let e = Ev { button, ..Ev::at(x, y) };
-                let o = self.owner_mut();
                 self.rt.input.stats.routes += 1;
-                // SAFETY: the route was lowered for this owner type.
-                unsafe { r.call(o, &e) };
+                self.run_route(a, r, &e);
                 break;
             }
         }
@@ -1354,9 +1381,7 @@ impl<V: View> App<V> {
             if let Some(r) = self.rt.input.acts[pa as usize].drag {
                 let (x0, y0) = self.rt.input.press_at;
                 let e = Ev { dx: x - x0, dy: y - y0, on: false, ..Ev::at(x, y) };
-                let o = self.owner_mut();
-                // SAFETY: the route was lowered for this owner type.
-                unsafe { r.call(o, &e) };
+                self.run_route(pa, r, &e);
             }
             self.update_hover(px, py, x, y);
             self.settle_input();
@@ -1370,10 +1395,8 @@ impl<V: View> App<V> {
                 for h in chain {
                     let a = self.rt.input.act_of(h);
                     if let Some(r) = self.rt.input.acts[a as usize].click {
-                        let o = self.owner_mut();
                         self.rt.input.stats.routes += 1;
-                        // SAFETY: the route was lowered for this owner type.
-                        unsafe { r.call(o, &Ev::at(x, y)) };
+                        self.run_route(a, r, &Ev::at(x, y));
                         break;
                     }
                 }
@@ -1569,10 +1592,8 @@ impl<V: View> App<V> {
                     let by_key = self.rt.input.keymaps[act.keys as usize].iter().find(|(k, _)| *k == key).map(|(_, r)| *r);
                     if let Some(r) = by_key.or(act.key) {
                         let e = Ev { key: Some(key), mods, ..Ev::at(0.0, 0.0) };
-                        let o = self.owner_mut();
                         self.rt.input.stats.routes += 1;
-                        // SAFETY: the route was lowered for this owner type.
-                        unsafe { r.call(o, &e) };
+                        self.run_route(a, r, &e);
                         break;
                     }
                 }

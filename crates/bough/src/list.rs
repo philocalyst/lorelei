@@ -120,6 +120,9 @@ pub struct List<T> {
     pub(crate) wired: std::cell::RefCell<Vec<u32>>,
     /// Some region's patch has registered this list for the end-of-settle cleanup this turn.
     pub(crate) registered: Cell<bool>,
+    /// Logs closed so far (`end_turn`): a region mounted while the log held ops it already shows skips them
+    /// (`LRegion::log_at`) only while this is unchanged.
+    pub(crate) epoch: Cell<u32>,
 }
 
 // SAFETY: `#[repr(C)]` with the head first.
@@ -168,7 +171,7 @@ impl<T> Drop for List<T> {
 
 impl<T> List<T> {
     pub fn new() -> List<T> {
-        List { head: WireHead::new(), chunks: Vec::new(), meta: Vec::new(), order: Vec::new(), free: Vec::new(), pending_free: Vec::new(), log: Vec::new(), perm: Vec::new(), wired: Default::default(), registered: Cell::new(false) }
+        List { head: WireHead::new(), chunks: Vec::new(), meta: Vec::new(), order: Vec::new(), free: Vec::new(), pending_free: Vec::new(), log: Vec::new(), perm: Vec::new(), wired: Default::default(), registered: Cell::new(false), epoch: Cell::new(0) }
     }
     pub fn with_capacity(n: usize) -> List<T> {
         let mut l = List::new();
@@ -224,7 +227,7 @@ impl<T> List<T> {
         self.meta[s as usize] = (self.meta[s as usize] & GEN) | LIVE;
         s
     }
-    fn slot_of(&self, s: u32) -> Slot<T> {
+    pub(crate) fn slot_of(&self, s: u32) -> Slot<T> {
         Slot { idx: s, generation: self.meta[s as usize] & GEN, _t: PhantomData }
     }
     /// Move the item out of slot `s`; the slot's heads are cleared first (see `wired`).
@@ -449,6 +452,7 @@ impl<T> List<T> {
         self.perm.clear();
         self.free.append(&mut self.pending_free);
         self.registered.set(false);
+        self.epoch.set(self.epoch.get().wrapping_add(1));
     }
     #[inline]
     pub(crate) fn slot_live(&self, s: u32) -> bool {

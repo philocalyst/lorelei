@@ -178,6 +178,30 @@ fn mount_item<V, E: Element<V>>(m: &mut Mounter<'_, V>, e: E, into: Option<&mut 
     DynItem { key: 0, nrec: nrec as u32, nkid: nkid as u32, scope, tape, seal: (0, 0) }
 }
 
+/// The records an item holds now: what it counted when it was last walked, and what the list regions in it
+/// mounted or unmounted since (their rows are state: they change between descriptions).
+fn live_nrec(rt: &Rt, it: &DynItem) -> usize {
+    fn walk(rt: &Rt, s: &Scope, n: &mut i64) {
+        for &r in &s.lregs {
+            let g = &rt.lists.regs[r as usize];
+            if !g.dead {
+                *n += g.recs as i64 - g.seen as i64;
+            }
+        }
+        for &d in &s.dyns {
+            for it in &rt.dyns.parts[d as usize] {
+                walk(rt, &it.scope, n);
+            }
+        }
+    }
+    if it.scope.lregs.is_empty() && it.scope.dyns.is_empty() {
+        return it.nrec as usize;
+    }
+    let mut n = it.nrec as i64;
+    walk(rt, &it.scope, &mut n);
+    n as usize
+}
+
 /// Re-describe a dynamic part: item `k` updates retained item `k`, new items are mounted as one run at the
 /// end of the part, surplus items are removed as one run.
 pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl Iterator<Item = E>) {
@@ -231,7 +255,8 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
                 }
                 m.rt.lay.eng.splice_kids(&m.rt.bough, lid, m.kid, gone.nkid as usize);
             }
-            m.rt.bough.remove_run(m.pos, gone.nrec as usize);
+            let nrec = live_nrec(m.rt, &gone);
+            m.rt.bough.remove_run(m.pos, nrec);
             m.rt.release_scope(gone.scope);
             let mut buf = Vec::new();
             let mut it = mount_item(m, e, Some(&mut buf));
@@ -267,7 +292,8 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
                 if k + 1 < old.len() && sealed_as(&old[k + 1], &e, &seals, &m.rt.lay.descs, cx).1 {
                     let gone = old.remove(k);
                     seals.dead += gone.seal.1;
-                    remove_items(m, lid, gone.nrec as usize, gone.nkid as usize);
+                    let nrec = live_nrec(m.rt, &gone);
+                    remove_items(m, lid, nrec, gone.nkid as usize);
                     m.rt.release_scope(gone.scope);
                     pending = Some(e); // against the retained item now at `k`
                     continue;
@@ -364,7 +390,7 @@ pub(crate) fn update_dyn<V, E: Element<V>>(m: &mut Mounter<'_, V>, items: impl I
     } else if k < old.len() {
         let gone: Vec<DynItem> = old.drain(k..).collect();
         seals.dead += gone.iter().map(|i| i.seal.1).sum::<u32>();
-        let nrec: usize = gone.iter().map(|i| i.nrec as usize).sum();
+        let nrec: usize = gone.iter().map(|i| live_nrec(m.rt, i)).sum();
         let nkid: usize = gone.iter().map(|i| i.nkid as usize).sum();
         if lid != NONE && nkid > 0 {
             for i in 0..nkid {
