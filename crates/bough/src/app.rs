@@ -335,9 +335,7 @@ impl<V: View> App<V> {
         // reserves the record format's limits as address space too (only what is written becomes resident)
         // the GL executor owns the region: one mapped buffer of the configured capacities (GL cannot import memory)
         #[cfg(target_os = "linux")]
-        let gl_prep = (gpu && crate::backend::gpu::want_of(cfg.executor) == crate::backend::gpu::Want::FusedGl)
-            .then(bough_fused::gl::take_prep)
-            .and_then(|r| r.map_err(|e| crate::backend::gpu::refused("fused-gl", &e)).ok());
+        let gl_prep = (gpu && crate::backend::gpu::want_of(cfg.executor) == crate::backend::gpu::Want::FusedGl).then(bough_fused::gl::take_prep).and_then(|r| r.map_err(|e| crate::backend::gpu::refused("fused-gl", &e)).ok());
         #[cfg(target_os = "linux")]
         let caps = if gl_prep.is_some() { cfg.caps } else { cfg.caps.reserve() };
         #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -594,7 +592,9 @@ impl<V: View> App<V> {
     /// Present the frame the GPU executor was drawing (waiting for it if it is not drawn yet).
     #[cfg(target_os = "linux")]
     fn publish_pending(&mut self) {
-        let Some((i, full)) = self.pending_present.take() else { return };
+        let Some((i, full)) = self.pending_present.take() else {
+            return;
+        };
         if let Some(g) = self.lgpu.as_mut() {
             g.sync();
         }
@@ -806,6 +806,13 @@ impl<V: View> App<V> {
         if !self.once {
             // SAFETY: the tape was recorded by this owner's mount at the start of the Bough.
             unsafe { crate::describe::redescribe(&mut self.rt, &*self.owner, &mut self.tape) };
+            if self.rt.asy.rescan {
+                // the re-description mounted a producer (its first request flips its reader to pending) or revoked
+                // one: those pending heads are settled in this turn, as at the first mount
+                let owner = &mut *self.owner as *mut V as *const u8;
+                // SAFETY: as in `turn`.
+                unsafe { self.rt.settle(owner) };
+            }
         }
     }
 
@@ -839,7 +846,9 @@ impl<V: View> App<V> {
     fn copy_plan(&mut self, i: usize, epoch: u32, age: u32) -> bough_frame::SlotCopy {
         use bough_frame::SlotCopy;
         let b = &self.rt.bough;
-        let Some((b0, r0)) = (0..age).find_map(|k| b.scroll_rec(k).map(|r| (k, r))) else { return SlotCopy::NONE };
+        let Some((b0, r0)) = (0..age).find_map(|k| b.scroll_rec(k).map(|r| (k, r))) else {
+            return SlotCopy::NONE;
+        };
         // (the CPU target moves the clip in place when it repairs the surface on screen: `copy_rect` is a memmove)
         let src = self.shown.filter(|&s| (s != i || self.target.is_some()) && self.held[s] == Some(epoch - 1));
         let rows = self.rows.len();
@@ -910,7 +919,9 @@ impl<V: View> App<V> {
     /// No epoch since it was drawn may have had non-paint damage, none may have overflowed its paint log,
     /// and the logged paint writes since then must compose to the identity for every record.
     fn holds_current(&self, s: usize, epoch: u32) -> bool {
-        let Some(last) = self.held[s] else { return false };
+        let Some(last) = self.held[s] else {
+            return false;
+        };
         let age = epoch - last;
         if age as usize > RING || age == 0 {
             return age == 0;
@@ -1207,7 +1218,9 @@ impl<V: View> App<V> {
     /// presented surface carries: a host's compositor repaints only it). `true`: everything (nothing shown yet,
     /// or the surface on screen is older than the damage rings).
     fn damage_since_shown(&mut self, epoch: u32) -> bool {
-        let Some(age) = self.shown.and_then(|s| self.held[s]).map(|e| epoch - e) else { return true };
+        let Some(age) = self.shown.and_then(|s| self.held[s]).map(|e| epoch - e) else {
+            return true;
+        };
         if age as usize > RING || age == 0 {
             return age != 0;
         }

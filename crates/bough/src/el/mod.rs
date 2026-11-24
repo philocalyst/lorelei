@@ -27,7 +27,7 @@ pub mod motion;
 pub mod plug;
 mod walk;
 
-use crate::color::{rgb, Color};
+use crate::color::{Color, rgb};
 use crate::input::{Ev, Key, RouteFn};
 use crate::layout::{Align, Dim, Justify, Spec, Styled};
 use arena::*;
@@ -36,8 +36,8 @@ use std::any::TypeId;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
-pub use arena::stats as arena_stats;
 pub(crate) use arena::Walk;
+pub use arena::stats as arena_stats;
 
 /// Retire this thread's description (what the end of a walk does): for benchmarks of `view` alone.
 #[doc(hidden)]
@@ -45,7 +45,7 @@ pub fn rewind_for_bench() {
     drop(Walk::enter());
 }
 pub use motion::{animate, Animatable, Motion, Spring};
-pub use plug::{Map, Source};
+pub use plug::{Latest, Map, Pending, Source, is_pending, latest};
 
 /// The element currency: a cursor to one element of the description being written. Move-only, `!Send`,
 /// covariant in `'f`, and valid for the one description it was written in: kept past it, every use panics.
@@ -426,7 +426,7 @@ impl<'f> El<'f> {
     #[track_caller]
     pub fn focusable(self) -> Self {
         let k = self.n().kind;
-        if matches!(k, K_GROUP | K_FRAG) {
+        if matches!(k, K_GROUP | K_FRAG | K_PROD | K_BOUND) {
             wrong_kind("focus", k, K_BOX)
         }
         self.ext().flags |= X_FOCUS;
@@ -435,7 +435,7 @@ impl<'f> El<'f> {
     #[track_caller]
     fn route<M>(self, kind: u8, key: Key, r: impl Route<M>) -> Self {
         let k = self.n().kind;
-        if matches!(k, K_GROUP | K_FRAG) {
+        if matches!(k, K_GROUP | K_FRAG | K_PROD | K_BOUND) {
             wrong_kind("a route", k, K_BOX)
         }
         let RouteParts { tramp, recipe, recv, recv_name } = r.lower(Seal);
@@ -458,6 +458,8 @@ fn kind_name(kind: u8) -> &'static str {
         K_TEXT => "a text",
         K_INPUT => "a text input",
         K_IMAGE => "an image",
+        K_PROD => "a producer",
+        K_BOUND => "a boundary",
         _ => "a group",
     }
 }
@@ -566,6 +568,152 @@ pub fn image<'f>(png: &'static [u8]) -> El<'f> {
     let e = El::new(K_IMAGE, b.spec);
     e.n().text = arena::put(b) as *const u8;
     e
+}
+
+// =============================================================================== async (05)
+
+/// A producer (05 §4, "fetch high"): whenever `src`'s value changes, `request(&value)` is handed to the
+/// executor and its answer lands in `reader` through the cohort (stale tickets rejected, the commit atomic
+/// with its co-members: `reader.rs`). It mounts nothing, may stand anywhere among children, and belongs to
+/// the position that declares it: removed with it (a branch flipped away), it is revoked, and a completion
+/// still in flight changes nothing. Both cells must be fields of the view (a located panic names them
+/// otherwise: a producer has to write its reader after the description is gone).
+///
+/// The design spells a producer as a projection that returns the reader (`selected_id.try_map_async(fetch)`,
+/// 05 §1); here the reader is a field the view owns, which is what makes its port a direct one, so the
+/// producer names it.
+#[track_caller]
+pub fn produce<'f, S: PartialEq + Clone + 'static, T: Send + 'static>(src: &'f crate::signal::Signal<S>, reader: &'f crate::reader::Reader<T>, request: fn(&S) -> crate::reader::Request<T>) -> El<'f> {
+    use crate::reflect::cell_id;
+    let e = El::new(K_PROD, Spec::new(false, false));
+    let req = ProdReq {
+        src: src as *const _ as *const u8,
+        src_ty: cell_id::<crate::signal::Signal<S>>(),
+        dst: reader as *const _ as *const u8,
+        dst_ty: cell_id::<crate::reader::Reader<T>>(),
+        f: request as usize,
+        mount: crate::reader::mount_producer::<S, T>,
+        names: || (std::any::type_name::<S>(), std::any::type_name::<T>()),
+        at: std::panic::Location::caller(),
+    };
+    e.fresh().text = arena::put(req) as *const u8;
+    e
+}
+
+/// A boundary (05 §4, "block low"): `boundary().loading(skeleton).failed(error).child(content)`. It guards
+/// every reader its `child` arm reads through a port (`reader.map(..)`, not `is_pending`), found in the
+/// child's description, nested boundaries' arms excepted (they guard their own). `loading` shows until first
+/// readiness (every guard has a value); after it, a new request keeps the content mounted (revalidation);
+/// `failed` shows while a guard with no value failed, and, with
+/// [`replace_on_failure`](Boundary::replace_on_failure), while any guard's last request failed. A completion
+/// switches the arm without rerunning `view` (the arms are mounted once, each under a clip of its own).
+///
+/// All three arms are mounted: in a layout container they all take space, as the kernel's boundary's do; give
+/// them absolutely placed boxes there. A reader that is not a field of the view is a constant of the
+/// description (ready, for a boundary) and guards nothing.
+pub fn boundary<'f>() -> Boundary<'f> {
+    Boundary { loading: None, failed: None, policy: 0 }
+}
+
+/// What [`boundary`] builds: arms and policy, closed by [`child`](Boundary::child).
+#[must_use = "a boundary is an element once `.child(..)` closes it"]
+pub struct Boundary<'f> {
+    loading: Option<El<'f>>,
+    failed: Option<El<'f>>,
+    policy: u8,
+}
+
+/// A boundary arm: an element, or a function that makes one (`.loading(detail_skeleton)`).
+pub trait Arm<'f> {
+    #[doc(hidden)]
+    #[allow(private_interfaces)]
+    fn arm(self, _: Seal) -> El<'f>;
+}
+impl<'f> Arm<'f> for El<'f> {
+    #[allow(private_interfaces)]
+    fn arm(self, _: Seal) -> El<'f> {
+        self
+    }
+}
+impl<'f, F: FnOnce() -> El<'f>> Arm<'f> for F {
+    #[allow(private_interfaces)]
+    fn arm(self, _: Seal) -> El<'f> {
+        self()
+    }
+}
+
+impl<'f> Boundary<'f> {
+    /// What shows before first readiness.
+    pub fn loading(mut self, a: impl Arm<'f>) -> Self {
+        self.loading = Some(a.arm(Seal));
+        self
+    }
+    /// What shows while a guarded reader failed and has no value (see [`replace_on_failure`](Self::replace_on_failure)).
+    pub fn failed(mut self, a: impl Arm<'f>) -> Self {
+        self.failed = Some(a.arm(Seal));
+        self
+    }
+    /// A failure after content replaces it with the `failed` arm until a request succeeds (05 §6,
+    /// "replace-with-error"); by default the stale content stays (the reader's failure is there to adorn it).
+    pub fn replace_on_failure(mut self) -> Self {
+        self.policy |= crate::reader::BP_REPLACE;
+        self
+    }
+    /// The content, and the boundary as an element.
+    #[track_caller]
+    pub fn child(self, c: impl Arm<'f>) -> El<'f> {
+        let c = c.arm(Seal);
+        let arm = |a: Option<El<'f>>| a.map_or_else(|| El::new(K_FRAG, Spec::new(false, false)).raw().as_ptr(), |a| a.raw().as_ptr());
+        let (l, f, c) = (arm(self.loading), arm(self.failed), c.raw().as_ptr());
+        let mut guards: *const GuardReq = std::ptr::null();
+        // SAFETY: `c` is a node of this description (just checked by `raw`).
+        collect_guards(unsafe { &*c }, &mut guards);
+        let e = El::new(K_BOUND, Spec::new(false, false));
+        let n = e.fresh();
+        for a in [l, f, c] {
+            append(n, a);
+        }
+        n.text = arena::put(BoundReq { guards, policy: self.policy }) as *const u8;
+        e
+    }
+}
+
+/// Every reader a port of `n`'s subtree reads by value, once each, onto `list` (a nested boundary guards its own).
+fn collect_guards(n: &DNode, list: &mut *const GuardReq) {
+    if n.kind == K_BOUND {
+        return;
+    }
+    let mut take = |w: *const WireReq| {
+        // SAFETY: a wire request of this description's node.
+        if let Some(w) = unsafe { w.as_ref() }
+            && w.tag() == W_GUARD
+        {
+            let r = w.cell();
+            let mut g = *list;
+            // SAFETY: the list's entries are this description's.
+            while let Some(x) = unsafe { g.as_ref() } {
+                if x.reader == r {
+                    return;
+                }
+                g = x.next;
+            }
+            *list = arena::put(GuardReq { next: *list, reader: r, ty: w.ty });
+        }
+    };
+    take(n.ink);
+    take(n.tw);
+    // SAFETY: a node's `ext` is null or its own.
+    if let Some(x) = unsafe { n.ext.as_ref() } {
+        for w in [x.wa, x.wtx, x.wty, x.ww, x.wh] {
+            take(w);
+        }
+    }
+    let mut c = n.first;
+    // SAFETY: the children of a node of this description.
+    while let Some(k) = unsafe { c.as_ref() } {
+        collect_guards(k, list);
+        c = k.next;
+    }
 }
 
 // =============================================================================== children

@@ -208,7 +208,7 @@ fn add_motion<K: Apply<P = T>, T: Animatable>(tr: &mut Transitions, node: u32, i
 fn sync_motion<T: Animatable>(tr: &mut Transitions, id: u32, target: u32, prog: Program) -> u32 {
     tr.reprogram::<T>(id, prog);
     tr.retarget_motion::<T>(id, T::of_bits(target));
-    tr.motion_shown::<T>(id).map_or(target, T::bits)
+    tr.motion_shown::<T>(id).map_or(target, <T as Animatable>::bits)
 }
 
 /// # Safety
@@ -219,13 +219,23 @@ unsafe fn patch_motion<T: Animatable>(rt: &mut Rt, w: &Wire, sig: *const u8, _ow
     rt.transitions.retarget_motion::<T>(st.id, (**s).affine(st.m, st.c));
 }
 
+/// A motion port's value where the walk evaluates it (mount, a constant): its target, `affine(signal)`.
+///
+/// # Safety
+/// `ScalarEval`'s contract (`arena.rs`), for a `Signal<T>`; the recipe holds a `Steer`.
+unsafe fn eval_motion<T: Animatable>(cell: usize, r: &Recipe) -> u32 {
+    // SAFETY: the contract.
+    let (s, st) = unsafe { (&*(cell as *const Signal<T>), r.read_at::<Steer>(0)) };
+    Animatable::bits((**s).affine(st.m, st.c))
+}
+
 impl<'f, T: Animatable> IntoProp<'f, T> for Motion<'f, T> {
     #[inline]
     fn plug<K: Apply<P = T>>(self, _: Seal) -> Plug<T> {
         let v = (**self.sig).affine(self.m, self.c);
         let motion = arena::put(MotionReq { prog: self.prog, add: add_motion::<K, T>, sync: sync_motion::<T> });
         let recipe = Recipe::of(Steer { id: 0, m: self.m, c: self.c });
-        Plug { v, w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<T>>(), patch: patch_motion::<T>, recipe, motion }) }
+        Plug { v, w: arena::put(WireReq { head: self.sig.head(), ty: cell_id::<Signal<T>>(), patch: patch_motion::<T>, recipe, motion, eval: eval_motion::<T> as *const (), state: arena::P_EVAL }) }
     }
 }
 
@@ -238,7 +248,7 @@ impl<'f, T: Animatable> IntoProp<'f, T> for Motion<'f, T> {
 /// `motion` its request.
 pub(crate) unsafe fn install<V>(m: &mut Mounter<'_, V>, w: &WireReq, node: u32, init: u32) {
     // SAFETY: the function contract.
-    let (head, mr) = unsafe { (&*w.head, &*w.motion) };
+    let (head, mr) = unsafe { (&*w.wire_head(), &*w.motion) };
     let Some(off) = m.field_off(head, w.ty) else { return };
     let id = (mr.add)(&mut m.rt.transitions, node, init, mr.prog);
     // SAFETY: `off` is the field's proven offset (`field_off`), and `patch_motion::<T>` reads that cell type
@@ -247,54 +257,15 @@ pub(crate) unsafe fn install<V>(m: &mut Mounter<'_, V>, w: &WireReq, node: u32, 
     m.rt.wires[i as usize].motion = true;
 }
 
-/// The installed wires of a node being re-described take the description's recipes, and a motion port is
-/// steered (its new target and timing) and shows what its motion presents, so the update that follows applies
-/// nothing over it. `ports`: the node's wire requests in the order its mount installed them, each with the
-/// value the update will apply.
-///
-/// A map whose closure captured something new (`self.n.map(move |n| n * k)` with another `k`) is the same port
-/// (`shape` does not see captures): without this its wire would keep computing with the captures of the
-/// description that mounted it, and a seal that matches would step over the stale value.
-pub(crate) fn sync_ports<V>(m: &mut Mounter<'_, V>, ports: &mut [(*const WireReq, &mut u32)]) {
-    let mut used = 0u64;
-    for (req, val) in ports.iter_mut() {
-        if req.is_null() {
-            continue;
-        }
-        // SAFETY: a request of this description (`plug.rs`, `Motion::plug`).
-        let req = unsafe { &**req };
-        let Some(wi) = find(m, &mut used, req) else { continue };
-        let w = &mut m.rt.wires[wi as usize];
-        if req.motion.is_null() {
-            if !cfg!(feature = "mutant_el_recipe") {
-                w.recipe = req.recipe;
-            }
-            continue;
-        }
-        // SAFETY: a motion wire's recipe holds its `Steer` (`install`); `motion` is this description's request.
-        let (id, mr) = unsafe { (w.recipe.read_at::<u32>(0), &*req.motion) };
-        w.recipe = req.recipe.with_at(0, id);
-        let shown = (mr.sync)(&mut m.rt.transitions, id, **val, mr.prog);
-        if !cfg!(feature = "mutant_motion_snap") {
-            **val = shown;
-        }
-    }
-}
-
-/// The installed wire of the item being updated that `req` asked for: same cell, same patch, the first not
-/// matched yet (two ports of one node driven by one signal through the same patch are installed, and so
-/// matched, in order).
-#[inline]
-fn find<V>(m: &Mounter<'_, V>, used: &mut u64, req: &WireReq) -> Option<u32> {
-    for (j, &wi) in m.scope.wires.iter().enumerate().take(64) {
-        if *used & 1 << j != 0 {
-            continue;
-        }
-        let w = &m.rt.wires[wi as usize];
-        if !w.dead && w.head == req.head as usize && w.patch as usize == req.patch as usize {
-            *used |= 1 << j;
-            return Some(wi);
-        }
-    }
-    None
+/// A re-description of a motion port whose installed wire is `wi`: the wire takes the description's map (its
+/// `Steer`, keeping the motion's id), and the motion its new target and timing. True: the motion presents the
+/// port's value, so the update applies nothing over it (false under `mutant_motion_snap`: the target is applied).
+pub(crate) fn steer<V>(m: &mut Mounter<'_, V>, wi: u32, req: &WireReq) -> bool {
+    let w = &mut m.rt.wires[wi as usize];
+    // SAFETY: a motion wire's recipe holds its `Steer` (`install`); `motion` is this description's request.
+    let (id, mr) = unsafe { (w.recipe.read_at::<u32>(0), &*req.motion) };
+    w.recipe = req.recipe.with_at(0, id);
+    let target = req.scalar();
+    (mr.sync)(&mut m.rt.transitions, id, target, mr.prog);
+    !cfg!(feature = "mutant_motion_snap")
 }

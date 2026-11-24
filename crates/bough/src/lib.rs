@@ -70,7 +70,7 @@ pub mod prelude {
     pub use crate::changed::Changed;
     pub use crate::color::{rgb, Color};
     pub use crate::el::plug::{IntoProp, Len, Sink};
-    pub use crate::el::{animate, block, button, column, div, image, para, row, text, text_input, ChildSeq, El, Hover, Map, Motion, Route, Source, Spring, View, With};
+    pub use crate::el::{animate, block, boundary, button, column, div, image, is_pending, latest, para, produce, row, text, text_input, Arm, Boundary, ChildSeq, El, Hover, Map, Motion, Route, Source, Spring, View, With};
     pub use crate::elem::each;
     pub use crate::entity::{Entities, Entity};
     pub use crate::input::{Ev, Key, Mods};

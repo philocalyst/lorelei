@@ -8,8 +8,8 @@ use crate::rt::*;
 use crate::signal::{Num, Signal, WMap, Wired};
 use crate::text::{TShape, TextNode};
 use bough_core::{Handle, NRect, RecordInit};
-use bough_frame::pay_irun;
 use bough_frame::Instance;
+use bough_frame::pay_irun;
 use std::marker::PhantomData;
 use std::ops::Range;
 
@@ -113,32 +113,41 @@ impl<V> Mounter<'_, V> {
     /// elsewhere (behind a `Vec`, in another object) and nothing was installed; the caller's operand is then
     /// a constant of this description.
     ///
+    /// `sub`: the head is that many bytes into the cell (a reader's pending head; 0: the cell's own head).
+    ///
     /// # Safety
-    /// `head` is the head of a live cell of the type `ty` names (`reflect::cell_id`), and `patch` reads
-    /// exactly that cell type with the recipe given.
-    pub(crate) unsafe fn wire_field(&mut self, head: &std::cell::Cell<u32>, ty: std::any::TypeId, patch: PatchFn, node: u32, recipe: crate::rt::Recipe) -> bool {
-        let Some(off) = self.field_off(head, ty) else { return false };
-        // SAFETY: `off` is the offset of a field of the cell type holding `head` (`field_off`); `patch` reads
-        // that type (the contract).
-        unsafe { self.wire_cell(head, off, patch, node, recipe) };
+    /// `head` is a head `sub` bytes into a live cell of the type `ty` names (`reflect::cell_id`), and `patch`
+    /// reads exactly that cell type with the recipe given.
+    pub(crate) unsafe fn wire_field(&mut self, head: &std::cell::Cell<u32>, sub: u32, ty: std::any::TypeId, patch: PatchFn, node: u32, recipe: crate::rt::Recipe) -> bool {
+        let Some(off) = field_offset::<V>(self.owner as usize, (head as *const _ as usize).wrapping_sub(sub as usize), ty) else { return false };
+        // SAFETY: the owner type has a field of the cell type at `off` (`field_offset`), and `patch` reads that
+        // type (the contract), from the head `sub` bytes into it.
+        unsafe { self.wire_cell(head, off + sub, patch, node, recipe) };
         true
     }
-    /// The offset in this owner of the cell of type `ty` (`reflect::cell_id`) whose head is `head`, when that
-    /// cell is a field of the owner: the owner type has a field of the cell type at that offset (the table lists
-    /// only cells reached through struct, tuple and array fields), and a live object of that type at that
-    /// address inside the owner is that field. This is the offset `sig!` proves.
+    /// The offset in this owner of the cell of type `ty` whose head (at its start) is `head`, when that cell is a
+    /// field of the owner (`field_offset`).
     #[inline(always)]
     pub(crate) fn field_off(&self, head: &std::cell::Cell<u32>, ty: std::any::TypeId) -> Option<u32> {
-        let (at, base) = (head as *const _ as usize, self.owner as usize);
-        if at < base || at - base >= size_of::<V>() {
-            return None;
-        }
-        let off = at - base;
-        if off % 4 != 0 || off > u32::MAX as usize || !crate::reflect::cells::<V>().has(off, ty) {
-            return None;
-        }
-        Some(off as u32)
+        field_offset::<V>(self.owner as usize, head as *const _ as usize, ty)
     }
+}
+
+/// The field rule: the offset of the cell of type `ty` (`reflect::cell_id`) at address `at` in an owner of type
+/// `V` at `base`, when that cell is a field of the owner. The owner type has a field of the cell type at that
+/// offset (the table lists only cells reached through struct, tuple and array fields), and a live object of that
+/// type at that address inside the owner is that field: this is the offset `sig!` proves. A pure function of
+/// (`base`, `at`, `ty`, `V`): `wire_field` installs by it, and the El walk seals by it (`el/walk.rs`).
+#[inline]
+pub(crate) fn field_offset<V>(base: usize, at: usize, ty: std::any::TypeId) -> Option<u32> {
+    if at < base || at - base >= size_of::<V>() {
+        return None;
+    }
+    let off = at - base;
+    if off % 4 != 0 || off > u32::MAX as usize || !crate::reflect::cells::<V>().has(off, ty) {
+        return None;
+    }
+    Some(off as u32)
 }
 
 pub trait Element<V>: Sized {
@@ -292,6 +301,12 @@ pub trait IntoProp<P: 'static, V>: Sized {
     /// The current value, at a re-description (a wired operand keeps its wire; applying its current value
     /// is a no-op through the property's equality cut-off).
     fn value(self) -> P;
+    /// At a re-description: the operand's installed wire keeps the property current, so its value is neither
+    /// computed nor applied (an El port resolved by the walk, `el/walk.rs`). Always `false` for typed operands.
+    #[inline(always)]
+    fn keep(&self) -> bool {
+        false
+    }
     /// The operand's part of its element's seal (`seal.rs`); refuses by default.
     #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
@@ -331,7 +346,7 @@ impl<V> IntoProp<Color, V> for Color {
 impl<T: Clone + 'static, V> IntoProp<T, V> for &Signal<T> {
     fn lower<K: Apply<P = T>>(self, m: &mut Mounter<'_, V>, node: u32) -> T {
         // SAFETY: `self` is a live `Signal<T>` and `patch_sig::<K, T>` reads a `Signal<T>` with no recipe.
-        unsafe { m.wire_field(self.head(), crate::reflect::cell_id::<Signal<T>>(), patch_sig::<K, T>, node, crate::rt::Recipe::NONE) };
+        unsafe { m.wire_field(self.head(), 0, crate::reflect::cell_id::<Signal<T>>(), patch_sig::<K, T>, node, crate::rt::Recipe::NONE) };
         (**self).clone()
     }
     fn value(self) -> T {
@@ -361,7 +376,6 @@ pub(crate) fn recipe_of<F: Copy>(f: F) -> Recipe {
     const { assert!(size_of::<F>() <= 16, "map closure: at most 16 bytes of captures") };
     Recipe::of(f)
 }
-
 
 /// A wired operand's part of a seal (`seal.rs`): the wire's identity, i.e. the offset of the signal it reads in
 /// the owner and the bytes its patch function captured. The signal's *value* is not part of a description:
@@ -432,6 +446,17 @@ impl Apply for ApplyBg {
         // the colour word is the record's whole paint state: logged as is (content addressing)
         rt.paint_write(rt.handle(node), old as u64, v.0 as u64);
     }
+}
+
+/// The fill `ApplyBg` last wrote to quad `node` (its base colour under an opacity operand): what a box whose bg
+/// port is kept (`IntoProp::keep`) re-describes with.
+pub(crate) fn applied_bg(rt: &mut Rt, node: u32) -> Color {
+    let hot = rt.hot[node as usize];
+    if hot.flags & HF_MOD != 0 {
+        return Color(rt.cold_mut(node).color);
+    }
+    let p = &rt.inst[(rt.ibase + node) as usize];
+    Color(if hot.kind & !NK_HOVERED == NK_BORDER { p.color2 } else { p.color })
 }
 
 /// `ApplyBg` for a quad whose drawn colour is not its described one (`HF_MOD`: under an opacity operand, or
@@ -666,6 +691,11 @@ pub trait TextSrc<V>: Sized {
     fn lower(self, m: &mut Mounter<'_, V>, node: u32) -> String;
     /// The current text, at a re-description.
     fn value(self) -> String;
+    /// As `IntoProp::keep`: the installed wire keeps the text current (an El port, `el/walk.rs`).
+    #[inline(always)]
+    fn keep(&self) -> bool {
+        false
+    }
     /// `value` lent to `f` without building a `String` where the source already is one.
     #[inline]
     fn with_str<R>(self, f: impl FnOnce(&str) -> R) -> R {
@@ -761,7 +791,7 @@ pub(crate) fn decimal(v: i128, buf: &mut [u8; 40]) -> &str {
 impl<V> TextSrc<V> for &Signal<String> {
     fn lower(self, m: &mut Mounter<'_, V>, node: u32) -> String {
         // SAFETY: `self` is a live `Signal<String>`, which `patch_text` reads; no recipe.
-        unsafe { m.wire_field(self.head(), crate::reflect::cell_id::<Signal<String>>(), patch_text, node, crate::rt::Recipe::NONE) };
+        unsafe { m.wire_field(self.head(), 0, crate::reflect::cell_id::<Signal<String>>(), patch_text, node, crate::rt::Recipe::NONE) };
         (**self).clone()
     }
     fn value(self) -> String {
@@ -898,7 +928,8 @@ impl<'a, T: 'static, V, F: Fn(&T) -> f32 + Copy + 'static> TextSrc<V> for Num<'a
         let mut slow = String::new();
         let n = render_num(&self.fmt, v, &mut buf, &mut slow);
         if n == usize::MAX { slow } else { bough_text::numeric::as_str(&buf, n).to_owned() }
-    }    #[inline(always)]
+    }
+    #[inline(always)]
     fn seal<S: crate::seal::Sealer>(&self, s: &mut S) {
         seal_wire(s, 0x574e_554d, self.w.off, recipe_of(self.f).bytes());
         s.bytes(&self.fmt.identity());
@@ -1200,13 +1231,7 @@ pub struct VirtualList<'a, V> {
 }
 
 /// `vp` = (x, y, w, h) of the viewport in points (the rows' clip); rows are `row_h` points tall.
-pub fn virtual_list<'a, V>(
-    scroll: Wired<'a, f32, V>,
-    row_h: f32,
-    vp: [f32; 4],
-    visible: fn(f32) -> Range<usize>,
-    row: fn(&V, usize, &mut Mounter<'_, V>),
-) -> VirtualList<'a, V> {
+pub fn virtual_list<'a, V>(scroll: Wired<'a, f32, V>, row_h: f32, vp: [f32; 4], visible: fn(f32) -> Range<usize>, row: fn(&V, usize, &mut Mounter<'_, V>)) -> VirtualList<'a, V> {
     VirtualList { scroll, row_h, vp, visible, row, _v: PhantomData }
 }
 
@@ -1304,17 +1329,7 @@ pub struct Bars<'a, F, V> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn bars<'a, F: Fn(u64) -> f32 + Copy + 'static, V>(
-    x: f32,
-    step: f32,
-    width: f32,
-    count: usize,
-    base: f32,
-    max_h: f32,
-    min_h: f32,
-    key: Wired<'a, u64, V>,
-    sample: F,
-) -> Bars<'a, F, V> {
+pub fn bars<'a, F: Fn(u64) -> f32 + Copy + 'static, V>(x: f32, step: f32, width: f32, count: usize, base: f32, max_h: f32, min_h: f32, key: Wired<'a, u64, V>, sample: F) -> Bars<'a, F, V> {
     Bars { key, sample, x, step, width, count, base, max_h, min_h, color: Color::rgba(255, 255, 255, 255) }
 }
 

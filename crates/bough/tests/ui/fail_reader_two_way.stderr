@@ -7,7 +7,7 @@ error[E0277]: `&bough::reader::Reader<String>` is not a writable `String` cell
   |         required by a bound introduced by this call
   |
   = help: the trait `bough::prelude::Sink<'_, String>` is not implemented for `&bough::reader::Reader<String>`
-  = note: a `Reader`, a mapped source or a constant is read-only: the element has nowhere to write its edits
+  = note: a `Reader`, a mapped source or a constant is read-only, and a signal of another type holds no text: the element needs a `Signal<String>` to write its edits to
 help: the trait `bough::prelude::Sink<'f, T>` is implemented for `&'f Signal<T>`
  --> src/el/plug.rs
   |

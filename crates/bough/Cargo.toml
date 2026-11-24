@@ -99,6 +99,14 @@ mutant_el_hover = []
 mutant_row_keep_track = []
 # (tests/el_motion.rs: an opacity write over a hovered box paints its base colour, not the hover colour)
 mutant_opacity_hover = []
+# (tests/el_reader.rs) every async completion passes admission, whatever its ticket: a superseded request lands
+mutant_reader_stamp = []
+# (tests/el_reader.rs) an El boundary ignores first readiness: any outstanding request shows its loading arm
+mutant_el_boundary_ready = []
+# (tests/el_reader.rs) an El boundary's wires do nothing: its arm changes only when the view is described again
+mutant_el_bound_wire = []
+# (an El port whose wire is installed is evaluated eagerly: its value enters the seal and every update)
+mutant_el_eager_port = []
 # (bough-dataflow/mutant_rigid: rows kept across an insert or a remove keep their old rects)
 mutant_rigid = ["bough-dataflow/mutant_rigid"]
 # The presenter on the vendored wgpu-hal with wgsl-rs kernels (crates/bough-gpu) instead of direct Metal.

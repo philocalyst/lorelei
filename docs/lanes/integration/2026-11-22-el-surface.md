@@ -477,3 +477,324 @@ other way was not checked here.
 The suite recheck above used two build jobs for debug (green) and one for release and the workspace build. The
 initial two-job release build was killed during compilation, before any test ran; no source change was made for
 the successful one-job rerun, and the resulting code head is `e3fcde8e35`.
+## Reader plugs and `boundary()` in El (card frozen 2026-11-24, before building; branch `lane/reactivity/el-reader`)
+
+**What is built.** `Reader<T>` fields of a view as plugs of the El surface (`self.r.map(|o: Option<&T>| ..)`,
+`is_pending(&self.r).map(..)`, `latest(&self.sel)`), proven fields by the cell table as signals are; an El
+producer element (`produce(&self.sel, &self.r, request)`); and `boundary().loading(..).failed(..).child(..)`
+in El, which guards the readers its child arm reads (collected while the child is described, which by Rust's
+evaluation order is after `boundary()` and before `.child(..)` is called). All of it lowers onto the kernel's
+own reader machinery (`reader.rs`: ticket, cohort, `patch_rmap*`, clip-switched branches).
+
+**Question.** Does a completion reaching an El reader port, and a boundary's verdict through an El boundary,
+cost what the kernel's typed spelling (`sig!(self.r).map(..)`, `boundary(sig!(self.r))`) costs, with no
+allocation beyond the completion's own; and do the existing cells stay where they are?
+
+**Measure.** New example `crates/bough/examples/reader_cost.rs`, El and typed twins in one binary, interleaved:
+instructions on the calling thread by slope over two repeat counts, allocator calls per cycle counted by a
+counting global allocator (as `redescribe_cost`). Cells: (a) *port*: one producer `q -> r`, a text port and an
+`is_pending` opacity port on `r`; a cycle is `turn(q += 1)` (request), `run_jobs(1)`, `poll()` (admission,
+commit, patches); the request turn and the completion turn reported apart, under `Config::once()` (no
+re-description) and under re-description; (b) *boundary*: the same with the ports inside a boundary
+(`loading`/`child` arms); per completion the boundary's verdict wire runs (branch unchanged); and the
+first-readiness switch (loading -> child) as a single turn on fresh apps (median of 8). Also, unchanged:
+`EL=1 redescribe_cost 1000 10000` base (1a090b8b7f) vs head, same host, same session.
+
+**Prediction.** Once mode: El / typed <= 1.05 on every port and boundary cell (the same kernel wires run; the
+El boundary's verdict loops over its guards, one here). Re-description mode: El / typed <= 1.3 per turn (El's
+view of a handful of nodes is described each turn, as in the main card). Allocator calls per cycle: El equals
+typed (the request's boxes, the result's box, the formatted text: the completion's own payload); zero in a
+turn with no request and no completion. `redescribe_cost`: every typed and El cell within +-1% of base, zero
+allocations per steady turn.
+
+**Kill line.** Any once-mode cell above 1.3x typed, any El allocation per cycle beyond typed's, or any
+`redescribe_cost` cell outside +-1%. Past it, the work moves below the surface (the El operand carries the
+kernel's request directly) before anything else is added.
+
+**Correctness gates** (`crates/bough/tests/el_reader.rs`, each with a mutant behind a cargo feature that must
+fail it): a stale completion (an older request finishing after a newer one) is rejected (mutant
+`mutant_reader_stamp`: the ticket check passes everything); drop-cancel: unmounting a branch revokes its
+producer and a late completion changes nothing; loading -> content -> revalidation keeps content -> failure
+shows the failed arm (policy) -> success heals (mutant `mutant_el_boundary_ready`: the boundary ignores first
+readiness and shows loading while any guard is pending); the `is_pending` opacity port; a reader port patches
+with zero `view` runs (counted); and the retained pixels equal a fresh mount of the same state after every
+step of seeded random scripts of request / complete / fail / supersede / branch flip.
+
+### Results: Reader plugs and `boundary()` (2026-11-24)
+
+Built in `260da4af08` (plugs, `is_pending`/`latest`, `produce`, `boundary()`, kernel revoke/settle fixes, the
+three mutants, `tests/el_reader.rs`) and `8446bde194` (wire kinds as tags in the head word: `WireReq` back to 48
+bytes; `examples/reader_cost.rs`). Every number below was measured in one session on one host, base `1a090b8b7f`
+(binaries from the `rethink` worktree) against head. Instructions are counted on the calling thread.
+
+**Verification.** `cargo test -p bough --release`: 49 targets, 188 passed, 0 failed, 13 ignored. Debug: 49
+targets, 186 passed, 0 failed, 13 ignored with the two very slow `pages` transition tests skipped; the
+unskipped run reached those tests with every preceding target green (they also ran for over ten minutes in
+earlier attempts on this host). `cargo build --workspace --all-targets` passes. Clippy on the library and all
+touched tests/examples has no finding on a line this branch wrote. It runs with
+`-A clippy::mut_from_ref -A clippy::approx_constant -A clippy::suspicious_assignment_formatting`: the first
+two are needed by bough-core, bough-metal and bough-fused's build scripts; the last by the unchanged
+`typed_words`/`typed_twin` tests. Both denials were reproduced on `1a090b8b7f`.
+
+Mutant proof (`cargo test --release -p bough --test el_reader --features <m>`; the nine reader tests pass without one):
+
+| mutant | what it breaks | failing tests |
+|---|---|---|
+| `mutant_reader_stamp` | admission passes every ticket | `a_stale_completion_is_rejected` |
+| `mutant_el_boundary_ready` | the skeleton shows while any guard is pending (first readiness ignored) | `loading_then_content_then_revalidation_keeps_content` |
+| `mutant_el_bound_wire` | a guard's transition does not reach its boundary | `loading_then_content_then_revalidation_keeps_content`, `random_scripts_match_a_fresh_mount_at_every_step`, `a_first_failure_shows_the_failed_arm`, `a_listed_boundary_is_stepped_over_and_switched_by_its_wires` |
+| `mutant_cell_offset` (existing) | the cell table's offsets | 8 of 9 (all but `a_producer_of_a_reader_elsewhere_is_refused_by_name`) |
+
+**`reader_cost`** (`cargo run --release -p bough --example reader_cost`). Instructions per turn, median of 3
+runs; allocator calls per cycle (`request` and `completion` both show the whole cycle's). `port idle` was added
+in this commit (a `poll()` with nothing to admit, on the plain port shape) to isolate the cause below.
+
+| shape | mode | phase | typed | El | El / typed | allocs (typed, El) |
+|---|---|---|---:|---:|---:|---|
+| signal control | once | first | 16,847 | 16,430 | 0.98 | 7, 7 |
+| port | once | request | 4,591 | 4,511 | 0.98 | 8.84, 8.84 |
+| port | once | completion | 4,667 | 4,088 | 0.88 | 8.84, 8.84 |
+| port | once | first | 18,430 | 18,418 | 1.00 | 8, 8 |
+| port | once | idle | 417 | 417 | 1.00 | 0, 0 |
+| boundary | once | request | 4,422 | 4,449 | 1.01 | 9, 9 |
+| boundary | once | completion | 4,024 | 4,052 | 1.01 | 9, 9 |
+| boundary | once | idle | 417 | 417 | 1.00 | 0, 0 |
+| boundary | once | first | 42,294 | 42,408 | 1.00 | 12, 12 |
+| port | redescribe | request | 5,569 | 7,452 | 1.34 | 10.84, 10.84 |
+| port | redescribe | completion | 5,637 | 7,448 | 1.32 | 10.84, 10.84 |
+| port | redescribe | first | 20,747 | 22,547 | 1.09 | 9, 9 |
+| port | redescribe | idle | 1,688 | 3,596 | 2.13 | **1, 1** |
+| boundary | redescribe | request | 4,822 | 9,881 | 2.05 | 9, **11** |
+| boundary | redescribe | completion | 4,353 | 9,414 | 2.16 | 9, **11** |
+| boundary | redescribe | idle | 817 | 5,916 | 7.24 | 0, **1** |
+| boundary | redescribe | first | 35,587 | 48,996 | 1.38 | 12, 13 |
+
+The `first` cells are bimodal from run to run on both sides (boundary once first: 34.8 K or 42.3 K, a fresh
+app's first commit). The median is reported.
+
+**`EL=1 redescribe_cost 1000 10000`.** Instructions per turn, three interleaved runs (median). Run-to-run spread
+is under 0.1%, except typed `static`, which varies by up to 0.5% on both sides:
+
+| rows | shape | typed base | typed head | Δ | El base | El head | Δ | allocs/turn (all four) |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| 1000 | owned | 296,413 | 296,417 | +0.00% | 428,598 | 431,954 | +0.78% | 0 |
+| 1000 | static | 291,619 | 291,406 | −0.07% | 437,658 | 441,031 | +0.77% | 0 |
+| 1000 | bare | 125,231 | 125,235 | +0.00% | 166,573 | 162,587 | −2.39% | 0 |
+| 10000 | owned | 2,915,411 | 2,915,762 | +0.01% | 4,182,363 | 4,212,840 | +0.73% | 0 |
+| 10000 | static | 2,865,966 | 2,865,837 | −0.00% | 4,272,461 | 4,302,562 | +0.71% | 0 |
+| 10000 | bare | 1,232,058 | 1,232,407 | +0.03% | 1,615,720 | 1,575,563 | −2.47% | 0 |
+
+**Workload scenes** (they use `App::redescribe`, which this branch touches). All six scenes, `MODE=once` and
+`MODE=redescribe`, `RENDER=0`, median of 3, base and head interleaved. `comparisons/bough-workloads` is outside the
+workspace, so each tree was built from an isolated copy as `comparisons/bough-fx-bench/scripts/build-historical.sh`
+builds one. gbcanvas's two scene files are not in the tree; the same copy of `11bc801858`'s files went into both
+builds, with their prelude import updated to `bough::builders`. Results:
+
+* Re-description: every steady, hover, theme, resize, resize_anim, anim and idle cell of every scene is within
+  ±0.3% (sheet steady 43,261,985 -> 43,262,821; ide 23,330,487 -> 23,331,607; dash 3,890,411 -> 3,890,042; canvas
+  583,662 -> 583,796; chat 17,999,199 -> 17,957,782; gbcanvas 6,009,233 -> 6,019,773). Mount is within ±1%.
+* Once: every cell is within ±1% except `first_frame` and two steady cells. `first_frame` moves +34% on sheet
+  and −10% on ide/canvas: the boundary artifact recorded above (Results, "The measured scenes"). The steady
+  cells are sheet steady (1,733 -> 1,924, +191 on each wheel step and 0 on the edit and select steps) and
+  gbcanvas steady (5,914 -> 5,676, −4%). The sheet shift is layout: disabling the branch's one kernel-path
+  addition (`App::redescribe`'s `rescan` settle, dead in once mode) moves those wheel steps to **−122** below
+  base instead. gbcanvas mount is −2.1%.
+
+**Against the card.**
+
+* Once mode: every port and boundary cell is ≤ 1.01 except `port once request`, where one run reached 1.14 (typed
+  ran 4,013 in that run against 4,591 in the others). Allocations equal typed's. Inside the prediction.
+* `redescribe_cost`: every typed cell is within ±0.1% and every El owned/static cell within +0.8%. El bare is
+  **−2.4%, outside ±1%, faster**. It does not come from the new `check_at` arm (moving it behind a guard changed
+  nothing) and was not bisected further.
+* **Kill line crossed: allocations under re-description** (closed by lazy port values: "Lazy port values and a
+  sealed boundary" below). The El boundary makes 11 allocator calls per cycle
+  where typed makes 9, and 1 per idle turn where typed makes 0. The cause is not the boundary's machinery. It is
+  the map closure the author wrote (`text(self.r.map(|s| s.cloned().unwrap_or_default()))` builds a `String`),
+  which El's plug runs every time `view` runs. The typed twin `sig!(self.r).map(f)` does exactly the same at
+  each of its own re-descriptions: the plain-port rows are equal (10.84, 10.84; idle 1, 1). Typed's boundary
+  escapes only because it is opaque (`update_opaque`: its arms are mounted once and never re-described). El's
+  arms are re-described every turn, and the description is where the closure runs. El map plugs over signals
+  have behaved this way since the El surface landed (base); this branch adds reader maps that behave the same.
+  The card's remedy is "the El operand carries the kernel's request directly": a map operand that keeps the
+  recipe and evaluates it only at mount or when its cell is not a wired field of the view, with a field-wired
+  port's seal and update leaving the value out. That was decided and built afterwards (below).
+* Re-description cost: the prediction was ≤ 1.3x. It measured 1.32–1.34x on port and 2.05–2.16x on boundary
+  (idle 7.2x). The boundary refuses its seal (its shown arm is runtime state), so each turn updates its three
+  arm parts in full, and the arms are unsealed parts. Sealing the boundary on its guards, its policy and the
+  deep seals of its arms would let an unchanged description step over it. That would bring idle toward the port
+  figure; the allocation above stays until the operand is lazy.
+
+**Design check** (05-async §2–5, 03-ports §1). The spellings follow the design: `boundary().loading(..)
+.failed(..).child(..)` (an arm is an `El` or a `fn() -> El`, as in `.loading(detail_skeleton)`);
+`is_pending(&self.results).map(|p| if p { 0.65 } else { 1.0 })`; `latest(&self.selected_id)`; `map` over a
+source. Deviations, each with its reason:
+
+1. **Producer:** `produce(&self.src, &self.reader, request)`, an element naming a reader field, instead of
+   `selected_id.try_map_async(fetch)` returning a `Reader` (05 §1–2). The reader must be a field of the view so
+   its ports are direct (documented on `produce`). Missing: `map_async_on(runtime, f)` and `compute_on(pool, f)`.
+   Requests are `fn(&S) -> Request<T>`, where `Request` owns a boxed `FnOnce`; failures are `String` (no typed
+   `E`, 05 §6). `Reader<T>` is not `Copy` as 05 §1 specifies: it owns its committed value and private slots.
+2. **A reader's ready view in `map` is `Option<&T>`** (`None` before first readiness), where 03 §1 has `&T`
+   behind the Ready/Pending/Fault verdict. A port's closure cannot see a fault. `project` (05 §3), `map_ref`,
+   `Settled`/`reader.or(fallback)` (§3.1) and `resolve().await` are not built. A plain `&Reader<T>` does not plug
+   into a port without `.map`.
+3. **`is_pending` takes `&Reader<T>` only; `latest` takes `&Signal<S>` only.** 03 §1.2 makes both total over
+   `impl Source`: a derived reader, and the source write that began the cohort. `Source` here has a GAT
+   `Ready<'a>` with neither a `Copy` bound nor a `Value` type. There are no tuple (product) sources and no
+   `Sink`/`Cell` split. A map closure captures at most 16 bytes, by copy (as for signals). This lane's port
+   descriptors carry `Impact` only implicitly in their patch (`Apply`), not as a sealed `const IMPACT`.
+4. **How a boundary finds its guards:** it collects them from the ports of its `child` arm (reader value ports,
+   not `is_pending`, not through a nested boundary) after the child is described. The design installs the
+   boundary before the child is evaluated (05 §4); the observable result is the same. A reader that is not a
+   field of the view guards nothing (it is a constant of the description).
+5. **Boundary policy:** `replace_on_failure()` names the design's "replace-with-error"; the default is
+   keep-stale (05 §6). The failed arm is not given the failure (no failure key or `E`) and offers no retry.
+   `reload_on(&self.selected_id)` (05 §4) is not built. Guards stop at nested boundaries (each boundary
+   evaluates its own child readers), rather than the design's nested-boundary join. A reader not directly a
+   field of the view guards nothing and is evaluated as a constant on each description; it cannot arm a
+   boundary's first-readiness transition through a completion alone.
+6. **All three arms are mounted** under clips of their own, and in a layout container they all take space (as the
+   kernel's boundary does). The typed boundary is opaque (its arms are never re-described); the El boundary is
+   sealed (stepped over when described as before) and its arms are sealed parts of one item each, so an arm
+   described as before is stepped over and a changed one is updated (below).
+
+**Open.**
+
+* (Closed below: the allocation kill line, by lazy port values; sealing the El boundary.)
+* El bare in `redescribe_cost` −2.4% (faster) and El owned/static +0.7–0.8% are not attributed. sheet steady
+  once ±190 instructions per wheel step and gbcanvas steady once −4% follow code layout (shown by the
+  dead-code A/B above).
+* 05/03 surface not built: `project`, `map_ref`, `Settled`/`or`, `reload_on`, `resolve().await`,
+  `try_map_async`/`map_async_on`/`compute_on`, `is_pending`/`latest` over any source, product sources, typed
+  failures and retry.
+* `Source`'s associated `Ready<'a>` is not `Copy` as 03 §1 specifies (a reader map's ready view is
+  `Option<&T>`). The current `Source` also has no `Value` associated type; `map`'s output type is inferred by
+  the port. The public `Reader<T>` itself is not a port; a direct port is `self.r.map(..)`.
+* Formatting: no rustfmt config is checked in, so the branch's commits reflowed unrelated lines in `app.rs`,
+  `elem.rs`, `reader.rs` and `el/walk.rs` (no code change). The added example lines keep the file's wide style.
+
+### Lazy port values and a sealed boundary (2026-11-24, after the results above)
+
+The allocation kill line is closed. This is the card's remedy ("the El operand carries the kernel's request
+directly"), built after the results above.
+
+**What changed.**
+
+* **Plugs** (`el/plug.rs`). Every plug with a wire request (a signal, `latest`, a reader map, an `is_pending`
+  map, each for every scalar port and text) stores a fixed placeholder in the node and an eval fn in its
+  `WireReq`, monomorphised with the patch. Building a description runs no closure and reads no cell.
+* **When the value is evaluated** (`el/walk.rs`, "Lazy port values"). The walk evaluates a port only where its
+  value is needed: at mount; at an update whose port has no installed wire; at an update whose installed wire
+  computes with other captures; when lowering; and in the seal of a port that is not a field.
+* **Field-ness** is the one rule `elem::field_offset::<V>(owner, cell, ty)`. `Mounter::wire_field` installs by
+  it. The seal asks it through the walk's owner (set by the root `El`'s `mount`/`update`) and records the
+  answer as the port's first word (`WIRED`, or `CONST` followed by the value). A retained seal is only checked
+  by updates of the owner that wrote it, and an owner does not move while mounted, so the fast check trusts a
+  retained `WIRED` whose identity (cell address, patch, recipe) matches.
+* **Updates** (`resolve_ports`). Before a node's builder runs, each port is matched against the wires its
+  item's mount installed (same head, same patch, in mount order). A match with the same recipe is kept
+  (`P_KEEP`, `IntoProp::keep`/`TextSrc::keep`: neither computed nor applied). A match with a new recipe gets
+  the description's recipe and is evaluated and applied this turn; no match is a constant of this description
+  (`P_CONST`) and is evaluated and applied. The request's state also tells the fast check whether to compare
+  a value: a `WIRED` identity with a value-less seal is followed by one exactly when this update resolved the
+  port as `P_CONST`. The kernel's `LBox::update`/`Para::update` skip a kept operand (a bordered box reads its
+  applied fill, `elem::applied_bg`). `keep` is `false` for every typed operand.
+* **The boundary** (`K_BOUND`). It now seals as its policy, its guard readers and its three arms, so a boundary
+  described as before is stepped over; which arm shows is its wires' state. Its arms are sealed one-item parts,
+  so inside a box (an unsealed part) its unchanged arms are stepped over.
+* **The fast check** (`check_at`). A node with a fill, ink or text port is checked out of line
+  (`check_ported`). The first build inlined the port checks, whose constant-value evals are calls, into every
+  leaf. A list's plain rows have no ports but paid 5–7 instructions each (+1.2–1.9% on `redescribe_cost`
+  owned/static), bisected to that inlining; the split took it back to base.
+
+**Gate** (final implementation `078ac8fbad`, base `1a090b8b7f`; Apple M3 Ultra, macOS 26.7.3,
+nightly-2026-10-17, release `thin` LTO, calling-thread instruction counters, no renderer; one session,
+interleaved, median of 3). `reader_cost`, re-description (once mode: every cell ≤ 1.01 of typed, allocations
+equal):
+
+| shape | phase | typed | El before | El now | El / typed now | allocs (typed, El before, El now) |
+|---|---|---:|---:|---:|---:|---|
+| port | request | 5,569 | 7,452 | 6,993 | 1.26 | 10.84, 10.84, **8.84** |
+| port | completion | 5,564 | 7,448 | 6,986 | 1.26 | 10.84, 10.84, **8.84** |
+| port | idle | 1,688 | 3,596 | 3,070 | 1.82 | 1, 1, **0** |
+| port | first | 20,672 | 22,547 | 22,059 | 1.07 | 9, 9, 8 |
+| boundary | request | 4,822 | 9,881 | 7,857 | **1.63** (was 2.05) | 9, 11, **9** |
+| boundary | completion | 4,353 | 9,414 | 7,388 | **1.70** (was 2.16) | 9, 11, **9** |
+| boundary | idle | 817 | 5,916 | 3,825 | 4.68 (was 7.24) | 0, 1, **0** |
+| boundary | first | 35,597 | 48,996 | 50,756 | 1.43 | 12, 13, **23** |
+
+The boundary's allocations equal typed's (9 per cycle, 0 idle), and El ports now allocate less than typed (a
+typed map port still runs its closure at each re-description). `boundary first` is the one worse cell. It is
+the first re-description after mount, when the three now-sealed arms write their seals for the first time
+(their storage is allocated once); every later turn of the same app allocates nothing. `boundary once first`
+is bimodal from run to run on both sides (34.7 K or 42.2 K), as recorded above.
+
+The re-description prediction (≤ 1.3x) **is missed**: port 1.26x, boundary request/completion 1.63–1.70x,
+and boundary idle 4.68x (817 typed instructions). The boundary's request/completion ratio is down from
+2.05–2.16x and its idle ratio from 7.24x. The remaining work is the El description and seal check of the
+boundary's arms (about ten nodes); the typed boundary is opaque. Allocation equality, the crossed kill line,
+is met. In once mode every cell is ≤ 1.01x typed and allocations are equal.
+
+`EL=1 redescribe_cost 1000 10000` (zero allocations per steady turn in all twelve cells):
+
+| rows | shape | typed base | typed head | Δ | El base | El head | Δ |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 1000 | owned | 296,413 | 296,236 | −0.06% | 428,598 | 428,993 | +0.09% |
+| 1000 | static | 291,619 | 291,611 | −0.00% | 437,658 | 438,943 | +0.29% |
+| 1000 | bare | 125,231 | 125,235 | +0.00% | 166,573 | 161,622 | −2.97% |
+| 10000 | owned | 2,915,411 | 2,915,535 | +0.00% | 4,182,185 | 4,182,654 | +0.01% |
+| 10000 | static | 2,865,857 | 2,865,840 | −0.00% | 4,272,297 | 4,282,642 | +0.24% |
+| 10000 | bare | 1,232,056 | 1,232,061 | +0.00% | 1,615,721 | 1,565,770 | −3.09% |
+
+**Workload scenes** (base vs head, both modes, `RENDER=0`, median of 3; the kernel's `LBox`/`Para` update and
+`wire_field` changed):
+
+* Re-description: 51 of 54 cells are within ±1%. The three exceptions are canvas steady's harness p50
+  (+7.36%), canvas first_frame (−1.32%) and canvas hover (−1.15%). Canvas steady is bimodal on the base
+  itself (per-step p50 0.590 M or 0.636 M across five interleaved runs); the median sum over all 48 steps is
+  40.856 M base and 40.899 M head (+0.11%), with 27 of 48 paired steps identical in the first run. The other
+  two are faster. gbcanvas steady is +0.81%.
+* Once: 51 of 54 cells are within ±1%. The exceptions are all favorable or boundary-sized: sheet steady
+  −6.92% (1,733 -> 1,613 instructions on each wheel step), gbcanvas mount −1.18%, and ide first_frame
+  +1.16% (7,352 -> 7,437 instructions). No steady cell regressed.
+
+**Tests.**
+
+* `tests/el_lazy.rs` (new, 4 tests):
+  * a wired map's closure runs once at mount and once per write of its signal, never for a re-description
+    (12 turns of a plain field, text, fill and opacity ports, in a box and in a list);
+  * maps over signals behind a `Vec` (text, fill, opacity; in a box's children and in a list's items) show
+    every new value on re-description;
+  * el-motion's capture tests without motion: `a_map_whose_captures_changed_is_right_on_the_same_frame` and
+    `..._past_many_ports` (80 wired ports of one item, each its own capture).
+* `walk::tests::ports_seal_by_the_field_rule` (new): a field's new value seals alike, a value behind a `Vec`
+  seals apart, another capture seals apart, and the fast check (trusting `WIRED`) agrees with the streaming
+  check (asking the rule again).
+* `walk::tests::the_fast_check_agrees_with_the_seal` now includes a field text/fill map and a non-field map.
+  After resolution, a field's new value does not enter a `WIRED` seal, while a `P_CONST` port's new value does.
+  Under the eager mutant the same test requires the opposite field-value verdict, and
+  `the_eager_mutant_makes_a_fields_new_value_part_of_its_seal` is its direct scalar probe.
+* `tests/el_reader.rs::a_listed_boundary_is_stepped_over_and_switched_by_its_wires` (new): boundaries as list
+  items, sealed by two idle polls, then switched by first readiness, failure and healing against a fresh mount.
+* `tests/el_fuzz.rs` is taken from `lane/reactivity/el-surface` at `ae1221bb98`, the version written against
+  this base: 8 pass, and the 2 `#[ignore]`d regressions it documents are unchanged.
+
+**Mutant proof.**
+
+| change | failing tests |
+|---|---|
+| `mutant_el_eager_port` (new: every port is a constant, its value evaluated into its seal and at every update) | `a_wired_map_runs_only_when_its_signal_moves` (12 closure runs on the first re-description, where 0 pass), and `the_fast_check_agrees_with_the_seal` (the opposite field-value verdict) |
+| `mutant_el_bound_wire` (existing) | now also `a_listed_boundary_is_stepped_over_and_switched_by_its_wires`: a stepped-over boundary is switched only by its wires |
+| hand check, not kept: no recipe sync on an installed wire | both capture tests |
+| hand check, not kept: an uninstalled port kept | `a_map_over_a_signal_behind_a_vec_shows_on_redescription`, both capture tests, `el_fuzz`'s differential loop |
+
+**Design note.** A non-field `Signal<String>` text port evaluates by borrowing (no allocation). A non-field map
+port runs its closure at each check of its seal, as the eager plug did at each description. A field port's
+closure runs only on its wire.
+
+**Still open from this item.** The boundary's first-re-description seal allocations (23 vs 12, once per
+mounted boundary). Re-description of the El boundary is 1.63–1.70x typed and its idle turn 4.68x (817
+instructions of typed; El describes and checks about ten nodes). The card predicted ≤ 1.3x. The two slow
+debug-only `pages` transition tests were not completed in the time available; they are unrelated to this
+branch's changed files and pass in release.

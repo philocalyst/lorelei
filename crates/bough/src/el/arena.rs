@@ -31,6 +31,11 @@ pub(crate) const K_FRAG: u8 = 4;
 pub(crate) const K_INPUT: u8 = 5;
 /// A raster image (`text` holds its `ImageBox` in the bump store).
 pub(crate) const K_IMAGE: u8 = 6;
+/// A producer (`produce(&self.src, &self.reader, request)`): no records; `text` holds its [`ProdReq`].
+pub(crate) const K_PROD: u8 = 7;
+/// A boundary (`boundary().loading(..).failed(..).child(..)`): three children, the arms, in that order;
+/// `text` holds its [`BoundReq`].
+pub(crate) const K_BOUND: u8 = 8;
 
 /// The box is painted (`bg`, `rounded`, `border`).
 pub(crate) const F_DRAW: u8 = 1;
@@ -151,9 +156,16 @@ impl Ext {
 
 /// A port asked to be wired: the cell it reads, and the patch that writes the node from it. The walk
 /// installs it when the cell is a field of the mounting owner (`Mounter::wire_field`).
+///
+/// A port with a request carries no value in its node (the node's value fields hold a fixed placeholder): its
+/// value is `eval` of the cell and the recipe, computed only where the walk needs it (`walk.rs`, "Lazy port
+/// values").
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct WireReq {
+    /// The head the wire hangs on (the cell's own, its first field, or a reader's pending head), its two low
+    /// bits (heads are 4-aligned) tagged with the wire's kind (`W_*`), so a wire's identity (seal, shape) is this
+    /// word, the patch and the recipe as before.
     pub head: *const Cell<u32>,
     /// `reflect::cell_id` of the cell type `patch` reads.
     pub ty: TypeId,
@@ -162,6 +174,126 @@ pub(crate) struct WireReq {
     /// A motion port (`motion.rs`): its program and the functions that make and steer its transition; null
     /// for every other port.
     pub motion: *const super::motion::MotionReq,
+    /// The port's value from the cell at [`cell`](Self::cell) and `recipe`: a [`ScalarEval`] (scalar ports) or a
+    /// [`TextEval`] (text ports), as a pointer. Monomorphised with `patch`, so equal patches mean equal evals.
+    pub eval: *const (),
+    /// What the walk decided for this port at an update (`P_*`): written by `Item::update` before the node's
+    /// builder runs (the description's seal was written before, and is not read again this turn).
+    pub state: u8,
+}
+
+/// A scalar port's value (`f32` or `Color`, as bits) from its cell and recipe.
+///
+/// # Safety
+/// `cell` is a live cell of the type the request's `ty` names; the recipe is the request's.
+pub(crate) type ScalarEval = unsafe fn(usize, &crate::rt::Recipe) -> u32;
+/// A text port's value, lent to `k`.
+///
+/// # Safety
+/// As [`ScalarEval`].
+pub(crate) type TextEval = unsafe fn(usize, &crate::rt::Recipe, &mut dyn FnMut(&str));
+
+/// `WireReq::state`: not resolved (mount, lowering): the value is evaluated where it is read.
+pub(crate) const P_EVAL: u8 = 0;
+/// The port's wire is installed and computes with these captures: the retained value is current, nothing is
+/// evaluated or applied.
+pub(crate) const P_KEEP: u8 = 1;
+/// The port is constant in this description: its value is evaluated where it is read.
+pub(crate) const P_CONST: u8 = 2;
+
+/// `WireReq::head` tags: a `latest(..)` port (it runs while a cohort holds its signal).
+pub(crate) const W_LATEST: usize = 1;
+/// A reader's pending head (`phead`, 4 bytes into the cell): `is_pending(..)` ports.
+pub(crate) const W_PHEAD: usize = 2;
+/// A reader's value head, read by a port: a boundary around it guards that reader (`Boundary::child`).
+pub(crate) const W_GUARD: usize = 3;
+
+/// `h` tagged `t` (`W_*`).
+#[inline(always)]
+pub(crate) fn tagged(h: &Cell<u32>, t: usize) -> *const Cell<u32> {
+    (h as *const Cell<u32> as usize | t) as *const Cell<u32>
+}
+
+impl WireReq {
+    /// The wire's kind (`W_*`, 0: a plain port).
+    #[inline(always)]
+    pub(crate) fn tag(&self) -> usize {
+        self.head as usize & 3
+    }
+    /// The head the wire hangs on.
+    #[inline(always)]
+    pub(crate) fn wire_head(&self) -> *const Cell<u32> {
+        (self.head as usize & !3) as *const Cell<u32>
+    }
+    /// Bytes from the cell's start to the head the wire hangs on.
+    #[inline(always)]
+    pub(crate) fn sub(&self) -> usize {
+        if self.tag() == W_PHEAD { 4 } else { 0 }
+    }
+    /// The cell's address.
+    #[inline(always)]
+    pub(crate) fn cell(&self) -> usize {
+        self.wire_head() as usize - self.sub()
+    }
+    /// A scalar port's value now (its bits).
+    #[inline]
+    pub(crate) fn scalar(&self) -> u32 {
+        // SAFETY: a scalar port's request holds a `ScalarEval` for its cell type (`plug.rs`), and the cell is live
+        // for the description's lifetime (it is borrowed by the description, `El<'f>`).
+        unsafe { std::mem::transmute::<*const (), ScalarEval>(self.eval)(self.cell(), &self.recipe) }
+    }
+    /// A text port's value now, lent to `k`.
+    #[inline]
+    pub(crate) fn text<R>(&self, k: impl FnOnce(&str) -> R) -> R {
+        let mut k = Some(k);
+        let mut out = None;
+        // SAFETY: a text port's request holds a `TextEval` (`plug.rs`); the cell as in `scalar`.
+        unsafe { std::mem::transmute::<*const (), TextEval>(self.eval)(self.cell(), &self.recipe, &mut |s| out = Some((k.take().unwrap())(s))) };
+        out.expect("a text eval lends its text once")
+    }
+    /// The walk resolved this port as installed and current (`P_KEEP`).
+    #[inline(always)]
+    pub(crate) fn keep(&self) -> bool {
+        self.state == P_KEEP && !cfg!(feature = "mutant_el_eager_port")
+    }
+    /// The constant form, including the eager mutant (whose every port is evaluated at its builder).
+    #[inline(always)]
+    pub(crate) fn constant(&self) -> bool {
+        self.state == P_CONST || cfg!(feature = "mutant_el_eager_port")
+    }
+}
+
+/// A producer as described: its source signal and its reader (proven fields of the view at mount), the
+/// request function, and the kernel's mount for this source and reader type.
+#[derive(Clone, Copy)]
+pub(crate) struct ProdReq {
+    pub src: *const u8,
+    pub src_ty: TypeId,
+    pub dst: *const u8,
+    pub dst_ty: TypeId,
+    /// The `fn(&S) -> Request<T>`.
+    pub f: usize,
+    pub mount: crate::reader::MountProducer,
+    /// (source type, reader type) names, for a located refusal.
+    pub names: fn() -> (&'static str, &'static str),
+    pub at: &'static std::panic::Location<'static>,
+}
+
+/// A reader a boundary guards: one of the readers its child arm reads (`W_GUARD` ports), once each.
+#[derive(Clone, Copy)]
+pub(crate) struct GuardReq {
+    pub next: *const GuardReq,
+    /// The reader's address.
+    pub reader: usize,
+    pub ty: TypeId,
+}
+
+/// A boundary as described: its guards and its failure policy.
+#[derive(Clone, Copy)]
+pub(crate) struct BoundReq {
+    pub guards: *const GuardReq,
+    /// `crate::reader::BP_*`.
+    pub policy: u8,
 }
 
 /// A route asked for: the trampoline monomorphised where the route was written, the route's bytes, and the
@@ -225,7 +357,25 @@ impl Arena {
         let p = self.cur;
         // SAFETY: `cur < end`, both in one chunk of `CHUNK` slots.
         self.cur = unsafe { p.add(1) };
-        let n = DNode { turn: self.turn, next: ptr::null_mut(), first: ptr::null_mut(), last: ptr::null_mut(), ext: ptr::null_mut(), ink: ptr::null(), tw: ptr::null(), text: ptr::null(), len: 0, paint: 0, bc: 0, spec, m: [0.0; 2], kind, flags: 0, ops: 0, has: 0 };
+        let n = DNode {
+            turn: self.turn,
+            next: ptr::null_mut(),
+            first: ptr::null_mut(),
+            last: ptr::null_mut(),
+            ext: ptr::null_mut(),
+            ink: ptr::null(),
+            tw: ptr::null(),
+            text: ptr::null(),
+            len: 0,
+            paint: 0,
+            bc: 0,
+            spec,
+            m: [0.0; 2],
+            kind,
+            flags: 0,
+            ops: 0,
+            has: 0,
+        };
         // SAFETY: `p` is a valid, aligned, unaliased slot (no handle of this turn names it yet).
         unsafe { p.write(n) };
         // SAFETY: `p` is in a chunk, never null.

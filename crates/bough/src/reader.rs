@@ -13,10 +13,10 @@
 //!   turn, one damage epoch, one frame. A consumer can never see half a cohort.
 //! * `pending()` operands are wires on a second head (`phead`, offset 4) queued on every pending
 //!   transition.
-use crate::signal::WireHead;
 use crate::elem::{Apply, IntoProp, Mounter, TextSrc};
 use crate::rt::*;
-use crate::signal::{Headed, Signal, Wired, HELD};
+use crate::signal::WireHead;
+use crate::signal::{HELD, Headed, Signal, Wired};
 use std::any::Any;
 use std::cell::{Cell, UnsafeCell};
 use std::collections::VecDeque;
@@ -74,6 +74,47 @@ impl<T> Reader<T> {
     pub fn has_value(&self) -> bool {
         self.state.get() & HAS != 0
     }
+    /// The value head (offset 0): value ports hang here.
+    #[inline(always)]
+    pub(crate) fn head_cell(&self) -> &Cell<u32> {
+        &self.head.0
+    }
+    /// The pending head (offset 4): pending ports and boundaries hang here.
+    #[inline(always)]
+    pub(crate) fn phead_cell(&self) -> &Cell<u32> {
+        &self.phead
+    }
+    /// A reader in this one's state (value, failure, pending flag), with no wires, no ticket and no
+    /// producer: what a fresh mount of the same state reads (the tests' oracle).
+    #[doc(hidden)]
+    pub fn snapshot(&self) -> Reader<T>
+    where
+        T: Clone,
+    {
+        let r = Reader::new();
+        r.state.set(self.state.get());
+        // SAFETY: `r` is new and unshared; `self`'s cells are read outside every turn.
+        unsafe {
+            *r.value.get() = (*self.value.get()).clone();
+            *r.fault.get() = (*self.fault.get()).clone();
+        }
+        r
+    }
+}
+
+/// The byte offset of a reader's state flags (`PENDING`, `HAS`, `FAULT`): the same for every `T`, since the
+/// fields before it (two heads) do not depend on `T` (`#[repr(C)]`).
+pub(crate) const STATE_OFF: usize = std::mem::offset_of!(Reader<()>, state);
+const _: () = assert!(STATE_OFF == 8 && std::mem::offset_of!(Reader<u128>, state) == 8 && std::mem::offset_of!(Reader<String>, state) == 8 && std::mem::offset_of!(Reader<u8>, phead) == 4);
+
+/// The state flags of the reader at `addr`, whatever its `T`.
+///
+/// # Safety
+/// `addr` is a live `Reader<T>` for some `T`.
+#[inline(always)]
+pub(crate) unsafe fn reader_state(addr: usize) -> u8 {
+    // SAFETY: the contract; `state` is a `Cell<u8>` at `STATE_OFF` in every `Reader<T>`.
+    unsafe { (*((addr + STATE_OFF) as *const Cell<u8>)).get() }
 }
 
 // SAFETY: `#[repr(C)]`, the head first.
@@ -143,13 +184,13 @@ unsafe fn unrecipe<F: Copy>(r: &crate::rt::Recipe) -> F {
     unsafe { r.read_at::<F>(0) }
 }
 
-unsafe fn patch_rmap<K: Apply, T: 'static, F: Fn(Option<&T>) -> K::P + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _o: *const u8) {
+pub(crate) unsafe fn patch_rmap<K: Apply, T: 'static, F: Fn(Option<&T>) -> K::P + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _o: *const u8) {
     // SAFETY: wire contract: `sig` is a `Reader<T>`; the recipe holds an `F`.
     let r = unsafe { &*(sig as *const Reader<T>) };
     let f: F = unsafe { unrecipe(&w.recipe) };
     K::apply(rt, w.node, &f(r.latest()));
 }
-unsafe fn patch_rpmap<K: Apply, T: 'static, F: Fn(bool) -> K::P + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _o: *const u8) {
+pub(crate) unsafe fn patch_rpmap<K: Apply, T: 'static, F: Fn(bool) -> K::P + Copy>(rt: &mut Rt, w: &Wire, sig: *const u8, _o: *const u8) {
     // SAFETY: wire contract: `sig` is the `phead` of a `Reader<T>` (offset 4); the recipe holds an `F`.
     let r = unsafe { &*(sig.sub(4) as *const Reader<T>) };
     let f: F = unsafe { unrecipe(&w.recipe) };
@@ -312,7 +353,8 @@ pub(crate) struct Producer {
 /// `addr` is a live `Reader<T>`.
 unsafe fn stage<T: 'static>(addr: usize, ticket: u32, v: Box<dyn Any + Send>) -> bool {
     let r = unsafe { &*(addr as *const Reader<T>) };
-    if r.ticket.get() != ticket {
+    // (mutant: every completion passes admission, whatever its ticket)
+    if r.ticket.get() != ticket && !cfg!(feature = "mutant_reader_stamp") {
         return false;
     }
     let v = v.downcast::<Result<T, String>>().expect("job result of the reader's type");
@@ -408,6 +450,18 @@ impl Rt {
         pr.dead = true;
         let r = pr.reader;
         if let Some(c) = self.asy.cohort.as_mut() {
+            if r != 0 && c.members.iter().any(|m| m.reader == r && m.cls == 0) {
+                // its request is revoked: nothing is outstanding for the reader any more (05 §7), so its pending
+                // ports and boundaries are told (the reader keeps its value and failure). Only for a reader of the
+                // root owner, which lives as long as the app: a row's reader may already be gone with its row.
+                // SAFETY: a member of class 0 is a live reader of the live root owner.
+                let (state, phead) = unsafe { (&*((r + STATE_OFF) as *const Cell<u8>), &*((r + 4) as *const Cell<u32>)) };
+                state.set(state.get() & !PENDING);
+                if phead.get() != 0 {
+                    crate::signal::queue(phead);
+                    self.asy.rescan = true;
+                }
+            }
             c.members.retain(|m| m.reader != r);
             if c.members.is_empty() {
                 let c = self.asy.cohort.take().unwrap();
@@ -420,6 +474,15 @@ impl Rt {
         }
     }
 
+    /// Live wires hanging on the head at `addr` (tests: which ports of a cell were wired).
+    #[doc(hidden)]
+    pub fn live_wires_on(&self, addr: usize) -> usize {
+        self.wires.iter().filter(|w| !w.dead && w.head == addr).count()
+    }
+    /// Boundaries mounted so far (typed and El; an unmounted one keeps its index).
+    pub fn boundaries(&self) -> usize {
+        self.asy.bounds.len()
+    }
     /// Which branch boundary `i` shows (0 loading, 1 failed, 2 child).
     pub fn boundary_shown(&self, i: usize) -> u8 {
         self.asy.bounds[i].shown
@@ -429,8 +492,12 @@ impl Rt {
     pub fn run_jobs(&mut self, n: usize) -> usize {
         let mut k = 0;
         while k < n {
-            let Exec::Manual(q) = &mut self.asy.exec else { break };
-            let Some((addr, ticket, job)) = q.pop_front() else { break };
+            let Exec::Manual(q) = &mut self.asy.exec else {
+                break;
+            };
+            let Some((addr, ticket, job)) = q.pop_front() else {
+                break;
+            };
             let v = job();
             self.asy.done.lock().unwrap().push((addr, ticket, v));
             k += 1;
@@ -439,8 +506,12 @@ impl Rt {
     }
     /// Run the queued job at index `i` (out-of-order completion, tests).
     pub fn run_job_at(&mut self, i: usize) -> bool {
-        let Exec::Manual(q) = &mut self.asy.exec else { return false };
-        let Some((addr, ticket, job)) = q.remove(i) else { return false };
+        let Exec::Manual(q) = &mut self.asy.exec else {
+            return false;
+        };
+        let Some((addr, ticket, job)) = q.remove(i) else {
+            return false;
+        };
         let v = job();
         self.asy.done.lock().unwrap().push((addr, ticket, v));
         true
@@ -532,21 +603,36 @@ pub fn produce<'a, S, T, V>(src: Wired<'a, S, V>, dst: RWired<'a, T, V>, f: fn(&
 
 impl<'a, S: PartialEq + Clone + 'static, T: Send + 'static, V: 'static> crate::elem::Element<V> for Produce<'a, S, T, V> {
     fn mount(self, m: &mut Mounter<'_, V>) {
-        // a producer belongs to the scope that declared it (a row's dies with the row: `revoke_producer`)
-        let pi = m.rt.asy.producers.len() as u32;
-        m.rt.asy.producers.push(Producer { dst_off: self.dst.off, f: self.f as usize, last: None, dead: false, reader: 0 });
-        m.scope.prods.push(pi);
-        // SAFETY: `src` is an `offset_of!`-proven `Signal<S>` of `V`; `patch_produce::<S, T>` reads one, and its
-        // producer names an `offset_of!`-proven `Reader<T>` of `V`.
-        let w = unsafe { m.wire_cell(self.src.sig.head(), self.src.off, patch_produce::<S, T>, pi, crate::rt::Recipe::NONE) };
-        m.rt.make_latest(w);
-        // the first request: fetch high, at mount
-        let owner = m.owner as *const u8;
-        let wire = m.rt.wires[w as usize];
-        // SAFETY: as the wire itself.
-        unsafe { patch_produce::<S, T>(m.rt, &wire, self.src.sig as *const Signal<S> as *const u8, owner) };
+        // SAFETY: `src` and `dst` are `offset_of!`-proven fields of `V` (`sig!`), `m.owner` the live `V` they
+        // are fields of, and `f` a `fn(&S) -> Request<T>`.
+        unsafe { mount_producer::<S, T>(m.rt, m.scope, m.owner as *const u8, m.cls, self.src.off, self.dst.off, self.f as usize) };
     }
     fn update(self, _m: &mut Mounter<'_, V>) {}
+}
+
+/// `mount_producer` for one source and reader type, the owner type erased (the El walk proves the offsets).
+pub(crate) type MountProducer = unsafe fn(&mut Rt, &mut Scope, *const u8, u32, u32, u32, usize);
+
+/// Declare a producer in `scope` (it belongs to that scope: L5, revoked with it): a `latest` wire on the
+/// source signal at `owner + src_off`, writing the reader at `owner + dst_off`; and its first request (fetch
+/// high: at mount).
+///
+/// # Safety
+/// `owner` is a live owner of class `cls` with a `Signal<S>` field at `src_off` and a `Reader<T>` field at
+/// `dst_off`; `f` is a `fn(&S) -> Request<T>` as `usize`.
+pub(crate) unsafe fn mount_producer<S: PartialEq + Clone + 'static, T: Send + 'static>(rt: &mut Rt, scope: &mut Scope, owner: *const u8, cls: u32, src_off: u32, dst_off: u32, f: usize) {
+    let pi = rt.asy.producers.len() as u32;
+    rt.asy.producers.push(Producer { dst_off, f, last: None, dead: false, reader: 0 });
+    scope.prods.push(pi);
+    // SAFETY: the contract.
+    let src = unsafe { &*(owner.add(src_off as usize) as *const Signal<S>) };
+    // SAFETY: `src_off` is the signal's offset in the owner's type; `patch_produce::<S, T>` reads a `Signal<S>`.
+    let w = unsafe { rt.add_wire(src.head(), src_off, cls, patch_produce::<S, T>, pi, crate::rt::Recipe::NONE) };
+    scope.wires.push(w);
+    rt.make_latest(w);
+    let wire = rt.wires[w as usize];
+    // SAFETY: as the wire itself.
+    unsafe { patch_produce::<S, T>(rt, &wire, src as *const Signal<S> as *const u8, owner) };
 }
 
 // =============================================================================== boundary
@@ -583,6 +669,90 @@ pub(crate) struct Bound {
     clips: [u16; 3],
     rect: bough_core::NRect,
     shown: u8,
+    /// An El boundary's guards (reader addresses) and policy (`BP_*`); empty for the typed `boundary(r)`.
+    guards: Vec<usize>,
+    policy: u8,
+}
+
+/// Boundary policy: a failure after content replaces the content with the `failed` arm until a request
+/// succeeds (05 §6 "replace-with-error"; without it the stale content stays, the kernel's default).
+pub(crate) const BP_REPLACE: u8 = 1;
+
+/// Which arm an El boundary shows (0 loading, 1 failed, 2 child) for its guards' states: the child once
+/// every guard has a value (first readiness; a later request keeps it: revalidation), `failed` while a guard
+/// that has no value failed (or, with `BP_REPLACE`, while any guard's last request failed), else loading.
+/// No guard: the child.
+///
+/// # Safety
+/// Every guard is a live `Reader<_>`.
+pub(crate) unsafe fn el_verdict(guards: &[usize], policy: u8) -> u8 {
+    let (mut all, mut failed, mut fault, mut pending) = (true, false, false, false);
+    for &g in guards {
+        // SAFETY: the contract.
+        let s = unsafe { reader_state(g) };
+        all &= s & HAS != 0;
+        failed |= s & FAULT != 0 && s & HAS == 0;
+        fault |= s & FAULT != 0;
+        pending |= s & PENDING != 0;
+    }
+    // (mutant: first readiness ignored: any outstanding request shows the skeleton, revalidation included)
+    if cfg!(feature = "mutant_el_boundary_ready") && pending {
+        return 0;
+    }
+    if policy & BP_REPLACE != 0 && fault {
+        1
+    } else if all {
+        2
+    } else if failed {
+        1
+    } else {
+        0
+    }
+}
+
+impl Rt {
+    /// A new El boundary over `guards` (reader fields of the mounting owner): its three clips (the one of `shown` open on `rect`, the others empty).
+    pub(crate) fn el_bound(&mut self, rect: bough_core::NRect, guards: Vec<usize>, policy: u8) -> (u32, [u16; 3]) {
+        // SAFETY: the walk hands only guards that are reader fields of the mounting view (a reader elsewhere is a
+        // constant of its description, so the always-ready kind of source, and guards nothing).
+        let shown = unsafe { el_verdict(&guards, policy) };
+        let clips = [0u8, 1, 2].map(|i| self.bough.new_clip(if i == shown { rect } else { bough_core::NRect::EMPTY }));
+        let bi = self.asy.bounds.len() as u32;
+        self.asy.bounds.push(Bound { clips, rect, shown, guards, policy });
+        (bi, clips)
+    }
+    pub(crate) fn el_bound_clips(&self, bi: u32) -> [u16; 3] {
+        self.asy.bounds[bi as usize].clips
+    }
+    /// Show the arm boundary `bi`'s guards select now (a wire on a guard's pending head, or a re-description).
+    ///
+    /// # Safety
+    /// The boundary's guards are live readers.
+    pub(crate) unsafe fn el_bound_refresh(&mut self, bi: u32) {
+        let b = &mut self.asy.bounds[bi as usize];
+        // SAFETY: the contract.
+        let now = unsafe { el_verdict(&b.guards, b.policy) };
+        if now == b.shown {
+            return;
+        }
+        let (old, rect, clips) = (b.shown, b.rect, b.clips);
+        b.shown = now;
+        self.bough.set_clip_rect(clips[old as usize], bough_core::NRect::EMPTY);
+        self.bough.set_clip_rect(clips[now as usize], rect);
+    }
+}
+
+/// The wire of an El boundary on each guard's pending head (queued on every pending transition and commit).
+///
+/// # Safety
+/// `PatchFn`'s contract; `w.node` is the boundary, whose guards are fields of the live owner.
+pub(crate) unsafe fn patch_el_bound(rt: &mut Rt, w: &Wire, _sig: *const u8, _o: *const u8) {
+    // (mutant: a guard's transition does not reach its boundary; only a re-description does)
+    if cfg!(feature = "mutant_el_bound_wire") {
+        return;
+    }
+    // SAFETY: the contract.
+    unsafe { rt.el_bound_refresh(w.node) }
 }
 
 fn branch_of<T>(r: &Reader<T>) -> u8 {
@@ -616,7 +786,7 @@ impl<'a, T: 'static, V: 'static, L: crate::elem::Element<V>, F: crate::elem::Ele
             let shown = branch_of(self.r.r);
             let clips = [0u8, 1, 2].map(|i| m.rt.bough.new_clip(if i == shown { rect } else { bough_core::NRect::EMPTY }));
             let bi = m.rt.asy.bounds.len() as u32;
-            m.rt.asy.bounds.push(Bound { clips, rect, shown });
+            m.rt.asy.bounds.push(Bound { clips, rect, shown, guards: Vec::new(), policy: 0 });
             // SAFETY: `phead` sits at `off + 4`; the patch reads the reader 4 bytes before it.
             unsafe { m.wire_cell(&self.r.r.phead, self.r.off + 4, patch_boundary::<T>, bi, crate::rt::Recipe::NONE) };
             let prev = m.clip;

@@ -12,11 +12,10 @@ error[E0521]: borrowed data escapes outside of method
   |                 `self` escapes the method body here
   |                 argument requires that `'1` must outlive `'static`
   |
-note: `'static` lifetime requirement from `<&'f bough::signal::Signal<S> as bough::el::Source<'f>>::map` introduced here
+note: `'static` lifetime requirement from `bough::el::Source::map` introduced here
  --> src/el/plug.rs
   |
-  | impl<'f, S: 'static> Source<'f> for &'f Signal<S> {
-  |             ^^^^^^^ lifetime requirement introduced here
+  | pub trait Source<'f>: sealed::Sealed + Sized {
 ...
-  |     fn map<T, F: Fn(&S) -> T + Copy + 'static>(self, f: F) -> Map<'f, S, F> {
-  |                                       ^^^^^^^ lifetime requirement introduced here
+  |     fn map<T, F: for<'a> Fn(Self::Ready<'a>) -> T + Copy + 'static>(self, f: F) -> Map<Self, F> {
+  |                                                            ^^^^^^^ lifetime requirement introduced here
