@@ -426,13 +426,20 @@ impl View for Grips {
 
 #[test]
 fn a_late_event_for_a_removed_row_does_nothing() {
+    removed_row_drag(true);
+    removed_row_drag(false);
+}
+
+fn removed_row_drag(start_drag: bool) {
     let mut app = App::new(Grips { items: List::from_iter_in((0..4).map(|id| Grip { id, drags: 0 })) }, cfg(), true);
     shot(&mut app);
-    // press on item 2: its drag route captures the pointer
+    // Remove the row either before the drag starts or while it owns the pointer.
     app.pointer_move(4.0, row_y(2));
     app.pointer_down(4.0, row_y(2), Button::Primary);
-    app.pointer_move(5.0, row_y(2));
-    assert_eq!(app.owner.items.get(2).unwrap().drags, 1, "the drag route runs on its row");
+    if start_drag {
+        app.pointer_move(8.0, row_y(2));
+        assert_eq!(app.owner.items.get(2).unwrap().drags, 1, "the drag route runs on its row");
+    }
     app.turn(|b| {
         b.items.remove(2);
     });

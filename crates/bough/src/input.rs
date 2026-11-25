@@ -438,6 +438,9 @@ impl Input {
             if self.pressed == stale {
                 (self.pressed, self.dragging) = (0, false);
             }
+            if self.drag_armed == stale {
+                self.drag_armed = 0;
+            }
             if self.focus_act == stale {
                 self.focus_act = 0;
             }
